@@ -1,5 +1,8 @@
 module Lib
-    ( someFunc
+    (
+        someFunc,
+        display,
+        BasePath (..)
     ) where
 
 import Data.List (intercalate)

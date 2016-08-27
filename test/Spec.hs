@@ -1,2 +1,17 @@
+module Main (
+    main
+) where
+
+import Test.Framework (defaultMain, Test)
+import Test.Framework.Providers.HUnit
+
+import Tests
+
 main :: IO ()
-main = putStrLn "Test suite not yet implemented"
+main = defaultMain tests
+
+tests :: [Test]
+tests =
+    [
+        testCase "Serialise BasePath" testSerialiseBasePath
+    ]
