@@ -2,25 +2,29 @@ module Lib
     (
         someFunc,
         display,
+        parse,
         BasePath (..)
     ) where
 
 import Data.List (intercalate)
+import Data.List.Split (splitOn)
 import Data.Char (toLower)
+
+data Failure = Failure { code :: Int, message :: String } deriving (Eq, Show)
 
 class Serialisable a where
   display :: a -> String
-  parse :: String -> a
+  parse :: String -> Either Failure a
 
 
-data BasePath = BasePath [String] deriving (Eq)
+data BasePath = BasePath [String] deriving (Eq, Show)
 root = BasePath []
 
 instance Serialisable BasePath where
   -- FIXME: I don't think this is very efficient!
   display (BasePath strings) = "/" ++ intercalate "/" strings ++ "/"
-  -- FIXME: bad bad bad:
-  parse _ = root
+  -- FIXME: Actually handle error cases. How?!
+  parse string = Right (BasePath $ init . tail $ splitOn "/" string)
 
 
 data PathMethod = Error | Set | Add | Remove | Clear | Subscribe |
@@ -28,7 +32,7 @@ data PathMethod = Error | Set | Add | Remove | Clear | Subscribe |
 instance Serialisable PathMethod where
   display AssignType = "assign_type"
   display path_method = map toLower $ show path_method
-  parse _ = Error
+  parse _ = Right Error
 
 
 data Path = Path { base :: BasePath, method :: PathMethod } deriving (Eq)
@@ -36,7 +40,7 @@ data Path = Path { base :: BasePath, method :: PathMethod } deriving (Eq)
 instance Serialisable Path where
   -- FIXME: I don't think this is very efficient!
   display (Path base method) = display base ++ "#" ++ display method
-  parse _ = path [] Error
+  parse _ = Right (path [] Error)
 
 path :: [String] -> PathMethod -> Path
 path strings method = Path (BasePath strings) method

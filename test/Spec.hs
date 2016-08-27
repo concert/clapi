@@ -13,5 +13,6 @@ main = defaultMain tests
 tests :: [Test]
 tests =
     [
-        testCase "Serialise BasePath" testSerialiseBasePath
+        testCase "Display BasePath" testDisplayBasePath,
+        testCase "Parse BasePath" testParseBasePath
     ]

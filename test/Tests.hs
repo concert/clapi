@@ -2,8 +2,11 @@ module Tests where
 
 import Test.HUnit ((@=?))
 
-import Lib (display, BasePath (BasePath))
+import Lib (display, parse, BasePath (..))
 
 
-testSerialiseBasePath =
-  display (BasePath ["hello", "world"]) @=? "/hello/world/"
+testDisplayBasePath =
+  "/hello/world/" @=? display (BasePath ["hello", "world"])
+
+testParseBasePath =
+  Right (BasePath ["hello", "world"]) @=? parse "/hello/world/"
