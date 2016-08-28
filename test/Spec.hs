@@ -5,7 +5,7 @@ module Main (
 import Test.Framework (defaultMain, Test)
 import Test.Framework.Providers.HUnit
 
-import Tests
+import TestPath
 
 main :: IO ()
 main = defaultMain tests
@@ -13,6 +13,6 @@ main = defaultMain tests
 tests :: [Test]
 tests =
     [
-        testCase "Display BasePath" testDisplayBasePath,
-        testCase "Parse BasePath" testParseBasePath
+        testCase "Parse BasePath" testParseBasePath,
+        testCase "Fail parse BasePath" testFailParseBasePath
     ]
