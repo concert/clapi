@@ -46,4 +46,4 @@ test-suite clapi-hs-test
 
 source-repository head
   type:     git
-  location: https://github.com/githubuser/clapi-hs
+  location: https://github.com/ch3pjw/clapi-hs.git
