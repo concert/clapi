@@ -21,6 +21,7 @@ library
                      , split
                      , containers
                      , regex-tdfa
+                     , parsec
   default-language:    Haskell2010
 
 executable clapi-hs-exe
