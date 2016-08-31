@@ -17,7 +17,7 @@ import Text.Parsec (
     ParseError)
 import Text.Parsec.String (Parser)
 
-import Util (uncamel)
+import Util (parseType, uncamel)
 
 
 data BasePath = BasePath {components :: [String]} deriving (Eq, Show)
@@ -26,10 +26,6 @@ root = BasePath []
 data PathMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete |
     Identify deriving (Eq, Show, Read, Enum, Bounded)
-
-pathMethodsByString :: Map.Map String PathMethod
-pathMethodsByString = Map.fromList [
-    (uncamel . show $ pm, pm) | pm <- [minBound :: PathMethod ..]]
 
 data Path = Path {base :: BasePath, method :: PathMethod} deriving (Eq, Show)
 
@@ -54,11 +50,7 @@ pathComponent = do
         restChar = satisfy (\c -> isLetter c || isDigit c || c == '_')
 
 pathMethod :: Parser PathMethod
-pathMethod = do
-    match <- choice $ map (try . string) $ Map.keys pathMethodsByString
-    -- The parse will already fail if we don't have a match, so we can safely
-    --  unwrap the Maybe:
-    return (fromJust $ Map.lookup match pathMethodsByString)
+pathMethod = parseType uncamel
 
 pathMethodSeparator :: Parser Char
 pathMethodSeparator = char '#'
