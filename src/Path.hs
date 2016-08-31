@@ -1,20 +1,23 @@
 module Path (
-        Failure (..),
         BasePath (..),
         Path (..),
+        PathMethod (..),
         fromOsc,
-        toOsc
+        toOsc,
     ) where
 
 import Data.Char (isLetter, isDigit)
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
-
-import Text.Regex.TDFA ((=~))
+import Data.Maybe (fromJust)
+import qualified Data.Map.Strict as Map
 
 import Text.Parsec (
-    char, satisfy, letter, many, many1, lower, eof, parse, ParseError)
+    char, satisfy, letter, many, many1, lower, try, string, choice, eof, parse,
+    ParseError)
 import Text.Parsec.String (Parser)
+
+import Util (uncamel)
 
 
 data BasePath = BasePath {components :: [String]} deriving (Eq, Show)
@@ -22,7 +25,11 @@ root = BasePath []
 
 data PathMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete |
-    Identify deriving (Eq, Show, Read)
+    Identify deriving (Eq, Show, Read, Enum, Bounded)
+
+pathMethodsByString :: Map.Map String PathMethod
+pathMethodsByString = Map.fromList [
+    (uncamel . show $ pm, pm) | pm <- [minBound :: PathMethod ..]]
 
 data Path = Path {base :: BasePath, method :: PathMethod} deriving (Eq, Show)
 
@@ -46,15 +53,15 @@ pathComponent = do
         firstChar = letter
         restChar = satisfy (\c -> isLetter c || isDigit c || c == '_')
 
--- FIXME: would like this to look through the data types we've defined...
 pathMethod :: Parser PathMethod
 pathMethod = do
-    string <- many1 letter -- lower
-    -- ...as reading here is not at all safe!
-    return (read string)
+    match <- choice $ map (try . string) $ Map.keys pathMethodsByString
+    -- The parse will already fail if we don't have a match, so we can safely
+    --  unwrap the Maybe:
+    return (fromJust $ Map.lookup match pathMethodsByString)
 
-pathMethodToken :: Parser Char
-pathMethodToken = char '#'
+pathMethodSeparator :: Parser Char
+pathMethodSeparator = char '#'
 
 basePath :: Parser BasePath
 basePath = do
@@ -70,11 +77,9 @@ basePath = do
 path :: Parser Path
 path = do
     bp <- basePath
-    pathMethodToken
+    pathMethodSeparator
     method <- pathMethod
     return (Path bp method)
-
-data Failure = Failure { message :: String } deriving (Eq, Show)
 
 instance OscSerialisable BasePath where
     toOsc (BasePath components) = "/" ++ intercalate "/" components ++ "/"
