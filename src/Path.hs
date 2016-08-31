@@ -12,9 +12,7 @@ import Data.List.Split (splitOn)
 import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 
-import Text.Parsec (
-    char, satisfy, letter, many, many1, lower, try, string, choice, eof, parse,
-    ParseError)
+import Text.Parsec (char, satisfy, letter, many, eof, parse, ParseError)
 import Text.Parsec.String (Parser)
 
 import Util (parseType, uncamel)
