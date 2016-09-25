@@ -2,6 +2,7 @@ module Path (
         BasePath (..),
         Path (..),
         PathMethod (..),
+        path,
         fromOsc,
         toOsc,
     ) where
@@ -21,12 +22,20 @@ import Util (parseType, uncamel)
 data BasePath = BasePath {components :: [String]} deriving (Eq, Show)
 root = BasePath []
 
+up :: BasePath -> BasePath
+up (BasePath []) = root
+-- FIXME: using Data.Seq would be faster than a built in list for init (removing
+-- last element)
+up (BasePath cs) = BasePath (init cs)
+
 data PathMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete |
     Identify deriving (Eq, Show, Read, Enum, Bounded)
 
 data Path = Path {base :: BasePath, method :: PathMethod} deriving (Eq, Show)
 
+path :: [String] -> PathMethod -> Path
+path components method = Path (BasePath components) method
 
 {- FIXME: perhaps we make distinction between the human-friendly form we want to
 display and an eventual binary serialisation? -}
@@ -64,14 +73,15 @@ basePath = do
             pathSeparator
             return pc
 
-path :: Parser Path
-path = do
+pathParser :: Parser Path
+pathParser = do
     bp <- basePath
     pathMethodSeparator
     method <- pathMethod
     return (Path bp method)
 
 instance OscSerialisable BasePath where
+    -- FIXME: I don't think this is very efficient!
     toOsc (BasePath components) = "/" ++ intercalate "/" components ++ "/"
     fromOsc = parse (basePath <* eof) ""
 
@@ -79,4 +89,4 @@ instance OscSerialisable BasePath where
 instance OscSerialisable Path where
     -- FIXME: should eventually be able to serialise method properly
     toOsc (Path base method)= toOsc base ++ "#" ++ show method
-    fromOsc = parse (path <* eof) ""
+    fromOsc = parse (pathParser <* eof) ""
