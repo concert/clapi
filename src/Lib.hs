@@ -34,11 +34,12 @@ oscTag (OscMidi _ _ _ _) = 'm'
 data OscMessage = OscMessage {oscMsgPath :: String, oscMsgArgs :: [OscValue]}
 
 data ClapiValue = Single OscValue | ClapiList [OscValue] deriving (Eq, Show)
+type ClapiTags = Map.Map String ClapiValue
 
 data ClapiMessage = ClapiMessage {
     clapiMsgPath :: Path,
     clapiMsgArgs :: [ClapiValue],
-    clapiMsgTags :: Map.Map String ClapiValue}
+    clapiMsgTags :: ClapiTags}
 
 toOscValue :: ClapiValue -> [OscValue]
 toOscValue (Single value) = [value]
@@ -49,7 +50,7 @@ toOscArgs :: [ClapiValue] -> [OscValue]
 toOscArgs = concatMap toOscValue
 
 -- FIXME: these names are bad - things which convert to OSC _from_ tags, etc...
-toOscTags :: Map.Map String ClapiValue -> [OscValue]
+toOscTags :: ClapiTags -> [OscValue]
 toOscTags = Map.foldrWithKey myFunc [] where
     myFunc tagName clapiValue accumulator =
         (OscSymbol "?") : (OscString tagName) :
