@@ -11,7 +11,6 @@ import Data.Char (isLetter, isDigit)
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
 import Data.Maybe (fromJust)
-import qualified Data.Map.Strict as Map
 
 import Text.Parsec (char, satisfy, letter, many, eof, parse, ParseError)
 import Text.Parsec.String (Parser)
