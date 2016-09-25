@@ -1,20 +1,24 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Lib
     (
         someFunc,
     ) where
 
 import Path (Path, toOsc)
+import Data.Typeable (Typeable)
+import Data.Data (Data, dataTypeOf, dataTypeConstrs)
 import Data.Int (Int32, Int64)
 import qualified Data.Map.Strict as Map
 
 someFunc :: IO ()
-someFunc = putStrLn "Hello world"
+someFunc = putStrLn $ show $ dataTypeConstrs $ dataTypeOf OscNil
 
 
 data OscValue = OscNil | OscBool Bool | OscTimeTag Int32 Int32 |
     OscInt32 Int32 | OscInt64 Int64 | OscFloat Float | OscDouble Double |
     OscChar Char | OscString String | OscSymbol String |
-    OscMidi {a :: Int32, b :: Int32, c :: Int32, d :: Int32} deriving (Eq, Show)
+    OscMidi {a :: Int32, b :: Int32, c :: Int32, d :: Int32}
+    deriving (Eq, Show, Typeable, Data)
 
 oscTag :: OscValue -> Char
 oscTag (OscNil) = 'N'
