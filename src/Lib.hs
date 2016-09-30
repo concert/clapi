@@ -5,8 +5,7 @@ module Lib
     ) where
 
 import Path (Path, toOsc)
-import Data.Typeable (Typeable)
-import Data.Data (Data, dataTypeOf, dataTypeConstrs)
+import Data.Data (Typeable, Data, dataTypeOf, dataTypeConstrs, Constr, toConstr)
 import Data.Int (Int32, Int64)
 import qualified Data.Map.Strict as Map
 
@@ -34,6 +33,10 @@ oscTag (OscChar _) = 'c'
 oscTag (OscString _) = 's'
 oscTag (OscSymbol _) = 'S'
 oscTag (OscMidi _ _ _ _) = 'm'
+
+
+oscTagToConstr :: Map.Map Char Constr
+oscTagToConstr = Map.fromList [('N', toConstr OscNil)]
 
 data OscMessage = OscMessage {oscMsgPath :: String, oscMsgArgs :: [OscValue]}
 
