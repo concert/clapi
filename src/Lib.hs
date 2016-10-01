@@ -5,12 +5,17 @@ module Lib
     ) where
 
 import Path (Path, toOsc)
+import Blaze.ByteString.Builder (toByteString)
+import Serialisation (fromClapiString)
 import Data.Data (Typeable, Data, dataTypeOf, dataTypeConstrs, Constr, toConstr)
 import Data.Int (Int32, Int64)
 import qualified Data.Map.Strict as Map
 
-someFunc :: IO ()
-someFunc = putStrLn $ show $ dataTypeConstrs $ dataTypeOf OscNil
+-- someFunc :: IO ()
+-- someFunc = putStrLn $ show $ dataTypeConstrs $ dataTypeOf OscNil
+
+someFunc :: IO()
+someFunc = putStrLn $ show $ toByteString $ fromClapiString "hello world"
 
 
 data OscValue = OscNil | OscBool Bool | OscTimeTag Int32 Int32 |
