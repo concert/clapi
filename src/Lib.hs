@@ -19,8 +19,10 @@ myMessage = CMessage
     [CString "Greetings Planet"]
     [("foo", CInt32 1)]
 
+myPacket = [myMessage, myMessage]
+
 someFunc :: IO()
-someFunc = putStrLn . show . toByteString $ encode myMessage
+someFunc = putStrLn . show . toByteString $ encode myPacket
 
 
 -- data OscValue = OscNil | OscBool Bool | OscTimeTag Int32 Int32 |

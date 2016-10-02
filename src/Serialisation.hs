@@ -90,3 +90,11 @@ instance Serialisable ClapiMessage where
         (encode . msgPath $ m) <>
         (encode . msgArgs $ m) <>
         (encode . msgTags $ m)
+
+
+type ClapiPacket = [ClapiMessage]
+
+instance Serialisable ClapiPacket where
+    encode ms = fromInt32be nMsgs <> builder where
+        (nMsgs, builder) = foldl addMsg (0, mempty) ms
+        addMsg (nMsgs, builder) m = (nMsgs + 1, builder <> encode m)
