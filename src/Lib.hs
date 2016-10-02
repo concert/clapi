@@ -4,9 +4,9 @@ module Lib
         someFunc,
     ) where
 
-import Path (Path, toOsc)
+import Path (Path, path, PathMethod(..))
 import Blaze.ByteString.Builder (toByteString)
-import Serialisation (ClapiValue(..), encode)
+import Serialisation (ClapiValue(..), ClapiMessage(..), encode)
 import Data.Data (Typeable, Data, dataTypeOf, dataTypeConstrs, Constr, toConstr)
 import Data.Int (Int32, Int64)
 import qualified Data.Map.Strict as Map
@@ -14,8 +14,13 @@ import qualified Data.Map.Strict as Map
 -- someFunc :: IO ()
 -- someFunc = putStrLn $ show $ dataTypeConstrs $ dataTypeOf OscNil
 
+myMessage = CMessage
+    (path ["hello", "world"] Error)
+    [CString "Greetings Planet"]
+    [("foo", CInt32 1)]
+
 someFunc :: IO()
-someFunc = putStrLn . show . toByteString $ encode[CString "hello world"]
+someFunc = putStrLn . show . toByteString $ encode myMessage
 
 
 -- data OscValue = OscNil | OscBool Bool | OscTimeTag Int32 Int32 |

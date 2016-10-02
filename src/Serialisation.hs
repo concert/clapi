@@ -2,6 +2,7 @@
 module Serialisation
     (
       ClapiValue(..),
+      ClapiMessage(..),
       encode
     ) where
 
@@ -13,6 +14,8 @@ import Blaze.ByteString.Builder (
 import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
+
+import Path (Path, toOsc)
 
 prefixLength :: Builder -> Builder
 prefixLength b = byteSize bs <> fromByteString bs where
@@ -56,10 +59,34 @@ instance Serialisable [ClapiValue] where
     encode vs = prefixLength typeTagString <> listBuilder where
         (typeTagString, listBuilder) = foldl addArg mempty vs
 
--- encodePath :: Path -> Builder
--- encodePath = toOsc
-
 type MsgTag = (String, ClapiValue)
 
-data ClapiMessage =
-    CMessage {msgPath :: Path, msgArgs :: [ClapiValue], msgTags :: [MsgTag]}
+something :: [MsgTag] -> [(Char, (String, Builder))]
+something [] = []
+something ((s, cv):ts) =
+    (typeTag, (s, builder)) : something ts where
+        (typeTag, builder) = encode' cv
+
+-- FIXME: not sure this instance flexibility is a good thing or not!
+instance Serialisable [MsgTag] where
+    encode ts = encode typeTagString <> encodedMessageTags where
+        (typeTagString, nameBuilderPairs) = unzip . something $ ts
+        encodedMessageTags = foldl
+            (\acc (name, builder) -> acc <> encode name <> builder)
+            mempty nameBuilderPairs
+
+instance Serialisable Path where
+    encode = encode . toOsc
+
+
+data ClapiMessage = CMessage {
+    msgPath :: Path,
+    msgArgs :: [ClapiValue],
+    msgTags :: [MsgTag]
+}
+
+instance Serialisable ClapiMessage where
+    encode m =
+        (encode . msgPath $ m) <>
+        (encode . msgArgs $ m) <>
+        (encode . msgTags $ m)
