@@ -58,23 +58,23 @@ typeTag (CString _) = 's'
 typeTag (CList _) = 'l'
 
 
-taggedEncode :: (a -> Char) -> (a -> Builder) -> [a] -> Builder
-taggedEncode getTag getBuilder as =
+taggedEncode :: (a -> (String, Builder)) -> [a] -> Builder
+taggedEncode getPair as =
     encode typeTagString <> builder where
         (typeTagString, builder) = foldl add mempty as
-        add acc a = acc <> ([getTag a], getBuilder a)
+        add acc a = acc <> getPair a
 
 instance Serialisable [ClapiValue] where
-    encode = taggedEncode typeTag encode
+    encode = taggedEncode getPair where
+        getPair cv = ([typeTag cv], encode cv)
 
 
 type MsgTag = (String, ClapiValue)
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [MsgTag] where
-    encode = taggedEncode getTag getBuilder where
-        getTag (name, cv) = typeTag cv
-        getBuilder (name, cv) = encode name <> encode cv
+    encode = taggedEncode getPair where
+        getPair (name, cv) = ([typeTag cv], encode name <> encode cv)
 
 instance Serialisable Path where
     encode = encode . toOsc
