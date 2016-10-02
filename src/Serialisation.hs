@@ -34,46 +34,44 @@ data ClapiValue = CNil | CBool Bool | CTimeTag Int32 Int32 |
     CInt32 Int32 | CInt64 Int64 | CFloat Float | CDouble Double |
     CString String | CList [ClapiValue] deriving (Eq, Show)
 
-encode' :: ClapiValue -> (Char, Builder)
-encode' CNil = ('N', mempty)
-encode' (CBool True) = ('T', mempty)
-encode' (CBool False) = ('F', mempty)
-encode' (CTimeTag x y) = ('t', fromInt32be x <> fromInt32be y)
-encode' (CInt32 x) = ('i', fromInt32be x)
-encode' (CInt64 x) = ('h', fromInt64be x)
-encode' (CFloat x) = ('f', floatBE x)
-encode' (CDouble x) = ('d', doubleBE x )
-encode' (CString x) = ('s', encode x)
-encode' (CList vs) = ('l', encode vs)
+instance Serialisable ClapiValue where
+    encode CNil = mempty
+    encode (CBool True) = mempty
+    encode (CBool False) = mempty
+    encode (CTimeTag x y) = fromInt32be x <> fromInt32be y
+    encode (CInt32 x) = fromInt32be x
+    encode (CInt64 x) = fromInt64be x
+    encode (CFloat x) = floatBE x
+    encode (CDouble x) = doubleBE x
+    encode (CString x) = encode x
+    encode (CList vs) = encode vs
 
-type ArgList = (Builder, Builder)
-
-encode'' :: ClapiValue -> ArgList
-encode'' x = builderify . encode' $ x where
-    builderify (c, y) = (fromChar c, y)
-
-addArg :: ArgList -> ClapiValue -> ArgList
-addArg al cv = al <> encode'' cv
+typeTag :: ClapiValue -> Char
+typeTag CNil = 'N'
+typeTag (CBool _) = 'F'
+typeTag (CTimeTag _ _) = 't'
+typeTag (CInt32 _) = 'i'
+typeTag (CInt64 _) = 'h'
+typeTag (CFloat _) = 'f'
+typeTag (CDouble _) = 'd'
+typeTag (CString _) = 's'
+typeTag (CList _) = 'l'
 
 instance Serialisable [ClapiValue] where
-    encode vs = prefixLength typeTagString <> listBuilder where
-        (typeTagString, listBuilder) = foldl addArg mempty vs
+    -- encode vs = prefixLength typeTagString <> listBuilder where
+    --     (typeTagString, listBuilder) = foldl addArg mempty vs
+    encode cvs = encode typeTagString <> builder where
+        (typeTagString, builder) = foldl addCv mempty cvs
+        addCv acc cv = acc <> ([typeTag cv], encode cv)
+
 
 type MsgTag = (String, ClapiValue)
 
-something :: [MsgTag] -> [(Char, (String, Builder))]
-something [] = []
-something ((s, cv):ts) =
-    (typeTag, (s, builder)) : something ts where
-        (typeTag, builder) = encode' cv
-
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [MsgTag] where
-    encode ts = encode typeTagString <> encodedMessageTags where
-        (typeTagString, nameBuilderPairs) = unzip . something $ ts
-        encodedMessageTags = foldl
-            (\acc (name, builder) -> acc <> encode name <> builder)
-            mempty nameBuilderPairs
+    encode mts = encode typeTagString <> builder where
+        (typeTagString, builder) = foldl addMt mempty mts
+        addMt acc (name, cv) = acc <> ([typeTag cv], encode name <> encode cv)
 
 instance Serialisable Path where
     encode = encode . toOsc
