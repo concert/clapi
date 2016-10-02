@@ -53,8 +53,8 @@ addArg :: ArgList -> ClapiValue -> ArgList
 addArg al cv = al <> encode'' cv
 
 instance Serialisable [ClapiValue] where
-    encode vs = prefixLength (fst argList) <> snd argList where
-        argList = foldl addArg mempty vs
+    encode vs = prefixLength typeTagString <> listBuilder where
+        (typeTagString, listBuilder) = foldl addArg mempty vs
 
 -- encodePath :: Path -> Builder
 -- encodePath = toOsc
