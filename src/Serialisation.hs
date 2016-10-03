@@ -66,7 +66,8 @@ typeTag (CString _) = 's'
 typeTag (CList _) = 'l'
 
 
-taggedEncode :: (a -> (String, Builder)) -> [a] -> Builder
+taggedEncode :: (Monoid b, Serialisable b) =>
+    (a -> (b, Builder)) -> [a] -> Builder
 taggedEncode getPair as =
     encode typeTagString <> builder where
         (typeTagString, builder) = mconcat $ map getPair as
@@ -103,6 +104,5 @@ instance Serialisable ClapiMessage where
 type ClapiPacket = [ClapiMessage]
 
 instance Serialisable ClapiPacket where
-    encode ms = encode nMsgs <> builder where
-        (nMsgs, builder) = foldl addMsg (0 :: Sum Int, mempty) ms
-        addMsg (nMsgs, builder) m = (nMsgs + 1, builder <> encode m)
+    encode = taggedEncode getPair where
+        getPair msg = (1 :: Sum Int, encode msg)
