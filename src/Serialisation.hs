@@ -6,7 +6,7 @@ module Serialisation
       encode
     ) where
 
-import Data.Monoid ((<>), Sum)
+import Data.Monoid ((<>), mconcat, Sum)
 import qualified Data.ByteString as B
 import Data.Int (Int32, Int64)
 import Blaze.ByteString.Builder (
@@ -61,8 +61,7 @@ typeTag (CList _) = 'l'
 taggedEncode :: (a -> (String, Builder)) -> [a] -> Builder
 taggedEncode getPair as =
     encode typeTagString <> builder where
-        (typeTagString, builder) = foldl add mempty as
-        add acc a = acc <> getPair a
+        (typeTagString, builder) = mconcat $ map getPair as
 
 instance Serialisable [ClapiValue] where
     encode = taggedEncode getPair where
