@@ -6,7 +6,7 @@ module Serialisation
       encode
     ) where
 
-import Data.Monoid ((<>), mconcat, Sum)
+import Data.Monoid ((<>), mconcat, Sum(..))
 import qualified Data.ByteString as B
 import Data.Int (Int32, Int64)
 import Blaze.ByteString.Builder (
@@ -17,15 +17,23 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
 
 import Path (Path, toOsc)
 
+class Serialisable a where
+    encode :: a -> Builder
+
+-- FIXME: is there a way to generalise this Int handling?
+instance Serialisable Int where
+    encode = fromInt32be . fromIntegral
+
+instance Serialisable (Sum Int) where
+    encode (Sum i) = encode i
+
+
 prefixLength :: Builder -> Builder
 prefixLength b = byteSize bs <> fromByteString bs where
     bs = toByteString b
     {- FIXME: what do we do when the encoded string is more than 2^32 bytes
     long? -}
-    byteSize = fromInt32be . fromIntegral . B.length
-
-class Serialisable a where
-    encode :: a -> Builder
+    byteSize = encode . B.length
 
 instance Serialisable String where
     encode = prefixLength . fromString
@@ -95,6 +103,6 @@ instance Serialisable ClapiMessage where
 type ClapiPacket = [ClapiMessage]
 
 instance Serialisable ClapiPacket where
-    encode ms = fromInt32be nMsgs <> builder where
-        (nMsgs, builder) = foldl addMsg (0, mempty) ms
+    encode ms = encode nMsgs <> builder where
+        (nMsgs, builder) = foldl addMsg (0 :: Sum Int, mempty) ms
         addMsg (nMsgs, builder) m = (nMsgs + 1, builder <> encode m)
