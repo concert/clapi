@@ -8,6 +8,7 @@ module Serialisation
     ) where
 
 import Data.Monoid ((<>), mconcat, Sum(..))
+import Control.Applicative ((<$>), (<*>))
 import qualified Data.ByteString as B
 import Data.Int (Int32, Int64)
 import Data.Word (Word16, Word32, Word64)
@@ -129,10 +130,7 @@ instance Serialisable ClapiBundle where
 
 -- Parsing stuff for the time being:
 test :: Either String Int
-test = parseOnly myParser someBytes where
-    myParser = do
-        word <- anyWord16be
-        return . fromIntegral $ word
+test = parseOnly (fromIntegral <$> anyWord16be) someBytes
 
 someBytes :: B.ByteString
 someBytes = toByteString . fromWord16be $ 255
