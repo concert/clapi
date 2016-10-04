@@ -40,7 +40,7 @@ prefixLength b = byteSize bs <> fromByteString bs where
 instance Serialisable String where
     encode = prefixLength . fromString
 
-data ClapiValue = CNil | CBool Bool | CTimeTag Word64 Word32 |
+data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
     CWord32 Word32 | CWord64 Word64 |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |
@@ -50,7 +50,7 @@ instance Serialisable ClapiValue where
     encode CNil = mempty
     encode (CBool True) = mempty
     encode (CBool False) = mempty
-    encode (CTimeTag x y) = fromWord64be x <> fromWord32be y
+    encode (CTime x y) = fromWord64be x <> fromWord32be y
     encode (CWord32 x) = fromWord32be x
     encode (CWord64 x) = fromWord64be x
     encode (CInt32 x) = fromInt32be x
@@ -63,7 +63,7 @@ instance Serialisable ClapiValue where
 typeTag :: ClapiValue -> Char
 typeTag CNil = 'N'
 typeTag (CBool _) = 'F'
-typeTag (CTimeTag _ _) = 't'
+typeTag (CTime _ _) = 't'
 typeTag (CWord32 _) = 'u'
 typeTag (CWord64 _) = 'U'
 typeTag (CInt32 _) = 'i'
