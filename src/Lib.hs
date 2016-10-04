@@ -4,7 +4,7 @@ module Lib
         someFunc,
     ) where
 
-import Path (Path, path, PathMethod(..))
+import Path (BasePath(..), Method(..))
 import Blaze.ByteString.Builder (toByteString)
 import Serialisation (ClapiValue(..), ClapiMessage(..), encode)
 import Data.Data (Typeable, Data, dataTypeOf, dataTypeConstrs, Constr, toConstr)
@@ -15,7 +15,8 @@ import qualified Data.Map.Strict as Map
 -- someFunc = putStrLn $ show $ dataTypeConstrs $ dataTypeOf OscNil
 
 myMessage = CMessage
-    (path ["hello", "world"] Error)
+    (BasePath ["hello", "world"])
+    Error
     [CString "Greetings Planet"]
     [("foo", CInt32 1)]
 

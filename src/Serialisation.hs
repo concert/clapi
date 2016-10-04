@@ -17,7 +17,8 @@ import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
 
-import Path (Path, toOsc)
+import Path (BasePath(..), components, Method(..))
+import Util (uncamel)
 
 class Serialisable a where
     encode :: a -> Builder
@@ -28,6 +29,12 @@ instance Serialisable Int where
 
 instance Serialisable (Sum Int) where
     encode (Sum i) = encode i
+
+instance Serialisable BasePath where
+    encode p = encode . mconcat . map ("/" <>) $ components $ p
+
+instance Serialisable Method where
+    encode = encode . uncamel . show
 
 
 prefixLength :: Builder -> Builder
@@ -92,12 +99,10 @@ instance Serialisable [MsgTag] where
     encode = taggedEncode getPair where
         getPair (name, cv) = ([typeTag cv], encode name <> encode cv)
 
-instance Serialisable Path where
-    encode = encode . toOsc
-
 
 data ClapiMessage = CMessage {
-    msgPath :: Path,
+    msgPath :: BasePath,
+    msgMethod :: Method,
     msgArgs :: [ClapiValue],
     msgTags :: [MsgTag]
 }
@@ -105,6 +110,7 @@ data ClapiMessage = CMessage {
 instance Serialisable ClapiMessage where
     encode m =
         (encode . msgPath $ m) <>
+        (encode . msgMethod $ m) <>
         (encode . msgArgs $ m) <>
         (encode . msgTags $ m)
 
