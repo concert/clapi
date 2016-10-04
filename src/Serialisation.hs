@@ -128,8 +128,11 @@ instance Serialisable ClapiBundle where
 
 
 -- Parsing stuff for the time being:
-test :: Either String Word16
-test = parseOnly anyWord16be someBytes
+test :: Either String Int
+test = parseOnly myParser someBytes where
+    myParser = do
+        word <- anyWord16be
+        return . fromIntegral $ word
 
 someBytes :: B.ByteString
 someBytes = toByteString . fromWord16be $ 255
