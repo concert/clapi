@@ -115,8 +115,8 @@ instance Serialisable ClapiMessage where
         (encode . msgTags $ m)
 
 
-type ClapiPacket = [ClapiMessage]
+type ClapiBundle = [ClapiMessage]
 
-instance Serialisable ClapiPacket where
+instance Serialisable ClapiBundle where
     encode = taggedEncode getPair where
         getPair msg = (1 :: Sum Int, encode msg)
