@@ -4,7 +4,8 @@ module Serialisation
       ClapiValue(..),
       ClapiMessage(..),
       encode,
-      test
+      decode,
+      someBytes
     ) where
 
 import Data.Monoid ((<>), mconcat, Sum(..))
@@ -28,19 +29,26 @@ import Util (uncamel)
 
 class Serialisable a where
     encode :: a -> Builder
+    parser :: Parser a
+    decode :: B.ByteString -> Either String a
+    decode = parseOnly parser
 
 -- FIXME: is there a way to generalise this Int handling?
 instance Serialisable Int where
     encode = fromWord16be . fromIntegral
+    parser = fromIntegral <$> anyWord16be
 
 instance Serialisable (Sum Int) where
     encode (Sum i) = encode i
+    parser = Sum <$> parser
 
 instance Serialisable BasePath where
     encode p = encode . mconcat . map ("/" <>) $ components $ p
+    parser = return (BasePath ["hello", "world"])
 
 instance Serialisable Method where
     encode = encode . uncamel . show
+    parser = return Error
 
 
 prefixLength :: Builder -> Builder
@@ -52,6 +60,7 @@ prefixLength b = byteSize bs <> fromByteString bs where
 
 instance Serialisable String where
     encode = prefixLength . fromString
+    parser = return "hello"
 
 data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
     CWord32 Word32 | CWord64 Word64 |
@@ -72,6 +81,8 @@ instance Serialisable ClapiValue where
     encode (CDouble x) = doubleBE x
     encode (CString x) = encode x
     encode (CList vs) = encode vs
+
+    parser = return CNil
 
 typeTag :: ClapiValue -> Char
 typeTag CNil = 'N'
@@ -96,6 +107,7 @@ taggedEncode getPair as =
 instance Serialisable [ClapiValue] where
     encode = taggedEncode getPair where
         getPair cv = ([typeTag cv], encode cv)
+    parser = return [CNil]
 
 
 type MsgTag = (String, ClapiValue)
@@ -104,6 +116,7 @@ type MsgTag = (String, ClapiValue)
 instance Serialisable [MsgTag] where
     encode = taggedEncode getPair where
         getPair (name, cv) = ([typeTag cv], encode name <> encode cv)
+    parser = return [("nope", CNil)]
 
 
 data ClapiMessage = CMessage {
@@ -119,6 +132,7 @@ instance Serialisable ClapiMessage where
         (encode . msgMethod $ m) <>
         (encode . msgArgs $ m) <>
         (encode . msgTags $ m)
+    parser = return (CMessage (BasePath ["hello"]) Error [] [])
 
 
 type ClapiBundle = [ClapiMessage]
@@ -126,11 +140,9 @@ type ClapiBundle = [ClapiMessage]
 instance Serialisable ClapiBundle where
     encode = taggedEncode getPair where
         getPair msg = (1 :: Sum Int, encode msg)
+    parser = return []
 
 
 -- Parsing stuff for the time being:
-test :: Either String Int
-test = parseOnly (fromIntegral <$> anyWord16be) someBytes
-
 someBytes :: B.ByteString
 someBytes = toByteString . fromWord16be $ 255

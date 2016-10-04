@@ -6,7 +6,7 @@ module Lib
 
 import Path (BasePath(..), Method(..))
 import Blaze.ByteString.Builder (toByteString)
-import Serialisation (ClapiValue(..), ClapiMessage(..), encode, test)
+import Serialisation (ClapiValue(..), ClapiMessage(..), encode, decode, someBytes)
 import Data.Data (Typeable, Data, dataTypeOf, dataTypeConstrs, Constr, toConstr)
 import Data.Int (Int32, Int64)
 import qualified Data.Map.Strict as Map
@@ -27,7 +27,7 @@ myPacket = [myMessage, myMessage]
 
 
 someFunc :: IO()
-someFunc = putStrLn . show $ test
+someFunc = putStrLn . show $ ((decode someBytes) :: Either String Int)
 
 
 -- data OscValue = OscNil | OscBool Bool | OscTimeTag Int32 Int32 |
