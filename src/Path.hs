@@ -87,5 +87,5 @@ instance OscSerialisable BasePath where
 
 instance OscSerialisable Path where
     -- FIXME: should eventually be able to serialise method properly
-    toOsc (Path base method)= toOsc base ++ "#" ++ show method
+    toOsc (Path base method)= toOsc base ++ "#" ++ (uncamel . show $ method)
     fromOsc = parse (pathParser <* eof) ""
