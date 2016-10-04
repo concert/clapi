@@ -23,6 +23,8 @@ library
                      , split
                      , containers
                      , parsec
+                     , attoparsec
+                     , attoparsec-binary
                      , bytestring
                      , blaze-builder
   default-language:    Haskell2010

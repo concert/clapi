@@ -3,7 +3,8 @@ module Serialisation
     (
       ClapiValue(..),
       ClapiMessage(..),
-      encode
+      encode,
+      test
     ) where
 
 import Data.Monoid ((<>), mconcat, Sum(..))
@@ -15,7 +16,11 @@ import Blaze.ByteString.Builder (
   fromWord64be)
 import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
-import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
+import Blaze.ByteString.Builder.Char.Utf8 (fromString)
+
+import Data.Attoparsec.ByteString
+import qualified Data.Attoparsec.ByteString as Ap
+import Data.Attoparsec.Binary
 
 import Path (BasePath(..), components, Method(..))
 import Util (uncamel)
@@ -120,3 +125,11 @@ type ClapiBundle = [ClapiMessage]
 instance Serialisable ClapiBundle where
     encode = taggedEncode getPair where
         getPair msg = (1 :: Sum Int, encode msg)
+
+
+-- Parsing stuff for the time being:
+test :: Either String Word16
+test = parseOnly anyWord16be someBytes
+
+someBytes :: B.ByteString
+someBytes = toByteString . fromWord16be $ 255
