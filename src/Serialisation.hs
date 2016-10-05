@@ -32,6 +32,7 @@ class Serialisable a where
     encode :: a -> B.ByteString
     encode x = toByteString $ builder x
     builder :: a -> Builder
+
     decode :: B.ByteString -> Either String a
     decode = parseOnly parser
     parser :: Parser a
@@ -151,7 +152,10 @@ type ClapiBundle = [ClapiMessage]
 instance Serialisable ClapiBundle where
     builder = taggedEncode getPair where
         getPair msg = (1 :: Sum Word16, builder msg)
-    parser = return []
+    parser = do
+        len <- parser :: Parser Word16
+        messages <- count (fromIntegral len) (parser :: Parser ClapiMessage)
+        return messages
 
 
 -- Parsing stuff for the time being:
