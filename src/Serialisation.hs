@@ -41,7 +41,12 @@ instance Serialisable Int where
     builder = fromWord16be . fromIntegral
     parser = fromIntegral <$> anyWord16be
 
-instance Serialisable (Sum Int) where
+instance Serialisable Word16 where
+    builder = fromWord16be
+    parser = anyWord16be
+
+-- FIXME: I kinda wanna generalise this to any functor?
+instance Serialisable a => Serialisable (Sum a) where
     builder (Sum i) = builder i
     parser = Sum <$> parser
 
@@ -56,8 +61,8 @@ prefixLength b = byteSize bs <> fromByteString bs where
 instance Serialisable String where
     builder = prefixLength . fromString
     parser = do
-        len <- parser :: Parser Int  -- FIXME: a little dodgy implying Word16
-        bytes <- Ap.take len
+        len <- parser :: Parser Word16
+        bytes <- Ap.take $ fromIntegral len
         return $ toString bytes
 
 instance Serialisable BasePath where
@@ -145,7 +150,7 @@ type ClapiBundle = [ClapiMessage]
 
 instance Serialisable ClapiBundle where
     builder = taggedEncode getPair where
-        getPair msg = (1 :: Sum Int, builder msg)
+        getPair msg = (1 :: Sum Word16, builder msg)
     parser = return []
 
 
