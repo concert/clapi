@@ -144,7 +144,12 @@ instance Serialisable ClapiMessage where
         (builder . msgMethod $ m) <>
         (builder . msgArgs $ m) <>
         (builder . msgTags $ m)
-    parser = return (CMessage (BasePath ["hello"]) Error [] [])
+    parser = do
+        p <- parser :: Parser BasePath
+        m <- parser :: Parser Method
+        a <- parser :: Parser [ClapiValue]
+        t <- parser :: Parser [MsgTag]
+        return (CMessage p m a t)
 
 
 type ClapiBundle = [ClapiMessage]
