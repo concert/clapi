@@ -19,6 +19,7 @@ import Blaze.ByteString.Builder (
 import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
+import Data.ByteString.UTF8 (toString)
 
 import Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString as Ap
@@ -28,27 +29,21 @@ import Path (BasePath(..), components, Method(..))
 import Util (uncamel)
 
 class Serialisable a where
-    encode :: a -> Builder
-    parser :: Parser a
+    encode :: a -> B.ByteString
+    encode x = toByteString $ builder x
+    builder :: a -> Builder
     decode :: B.ByteString -> Either String a
     decode = parseOnly parser
+    parser :: Parser a
 
 -- FIXME: is there a way to generalise this Int handling?
 instance Serialisable Int where
-    encode = fromWord16be . fromIntegral
+    builder = fromWord16be . fromIntegral
     parser = fromIntegral <$> anyWord16be
 
 instance Serialisable (Sum Int) where
-    encode (Sum i) = encode i
+    builder (Sum i) = builder i
     parser = Sum <$> parser
-
-instance Serialisable BasePath where
-    encode p = encode . mconcat . map ("/" <>) $ components $ p
-    parser = return (BasePath ["hello", "world"])
-
-instance Serialisable Method where
-    encode = encode . uncamel . show
-    parser = return Error
 
 
 prefixLength :: Builder -> Builder
@@ -56,11 +51,22 @@ prefixLength b = byteSize bs <> fromByteString bs where
     bs = toByteString b
     {- FIXME: what do we do when the encoded string is more than 2^16 bytes
     long? -}
-    byteSize = encode . B.length
+    byteSize = builder . B.length
 
 instance Serialisable String where
-    encode = prefixLength . fromString
-    parser = return "hello"
+    builder = prefixLength . fromString
+    parser = do
+        len <- parser :: Parser Int  -- FIXME: a little dodgy implying Word16
+        bytes <- Ap.take len
+        return $ toString bytes
+
+instance Serialisable BasePath where
+    builder p = builder . mconcat . map ("/" <>) $ components $ p
+    parser = return (BasePath ["hello", "world"])
+
+instance Serialisable Method where
+    builder = builder . uncamel . show
+    parser = return Error
 
 data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
     CWord32 Word32 | CWord64 Word64 |
@@ -69,18 +75,18 @@ data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
     CString String | CList [ClapiValue] deriving (Eq, Show)
 
 instance Serialisable ClapiValue where
-    encode CNil = mempty
-    encode (CBool True) = mempty
-    encode (CBool False) = mempty
-    encode (CTime x y) = fromWord64be x <> fromWord32be y
-    encode (CWord32 x) = fromWord32be x
-    encode (CWord64 x) = fromWord64be x
-    encode (CInt32 x) = fromInt32be x
-    encode (CInt64 x) = fromInt64be x
-    encode (CFloat x) = floatBE x
-    encode (CDouble x) = doubleBE x
-    encode (CString x) = encode x
-    encode (CList vs) = encode vs
+    builder CNil = mempty
+    builder (CBool True) = mempty
+    builder (CBool False) = mempty
+    builder (CTime x y) = fromWord64be x <> fromWord32be y
+    builder (CWord32 x) = fromWord32be x
+    builder (CWord64 x) = fromWord64be x
+    builder (CInt32 x) = fromInt32be x
+    builder (CInt64 x) = fromInt64be x
+    builder (CFloat x) = floatBE x
+    builder (CDouble x) = doubleBE x
+    builder (CString x) = builder x
+    builder (CList vs) = builder vs
 
     parser = return CNil
 
@@ -101,12 +107,12 @@ typeTag (CList _) = 'l'
 taggedEncode :: (Monoid b, Serialisable b) =>
     (a -> (b, Builder)) -> [a] -> Builder
 taggedEncode getPair as =
-    encode typeTagString <> builder where
-        (typeTagString, builder) = mconcat $ map getPair as
+    builder derived <> dataBuilder where
+        (derived, dataBuilder) = mconcat $ map getPair as
 
 instance Serialisable [ClapiValue] where
-    encode = taggedEncode getPair where
-        getPair cv = ([typeTag cv], encode cv)
+    builder = taggedEncode getPair where
+        getPair cv = ([typeTag cv], builder cv)
     parser = return [CNil]
 
 
@@ -114,8 +120,8 @@ type MsgTag = (String, ClapiValue)
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [MsgTag] where
-    encode = taggedEncode getPair where
-        getPair (name, cv) = ([typeTag cv], encode name <> encode cv)
+    builder = taggedEncode getPair where
+        getPair (name, cv) = ([typeTag cv], builder name <> builder cv)
     parser = return [("nope", CNil)]
 
 
@@ -124,22 +130,22 @@ data ClapiMessage = CMessage {
     msgMethod :: Method,
     msgArgs :: [ClapiValue],
     msgTags :: [MsgTag]
-}
+} deriving (Eq, Show)
 
 instance Serialisable ClapiMessage where
-    encode m =
-        (encode . msgPath $ m) <>
-        (encode . msgMethod $ m) <>
-        (encode . msgArgs $ m) <>
-        (encode . msgTags $ m)
+    builder m =
+        (builder . msgPath $ m) <>
+        (builder . msgMethod $ m) <>
+        (builder . msgArgs $ m) <>
+        (builder . msgTags $ m)
     parser = return (CMessage (BasePath ["hello"]) Error [] [])
 
 
 type ClapiBundle = [ClapiMessage]
 
 instance Serialisable ClapiBundle where
-    encode = taggedEncode getPair where
-        getPair msg = (1 :: Sum Int, encode msg)
+    builder = taggedEncode getPair where
+        getPair msg = (1 :: Sum Int, builder msg)
     parser = return []
 
 
