@@ -1,11 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Serialisation
     (
-      ClapiValue(..),
-      ClapiMessage(..),
       encode,
       decode,
-      someBytes
     ) where
 
 import Data.Monoid ((<>), mconcat, Sum(..))
@@ -25,7 +22,10 @@ import Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString as Ap
 import Data.Attoparsec.Binary
 
-import Path (BasePath(..), components, Method(..))
+import Types(
+    ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
+    ClapiMethod(..)
+    )
 import Util (uncamel)
 
 class Serialisable a where
@@ -66,19 +66,13 @@ instance Serialisable String where
         bytes <- Ap.take $ fromIntegral len
         return $ toString bytes
 
-instance Serialisable BasePath where
-    builder p = builder . mconcat . map ("/" <>) $ components $ p
-    parser = return (BasePath ["hello", "world"])
+instance Serialisable ClapiPath where
+    builder p = builder . mconcat . map ("/" <>) $ p
+    parser = return (["hello", "world"])
 
-instance Serialisable Method where
+instance Serialisable ClapiMethod where
     builder = builder . uncamel . show
     parser = return Error
-
-data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
-    CWord32 Word32 | CWord64 Word64 |
-    CInt32 Int32 | CInt64 Int64 |
-    CFloat Float | CDouble Double |
-    CString String | CList [ClapiValue] deriving (Eq, Show)
 
 instance Serialisable ClapiValue where
     builder CNil = mempty
@@ -121,22 +115,12 @@ instance Serialisable [ClapiValue] where
         getPair cv = ([typeTag cv], builder cv)
     parser = return [CNil]
 
-
-type MsgTag = (String, ClapiValue)
-
 -- FIXME: not sure this instance flexibility is a good thing or not!
-instance Serialisable [MsgTag] where
+instance Serialisable [ClapiMessageTag] where
     builder = taggedEncode getPair where
         getPair (name, cv) = ([typeTag cv], builder name <> builder cv)
     parser = return [("nope", CNil)]
 
-
-data ClapiMessage = CMessage {
-    msgPath :: BasePath,
-    msgMethod :: Method,
-    msgArgs :: [ClapiValue],
-    msgTags :: [MsgTag]
-} deriving (Eq, Show)
 
 instance Serialisable ClapiMessage where
     builder m =
@@ -146,9 +130,6 @@ instance Serialisable ClapiMessage where
         (builder . msgTags $ m)
     parser = CMessage <$> parser <*> parser <*> parser <*> parser
 
-
-type ClapiBundle = [ClapiMessage]
-
 instance Serialisable ClapiBundle where
     builder = taggedEncode getPair where
         getPair msg = (1 :: Sum Word16, builder msg)
@@ -156,8 +137,3 @@ instance Serialisable ClapiBundle where
         len <- parser :: Parser Word16
         messages <- count (fromIntegral len) (parser :: Parser ClapiMessage)
         return messages
-
-
--- Parsing stuff for the time being:
-someBytes :: B.ByteString
-someBytes = toByteString . fromWord16be $ 255
