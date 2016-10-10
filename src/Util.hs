@@ -1,10 +1,12 @@
 module Util (
+    camel,
     uncamel,
     parseType
 ) where
 
-import Data.Char (isUpper, toLower)
+import Data.Char (isUpper, toLower, toUpper)
 import Data.Maybe (fromJust)
+import Data.List.Split (splitOn)
 import qualified Data.Map.Strict as Map
 
 import Text.Parsec (choice, try, string)
@@ -18,6 +20,11 @@ uncamel (c:cs) = toLower c : uncamel' cs where
     uncamel' (c:cs)
         | isUpper c = '_' : toLower c : uncamel' cs
         | otherwise = c : uncamel' cs
+
+camel :: String -> String
+camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
+    initCap [] = []
+    initCap (c:cs) = toUpper c : cs
 
 
 typeNameMap ::
