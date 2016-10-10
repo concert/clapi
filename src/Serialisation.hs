@@ -82,8 +82,7 @@ data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
 
 instance Serialisable ClapiValue where
     builder CNil = mempty
-    builder (CBool True) = mempty
-    builder (CBool False) = mempty
+    builder (CBool _) = mempty
     builder (CTime x y) = fromWord64be x <> fromWord32be y
     builder (CWord32 x) = fromWord32be x
     builder (CWord64 x) = fromWord64be x
@@ -98,7 +97,8 @@ instance Serialisable ClapiValue where
 
 typeTag :: ClapiValue -> Char
 typeTag CNil = 'N'
-typeTag (CBool _) = 'F'
+typeTag (CBool False) = 'F'
+typeTag (CBool True) = 'T'
 typeTag (CTime _ _) = 't'
 typeTag (CWord32 _) = 'u'
 typeTag (CWord64 _) = 'U'
