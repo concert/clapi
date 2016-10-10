@@ -12,13 +12,12 @@ import Text.Parsec.String (Parser)
 
 uncamel :: String -> String
 uncamel [] = []
-uncamel (c:cs) = toLower c : uncamel' cs
-
-uncamel' :: String -> String
-uncamel' [] = []
-uncamel' (c:cs)
-    | isUpper c = '_' : toLower c : uncamel' cs
-    | otherwise = c : uncamel' cs
+uncamel (c:cs) = toLower c : uncamel' cs where
+    uncamel' :: String -> String
+    uncamel' [] = []
+    uncamel' (c:cs)
+        | isUpper c = '_' : toLower c : uncamel' cs
+        | otherwise = c : uncamel' cs
 
 
 typeNameMap ::
