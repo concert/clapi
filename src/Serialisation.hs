@@ -26,7 +26,7 @@ import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
     ClapiMethod(..)
     )
-import Util (uncamel)
+import Util (uncamel, camel)
 
 class Serialisable a where
     encode :: a -> B.ByteString
@@ -72,7 +72,9 @@ instance Serialisable ClapiPath where
 
 instance Serialisable ClapiMethod where
     builder = builder . uncamel . show
-    parser = return Error
+    parser = do
+        methodString <- parser :: Parser String
+        return $ read . camel $ methodString
 
 instance Serialisable ClapiValue where
     builder CNil = mempty
