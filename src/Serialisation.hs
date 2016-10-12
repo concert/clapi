@@ -18,6 +18,7 @@ import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 import Data.ByteString.UTF8 (toString)
+import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 
 import Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString as Ap
@@ -80,20 +81,6 @@ instance Serialisable ClapiMethod where
         methodString <- parser :: Parser String
         return $ read . camel $ methodString
 
-instance Serialisable ClapiValue where
-    builder CNil = mempty
-    builder (CBool _) = mempty
-    builder (CTime x y) = fromWord64be x <> fromWord32be y
-    builder (CWord32 x) = fromWord32be x
-    builder (CWord64 x) = fromWord64be x
-    builder (CInt32 x) = fromInt32be x
-    builder (CInt64 x) = fromInt64be x
-    builder (CFloat x) = floatBE x
-    builder (CDouble x) = doubleBE x
-    builder (CString x) = builder x
-    builder (CList vs) = builder vs
-
-    parser = return CNil
 
 typeTag :: ClapiValue -> Char
 typeTag CNil = 'N'
@@ -109,6 +96,34 @@ typeTag (CDouble _) = 'D'
 typeTag (CString _) = 's'
 typeTag (CList _) = 'l'
 
+cvBuilder :: ClapiValue -> Builder
+cvBuilder CNil = mempty
+cvBuilder (CBool _) = mempty
+cvBuilder (CTime x y) = fromWord64be x <> fromWord32be y
+cvBuilder (CWord32 x) = fromWord32be x
+cvBuilder (CWord64 x) = fromWord64be x
+cvBuilder (CInt32 x) = fromInt32be x
+cvBuilder (CInt64 x) = fromInt64be x
+cvBuilder (CFloat x) = floatBE x
+cvBuilder (CDouble x) = doubleBE x
+cvBuilder (CString x) = builder x
+cvBuilder (CList vs) = builder vs
+
+cvParser :: Char -> Parser ClapiValue
+cvParser 'N' = return CNil
+cvParser 'F' = return $ CBool False
+cvParser 'T' = return $ CBool True
+cvParser 't' =
+    CTime <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
+cvParser 'u' = CWord32 <$> anyWord32be
+cvParser 'U' = CWord64 <$> anyWord64be
+cvParser 'i' = CInt32 <$> fromIntegral <$> anyWord32be
+cvParser 'I' = CInt64 <$> fromIntegral <$> anyWord64be
+cvParser 'd' = CFloat <$> wordToFloat <$> anyWord32be
+cvParser 'D' = CDouble <$> wordToDouble <$> anyWord64be
+cvParser 's' = CString <$> (parser :: Parser String)
+cvParser 'l' = CList <$> (parser :: Parser [ClapiValue])
+
 
 taggedEncode :: (Monoid b, Serialisable b) =>
     (a -> (b, Builder)) -> [a] -> Builder
@@ -116,15 +131,24 @@ taggedEncode getPair as =
     builder derived <> dataBuilder where
         (derived, dataBuilder) = mconcat $ map getPair as
 
+sequenceParsers :: [Parser a] -> Parser [a]
+sequenceParsers ps = foldl (>>=) (return []) $ map accumulatingParser ps where
+    accumulatingParser :: Parser a -> [a] -> Parser [a]
+    accumulatingParser p acc = do
+        result <- p
+        return $ acc ++ [result]
+
 instance Serialisable [ClapiValue] where
     builder = taggedEncode getPair where
-        getPair cv = ([typeTag cv], builder cv)
-    parser = return [CNil]
+        getPair cv = ([typeTag cv], cvBuilder cv)
+    parser = do
+        typeTags <- parser :: Parser String
+        sequenceParsers $ map cvParser typeTags
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [ClapiMessageTag] where
     builder = taggedEncode getPair where
-        getPair (name, cv) = ([typeTag cv], builder name <> builder cv)
+        getPair (name, cv) = ([typeTag cv], builder name <> cvBuilder cv)
     parser = return [("nope", CNil)]
 
 
