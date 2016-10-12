@@ -2,21 +2,18 @@ module Tests where
 
 import Test.HUnit ((@=?))
 
-import Serialisation (ClapiValue(..), ClapiMessage(..), encode, decode)
-import Path (BasePath(..), Method(..))
+import Types (ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle)
+import Serialisation (encode, decode)
 
 
--- testDisplayBasePath =
---   "/hello/world/" @=? display (BasePath ["hello", "world"])
+-- testRoundTripClapiMethod =
 
--- testParseBasePath =
---   Right (BasePath ["hello", "world"]) @=? parse "/hello/world/"
 
 testBinarySerialisationRoundTrip =
-    Right bundle @=? (decode . encode $ bundle) where
+    Right bundle @=? result where
         bundle = [message, message]
         message = CMessage
-            (BasePath ["hello", "world"])
+            ["hello", "world"]
             Error
             nestedArgList
             (zip [[c] | c <- ['a'..'z']] nestedArgList)
@@ -25,3 +22,6 @@ testBinarySerialisationRoundTrip =
             CInt32 (-32), CInt64 (-64), CFloat 15.1, CDouble 13.2,
             CString "Greetings Planet"]
         nestedArgList = (CList argList) : argList
+
+        bs = encode bundle
+        result = decode bs :: Either String ClapiBundle

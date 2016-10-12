@@ -19,6 +19,7 @@ library
                      , Path
                      , Util
                      , Serialisation
+                     , Types
   build-depends:       base >= 4.7 && < 5
                      , split
                      , containers

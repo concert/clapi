@@ -10,7 +10,7 @@ import Control.Applicative ((<$>), (<*>))
 import qualified Data.ByteString as B
 import Data.Int (Int32, Int64)
 import Data.Word (Word16, Word32, Word64)
-import Data.List.Split (split, oneOf, dropDelims)
+import Data.List.Split (split, oneOf, dropDelims, dropInitBlank)
 import Blaze.ByteString.Builder (
   Builder, toByteString, fromInt32be, fromInt64be, fromWord16be, fromWord32be,
   fromWord64be)
@@ -73,7 +73,7 @@ instance Serialisable ClapiPath where
     parser = do
         pathString <- parser :: Parser String
         -- FIXME: this should be a proper parser
-        return $ split (dropDelims $ oneOf "/") pathString
+        return $ split (dropInitBlank . dropDelims $ oneOf "/") pathString
 
 instance Serialisable ClapiMethod where
     builder = builder . uncamel . show
