@@ -132,11 +132,11 @@ taggedEncode getPair as =
         (derived, dataBuilder) = mconcat $ map getPair as
 
 sequenceParsers :: [Parser a] -> Parser [a]
-sequenceParsers ps = foldl (>>=) (return []) $ map accumulatingParser ps where
-    accumulatingParser :: Parser a -> [a] -> Parser [a]
-    accumulatingParser p acc = do
-        result <- p
-        return $ acc ++ [result]
+sequenceParsers [] = return []
+sequenceParsers (p:ps) = do
+    result <- p
+    rest <- sequenceParsers ps
+    return $ result : rest
 
 instance Serialisable [ClapiValue] where
     builder = taggedEncode getPair where
