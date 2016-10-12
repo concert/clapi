@@ -149,7 +149,14 @@ instance Serialisable [ClapiValue] where
 instance Serialisable [ClapiMessageTag] where
     builder = taggedEncode getPair where
         getPair (name, cv) = ([typeTag cv], builder name <> cvBuilder cv)
-    parser = return [("nope", CNil)]
+    parser = do
+        -- FIXME: this feels really... proceedural :-/
+        typeTags <- parser :: Parser String
+        sequenceParsers $ map getPairParser typeTags where
+            getPairParser typeTag = do
+                name <- parser :: Parser String
+                value <- cvParser typeTag
+                return (name, value)
 
 
 instance Serialisable ClapiMessage where
