@@ -1,6 +1,5 @@
 module Path (
         BasePath (..),
-        Method (..),
         fromOsc,
         toOsc,
     ) where
@@ -14,6 +13,7 @@ import Text.Parsec (char, satisfy, letter, many, eof, parse, ParseError)
 import Text.Parsec.String (Parser)
 
 import Util (parseType, uncamel)
+import Types (ClapiMethod)
 
 
 data BasePath = BasePath {components :: [String]} deriving (Eq, Show)
@@ -24,10 +24,6 @@ up (BasePath []) = root
 -- FIXME: using Data.Seq would be faster than a built in list for init (removing
 -- last element)
 up (BasePath cs) = BasePath (init cs)
-
-data Method = Error | Set | Add | Remove | Clear | Subscribe |
-    Unsubscribe | AssignType | Children | Delete |
-    Identify deriving (Eq, Show, Read, Enum, Bounded)
 
 {- FIXME: perhaps we make distinction between the human-friendly form we want to
 display and an eventual binary serialisation? -}
@@ -48,7 +44,7 @@ pathComponent = do
         firstChar = letter
         restChar = satisfy (\c -> isLetter c || isDigit c || c == '_')
 
-method :: Parser Method
+method :: Parser ClapiMethod
 method = parseType uncamel
 
 basePath :: Parser BasePath
