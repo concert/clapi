@@ -53,7 +53,7 @@ path = do
 
 toString :: ClapiPath -> String
 -- FIXME: I don't think this is very efficient!
-toString components = "/" ++ intercalate "/" components ++ "/"
+toString components = "/" ++ intercalate "/" components
 
 fromString :: String -> Either ParseError ClapiPath
 fromString = parse (path <* eof) ""
