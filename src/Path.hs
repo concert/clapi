@@ -1,7 +1,6 @@
 module Path (
-        BasePath (..),
-        fromOsc,
-        toOsc,
+    fromString,
+    toString,
     ) where
 
 import Data.Char (isLetter, isDigit)
@@ -13,23 +12,17 @@ import Text.Parsec (char, satisfy, letter, many, eof, parse, ParseError)
 import Text.Parsec.String (Parser)
 
 import Util (parseType, uncamel)
-import Types (ClapiMethod)
+import Types (ClapiPath, ClapiMethod)
 
 
-data BasePath = BasePath {components :: [String]} deriving (Eq, Show)
-root = BasePath []
+root :: ClapiPath
+root = []
 
-up :: BasePath -> BasePath
-up (BasePath []) = root
+up :: ClapiPath -> ClapiPath
+up [] = root
 -- FIXME: using Data.Seq would be faster than a built in list for init (removing
 -- last element)
-up (BasePath cs) = BasePath (init cs)
-
-{- FIXME: perhaps we make distinction between the human-friendly form we want to
-display and an eventual binary serialisation? -}
-class OscSerialisable a where
-    toOsc :: a -> String
-    fromOsc :: String -> Either ParseError a
+up cs = init cs
 
 
 pathSeparator :: Parser Char
@@ -47,18 +40,20 @@ pathComponent = do
 method :: Parser ClapiMethod
 method = parseType uncamel
 
-basePath :: Parser BasePath
-basePath = do
+path :: Parser ClapiPath
+path = do
     pathSeparator
     components <- many pcDropSep
-    return (BasePath components)
+    return components
     where
         pcDropSep = do
             pc <- pathComponent
             pathSeparator
             return pc
 
-instance OscSerialisable BasePath where
-    -- FIXME: I don't think this is very efficient!
-    toOsc (BasePath components) = "/" ++ intercalate "/" components ++ "/"
-    fromOsc = parse (basePath <* eof) ""
+toString :: ClapiPath -> String
+-- FIXME: I don't think this is very efficient!
+toString components = "/" ++ intercalate "/" components ++ "/"
+
+fromString :: String -> Either ParseError ClapiPath
+fromString = parse (path <* eof) ""
