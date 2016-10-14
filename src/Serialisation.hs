@@ -20,9 +20,9 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 import Data.ByteString.UTF8 (toString)
 import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 
-import Data.Attoparsec.ByteString
+import Data.Attoparsec.ByteString (Parser, parseOnly, count)
 import qualified Data.Attoparsec.ByteString as Ap
-import Data.Attoparsec.Binary
+import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 
 import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
