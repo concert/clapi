@@ -25,8 +25,11 @@ up [] = root
 up cs = init cs
 
 
+sepChar = '/'
+
+
 pathSeparator :: Parser Char
-pathSeparator = char '/'
+pathSeparator = char sepChar
 
 pathComponent :: Parser String
 pathComponent = do
@@ -53,7 +56,7 @@ path = do
 
 toString :: ClapiPath -> String
 toString [] = "/"
-toString cs = concatMap ('/' :) cs
+toString cs = concatMap (sepChar :) cs
 
 fromString :: String -> Either ParseError ClapiPath
 fromString = parse (path <* eof) ""
