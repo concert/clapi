@@ -52,8 +52,8 @@ path = do
             return pc
 
 toString :: ClapiPath -> String
--- FIXME: I don't think this is very efficient!
-toString components = "/" ++ intercalate "/" components
+toString [] = "/"
+toString cs = concatMap ('/' :) cs
 
 fromString :: String -> Either ParseError ClapiPath
 fromString = parse (path <* eof) ""
