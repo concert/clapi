@@ -85,11 +85,11 @@ instance Serialisable T.Text where
 
 instance Serialisable ClapiPath where
     builder p = builder . mconcat . map ("/" <>) $ p
-    parser = composeParsers (parser :: Parser T.Text) path
+    parser = composeParsers parser path
 
 instance Serialisable ClapiMethod where
     builder = builder . uncamel . show
-    parser = composeParsers (parser :: Parser T.Text) method
+    parser = composeParsers parser method
 
 
 typeTag :: ClapiValue -> Char
