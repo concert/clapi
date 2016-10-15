@@ -64,20 +64,19 @@ prefixLength b = byteSize bs <> fromByteString bs where
     long? -}
     byteSize = builder . B.length
 
+decodeLengthPrefixedBytes :: (B.ByteString -> b) -> Parser b
+decodeLengthPrefixedBytes decoder = do
+    len <- parser :: Parser Word16
+    bytes <- Ap.take $ fromIntegral len
+    return $ decoder bytes
+
 instance Serialisable String where
     builder = prefixLength . fromString
-    parser = do
-        len <- parser :: Parser Word16
-        bytes <- Ap.take $ fromIntegral len
-        return $ toString bytes
+    parser = decodeLengthPrefixedBytes toString
 
--- FIXME: factor out repetition of Serialisable String
 instance Serialisable T.Text where
     builder = prefixLength . fromText
-    parser = do
-        len <- parser :: Parser Word16
-        bytes <- Ap.take $ fromIntegral len
-        return $ decodeUtf8With onError bytes
+    parser = decodeLengthPrefixedBytes $ decodeUtf8With onError
       where
         onError :: String -> Maybe Word8 -> Maybe Char
         onError s Nothing = Nothing  -- End of input
