@@ -9,16 +9,18 @@ import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
 import qualified Data.ByteString as B
 import Data.Int (Int32, Int64)
-import Data.Word (Word16, Word32, Word64)
+import Data.Word (Word8, Word16, Word32, Word64)
 import Data.List.Split (split, oneOf, dropDelims, dropInitBlank)
 import Blaze.ByteString.Builder (
   Builder, toByteString, fromInt32be, fromInt64be, fromWord16be, fromWord32be,
   fromWord64be)
 import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
-import Blaze.ByteString.Builder.Char.Utf8 (fromString)
+import Blaze.ByteString.Builder.Char.Utf8 (fromText, fromString)
 import Data.ByteString.UTF8 (toString)
 import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
+import qualified Data.Text as T
+import Data.Text.Encoding (decodeUtf8With)
 
 import Data.Attoparsec.ByteString (Parser, parseOnly, count)
 import qualified Data.Attoparsec.ByteString as Ap
@@ -28,7 +30,8 @@ import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
     ClapiMethod(..)
     )
-import Util (uncamel, camel)
+import Path (path, method)
+import Util (uncamel, camel, parseBytesAsText)
 
 class Serialisable a where
     encode :: a -> B.ByteString
@@ -68,18 +71,25 @@ instance Serialisable String where
         bytes <- Ap.take $ fromIntegral len
         return $ toString bytes
 
+-- FIXME: factor out repetition of Serialisable String
+instance Serialisable T.Text where
+    builder = prefixLength . fromText
+    parser = do
+        len <- parser :: Parser Word16
+        bytes <- Ap.take $ fromIntegral len
+        return $ decodeUtf8With onError bytes
+      where
+        onError :: String -> Maybe Word8 -> Maybe Char
+        onError s Nothing = Nothing  -- End of input
+        onError s (Just c) = Just '?'  -- Undecodable
+
 instance Serialisable ClapiPath where
     builder p = builder . mconcat . map ("/" <>) $ p
-    parser = do
-        pathString <- parser :: Parser String
-        -- FIXME: this should be a proper parser
-        return $ split (dropInitBlank . dropDelims $ oneOf "/") pathString
+    parser = parseBytesAsText (parser :: Parser T.Text) path
 
 instance Serialisable ClapiMethod where
     builder = builder . uncamel . show
-    parser = do
-        methodString <- parser :: Parser String
-        return $ read . camel $ methodString
+    parser = parseBytesAsText (parser :: Parser T.Text) method
 
 
 typeTag :: ClapiValue -> Char
@@ -121,7 +131,7 @@ cvParser 'i' = CInt32 <$> fromIntegral <$> anyWord32be
 cvParser 'I' = CInt64 <$> fromIntegral <$> anyWord64be
 cvParser 'd' = CFloat <$> wordToFloat <$> anyWord32be
 cvParser 'D' = CDouble <$> wordToDouble <$> anyWord64be
-cvParser 's' = CString <$> (parser :: Parser String)
+cvParser 's' = CString <$> (parser :: Parser T.Text)
 cvParser 'l' = CList <$> (parser :: Parser [ClapiValue])
 
 
@@ -142,8 +152,8 @@ instance Serialisable [ClapiValue] where
     builder = taggedEncode getPair where
         getPair cv = ([typeTag cv], cvBuilder cv)
     parser = do
-        typeTags <- parser :: Parser String
-        sequenceParsers $ map cvParser typeTags
+        typeTags <- parser :: Parser T.Text
+        sequenceParsers $ map cvParser (T.unpack typeTags)
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [ClapiMessageTag] where
@@ -151,12 +161,12 @@ instance Serialisable [ClapiMessageTag] where
         getPair (name, cv) = ([typeTag cv], builder name <> cvBuilder cv)
     parser = do
         -- FIXME: this feels really... proceedural :-/
-        typeTags <- parser :: Parser String
-        sequenceParsers $ map getPairParser typeTags where
+        typeTags <- parser :: Parser T.Text
+        sequenceParsers $ map getPairParser (T.unpack typeTags) where
             getPairParser typeTag = do
-                name <- parser :: Parser String
+                name <- parser :: Parser T.Text
                 value <- cvParser typeTag
-                return (name, value)
+                return ((T.unpack name), value)
 
 
 instance Serialisable ClapiMessage where

@@ -21,6 +21,7 @@ library
                      , Serialisation
                      , Types
   build-depends:       base >= 4.7 && < 5
+                     , text
                      , split
                      , containers
                      , data-binary-ieee754

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Tests where
 
 import Test.HUnit ((@=?))

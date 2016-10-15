@@ -11,6 +11,7 @@ where
 
 import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
+import qualified Data.Text as T
 
 data ClapiMessage = CMessage {
     msgPath :: ClapiPath,
@@ -23,7 +24,7 @@ data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
     CWord32 Word32 | CWord64 Word64 |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |
-    CString String | CList [ClapiValue] deriving (Eq, Show)
+    CString T.Text | CList [ClapiValue] deriving (Eq, Show)
 
 type ClapiPath = [String]
 
