@@ -31,7 +31,7 @@ import Types(
     ClapiMethod(..)
     )
 import Path (path, method)
-import Util (uncamel, camel, parseBytesAsText)
+import Util (uncamel, camel, composeParsers)
 
 class Serialisable a where
     encode :: a -> B.ByteString
@@ -85,11 +85,11 @@ instance Serialisable T.Text where
 
 instance Serialisable ClapiPath where
     builder p = builder . mconcat . map ("/" <>) $ p
-    parser = parseBytesAsText (parser :: Parser T.Text) path
+    parser = composeParsers (parser :: Parser T.Text) path
 
 instance Serialisable ClapiMethod where
     builder = builder . uncamel . show
-    parser = parseBytesAsText (parser :: Parser T.Text) method
+    parser = composeParsers (parser :: Parser T.Text) method
 
 
 typeTag :: ClapiValue -> Char

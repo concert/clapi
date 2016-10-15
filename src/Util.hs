@@ -2,15 +2,17 @@ module Util (
     camel,
     uncamel,
     parseType,
-    parseBytesAsText,
+    composeParsers,
 ) where
 
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Maybe (fromJust)
+import Data.ByteString (ByteString)
 import Data.List.Split (splitOn)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 
+import qualified Data.Attoparsec.Internal.Types as I
 import qualified Data.Attoparsec.Text as APT
 import qualified Data.Attoparsec.ByteString as APBS
 
@@ -50,10 +52,20 @@ parseType transform =
         --  unwrap the Maybe:
         return $ fromJust $ Map.lookup (T.unpack match) m
 
-parseBytesAsText :: APBS.Parser T.Text -> APT.Parser a -> APBS.Parser a
-parseBytesAsText bsParser strParser = do
-    str <- bsParser
-    handleResult $ APT.parseOnly strParser str
+class ParseOnlyAble a where
+    doParseOnly :: I.Parser a b -> a -> Either String b
+
+instance ParseOnlyAble ByteString where
+    doParseOnly = APBS.parseOnly
+
+instance ParseOnlyAble T.Text where
+    doParseOnly = APT.parseOnly
+
+composeParsers :: ParseOnlyAble b =>
+    I.Parser a b -> I.Parser b c -> I.Parser a c
+composeParsers parserA parserB = do
+    a <- parserA
+    handleResult $ doParseOnly parserB a
   where
     handleResult (Left errStr) = fail errStr
     handleResult (Right x) = return x
