@@ -25,6 +25,7 @@ import Data.Text.Encoding (decodeUtf8With)
 import Data.Attoparsec.ByteString (Parser, parseOnly, count)
 import qualified Data.Attoparsec.ByteString as Ap
 import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
+import qualified Data.Attoparsec.Text as APT
 
 import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
@@ -147,12 +148,16 @@ sequenceParsers (p:ps) = do
     rest <- sequenceParsers ps
     return $ result : rest
 
+-- FIXME: Repitition of tag chars :-(
+parseTags :: APT.Parser String
+parseTags = APT.many' $ APT.satisfy (APT.inClass "NFTtuUiIdDsl")
+
 instance Serialisable [ClapiValue] where
     builder = taggedEncode getPair where
         getPair cv = ([typeTag cv], cvBuilder cv)
     parser = do
-        typeTags <- parser :: Parser T.Text
-        sequenceParsers $ map cvParser (T.unpack typeTags)
+        typeTags <- composeParsers parser parseTags
+        sequenceParsers $ map cvParser typeTags
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [ClapiMessageTag] where
