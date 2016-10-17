@@ -1,8 +1,8 @@
 module Parsing (
-    fromText,
-    path,  -- FIXME: bad interface
-    method,   -- FIXME: bad interface
-    toString,
+    pathToString,
+    pathParser,
+    methodToString,
+    methodParser,
     ) where
 
 import Data.Char (isLetter, isDigit)
@@ -47,15 +47,15 @@ pathComponent = do
 separatedPathComponent :: Parser String
 separatedPathComponent = pathSeparator >> pathComponent
 
-method :: Parser ClapiMethod
-method = parseType uncamel
+pathParser :: Parser ClapiPath
+pathParser = many' (pathSeparator >> pathComponent) <|> (pathSeparator >> return root)
 
-path :: Parser ClapiPath
-path = many' (pathSeparator >> pathComponent) <|> (pathSeparator >> return root)
+pathToString :: ClapiPath -> String
+pathToString [] = "/"
+pathToString cs = concatMap (sepChar :) cs
 
-toString :: ClapiPath -> String
-toString [] = "/"
-toString cs = concatMap (sepChar :) cs
+methodParser :: Parser ClapiMethod
+methodParser = parseType uncamel
 
-fromText :: T.Text -> Either String ClapiPath
-fromText = parseOnly (path <* endOfInput)
+methodToString :: ClapiMethod -> String
+methodToString = uncamel . show

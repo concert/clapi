@@ -31,8 +31,8 @@ import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
     ClapiMethod(..)
     )
-import Parsing (path, method)
-import Util (uncamel, camel, composeParsers)
+import Parsing (pathToString, pathParser, methodToString, methodParser)
+import Util (composeParsers)
 
 class Serialisable a where
     encode :: a -> B.ByteString
@@ -84,12 +84,12 @@ instance Serialisable T.Text where
         onError s (Just c) = Just '?'  -- Undecodable
 
 instance Serialisable ClapiPath where
-    builder p = builder . mconcat . map ("/" <>) $ p
-    parser = composeParsers parser path
+    builder = builder . pathToString
+    parser = composeParsers parser pathParser
 
 instance Serialisable ClapiMethod where
-    builder = builder . uncamel . show
-    parser = composeParsers parser method
+    builder = builder . methodToString
+    parser = composeParsers parser methodParser
 
 
 typeTag :: ClapiValue -> Char
