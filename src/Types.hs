@@ -2,6 +2,8 @@ module Types
     (
         ClapiValue(..),
         ClapiPath,
+        root,
+        up,
         ClapiMethod(..),
         ClapiMessage(..),
         ClapiBundle,
@@ -27,6 +29,15 @@ data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
     CString T.Text | CList [ClapiValue] deriving (Eq, Show)
 
 type ClapiPath = [String]
+
+root :: ClapiPath
+root = []
+
+up :: ClapiPath -> ClapiPath
+up [] = root
+-- FIXME: using Data.Seq would be faster than a built in list for init (removing
+-- last element)
+up cs = init cs
 
 data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete |
