@@ -1,4 +1,4 @@
-module Path (
+module Parsing (
     fromText,
     path,  -- FIXME: bad interface
     method,   -- FIXME: bad interface

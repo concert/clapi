@@ -31,7 +31,7 @@ import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
     ClapiMethod(..)
     )
-import Path (path, method)
+import Parsing (path, method)
 import Util (uncamel, camel, composeParsers)
 
 class Serialisable a where

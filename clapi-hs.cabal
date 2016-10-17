@@ -16,10 +16,10 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Lib
-                     , Path
                      , Util
-                     , Serialisation
                      , Types
+                     , Serialisation
+                     , Parsing
   build-depends:       base >= 4.7 && < 5
                      , text
                      , split
