@@ -45,11 +45,6 @@ class Serialisable a where
     builder :: a -> Either String Builder
     parser :: Parser a
 
--- FIXME: is there a way to generalise this Int handling?
-instance Serialisable Int where
-    builder = Right . fromWord16be . fromIntegral
-    parser = fromIntegral <$> anyWord16be
-
 instance Serialisable Word16 where
     builder = Right . fromWord16be
     parser = anyWord16be
@@ -62,7 +57,8 @@ instance Serialisable a => Serialisable (Sum a) where
 prefixLength :: Builder -> Either String Builder
 prefixLength b = (lenBuilder byteSize) <<>> (return b) where
     lenBuilder x
-      | x <= fromIntegral (maxBound :: Word16) = builder x
+      | x <= fromIntegral (maxBound :: Word16) =
+          builder $ (fromIntegral x :: Word16)
       | otherwise = Left "Too long"
     byteSize = B.length $ toByteString b
 
