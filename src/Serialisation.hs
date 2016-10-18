@@ -32,8 +32,8 @@ import Types(
 import Parsing (pathToString, pathParser, methodToString, methodParser)
 import Util (composeParsers)
 
-encode :: Serialisable a => a -> B.ByteString
-encode x = toByteString $ builder x
+encode :: Serialisable a => a -> Either String B.ByteString
+encode x = Right $ toByteString $ builder x
 
 decode :: Serialisable a => B.ByteString -> Either String a
 decode = parseOnly parser

@@ -24,5 +24,4 @@ testBinarySerialisationRoundTrip =
             CString "Greetings Planet"]
         nestedArgList = (CList argList) : argList
 
-        bs = encode bundle
-        result = decode bs :: Either String ClapiBundle
+        result = encode bundle >>= decode :: Either String ClapiBundle
