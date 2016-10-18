@@ -49,7 +49,6 @@ instance Serialisable Word16 where
     builder = Right . fromWord16be
     parser = anyWord16be
 
--- FIXME: I kinda wanna generalise this to any functor?
 instance Serialisable a => Serialisable (Sum a) where
     builder (Sum i) = builder i
     parser = Sum <$> parser
