@@ -8,9 +8,7 @@ module Serialisation
 import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
 import qualified Data.ByteString as B
-import Data.Int (Int32, Int64)
-import Data.Word (Word8, Word16, Word32, Word64)
-import Data.List.Split (split, oneOf, dropDelims, dropInitBlank)
+import Data.Word (Word8, Word16)
 import Blaze.ByteString.Builder (
   Builder, toByteString, fromInt32be, fromInt64be, fromWord16be, fromWord32be,
   fromWord64be)
@@ -23,8 +21,8 @@ import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8With)
 
 import Data.Attoparsec.ByteString (Parser, parseOnly, count)
-import qualified Data.Attoparsec.ByteString as Ap
 import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
+import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Types(
@@ -69,7 +67,7 @@ prefixLength b = byteSize bs <> fromByteString bs where
 decodeLengthPrefixedBytes :: (B.ByteString -> b) -> Parser b
 decodeLengthPrefixedBytes decoder = do
     len <- parser :: Parser Word16
-    bytes <- Ap.take $ fromIntegral len
+    bytes <- APBS.take $ fromIntegral len
     return $ decoder bytes
 
 instance Serialisable String where
