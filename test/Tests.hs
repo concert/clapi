@@ -1,13 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Tests where
 
-import Test.HUnit ((@=?))
+import Data.Word (Word16)
+import Test.HUnit ((@=?), assertBool)
 
 import Types (ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle)
 import Serialisation (encode, decode)
-
-
--- testRoundTripClapiMethod =
 
 
 testBinarySerialisationRoundTrip =
@@ -25,3 +23,12 @@ testBinarySerialisationRoundTrip =
         nestedArgList = (CList argList) : argList
 
         result = encode bundle >>= decode :: Either String ClapiBundle
+
+testEncodeTooLongString =
+    assertBool "Long string not detected" (didFail result)
+    where
+      didFail (Left _) = True
+      didFail (Right _) = False
+      n = fromIntegral $ (maxBound :: Word16)
+      longStr = replicate (n + 1) 'a'
+      result = encode longStr

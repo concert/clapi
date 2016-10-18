@@ -13,5 +13,6 @@ main = defaultMain tests
 tests :: [Test]
 tests =
     [
-        testCase "roundtrip message" testBinarySerialisationRoundTrip
+        testCase "roundtrip message" testBinarySerialisationRoundTrip,
+        testCase "string length" testEncodeTooLongString
     ]

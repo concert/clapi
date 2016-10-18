@@ -59,10 +59,12 @@ instance Serialisable a => Serialisable (Sum a) where
     builder (Sum i) = builder i
     parser = Sum <$> parser
 
-
 prefixLength :: Builder -> Either String Builder
-prefixLength b = byteSize <<>> (return b) where
-    byteSize = builder $ B.length $ toByteString b
+prefixLength b = (lenBuilder byteSize) <<>> (return b) where
+    lenBuilder x
+      | x <= fromIntegral (maxBound :: Word16) = builder x
+      | otherwise = Left "Too long"
+    byteSize = B.length $ toByteString b
 
 decodeLengthPrefixedBytes :: (B.ByteString -> b) -> Parser b
 decodeLengthPrefixedBytes decoder = do
