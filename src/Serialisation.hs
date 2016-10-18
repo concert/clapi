@@ -34,13 +34,14 @@ import Types(
 import Parsing (pathToString, pathParser, methodToString, methodParser)
 import Util (composeParsers)
 
-class Serialisable a where
-    encode :: a -> B.ByteString
-    encode x = toByteString $ builder x
-    builder :: a -> Builder
+encode :: Serialisable a => a -> B.ByteString
+encode x = toByteString $ builder x
 
-    decode :: B.ByteString -> Either String a
-    decode = parseOnly parser
+decode :: Serialisable a => B.ByteString -> Either String a
+decode = parseOnly parser
+
+class Serialisable a where
+    builder :: a -> Builder
     parser :: Parser a
 
 -- FIXME: is there a way to generalise this Int handling?
