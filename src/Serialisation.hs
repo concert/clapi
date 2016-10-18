@@ -136,10 +136,9 @@ cvParser 'l' = CList <$> (parser :: Parser [ClapiValue])
 
 taggedEncode :: (Monoid b, Serialisable b) =>
     (a -> b) -> (a -> Either String Builder) -> [a] -> Either String Builder
-taggedEncode derive build xs = do
-    built <- foldl (<<>>) (return mempty) (map build xs)
-    derived <- builder $ foldl (<>) mempty (map derive xs)
-    return $ derived <> built
+taggedEncode derive build xs = derived <<>> built where
+    built = foldl (<<>>) (return mempty) (map build xs)
+    derived = builder $ foldl (<>) mempty (map derive xs)
 
 sequenceParsers :: [Parser a] -> Parser [a]
 sequenceParsers [] = return []
