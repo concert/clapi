@@ -7,6 +7,7 @@ module Serialisation
 
 import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad (liftM2)
 import qualified Data.ByteString as B
 import Data.Word (Word8, Word16)
 import Blaze.ByteString.Builder (
@@ -32,23 +33,25 @@ import Types(
 import Parsing (pathToString, pathParser, methodToString, methodParser)
 import Util (composeParsers)
 
+(<<>>) = liftM2 (<>)
+
 encode :: Serialisable a => a -> Either String B.ByteString
-encode x = Right $ toByteString $ builder x
+encode x = toByteString <$> builder x
 
 decode :: Serialisable a => B.ByteString -> Either String a
 decode = parseOnly parser
 
 class Serialisable a where
-    builder :: a -> Builder
+    builder :: a -> Either String Builder
     parser :: Parser a
 
 -- FIXME: is there a way to generalise this Int handling?
 instance Serialisable Int where
-    builder = fromWord16be . fromIntegral
+    builder = Right . fromWord16be . fromIntegral
     parser = fromIntegral <$> anyWord16be
 
 instance Serialisable Word16 where
-    builder = fromWord16be
+    builder = Right . fromWord16be
     parser = anyWord16be
 
 -- FIXME: I kinda wanna generalise this to any functor?
@@ -57,12 +60,9 @@ instance Serialisable a => Serialisable (Sum a) where
     parser = Sum <$> parser
 
 
-prefixLength :: Builder -> Builder
-prefixLength b = byteSize bs <> fromByteString bs where
-    bs = toByteString b
-    {- FIXME: what do we do when the encoded string is more than 2^16 bytes
-    long? -}
-    byteSize = builder . B.length
+prefixLength :: Builder -> Either String Builder
+prefixLength b = byteSize <<>> (return b) where
+    byteSize = builder $ B.length $ toByteString b
 
 decodeLengthPrefixedBytes :: (B.ByteString -> b) -> Parser b
 decodeLengthPrefixedBytes decoder = do
@@ -105,16 +105,16 @@ typeTag (CDouble _) = 'D'
 typeTag (CString _) = 's'
 typeTag (CList _) = 'l'
 
-cvBuilder :: ClapiValue -> Builder
-cvBuilder CNil = mempty
-cvBuilder (CBool _) = mempty
-cvBuilder (CTime x y) = fromWord64be x <> fromWord32be y
-cvBuilder (CWord32 x) = fromWord32be x
-cvBuilder (CWord64 x) = fromWord64be x
-cvBuilder (CInt32 x) = fromInt32be x
-cvBuilder (CInt64 x) = fromInt64be x
-cvBuilder (CFloat x) = floatBE x
-cvBuilder (CDouble x) = doubleBE x
+cvBuilder :: ClapiValue -> Either String Builder
+cvBuilder CNil = Right mempty
+cvBuilder (CBool _) = Right mempty
+cvBuilder (CTime x y) = Right $ fromWord64be x <> fromWord32be y
+cvBuilder (CWord32 x) = Right $ fromWord32be x
+cvBuilder (CWord64 x) = Right $ fromWord64be x
+cvBuilder (CInt32 x) = Right $ fromInt32be x
+cvBuilder (CInt64 x) = Right $ fromInt64be x
+cvBuilder (CFloat x) = Right $ floatBE x
+cvBuilder (CDouble x) = Right $ doubleBE x
 cvBuilder (CString x) = builder x
 cvBuilder (CList vs) = builder vs
 
@@ -135,10 +135,11 @@ cvParser 'l' = CList <$> (parser :: Parser [ClapiValue])
 
 
 taggedEncode :: (Monoid b, Serialisable b) =>
-    (a -> (b, Builder)) -> [a] -> Builder
-taggedEncode getPair as =
-    builder derived <> dataBuilder where
-        (derived, dataBuilder) = mconcat $ map getPair as
+    (a -> b) -> (a -> Either String Builder) -> [a] -> Either String Builder
+taggedEncode derive build xs = do
+    built <- foldl (<<>>) (return mempty) (map build xs)
+    derived <- builder $ foldl (<>) mempty (map derive xs)
+    return $ derived <> built
 
 sequenceParsers :: [Parser a] -> Parser [a]
 sequenceParsers [] = return []
@@ -152,16 +153,17 @@ parseTags :: APT.Parser String
 parseTags = APT.many' $ APT.satisfy (APT.inClass "NFTtuUiIdDsl")
 
 instance Serialisable [ClapiValue] where
-    builder = taggedEncode getPair where
-        getPair cv = ([typeTag cv], cvBuilder cv)
+    builder = taggedEncode derive cvBuilder where
+        derive cv = [typeTag cv]
     parser = do
         typeTags <- composeParsers parser parseTags
         sequenceParsers $ map cvParser typeTags
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [ClapiMessageTag] where
-    builder = taggedEncode getPair where
-        getPair (name, cv) = ([typeTag cv], builder name <> cvBuilder cv)
+    builder = taggedEncode derive build where
+        derive (_, cv) = [typeTag cv]
+        build (name, cv) = builder name <<>> cvBuilder cv
     parser = do
         -- FIXME: this feels really... proceedural :-/
         typeTags <- parser :: Parser T.Text
@@ -174,15 +176,15 @@ instance Serialisable [ClapiMessageTag] where
 
 instance Serialisable ClapiMessage where
     builder m =
-        (builder . msgPath $ m) <>
-        (builder . msgMethod $ m) <>
-        (builder . msgArgs $ m) <>
+        (builder . msgPath $ m) <<>>
+        (builder . msgMethod $ m) <<>>
+        (builder . msgArgs $ m) <<>>
         (builder . msgTags $ m)
     parser = CMessage <$> parser <*> parser <*> parser <*> parser
 
 instance Serialisable ClapiBundle where
-    builder = taggedEncode getPair where
-        getPair msg = (1 :: Sum Word16, builder msg)
+    builder = taggedEncode derive builder where
+        derive _ = 1 :: Sum Word16
     parser = do
         len <- parser :: Parser Word16
         messages <- count (fromIntegral len) (parser :: Parser ClapiMessage)
