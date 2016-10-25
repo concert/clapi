@@ -1,5 +1,6 @@
 module Types
     (
+        Time(..),
         ClapiValue(..),
         ClapiPath,
         root,
@@ -22,7 +23,9 @@ data ClapiMessage = CMessage {
     msgTags :: [ClapiMessageTag]
 } deriving (Eq, Show)
 
-data ClapiValue = CNil | CBool Bool | CTime Word64 Word32 |
+data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
+
+data ClapiValue = CNil | CBool Bool | CTime Time |
     CWord32 Word32 | CWord64 Word64 |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |

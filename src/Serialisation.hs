@@ -28,7 +28,7 @@ import qualified Data.Attoparsec.Text as APT
 
 import Types(
     ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
-    ClapiMethod(..)
+    ClapiMethod(..), Time(..)
     )
 import Parsing (pathToString, pathParser, methodToString, methodParser)
 import Util (composeParsers)
@@ -92,7 +92,7 @@ typeTag :: ClapiValue -> Char
 typeTag CNil = 'N'
 typeTag (CBool False) = 'F'
 typeTag (CBool True) = 'T'
-typeTag (CTime _ _) = 't'
+typeTag (CTime _) = 't'
 typeTag (CWord32 _) = 'u'
 typeTag (CWord64 _) = 'U'
 typeTag (CInt32 _) = 'i'
@@ -105,7 +105,7 @@ typeTag (CList _) = 'l'
 cvBuilder :: ClapiValue -> Either String Builder
 cvBuilder CNil = Right mempty
 cvBuilder (CBool _) = Right mempty
-cvBuilder (CTime x y) = Right $ fromWord64be x <> fromWord32be y
+cvBuilder (CTime (Time x y)) = Right $ fromWord64be x <> fromWord32be y
 cvBuilder (CWord32 x) = Right $ fromWord32be x
 cvBuilder (CWord64 x) = Right $ fromWord64be x
 cvBuilder (CInt32 x) = Right $ fromInt32be x
@@ -120,7 +120,9 @@ cvParser 'N' = return CNil
 cvParser 'F' = return $ CBool False
 cvParser 'T' = return $ CBool True
 cvParser 't' =
-    CTime <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
+    foo <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
+  where
+    foo x y = CTime $ Time x y
 cvParser 'u' = CWord32 <$> anyWord32be
 cvParser 'U' = CWord64 <$> anyWord64be
 cvParser 'i' = CInt32 <$> fromIntegral <$> anyWord32be
