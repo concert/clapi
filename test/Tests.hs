@@ -3,11 +3,20 @@ module Tests where
 
 import Data.Word (Word16)
 import Test.HUnit ((@=?), assertBool)
+import Test.QuickCheck (quickCheck)
 
 import Types (
-    Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle)
+    Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle,
+    fromClapiValue, toClapiValue)
 import Serialisation (encode, decode)
 
+
+-- FIXME: we should define a QuickCheck.Arbitrary instance for ClapiValue and
+-- use it to generate better random values
+testClapiValueConversionRoundTrip = quickCheck propRoundTrip
+  where
+    propRoundTrip :: [Float] -> Bool
+    propRoundTrip f = (fromClapiValue . toClapiValue) f == f
 
 testBinarySerialisationRoundTrip =
     Right bundle @=? result where

@@ -48,6 +48,7 @@ test-suite clapi-hs-test
   build-depends:       base
                      , clapi-hs
                      , HUnit
+                     , QuickCheck
                      , test-framework
                      , test-framework-hunit
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N

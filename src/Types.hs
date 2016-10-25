@@ -2,6 +2,8 @@ module Types
     (
         Time(..),
         ClapiValue(..),
+        fromClapiValue,
+        toClapiValue,
         ClapiPath,
         root,
         up,
@@ -30,6 +32,51 @@ data ClapiValue = CBool Bool | CTime Time |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |
     CString T.Text | CList [ClapiValue] deriving (Eq, Show)
+
+class Clapiable a where
+    toClapiValue :: a -> ClapiValue
+    fromClapiValue :: ClapiValue -> a
+
+instance Clapiable Bool where
+    toClapiValue = CBool
+    fromClapiValue (CBool x) = x
+
+instance Clapiable Time where
+    toClapiValue = CTime
+    fromClapiValue (CTime x) = x
+
+instance Clapiable Word32 where
+    toClapiValue = CWord32
+    fromClapiValue (CWord32 x) = x
+
+instance Clapiable Word64 where
+    toClapiValue = CWord64
+    fromClapiValue (CWord64 x) = x
+
+instance Clapiable Int32 where
+    toClapiValue = CInt32
+    fromClapiValue (CInt32 x) = x
+
+instance Clapiable Int64 where
+    toClapiValue = CInt64
+    fromClapiValue (CInt64 x) = x
+
+instance Clapiable Float where
+    toClapiValue = CFloat
+    fromClapiValue (CFloat x) = x
+
+instance Clapiable Double where
+    toClapiValue = CDouble
+    fromClapiValue (CDouble x) = x
+
+instance Clapiable T.Text where
+    toClapiValue = CString
+    fromClapiValue (CString x) = x
+
+instance Clapiable a => Clapiable [a] where
+    toClapiValue = CList . (map toClapiValue)
+    fromClapiValue (CList xs) = map fromClapiValue xs
+
 
 type ClapiPath = [String]
 
