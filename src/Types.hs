@@ -11,12 +11,18 @@ module Types
         ClapiMessage(..),
         ClapiBundle,
         ClapiMessageTag,
+        Interpolation(..),
+        TimePoint,
+        TimeSeries,
+        Tuple(..),
+        ClapiTree(..),
     )
 where
 
 import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
+import qualified Data.Map as Map
 
 data ClapiMessage = CMessage {
     msgPath :: ClapiPath,
@@ -96,3 +102,18 @@ data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
 type ClapiMessageTag = (String, ClapiValue)
 
 type ClapiBundle = [ClapiMessage]
+
+data Interpolation = IConstant | ILinear | IBezier Word32 Word32
+  deriving (Eq, Show)
+
+type TimePoint a = (a, Interpolation)
+type TimeSeries a = Map.Map Time (TimePoint a)
+
+data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
+  deriving (Eq, Show)
+
+data ClapiTree =
+    Container {getName :: String, getSubtree :: [ClapiTree]} |
+    Leaf {getName :: String, getTuple :: Tuple}
+  deriving (Eq, Show)
+-- FIXME: might want to make a nice draw instance for this a la Data.Tree
