@@ -25,7 +25,7 @@ data ClapiMessage = CMessage {
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
-data ClapiValue = CNil | CBool Bool | CTime Time |
+data ClapiValue = CBool Bool | CTime Time |
     CWord32 Word32 | CWord64 Word64 |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |

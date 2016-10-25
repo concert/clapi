@@ -89,7 +89,6 @@ instance Serialisable ClapiMethod where
 
 
 typeTag :: ClapiValue -> Char
-typeTag CNil = 'N'
 typeTag (CBool False) = 'F'
 typeTag (CBool True) = 'T'
 typeTag (CTime _) = 't'
@@ -103,7 +102,6 @@ typeTag (CString _) = 's'
 typeTag (CList _) = 'l'
 
 cvBuilder :: ClapiValue -> Either String Builder
-cvBuilder CNil = Right mempty
 cvBuilder (CBool _) = Right mempty
 cvBuilder (CTime (Time x y)) = Right $ fromWord64be x <> fromWord32be y
 cvBuilder (CWord32 x) = Right $ fromWord32be x
@@ -116,7 +114,6 @@ cvBuilder (CString x) = builder x
 cvBuilder (CList vs) = builder vs
 
 cvParser :: Char -> Parser ClapiValue
-cvParser 'N' = return CNil
 cvParser 'F' = return $ CBool False
 cvParser 'T' = return $ CBool True
 cvParser 't' =
