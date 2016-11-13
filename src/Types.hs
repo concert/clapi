@@ -155,11 +155,12 @@ alterTree' ::
     (Maybe ClapiTree -> Maybe (Maybe ClapiTree)) -> ClapiPath ->
     Maybe ClapiTree -> Maybe ClapiTree
 alterTree' _ _ Nothing = Nothing
-alterTree' f (name:[]) (Just (Container typePath items)) =
-    fmap (Container typePath) (Map.alterF f name items)
 alterTree' f (name:path) (Just (Container typePath items)) =
-    fmap (Container typePath) (Map.alterF internalF name items)
+    fmap (Container typePath) (Map.alterF alt name items)
   where
+    alt = case path of
+        [] -> f
+        path -> internalF
     internalF :: Maybe ClapiTree -> Maybe (Maybe ClapiTree)
     internalF Nothing = Nothing
     internalF tree = fmap (Just) (alterTree' f path tree)
