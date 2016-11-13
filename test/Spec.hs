@@ -15,5 +15,9 @@ tests =
     [
         testCase "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
         testCase "roundtrip message" testBinarySerialisationRoundTrip,
-        testCase "string length" testEncodeTooLongString
+        testCase "string length" testEncodeTooLongString,
+        testCase "test treeGet" testTreeGet,
+        testCase "test treeAdd" testTreeAdd,
+        testCase "test treeSet" testTreeSet,
+        testCase "test treeDelete" testTreeDelete
     ]

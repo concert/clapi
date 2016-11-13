@@ -16,6 +16,7 @@ module Types
         TimeSeries,
         Tuple(..),
         ClapiTree(..),
+        treeGet, treeAdd, treeSet, treeDelete,
     )
 where
 
@@ -84,7 +85,8 @@ instance Clapiable a => Clapiable [a] where
     fromClapiValue (CList xs) = map fromClapiValue xs
 
 
-type ClapiPath = [String]
+type Name = String
+type ClapiPath = [Name]
 
 root :: ClapiPath
 root = []
@@ -113,7 +115,52 @@ data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
   deriving (Eq, Show)
 
 data ClapiTree =
-    Container {getName :: String, getSubtree :: [ClapiTree]} |
-    Leaf {getName :: String, getTuple :: Tuple}
+    Leaf {typePath :: ClapiPath, tuple :: Tuple} |
+    Container {typePath :: ClapiPath, subtrees :: Map.Map Name ClapiTree}
   deriving (Eq, Show)
--- FIXME: might want to make a nice draw instance for this a la Data.Tree
+
+treeGet :: ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeGet path tree = get path (Just tree)
+  where
+    get _ Nothing = Nothing
+    get [] x = x
+    get (name:path) (Just (Container _ items)) =
+        get path $ Map.lookup name items
+    get _ _ = Nothing
+
+treeDelete :: ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeDelete = alterTree delete
+  where
+    delete Nothing = Nothing
+    delete _ = Just Nothing
+
+treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeAdd newItem = alterTree add
+  where
+    add Nothing = Just . Just $ newItem
+    add _ = Nothing
+
+treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeSet replacementItem = alterTree set
+  where
+    set (Just tree) = Just . Just $ replacementItem
+    set _ = Nothing
+
+alterTree ::
+    (Maybe ClapiTree -> Maybe (Maybe ClapiTree)) -> ClapiPath -> ClapiTree ->
+    Maybe ClapiTree
+alterTree f path tree = alterTree' f path (Just tree)
+
+alterTree' ::
+    (Maybe ClapiTree -> Maybe (Maybe ClapiTree)) -> ClapiPath ->
+    Maybe ClapiTree -> Maybe ClapiTree
+alterTree' _ _ Nothing = Nothing
+alterTree' f (name:[]) (Just (Container typePath items)) =
+    fmap (Container typePath) (Map.alterF f name items)
+alterTree' f (name:path) (Just (Container typePath items)) =
+    fmap (Container typePath) (Map.alterF internalF name items)
+  where
+    internalF :: Maybe ClapiTree -> Maybe (Maybe ClapiTree)
+    internalF Nothing = Nothing
+    internalF tree = fmap (Just) (alterTree' f path tree)
+alterTree' _ _ _ = Nothing
