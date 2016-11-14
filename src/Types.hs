@@ -130,41 +130,43 @@ treeGet path tree = get path (Just tree)
 
 type AlterF f a = Maybe a -> f (Maybe a)
 
-treeDelete :: ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeDelete :: ClapiPath -> ClapiTree -> Either String ClapiTree
 treeDelete = alterTree delete
   where
-    delete :: AlterF Maybe ClapiTree
-    delete Nothing = Nothing
-    delete _ = Just Nothing
+    delete :: AlterF (Either String) ClapiTree
+    delete Nothing = Left "Tried to delete absent value"
+    delete _ = Right Nothing
 
-treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
 treeAdd newItem = alterTree add
   where
-    add :: AlterF Maybe ClapiTree
-    add Nothing = Just . Just $ newItem
-    add _ = Nothing
+    add :: AlterF (Either String) ClapiTree
+    add Nothing = Right . Just $ newItem
+    add _ = Left "Tried to add over present value"
 
-treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
+treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
 treeSet replacementItem = alterTree set
   where
-    set :: AlterF Maybe ClapiTree
-    set (Just tree) = Just . Just $ replacementItem
-    set _ = Nothing
+    set :: AlterF (Either String) ClapiTree
+    set (Just tree) = Right . Just $ replacementItem
+    set _ = Left "Tried to set at absent value"
 
 alterTree ::
-    AlterF Maybe ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
+    AlterF (Either String) ClapiTree -> ClapiPath -> ClapiTree ->
+    Either String ClapiTree
 alterTree f path tree = alterTree' f path (Just tree)
 
 alterTree' ::
-    AlterF Maybe ClapiTree -> ClapiPath -> Maybe ClapiTree -> Maybe ClapiTree
-alterTree' _ _ Nothing = Nothing
+    AlterF (Either String) ClapiTree -> ClapiPath -> Maybe ClapiTree ->
+    Either String ClapiTree
+alterTree' _ _ Nothing = Left "Catch first!"
 alterTree' f (name:path) (Just (Container typePath items)) =
     fmap (Container typePath) (Map.alterF alt name items)
   where
     alt = case path of
         [] -> f
         path -> internalF
-    internalF :: AlterF Maybe ClapiTree
-    internalF Nothing = Nothing
+    internalF :: AlterF (Either String) ClapiTree
+    internalF Nothing = Left "Lookup failed"
     internalF tree = fmap (Just) (alterTree' f path tree)
-alterTree' _ _ _ = Nothing
+alterTree' _ _ _ = Left "Hit end of tree before end of path"
