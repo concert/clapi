@@ -155,17 +155,15 @@ alterTree ::
     Functor f =>
     MakeError f ClapiTree -> AlterF f ClapiTree ->
     ClapiPath -> ClapiTree -> f ClapiTree
-alterTree makeError f path tree = alterTree' makeError f path (Just tree)
-
-alterTree' ::
-    Functor f => MakeError f ClapiTree -> AlterF f ClapiTree ->
-    ClapiPath -> Maybe ClapiTree -> f ClapiTree
-alterTree' makeError _ _ Nothing = makeError "Intermediate Lookup failed"
-alterTree' makeError f (name:path) (Just (Container typePath items)) =
-    fmap (Container typePath) (Map.alterF alt name items)
+alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
   where
-    alt = case path of
-        [] -> f
-        path -> internalF
-    internalF maybeTree = fmap (Just) (alterTree' makeError f path maybeTree)
-alterTree' makeError _ _ _ = makeError "Lookup failed (not a container)"
+    -- alterTree' :: ClapiPath -> Maybe ClapiTree -> f ClapiTree
+    alterTree' _ Nothing = makeError "Intermediate lookup failed"
+    alterTree' (name:path) (Just (Container typePath items)) =
+        fmap (Container typePath) (Map.alterF chooseF name items)
+      where
+        -- chooseF :: ClapiPath -> AlterF f ClapiTree
+        chooseF = case path of
+            [] -> f
+            path -> \maybeTree -> fmap (Just) (alterTree' path maybeTree)
+    alterTree' _ _ = makeError "Lookup failed (not a container)"
