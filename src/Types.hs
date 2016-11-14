@@ -128,32 +128,35 @@ treeGet path tree = get path (Just tree)
         get path $ Map.lookup name items
     get _ _ = Nothing
 
+type AlterF f a = Maybe a -> f (Maybe a)
+
 treeDelete :: ClapiPath -> ClapiTree -> Maybe ClapiTree
 treeDelete = alterTree delete
   where
+    delete :: AlterF Maybe ClapiTree
     delete Nothing = Nothing
     delete _ = Just Nothing
 
 treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
 treeAdd newItem = alterTree add
   where
+    add :: AlterF Maybe ClapiTree
     add Nothing = Just . Just $ newItem
     add _ = Nothing
 
 treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
 treeSet replacementItem = alterTree set
   where
+    set :: AlterF Maybe ClapiTree
     set (Just tree) = Just . Just $ replacementItem
     set _ = Nothing
 
 alterTree ::
-    (Maybe ClapiTree -> Maybe (Maybe ClapiTree)) -> ClapiPath -> ClapiTree ->
-    Maybe ClapiTree
+    AlterF Maybe ClapiTree -> ClapiPath -> ClapiTree -> Maybe ClapiTree
 alterTree f path tree = alterTree' f path (Just tree)
 
 alterTree' ::
-    (Maybe ClapiTree -> Maybe (Maybe ClapiTree)) -> ClapiPath ->
-    Maybe ClapiTree -> Maybe ClapiTree
+    AlterF Maybe ClapiTree -> ClapiPath -> Maybe ClapiTree -> Maybe ClapiTree
 alterTree' _ _ Nothing = Nothing
 alterTree' f (name:path) (Just (Container typePath items)) =
     fmap (Container typePath) (Map.alterF alt name items)
@@ -161,7 +164,7 @@ alterTree' f (name:path) (Just (Container typePath items)) =
     alt = case path of
         [] -> f
         path -> internalF
-    internalF :: Maybe ClapiTree -> Maybe (Maybe ClapiTree)
+    internalF :: AlterF Maybe ClapiTree
     internalF Nothing = Nothing
     internalF tree = fmap (Just) (alterTree' f path tree)
 alterTree' _ _ _ = Nothing
