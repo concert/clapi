@@ -159,7 +159,7 @@ alterTree f path tree = alterTree' f path (Just tree)
 alterTree' ::
     AlterF (Either String) ClapiTree -> ClapiPath -> Maybe ClapiTree ->
     Either String ClapiTree
-alterTree' _ _ Nothing = Left "Catch first!"
+alterTree' _ _ Nothing = Left "Lookup failed"
 alterTree' f (name:path) (Just (Container typePath items)) =
     fmap (Container typePath) (Map.alterF alt name items)
   where
@@ -167,6 +167,5 @@ alterTree' f (name:path) (Just (Container typePath items)) =
         [] -> f
         path -> internalF
     internalF :: AlterF (Either String) ClapiTree
-    internalF Nothing = Left "Lookup failed"
-    internalF tree = fmap (Just) (alterTree' f path tree)
+    internalF maybeTree = fmap (Just) (alterTree' f path maybeTree)
 alterTree' _ _ _ = Left "Hit end of tree before end of path"
