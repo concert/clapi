@@ -121,43 +121,41 @@ data ClapiTree =
   deriving (Eq, Show)
 
 treeGet :: ClapiPath -> ClapiTree -> Either String ClapiTree
-treeGet p t = getConst $ alterTree' (Const . Left) get p (Just t)
+treeGet path = getConst . alterTree (Const . Left) get path
   where
     get :: Maybe ClapiTree -> Const (Either String ClapiTree) (Maybe ClapiTree)
     get Nothing = Const (Left $ "Item lookup failed" ++ (show path))
     get (Just tree) = Const (Right tree)
 
 type AlterF f a = Maybe a -> f (Maybe a)
+type MakeError f a = String -> f a
 
 treeDelete :: ClapiPath -> ClapiTree -> Either String ClapiTree
-treeDelete path = alterTree delete path
+treeDelete path = alterTree Left delete path
   where
     delete :: AlterF (Either String) ClapiTree
     delete Nothing = Left $ "Tried to delete absent value at " ++ (show path)
     delete _ = Right Nothing
 
 treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
-treeAdd newItem path = alterTree add path
+treeAdd newItem path = alterTree Left add path
   where
     add :: AlterF (Either String) ClapiTree
     add Nothing = Right . Just $ newItem
     add _ = Left $ "Tried to add over present value at " ++ (show path)
 
 treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
-treeSet replacementItem path = alterTree set path
+treeSet replacementItem path = alterTree Left set path
   where
     set :: AlterF (Either String) ClapiTree
     set (Just tree) = Right . Just $ replacementItem
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
 
 alterTree ::
-    AlterF (Either String) ClapiTree ->
-    ClapiPath -> ClapiTree -> Either String ClapiTree
-alterTree f path tree = alterTree' makeError f path (Just tree)
-  where
-    makeError s = Left s
-
-type MakeError f a = String -> f a
+    Functor f =>
+    MakeError f ClapiTree -> AlterF f ClapiTree ->
+    ClapiPath -> ClapiTree -> f ClapiTree
+alterTree makeError f path tree = alterTree' makeError f path (Just tree)
 
 alterTree' ::
     Functor f => MakeError f ClapiTree -> AlterF f ClapiTree ->
