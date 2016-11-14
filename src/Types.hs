@@ -121,10 +121,10 @@ data ClapiTree =
   deriving (Eq, Show)
 
 treeGet :: ClapiPath -> ClapiTree -> Either String ClapiTree
-treeGet p t = getConst $ alterTree' (Const (Left "generic error")) get p (Just t)
+treeGet p t = getConst $ alterTree' (Const . Left) get p (Just t)
   where
     get :: Maybe ClapiTree -> Const (Either String ClapiTree) (Maybe ClapiTree)
-    get Nothing = Const (Left "Item lookup failed")
+    get Nothing = Const (Left $ "Item lookup failed" ++ (show path))
     get (Just tree) = Const (Right tree)
 
 type AlterF f a = Maybe a -> f (Maybe a)
@@ -153,17 +153,21 @@ treeSet replacementItem path = alterTree set path
 alterTree ::
     AlterF (Either String) ClapiTree ->
     ClapiPath -> ClapiTree -> Either String ClapiTree
-alterTree f path tree = alterTree' (Left "generic error") f path (Just tree)
+alterTree f path tree = alterTree' makeError f path (Just tree)
+  where
+    makeError s = Left s
+
+type MakeError f a = String -> f a
 
 alterTree' ::
-    Functor f => f ClapiTree -> AlterF f ClapiTree ->
+    Functor f => MakeError f ClapiTree -> AlterF f ClapiTree ->
     ClapiPath -> Maybe ClapiTree -> f ClapiTree
-alterTree' errorVal _ _ Nothing = errorVal
-alterTree' errorVal f (name:path) (Just (Container typePath items)) =
+alterTree' makeError _ _ Nothing = makeError "Intermediate Lookup failed"
+alterTree' makeError f (name:path) (Just (Container typePath items)) =
     fmap (Container typePath) (Map.alterF alt name items)
   where
     alt = case path of
         [] -> f
         path -> internalF
-    internalF maybeTree = fmap (Just) (alterTree' errorVal f path maybeTree)
-alterTree' errorVal _ _ _ = errorVal
+    internalF maybeTree = fmap (Just) (alterTree' makeError f path maybeTree)
+alterTree' makeError _ _ _ = makeError "Lookup failed (not a container)"
