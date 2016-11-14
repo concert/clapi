@@ -24,6 +24,7 @@ import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 import qualified Data.Map as Map
+import Control.Applicative (Const(..))
 
 data ClapiMessage = CMessage {
     msgPath :: ClapiPath,
@@ -119,14 +120,12 @@ data ClapiTree =
     Container {typePath :: ClapiPath, subtrees :: Map.Map Name ClapiTree}
   deriving (Eq, Show)
 
-treeGet :: ClapiPath -> ClapiTree -> Maybe ClapiTree
-treeGet path tree = get path (Just tree)
+treeGet :: ClapiPath -> ClapiTree -> Either String ClapiTree
+treeGet p t = getConst $ alterTree' (Const (Left "generic error")) get p (Just t)
   where
-    get _ Nothing = Nothing
-    get [] x = x
-    get (name:path) (Just (Container _ items)) =
-        get path $ Map.lookup name items
-    get _ _ = Nothing
+    get :: Maybe ClapiTree -> Const (Either String ClapiTree) (Maybe ClapiTree)
+    get Nothing = Const (Left "Item lookup failed")
+    get (Just tree) = Const (Right tree)
 
 type AlterF f a = Maybe a -> f (Maybe a)
 
@@ -152,20 +151,19 @@ treeSet replacementItem path = alterTree set path
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
 
 alterTree ::
-    AlterF (Either String) ClapiTree -> ClapiPath -> ClapiTree ->
-    Either String ClapiTree
-alterTree f path tree = alterTree' f path (Just tree)
+    AlterF (Either String) ClapiTree ->
+    ClapiPath -> ClapiTree -> Either String ClapiTree
+alterTree f path tree = alterTree' (Left "generic error") f path (Just tree)
 
 alterTree' ::
-    AlterF (Either String) ClapiTree -> ClapiPath -> Maybe ClapiTree ->
-    Either String ClapiTree
-alterTree' _ _ Nothing = Left "Lookup failed"
-alterTree' f (name:path) (Just (Container typePath items)) =
+    Functor f => f ClapiTree -> AlterF f ClapiTree ->
+    ClapiPath -> Maybe ClapiTree -> f ClapiTree
+alterTree' errorVal _ _ Nothing = errorVal
+alterTree' errorVal f (name:path) (Just (Container typePath items)) =
     fmap (Container typePath) (Map.alterF alt name items)
   where
     alt = case path of
         [] -> f
         path -> internalF
-    internalF :: AlterF (Either String) ClapiTree
-    internalF maybeTree = fmap (Just) (alterTree' f path maybeTree)
-alterTree' _ _ _ = Left "Hit end of tree before end of path"
+    internalF maybeTree = fmap (Just) (alterTree' errorVal f path maybeTree)
+alterTree' errorVal _ _ _ = errorVal
