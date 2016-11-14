@@ -131,25 +131,25 @@ treeGet path tree = get path (Just tree)
 type AlterF f a = Maybe a -> f (Maybe a)
 
 treeDelete :: ClapiPath -> ClapiTree -> Either String ClapiTree
-treeDelete = alterTree delete
+treeDelete path = alterTree delete path
   where
     delete :: AlterF (Either String) ClapiTree
-    delete Nothing = Left "Tried to delete absent value"
+    delete Nothing = Left $ "Tried to delete absent value at " ++ (show path)
     delete _ = Right Nothing
 
 treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
-treeAdd newItem = alterTree add
+treeAdd newItem path = alterTree add path
   where
     add :: AlterF (Either String) ClapiTree
     add Nothing = Right . Just $ newItem
-    add _ = Left "Tried to add over present value"
+    add _ = Left $ "Tried to add over present value at " ++ (show path)
 
 treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
-treeSet replacementItem = alterTree set
+treeSet replacementItem path = alterTree set path
   where
     set :: AlterF (Either String) ClapiTree
     set (Just tree) = Right . Just $ replacementItem
-    set _ = Left "Tried to set at absent value"
+    set _ = Left $ "Tried to set at absent value at " ++ (show path)
 
 alterTree ::
     AlterF (Either String) ClapiTree -> ClapiPath -> ClapiTree ->
