@@ -44,13 +44,10 @@ assertFailed s either = assertBool s (didFail either)
     didFail (Right _) = False
 
 testEncodeTooLongString =
-    assertBool "Long string not detected" (didFail result)
+    assertFailed "Long string not detected" $ encode longStr
     where
-      didFail (Left _) = True
-      didFail (Right _) = False
       n = fromIntegral $ (maxBound :: Word16)
       longStr = replicate (n + 1) 'a'
-      result = encode longStr
 
 
 t1 = TConstant [CBool True]
