@@ -54,44 +54,43 @@ t1 = TConstant [CBool True]
 t2 = TConstant [CBool False]
 l1 = Leaf [] t1
 l2 = Leaf [] t2
-cempty = Container [] $ Map.empty
-c1 = Container [] $ Map.singleton "b" l1
-c2 = Container [] $ Map.singleton "a" c1
+cempty = Container [] [] $ Map.empty
+c1 = Container [] [] $ Map.singleton "b" l1
+c2 = Container [] [] $ Map.singleton "a" c1
 
 testTreeGet =
   do
-    assertEqual "leaf get failed" (Just l1) $ treeGet ["b"] c1
-    assertEqual "nested leaf get failed" (Just l1) $ treeGet ["a", "b"] c2
-    assertEqual "container get failed" (Just c1) $ treeGet ["a"] c2
-    assertEqual "didn't fail with too many path components" Nothing $
+    assertEqual "leaf get failed" (Right l1) $ treeGet ["b"] c1
+    assertEqual "nested leaf get failed" (Right l1) $ treeGet ["a", "b"] c2
+    assertEqual "container get failed" (Right c1) $ treeGet ["a"] c2
+    assertFailed "didn't fail with too many path components" $
         treeGet ["a", "b", "c"] c2
-    assertEqual "bad fail with bad keys" Nothing $ treeGet ["a", "llama"] c2
-    assertEqual "bad fail with bad keys" Nothing $ treeGet ["llama"] c2
-    assertEqual "bad fail with bad keys" Nothing $ treeGet ["llama", "face"] c2
+    assertFailed "bad fail with bad keys" $ treeGet ["a", "llama"] c2
+    assertFailed "bad fail with bad keys" $ treeGet ["llama"] c2
+    assertFailed "bad fail with bad keys" $ treeGet ["llama", "face"] c2
 
 testTreeDelete =
   do
-    assertEqual "container delete failed" (Just cempty) $ treeDelete ["a"] c2
+    assertEqual "container delete failed" (Right cempty) $ treeDelete ["a"] c2
     assertEqual "leaf delete failed"
-        (Just (Container [] $ Map.fromList [("a", cempty)])) $
+        (Right (Container [] [] $ Map.fromList [("a", cempty)])) $
         treeDelete ["a", "b"] c2
-    assertEqual "bad path did not fail 1" Nothing $ treeDelete ["a", "llama"] c2
-    assertEqual "bad path did not fail 2" Nothing $ treeDelete ["llama"] c2
-    assertEqual "bad path did not fail 3" Nothing $
-        treeDelete ["llama", "face"] c2
+    assertFailed "bad path did not fail 1" $ treeDelete ["a", "llama"] c2
+    assertFailed "bad path did not fail 2" $ treeDelete ["llama"] c2
+    assertFailed "bad path did not fail 3" $ treeDelete ["llama", "face"] c2
 
 testTreeAdd =
   do
-    assertEqual "normal add failed" (Just c2') $ treeAdd l2 ["a", "c"] c2
-    assertEqual "add existing failed" Nothing $ treeAdd l2 ["a", "b"] c2
+    assertEqual "normal add failed" (Right c2') $ treeAdd l2 ["a", "c"] c2
+    assertFailed "add existing failed" $ treeAdd l2 ["a", "b"] c2
   where
-    c1' = Container [] $ Map.fromList [("b", l1), ("c", l2)]
-    c2' = Container [] $ Map.singleton "a" c1'
+    c1' = Container [] [] $ Map.fromList [("b", l1), ("c", l2)]
+    c2' = Container [] [] $ Map.singleton "a" c1'
 
 testTreeSet =
   do
-    assertEqual "normal set failed" (Just c2') $ treeSet l2 ["a", "b"] c2
-    assertEqual "set non-eixstant failed" Nothing $ treeSet l2 ["a", "c"] c2
+    assertEqual "normal set failed" (Right c2') $ treeSet l2 ["a", "b"] c2
+    assertFailed "set non-eixstant failed" $ treeSet l2 ["a", "c"] c2
   where
-    c1' = Container [] $ Map.singleton "b" l2
-    c2' = Container [] $ Map.singleton "a" c1'
+    c1' = Container [] [] $ Map.singleton "b" l2
+    c2' = Container [] [] $ Map.singleton "a" c1'
