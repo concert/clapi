@@ -5,7 +5,8 @@ module Main (
 import Test.Framework (defaultMain, Test)
 import Test.Framework.Providers.HUnit
 
-import Tests
+import TestTypes
+import TestTree
 
 main :: IO ()
 main = defaultMain tests

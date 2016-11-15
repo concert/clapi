@@ -20,6 +20,7 @@ library
                      , Types
                      , Serialisation
                      , Parsing
+                     , Tree
   build-depends:       base >= 4.7 && < 5
                      , text
                      , split

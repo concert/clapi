@@ -1,54 +1,12 @@
-{-# LANGUAGE OverloadedStrings #-}
-module Tests where
+module TestTree where
 
-import Data.Word (Word16)
-import Test.HUnit ((@=?), assertBool, assertEqual, Assertion)
-import Test.QuickCheck (quickCheck)
+import Util (assertFailed)
+import Test.HUnit (assertEqual)
 
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 
-import Types (
-    Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle,
-    fromClapiValue, toClapiValue,
-    Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete)
-import Serialisation (encode, decode)
-
-
--- FIXME: we should define a QuickCheck.Arbitrary instance for ClapiValue and
--- use it to generate better random values
-testClapiValueConversionRoundTrip = quickCheck propRoundTrip
-  where
-    propRoundTrip :: [Float] -> Bool
-    propRoundTrip f = (fromClapiValue . toClapiValue) f == f
-
-testBinarySerialisationRoundTrip =
-    Right bundle @=? result where
-        bundle = [message, message]
-        message = CMessage
-            ["hello", "world"]
-            Error
-            nestedArgList
-            (zip [[c] | c <- ['a'..'z']] nestedArgList)
-        argList = [
-            CBool True, CBool False, CTime (Time 4 2),
-            CWord32 32, CWord64 64, CInt32 (-32), CInt64 (-64), CFloat 15.1,
-            CDouble 13.2, CString "Greetings Planet"]
-        nestedArgList = (CList argList) : argList
-
-        result = encode bundle >>= decode :: Either String ClapiBundle
-
-assertFailed :: String -> Either a b -> Assertion
-assertFailed s either = assertBool s (didFail either)
-  where
-    didFail (Left _) = True
-    didFail (Right _) = False
-
-testEncodeTooLongString =
-    assertFailed "Long string not detected" $ encode longStr
-    where
-      n = fromIntegral $ (maxBound :: Word16)
-      longStr = replicate (n + 1) 'a'
-
+import Types (ClapiValue(..))
+import Tree (Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete)
 
 t1 = TConstant [CBool True]
 t2 = TConstant [CBool False]
