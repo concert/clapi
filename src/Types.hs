@@ -117,7 +117,11 @@ data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
 
 data ClapiTree =
     Leaf {typePath :: ClapiPath, tuple :: Tuple} |
-    Container {typePath :: ClapiPath, subtrees :: Map.Map Name ClapiTree}
+    Container {
+        typePath :: ClapiPath,
+        order :: [Name],
+        subtrees :: Map.Map Name ClapiTree
+    }
   deriving (Eq, Show)
 
 treeGet :: ClapiPath -> ClapiTree -> Either String ClapiTree
@@ -159,8 +163,8 @@ alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
   where
     -- alterTree' :: ClapiPath -> Maybe ClapiTree -> f ClapiTree
     alterTree' _ Nothing = makeError "Intermediate lookup failed"
-    alterTree' (name:path) (Just (Container typePath items)) =
-        fmap (Container typePath) (Map.alterF chooseF name items)
+    alterTree' (name:path) (Just c@(Container {subtrees = items})) =
+        fmap (\is -> c {subtrees = is}) (Map.alterF chooseF name items)
       where
         -- chooseF :: ClapiPath -> AlterF f ClapiTree
         chooseF = case path of
