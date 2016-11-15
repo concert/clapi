@@ -2,6 +2,7 @@
 module TestTypes where
 
 import Test.HUnit ((@=?))
+import Test.Framework.Providers.HUnit (testCase)
 import Test.QuickCheck (quickCheck)
 
 import Data.Word (Word16)
@@ -13,6 +14,13 @@ import Types (
     fromClapiValue, toClapiValue)
 
 import Serialisation (encode, decode)
+
+
+tests = [
+    testCase "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
+    testCase "roundtrip message" testBinarySerialisationRoundTrip,
+    testCase "string length" testEncodeTooLongString
+    ]
 
 
 -- FIXME: we should define a QuickCheck.Arbitrary instance for ClapiValue and

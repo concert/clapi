@@ -2,11 +2,19 @@ module TestTree where
 
 import Util (assertFailed)
 import Test.HUnit (assertEqual)
+import Test.Framework.Providers.HUnit (testCase)
 
 import qualified Data.Map.Strict as Map
 
 import Types (ClapiValue(..))
 import Tree (Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete)
+
+tests = [
+    testCase "test treeGet" testTreeGet,
+    testCase "test treeAdd" testTreeAdd,
+    testCase "test treeSet" testTreeSet,
+    testCase "test treeDelete" testTreeDelete
+    ]
 
 t1 = TConstant [CBool True]
 t2 = TConstant [CBool False]
