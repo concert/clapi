@@ -7,13 +7,17 @@ import Test.Framework.Providers.HUnit (testCase)
 import qualified Data.Map.Strict as Map
 
 import Types (ClapiValue(..))
-import Tree (Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete)
+import Tree (
+    Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete,
+    mapDiff, Delta(..), Diff(..)
+    )
 
 tests = [
     testCase "test treeGet" testTreeGet,
     testCase "test treeAdd" testTreeAdd,
     testCase "test treeSet" testTreeSet,
-    testCase "test treeDelete" testTreeDelete
+    testCase "test treeDelete" testTreeDelete,
+    testCase "test mapDiff" testMapDiff,
     ]
 
 t1 = TConstant [CBool True]
@@ -60,3 +64,11 @@ testTreeSet =
   where
     c1' = Container [] [] $ Map.singleton "b" l2
     c2' = Container [] [] $ Map.singleton "a" c1'
+
+
+testMapDiff =
+    assertEqual "failed mapDiff" expected $ mapDiff m1 m2
+  where
+    m1 = Map.fromList [('a', 1), ('b', 2)]
+    m2 = Map.fromList [('a', 3), ('c', 4)]
+    expected = [Change 'a' 1 3, Remove 'b', Add 'c' 4]

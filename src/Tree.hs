@@ -6,11 +6,13 @@ module Tree
         Tuple(..),
         ClapiTree(..),
         treeGet, treeAdd, treeSet, treeDelete,
+        mapDiff, Delta(..), Diff(..)
     )
 where
 
 import Data.Word (Word32, Word64)
 import qualified Data.Map.Strict as Map
+import Data.Map.Strict.Merge (merge, mapMissing, zipWithMatched)
 import Control.Applicative (Const(..))
 
 import Types (Name, ClapiPath(..), Time, ClapiValue)
@@ -80,3 +82,15 @@ alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
             [] -> f
             path -> \maybeTree -> fmap (Just) (alterTree' path maybeTree)
     alterTree' _ _ = makeError "Lookup failed (not a container)"
+
+
+data Delta k a = Remove k | Add k a | Change k a a deriving (Eq, Show)
+type Diff k a = [Delta k a]
+
+mapDiff :: Ord k => Map.Map k a -> Map.Map k a -> Diff k a
+mapDiff a b = flatten $ merge onlyInA onlyInB inBoth a b
+  where
+    onlyInA = mapMissing $ \k va -> Remove k
+    onlyInB = mapMissing $ \k vb -> Add k vb
+    inBoth = zipWithMatched $ \k va vb -> Change k va vb
+    flatten = (fmap snd) . Map.toList
