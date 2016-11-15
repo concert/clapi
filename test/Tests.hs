@@ -2,7 +2,7 @@
 module Tests where
 
 import Data.Word (Word16)
-import Test.HUnit ((@=?), assertBool, assertEqual)
+import Test.HUnit ((@=?), assertBool, assertEqual, Assertion)
 import Test.QuickCheck (quickCheck)
 
 import qualified Data.Map as Map
@@ -36,6 +36,12 @@ testBinarySerialisationRoundTrip =
         nestedArgList = (CList argList) : argList
 
         result = encode bundle >>= decode :: Either String ClapiBundle
+
+assertFailed :: String -> Either a b -> Assertion
+assertFailed s either = assertBool s (didFail either)
+  where
+    didFail (Left _) = True
+    didFail (Right _) = False
 
 testEncodeTooLongString =
     assertBool "Long string not detected" (didFail result)
