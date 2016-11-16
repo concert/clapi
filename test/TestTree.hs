@@ -71,8 +71,8 @@ testTreeSet =
 testMapDiff =
     assertEqual "failed mapDiff" expected $ mapDiff m1 m2
   where
-    m1 = Map.fromList [('a', 1), ('b', 2)]
-    m2 = Map.fromList [('a', 3), ('c', 4)]
+    m1 = Map.fromList [('a', 1), ('b', 2), ('d', 42)]
+    m2 = Map.fromList [('a', 3), ('c', 4), ('d', 42)]
     expected = Map.fromList [('a', Change 3), ('b', Remove), ('c', Add 4)]
 
 testDiffRoundTrip :: Map.Map Char Int -> Map.Map Char Int -> Bool

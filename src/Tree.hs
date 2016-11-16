@@ -87,12 +87,15 @@ alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
 
 data Delta a = Remove | Add a | Change a deriving (Eq, Show)
 
-mapDiff :: Ord k => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
+mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
 mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
   where
     onlyInM1 = mapMissing $ \k v1 -> Remove
     onlyInM2 = mapMissing $ \k v2 -> Add v2
-    inBoth = zipWithMatched $ \k v1 v2 -> Change v2
+    inBoth = zipWithMaybeMatched diffValue
+    diffValue _ x y
+        | x == y = Nothing
+        | otherwise = Just (Change y)
 
 applyMapDiff :: Ord k => Map.Map k (Delta a) -> Map.Map k a -> Map.Map k a
 applyMapDiff d m = merge onlyInD onlyInM inBoth d m
@@ -101,7 +104,7 @@ applyMapDiff d m = merge onlyInD onlyInM inBoth d m
     onlyInDf _ (Add v) = v
     -- FIXME: These undefineds are bad error handling...
     onlyInDf _ _ = undefined
-    onlyInM = mapMissing undefined
+    onlyInM = mapMissing $ \k v -> v
     inBoth = zipWithMaybeMatched inBothf
     inBothf _ (Change v) _ = Just v
     inBothf _ (Remove) _ = Nothing
