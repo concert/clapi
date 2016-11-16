@@ -3,13 +3,14 @@ module TestTree where
 import Util (assertFailed)
 import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
+import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import qualified Data.Map.Strict as Map
 
 import Types (ClapiValue(..))
 import Tree (
     Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete,
-    mapDiff, Delta(..)
+    mapDiff, applyMapDiff, Delta(..)
     )
 
 tests = [
@@ -17,7 +18,8 @@ tests = [
     testCase "test treeAdd" testTreeAdd,
     testCase "test treeSet" testTreeSet,
     testCase "test treeDelete" testTreeDelete,
-    testCase "test mapDiff" testMapDiff
+    testCase "test mapDiff" testMapDiff,
+    testProperty "test diff roundtrip" testDiffRoundTrip
     ]
 
 t1 = TConstant [CBool True]
@@ -72,3 +74,8 @@ testMapDiff =
     m1 = Map.fromList [('a', 1), ('b', 2)]
     m2 = Map.fromList [('a', 3), ('c', 4)]
     expected = Map.fromList [('a', Change 3), ('b', Remove), ('c', Add 4)]
+
+testDiffRoundTrip :: Map.Map Char Int -> Map.Map Char Int -> Bool
+testDiffRoundTrip m1 m2 = applyMapDiff d m1 == m2
+  where
+    d = mapDiff m1 m2

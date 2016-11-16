@@ -6,13 +6,14 @@ module Tree
         Tuple(..),
         ClapiTree(..),
         treeGet, treeAdd, treeSet, treeDelete,
-        mapDiff, Delta(..)
+        mapDiff, applyMapDiff, Delta(..)
     )
 where
 
 import Data.Word (Word32, Word64)
 import qualified Data.Map.Strict as Map
-import Data.Map.Strict.Merge (merge, mapMissing, zipWithMatched)
+import Data.Map.Strict.Merge (
+    merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
 import Control.Applicative (Const(..))
 
 import Types (Name, ClapiPath(..), Time, ClapiValue)
@@ -87,8 +88,20 @@ alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
 data Delta a = Remove | Add a | Change a deriving (Eq, Show)
 
 mapDiff :: Ord k => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
-mapDiff a b = merge onlyInA onlyInB inBoth a b
+mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
   where
-    onlyInA = mapMissing $ \k va -> Remove
-    onlyInB = mapMissing $ \k vb -> Add vb
-    inBoth = zipWithMatched $ \k va vb -> Change vb
+    onlyInM1 = mapMissing $ \k v1 -> Remove
+    onlyInM2 = mapMissing $ \k v2 -> Add v2
+    inBoth = zipWithMatched $ \k v1 v2 -> Change v2
+
+applyMapDiff :: Ord k => Map.Map k (Delta a) -> Map.Map k a -> Map.Map k a
+applyMapDiff d m = merge onlyInD onlyInM inBoth d m
+  where
+    onlyInD = mapMissing onlyInDf
+    onlyInDf _ (Add v) = v
+    -- FIXME: These undefineds are bad error handling...
+    onlyInDf _ _ = undefined
+    onlyInM = mapMissing undefined
+    inBoth = zipWithMaybeMatched inBothf
+    inBothf _ (Change v) _ = Just v
+    inBothf _ (Remove) _ = Nothing
