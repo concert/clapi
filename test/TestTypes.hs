@@ -3,7 +3,7 @@ module TestTypes where
 
 import Test.HUnit ((@=?))
 import Test.Framework.Providers.HUnit (testCase)
-import Test.QuickCheck (quickCheck)
+import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
@@ -17,7 +17,7 @@ import Serialisation (encode, decode)
 
 
 tests = [
-    testCase "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
+    testProperty "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
     testCase "roundtrip message" testBinarySerialisationRoundTrip,
     testCase "string length" testEncodeTooLongString
     ]
@@ -25,10 +25,8 @@ tests = [
 
 -- FIXME: we should define a QuickCheck.Arbitrary instance for ClapiValue and
 -- use it to generate better random values
-testClapiValueConversionRoundTrip = quickCheck propRoundTrip
-  where
-    propRoundTrip :: [Float] -> Bool
-    propRoundTrip f = (fromClapiValue . toClapiValue) f == f
+testClapiValueConversionRoundTrip :: [Float] -> Bool
+testClapiValueConversionRoundTrip f = (fromClapiValue . toClapiValue) f == f
 
 testBinarySerialisationRoundTrip =
     Right bundle @=? result where
