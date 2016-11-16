@@ -9,7 +9,7 @@ import qualified Data.Map.Strict as Map
 import Types (ClapiValue(..))
 import Tree (
     Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete,
-    mapDiff, Delta(..), Diff(..)
+    mapDiff, Delta(..)
     )
 
 tests = [
@@ -17,7 +17,7 @@ tests = [
     testCase "test treeAdd" testTreeAdd,
     testCase "test treeSet" testTreeSet,
     testCase "test treeDelete" testTreeDelete,
-    testCase "test mapDiff" testMapDiff,
+    testCase "test mapDiff" testMapDiff
     ]
 
 t1 = TConstant [CBool True]
@@ -71,4 +71,4 @@ testMapDiff =
   where
     m1 = Map.fromList [('a', 1), ('b', 2)]
     m2 = Map.fromList [('a', 3), ('c', 4)]
-    expected = [Change 'a' 1 3, Remove 'b', Add 'c' 4]
+    expected = Map.fromList [('a', Change 3), ('b', Remove), ('c', Add 4)]

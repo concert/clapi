@@ -6,7 +6,7 @@ module Tree
         Tuple(..),
         ClapiTree(..),
         treeGet, treeAdd, treeSet, treeDelete,
-        mapDiff, Delta(..), Diff(..)
+        mapDiff, Delta(..)
     )
 where
 
@@ -84,13 +84,11 @@ alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
     alterTree' _ _ = makeError "Lookup failed (not a container)"
 
 
-data Delta k a = Remove k | Add k a | Change k a a deriving (Eq, Show)
-type Diff k a = [Delta k a]
+data Delta a = Remove | Add a | Change a deriving (Eq, Show)
 
-mapDiff :: Ord k => Map.Map k a -> Map.Map k a -> Diff k a
-mapDiff a b = flatten $ merge onlyInA onlyInB inBoth a b
+mapDiff :: Ord k => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
+mapDiff a b = merge onlyInA onlyInB inBoth a b
   where
-    onlyInA = mapMissing $ \k va -> Remove k
-    onlyInB = mapMissing $ \k vb -> Add k vb
-    inBoth = zipWithMatched $ \k va vb -> Change k va vb
-    flatten = (fmap snd) . Map.toList
+    onlyInA = mapMissing $ \k va -> Remove
+    onlyInB = mapMissing $ \k vb -> Add vb
+    inBoth = zipWithMatched $ \k va vb -> Change vb
