@@ -92,6 +92,9 @@ instance Functor Delta where
     fmap f (Add a) = Add (f a)
     fmap f (Change a) = Change (f a)
 
+toList :: f a -> [a]
+toList = foldr (:) []
+
 mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
 mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
   where
