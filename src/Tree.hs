@@ -108,3 +108,30 @@ applyMapDiff d m = merge onlyInD onlyInM inBoth d m
     inBoth = zipWithMaybeMatched inBothf
     inBothf _ (Change v) _ = Just v
     inBothf _ (Remove) _ = Nothing
+
+
+diffMaybe :: Maybe a -> Maybe a -> Maybe (Delta a)
+diffMaybe (Just x) (Just y) = Just $ Change y
+diffMaybe Nothing (Just y) = Just $ Add y
+diffMaybe (Just x) Nothing = Just Remove
+diffMaybe _ _ = Nothing
+
+applyDiffMaybe :: Maybe (Delta a) -> Maybe a -> Maybe a
+applyDiffMaybe Nothing _ = Nothing
+applyDiffMaybe (Just Remove) (Just _) = Nothing
+applyDiffMaybe (Just (Add y)) Nothing = Just y
+applyDiffMaybe (Just (Change y)) (Just x) = Just y
+applyDiffMaybe _ _ = undefined
+
+
+diffEither :: Either a b -> Either a b -> Either (Delta a) (Delta b)
+diffEither (Left xa) (Left ya) = Left (Change ya)
+diffEither (Left xa) (Right yb) = Right (Add yb)
+diffEither (Right xb) (Left ya) = Left (Add ya)
+diffEither (Right xb) (Right yb) = Right (Change yb)
+
+applyDiffEither :: Either (Delta a) (Delta b) -> Either a b -> Either a b
+applyDiffEither (Left (Change a)) (Left _) = Left a
+applyDiffEither (Right (Change b)) (Right _) = Right b
+applyDiffEither (Left (Add a)) (Right _) = Left a
+applyDiffEither (Right (Add b)) (Left _) = Right b
