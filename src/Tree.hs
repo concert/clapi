@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Tree
     (
         Interpolation(..),
@@ -27,58 +28,61 @@ type TimeSeries a = Map.Map Time (TimePoint a)
 data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
   deriving (Eq, Show)
 
-data ClapiTree =
-    Leaf {typePath :: ClapiPath, tuple :: Tuple} |
+data ClapiTree a =
+    Leaf {typePath :: ClapiPath, content :: a} |
     Container {
         typePath :: ClapiPath,
         order :: [Name],
-        subtrees :: Map.Map Name ClapiTree
+        subtrees :: Map.Map Name (ClapiTree a)
     }
   deriving (Eq, Show)
 
-treeGet :: ClapiPath -> ClapiTree -> Either String ClapiTree
+treeGet :: forall a. ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeGet path = getConst . alterTree (Const . Left) get path
   where
-    get :: Maybe ClapiTree -> Const (Either String ClapiTree) (Maybe ClapiTree)
+    get :: Maybe (ClapiTree a) ->
+        Const (Either String (ClapiTree a)) (Maybe (ClapiTree a))
     get Nothing = Const (Left $ "Item lookup failed" ++ (show path))
     get (Just tree) = Const (Right tree)
 
 type AlterF f a = Maybe a -> f (Maybe a)
 type MakeError f a = String -> f a
 
-treeDelete :: ClapiPath -> ClapiTree -> Either String ClapiTree
+treeDelete :: forall a. ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeDelete path = alterTree Left delete path
   where
-    delete :: AlterF (Either String) ClapiTree
+    delete :: AlterF (Either String) (ClapiTree a)
     delete Nothing = Left $ "Tried to delete absent value at " ++ (show path)
     delete _ = Right Nothing
 
-treeAdd :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
+treeAdd :: forall a. ClapiTree a -> ClapiPath -> ClapiTree a ->
+    Either String (ClapiTree a)
 treeAdd newItem path = alterTree Left add path
   where
-    add :: AlterF (Either String) ClapiTree
+    add :: AlterF (Either String) (ClapiTree a)
     add Nothing = Right . Just $ newItem
     add _ = Left $ "Tried to add over present value at " ++ (show path)
 
-treeSet :: ClapiTree -> ClapiPath -> ClapiTree -> Either String ClapiTree
+treeSet :: forall a. ClapiTree a -> ClapiPath -> ClapiTree a ->
+    Either String (ClapiTree a)
 treeSet replacementItem path = alterTree Left set path
   where
-    set :: AlterF (Either String) ClapiTree
+    set :: AlterF (Either String) (ClapiTree a)
     set (Just tree) = Right . Just $ replacementItem
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
 
 alterTree ::
     Functor f =>
-    MakeError f ClapiTree -> AlterF f ClapiTree ->
-    ClapiPath -> ClapiTree -> f ClapiTree
+    MakeError f (ClapiTree a) -> AlterF f (ClapiTree a) ->
+    ClapiPath -> ClapiTree a -> f (ClapiTree a)
 alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
   where
-    -- alterTree' :: ClapiPath -> Maybe ClapiTree -> f ClapiTree
+    -- alterTree' :: ClapiPath -> Maybe (ClapiTree a) -> f (ClapiTree a)
     alterTree' _ Nothing = makeError "Intermediate lookup failed"
     alterTree' (name:path) (Just c@(Container {subtrees = items})) =
         fmap (\is -> c {subtrees = is}) (Map.alterF chooseF name items)
       where
-        -- chooseF :: ClapiPath -> AlterF f ClapiTree
+        -- chooseF :: ClapiPath -> AlterF f (ClapiTree a)
         chooseF = case path of
             [] -> f
             path -> \maybeTree -> fmap (Just) (alterTree' path maybeTree)
@@ -92,8 +96,8 @@ instance Functor Delta where
     fmap f (Add a) = Add (f a)
     fmap f (Change a) = Change (f a)
 
-toList :: f a -> [a]
-toList = foldr (:) []
+-- toList :: f a -> [a]
+-- toList = foldr (:) []
 
 mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
 mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
