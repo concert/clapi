@@ -24,11 +24,11 @@ tests = [
 
 t1 = TConstant [CBool True]
 t2 = TConstant [CBool False]
-l1 = Leaf [] t1
-l2 = Leaf [] t2
-cempty = Container [] [] $ Map.empty
-c1 = Container [] [] $ Map.singleton "b" l1
-c2 = Container [] [] $ Map.singleton "a" c1
+l1 = Leaf t1
+l2 = Leaf t2
+cempty = Container () [] $ Map.empty
+c1 = Container () [] $ Map.singleton "b" l1
+c2 = Container () [] $ Map.singleton "a" c1
 
 testTreeGet =
   do
@@ -45,7 +45,7 @@ testTreeDelete =
   do
     assertEqual "container delete failed" (Right cempty) $ treeDelete ["a"] c2
     assertEqual "leaf delete failed"
-        (Right (Container [] [] $ Map.fromList [("a", cempty)])) $
+        (Right (Container () [] $ Map.fromList [("a", cempty)])) $
         treeDelete ["a", "b"] c2
     assertFailed "bad path did not fail 1" $ treeDelete ["a", "llama"] c2
     assertFailed "bad path did not fail 2" $ treeDelete ["llama"] c2
@@ -56,16 +56,16 @@ testTreeAdd =
     assertEqual "normal add failed" (Right c2') $ treeAdd l2 ["a", "c"] c2
     assertFailed "add existing failed" $ treeAdd l2 ["a", "b"] c2
   where
-    c1' = Container [] [] $ Map.fromList [("b", l1), ("c", l2)]
-    c2' = Container [] [] $ Map.singleton "a" c1'
+    c1' = Container () [] $ Map.fromList [("b", l1), ("c", l2)]
+    c2' = Container () [] $ Map.singleton "a" c1'
 
 testTreeSet =
   do
     assertEqual "normal set failed" (Right c2') $ treeSet l2 ["a", "b"] c2
     assertFailed "set non-eixstant failed" $ treeSet l2 ["a", "c"] c2
   where
-    c1' = Container [] [] $ Map.singleton "b" l2
-    c2' = Container [] [] $ Map.singleton "a" c1'
+    c1' = Container () [] $ Map.singleton "b" l2
+    c2' = Container () [] $ Map.singleton "a" c1'
 
 
 testMapDiff =
