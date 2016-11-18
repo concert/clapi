@@ -32,13 +32,18 @@ data TreeLeaf a = TreeLeaf ClapiPath a
 data TreeContainer = TreeContainer ClapiPath  -- FIXME bad name
 
 data ClapiTree a b =
-    Leaf a |
+    Leaf b |
     Container {
-        meta :: b,
+        meta :: a,
         order :: [Name],
         subtrees :: Map.Map Name (ClapiTree a b)
     }
   deriving (Eq, Show)
+
+
+instance Functor (ClapiTree a) where
+    fmap f (Leaf b) = Leaf $ f b
+    fmap f c@(Container {subtrees = sts}) = c {subtrees = fmap (fmap f) sts}
 
 treeGet :: forall a b. ClapiPath -> ClapiTree a b ->
     Either String (ClapiTree a b)
