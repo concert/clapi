@@ -9,17 +9,18 @@ import qualified Data.Map.Strict as Map
 
 import Types (ClapiValue(..))
 import Tree (
-    Tuple(..), ClapiTree(..), treeGet, treeAdd, treeSet, treeDelete,
+    Tuple(..), ClapiTree(..), toList, treeGet, treeAdd, treeSet, treeDelete,
     mapDiff, applyMapDiff, Delta(..)
     )
 
 tests = [
-    testCase "test treeGet" testTreeGet,
-    testCase "test treeAdd" testTreeAdd,
-    testCase "test treeSet" testTreeSet,
-    testCase "test treeDelete" testTreeDelete,
-    testCase "test mapDiff" testMapDiff,
-    testProperty "test diff roundtrip" testDiffRoundTrip
+    testCase "toList" testToList,
+    testCase "treeGet" testTreeGet,
+    testCase "treeAdd" testTreeAdd,
+    testCase "treeSet" testTreeSet,
+    testCase "treeDelete" testTreeDelete,
+    testCase "mapDiff" testMapDiff,
+    testProperty "diff roundtrip" testDiffRoundTrip
     ]
 
 t1 = TConstant [CBool True]
@@ -29,6 +30,10 @@ l2 = Leaf t2
 cempty = Container () [] $ Map.empty
 c1 = Container () [] $ Map.singleton "b" l1
 c2 = Container () [] $ Map.singleton "a" c1
+
+testToList = assertEqual "toList failed" expected $ toList c2
+  where
+    expected = [([], Left ()), (["a"], Left ()), (["a", "b"], Right t1)]
 
 testTreeGet =
   do

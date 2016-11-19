@@ -6,6 +6,7 @@ module Tree
         TimeSeries,
         Tuple(..),
         ClapiTree(..),
+        toList,
         treeGet, treeAdd, treeSet, treeDelete,
         mapDiff, applyMapDiff, Delta(..)
     )
@@ -44,6 +45,29 @@ data ClapiTree a b =
 instance Functor (ClapiTree a) where
     fmap f (Leaf b) = Leaf $ f b
     fmap f c@(Container {subtrees = sts}) = c {subtrees = fmap (fmap f) sts}
+
+instance Foldable (ClapiTree a) where
+    foldMap f (Leaf b) = f b
+    foldMap f (Container {subtrees = sts}) = foldMap (foldMap f) sts
+
+join :: Foldable f => f a -> [a]
+join = foldr (:) []
+
+toList :: ClapiTree a b -> [(ClapiPath, Either a b)]
+toList tree = fmap strip $ toList' "" tree
+  where
+    strip ((name:path), v) = (path, v)
+
+toList' :: forall a b. Name -> ClapiTree a b -> [(ClapiPath, Either a b)]
+toList' k (Leaf b) = [([k], Right b)]
+toList' k (Container {meta = a, subtrees = sts}) =
+    ([k], Left a) : (mconcat . join $ prependKeys mapped)
+  where
+    mapped :: Map.Map Name [(ClapiPath, Either a b)]
+    mapped = Map.mapWithKey toList' sts
+    prependKeys = fmap (fmap prependKey)
+    prependKey (path, v) = (k:path, v)
+
 
 treeGet :: forall a b. ClapiPath -> ClapiTree a b ->
     Either String (ClapiTree a b)
@@ -106,8 +130,6 @@ instance Functor Delta where
     fmap f (Add a) = Add (f a)
     fmap f (Change a) = Change (f a)
 
--- toList :: f a -> [a]
--- toList = foldr (:) []
 
 mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
 mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
