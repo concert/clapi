@@ -5,20 +5,23 @@ module Tree
         TimePoint,
         TimeSeries,
         Tuple(..),
+        Node(..),
         ClapiTree(..),
-        toList,
         treeGet, treeAdd, treeSet, treeDelete,
         mapDiff, applyMapDiff, Delta(..)
     )
 where
 
 import Data.Word (Word32, Word64)
+import Data.List (isPrefixOf, partition)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Data.Map.Strict.Merge (
     merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
+import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
-import Types (Name, ClapiPath(..), Time, ClapiValue)
+import Types (Name, ClapiPath(..), up, initLast, Time, ClapiValue)
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
@@ -29,98 +32,97 @@ type TimeSeries a = Map.Map Time (TimePoint a)
 data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
   deriving (Eq, Show)
 
-data TreeLeaf a = TreeLeaf ClapiPath a
-data TreeContainer = TreeContainer ClapiPath  -- FIXME bad name
-
-data ClapiTree a b =
-    Leaf b |
-    Container {
-        meta :: a,
-        order :: [Name],
-        subtrees :: Map.Map Name (ClapiTree a b)
-    }
+data Node a =
+    Leaf {typePath :: ClapiPath, leafValue :: a} |
+    Container {typePath :: ClapiPath, order :: [Name]}
   deriving (Eq, Show)
 
+type ClapiTree a = Map.Map ClapiPath (Node a)
 
-instance Functor (ClapiTree a) where
-    fmap f (Leaf b) = Leaf $ f b
-    fmap f c@(Container {subtrees = sts}) = c {subtrees = fmap (fmap f) sts}
+modifyChildKeys :: ([Name] -> Either String [Name]) -> Node a ->
+    Either String (Node a)
+modifyChildKeys f (Leaf {}) = Left "Cannot modify child keys of leaf node"
+modifyChildKeys f c@(Container {order = names}) =
+    fmap (\ns -> c {order = ns}) $ f names
 
-instance Foldable (ClapiTree a) where
-    foldMap f (Leaf b) = f b
-    foldMap f (Container {subtrees = sts}) = foldMap (foldMap f) sts
+addChildKey :: Name -> Node a -> Either String (Node a)
+addChildKey name = modifyChildKeys (\names -> Right $ name:names)
 
-join :: Foldable f => f a -> [a]
-join = foldr (:) []
-
-toList :: ClapiTree a b -> [(ClapiPath, Either a b)]
-toList tree = fmap strip $ toList' "" tree
+removeChildKey :: Name -> Node a -> Either String (Node a)
+removeChildKey name = modifyChildKeys f
   where
-    strip ((name:path), v) = (path, v)
+    f names = note "blig" $ removeElem name names
 
-toList' :: forall a b. Name -> ClapiTree a b -> [(ClapiPath, Either a b)]
-toList' k (Leaf b) = [([k], Right b)]
-toList' k (Container {meta = a, subtrees = sts}) =
-    ([k], Left a) : (mconcat . join $ prependKeys mapped)
+
+removeElem :: Eq a => a -> [a] -> Maybe [a]
+removeElem x xs = extract $ partitioned
   where
-    mapped :: Map.Map Name [(ClapiPath, Either a b)]
-    mapped = Map.mapWithKey toList' sts
-    prependKeys = fmap (fmap prependKey)
-    prependKey (path, v) = (k:path, v)
+    partitioned = partition (== x) xs
+    extract ([], _) = Nothing
+    extract (_, xs) = Just xs
 
 
-treeGet :: forall a b. ClapiPath -> ClapiTree a b ->
-    Either String (ClapiTree a b)
-treeGet path = getConst . alterTree (Const . Left) get path
+lookupMsg :: String -> ClapiPath -> ClapiTree a -> Either String (Node a)
+lookupMsg msg path tree = note failMsg $ Map.lookup path tree
   where
-    get :: Maybe (ClapiTree a b) ->
-        Const (Either String (ClapiTree a b)) (Maybe (ClapiTree a b))
-    get Nothing = Const (Left $ "Item lookup failed" ++ (show path))
-    get (Just tree) = Const (Right tree)
+    failMsg = msg ++ " at " ++ (show path)
+
+treeGet :: ClapiPath -> ClapiTree a -> Either String (Node a)
+treeGet = lookupMsg "Item lookup failed"
 
 type AlterF f a = Maybe a -> f (Maybe a)
 type MakeError f a = String -> f a
 
-treeDelete :: forall a b. ClapiPath -> ClapiTree a b ->
-    Either String (ClapiTree a b)
-treeDelete path = alterTree Left delete path
+treeDelete :: ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+treeDelete path t1 =
+  do
+    (ppath, name) <- note "Root path supplied to delete" $ initLast path
+    -- lookupMsg "Tried to delete absent value" path tree
+    parentNode <- lookupMsg "balh" ppath t1
+    parentNode' <- removeChildKey name parentNode
+    t2 <- return $ Map.insert ppath parentNode' t1
+    return $ Map.filterWithKey predicate t2
   where
-    delete :: AlterF (Either String) (ClapiTree a b)
-    delete Nothing = Left $ "Tried to delete absent value at " ++ (show path)
-    delete _ = Right Nothing
+    predicate :: ClapiPath -> Node a -> Bool
+    predicate k _ = not $ path `isPrefixOf` k
+    -- FIXME: this is O(n): I think we could do better because the keys are
+    -- ordered, and we wasted time looking up the first key!
+    removeSubtree = Map.filterWithKey predicate
 
-treeAdd :: forall a b. ClapiTree a b -> ClapiPath -> ClapiTree a b ->
-    Either String (ClapiTree a b)
-treeAdd newItem path = alterTree Left add path
+-- parent :: ClapiPath -> ClapiTree a -> Maybe (Node a)
+-- parent path tree = hush $ treeGet (up path) tree
+
+treeAdd :: forall a.
+    Node a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+treeAdd newNode path t1 =
+  do
+    (ppath, name) <- note "Root path supplied to add" $ initLast path
+    t2 <- Map.alterF (parentAdd ppath name) ppath t1
+    Map.alterF add path t2
   where
-    add :: AlterF (Either String) (ClapiTree a b)
-    add Nothing = Right . Just $ newItem
+    add :: AlterF (Either String) (Node a)
+    add Nothing = Right . Just $ newNode
     add _ = Left $ "Tried to add over present value at " ++ (show path)
+    parentAdd :: ClapiPath -> Name -> AlterF (Either String) (Node a)
+    parentAdd ppath _ Nothing = Left $ "No container at " ++ (show ppath)
+    parentAdd _ name (Just c) =
+        fmap Just $ addChildKey name c
 
-treeSet :: forall a b. ClapiTree a b -> ClapiPath -> ClapiTree a b ->
-    Either String (ClapiTree a b)
-treeSet replacementItem path = alterTree Left set path
+treeSet :: forall a.
+    Node a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+treeSet newNode path = Map.alterF set path
   where
-    set :: AlterF (Either String) (ClapiTree a b)
-    set (Just tree) = Right . Just $ replacementItem
+    set :: AlterF (Either String) (Node a)
+    set (Just node) = fmap Just $ doSet node newNode
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
-
-alterTree ::
-    Functor f =>
-    MakeError f (ClapiTree a b) -> AlterF f (ClapiTree a b) ->
-    ClapiPath -> ClapiTree a b -> f (ClapiTree a b)
-alterTree makeError f rootPath tree = alterTree' rootPath (Just tree)
-  where
-    -- alterTree' :: ClapiPath -> Maybe (ClapiTree a b) -> f (ClapiTree a b)
-    alterTree' _ Nothing = makeError "Intermediate lookup failed"
-    alterTree' (name:path) (Just c@(Container {subtrees = items})) =
-        fmap (\is -> c {subtrees = is}) (Map.alterF chooseF name items)
-      where
-        -- chooseF :: ClapiPath -> AlterF f (ClapiTree a b)
-        chooseF = case path of
-            [] -> f
-            path -> \maybeTree -> fmap (Just) (alterTree' path maybeTree)
-    alterTree' _ _ = makeError "Lookup failed (not a container)"
+    doSet (Leaf {typePath = t}) new@(Leaf {typePath = t'})
+        | t == t' = Right new
+        | otherwise = Left "Cannot change type during set"
+    doSet (Container t oldOrder) new@(Container t' newOrder)
+        | t == t' && Set.fromList oldOrder == Set.fromList newOrder = Right new
+        | t == t' = Left "Cannot not change keys during set"
+        | otherwise = Left "Cannot change type during set"
+    doSet _ _ = Left "Cannot change type of container during set"
 
 
 data Delta a = Remove | Add a | Change a deriving (Eq, Show)

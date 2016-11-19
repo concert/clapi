@@ -7,14 +7,13 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import qualified Data.Map.Strict as Map
 
-import Types (ClapiValue(..))
+import Types (ClapiValue(..), root)
 import Tree (
-    Tuple(..), ClapiTree(..), toList, treeGet, treeAdd, treeSet, treeDelete,
-    mapDiff, applyMapDiff, Delta(..)
+    Tuple(..), Node(..), ClapiTree(..), treeGet, treeAdd, treeSet,
+    treeDelete, mapDiff, applyMapDiff, Delta(..)
     )
 
 tests = [
-    testCase "toList" testToList,
     testCase "treeGet" testTreeGet,
     testCase "treeAdd" testTreeAdd,
     testCase "treeSet" testTreeSet,
@@ -23,54 +22,59 @@ tests = [
     testProperty "diff roundtrip" testDiffRoundTrip
     ]
 
-t1 = TConstant [CBool True]
-t2 = TConstant [CBool False]
-l1 = Leaf t1
-l2 = Leaf t2
-cempty = Container () [] $ Map.empty
-c1 = Container () [] $ Map.singleton "b" l1
-c2 = Container () [] $ Map.singleton "a" c1
-
-testToList = assertEqual "toList failed" expected $ toList c2
-  where
-    expected = [([], Left ()), (["a"], Left ()), (["a", "b"], Right t1)]
+c1 = Container [] ["a"]
+c2 = Container [] ["b"]
+c2' = Container [] ["c", "b"]
+l1 = Leaf [] 1
+l2 = Leaf [] 2
+t1 = Map.fromList [(root, c1), (["a"], c2), (["a", "b"], l1)]
+t2 = Map.fromList [
+    (root, c1), (["a"], c2'), (["a", "b"], l1), (["a", "c"], l2)]
+cempty = Container [] []
+tempty = Map.singleton root cempty
 
 testTreeGet =
   do
-    assertEqual "leaf get failed" (Right l1) $ treeGet ["b"] c1
-    assertEqual "nested leaf get failed" (Right l1) $ treeGet ["a", "b"] c2
-    assertEqual "container get failed" (Right c1) $ treeGet ["a"] c2
-    assertFailed "didn't fail with too many path components" $
-        treeGet ["a", "b", "c"] c2
-    assertFailed "bad fail with bad keys" $ treeGet ["a", "llama"] c2
-    assertFailed "bad fail with bad keys" $ treeGet ["llama"] c2
-    assertFailed "bad fail with bad keys" $ treeGet ["llama", "face"] c2
+    assertEqual "nested leaf get" (Right l1) $ treeGet ["a", "b"] t1
+    assertEqual "container get" (Right c2) $ treeGet ["a"] t1
+    assertFailed "too many path components" $ treeGet ["a", "b", "c"] t1
+    assertFailed "bad keys" $ treeGet ["a", "llama"] t1
 
 testTreeDelete =
   do
-    assertEqual "container delete failed" (Right cempty) $ treeDelete ["a"] c2
-    assertEqual "leaf delete failed"
-        (Right (Container () [] $ Map.fromList [("a", cempty)])) $
-        treeDelete ["a", "b"] c2
-    assertFailed "bad path did not fail 1" $ treeDelete ["a", "llama"] c2
-    assertFailed "bad path did not fail 2" $ treeDelete ["llama"] c2
-    assertFailed "bad path did not fail 3" $ treeDelete ["llama", "face"] c2
+    assertEqual "container delete" (Right tempty) $ treeDelete ["a"] t1
+    assertEqual "leaf delete"
+        (Right (Map.fromList [([], c1), (["a"], cempty)])) $
+        treeDelete ["a", "b"] t1
+    assertFailed "bad path did not fail 1" $ treeDelete ["a", "llama"] t1
+    -- assertFailed "bad path did not fail 2" $ treeDelete ["llama"] c2
+    -- assertFailed "bad path did not fail 3" $ treeDelete ["llama", "face"] c2
 
 testTreeAdd =
   do
-    assertEqual "normal add failed" (Right c2') $ treeAdd l2 ["a", "c"] c2
-    assertFailed "add existing failed" $ treeAdd l2 ["a", "b"] c2
-  where
-    c1' = Container () [] $ Map.fromList [("b", l1), ("c", l2)]
-    c2' = Container () [] $ Map.singleton "a" c1'
+    assertEqual "normal add" (Right t2) $ treeAdd l2 ["a", "c"] t1
+    assertFailed "add at root" $ treeAdd l2 root t1
+    assertFailed "add existing" $ treeAdd l2 ["a", "b"] t1
+    assertFailed "add to non-existent parent" $ treeAdd l2 ["x", "b"] t1
 
 testTreeSet =
   do
-    assertEqual "normal set failed" (Right c2') $ treeSet l2 ["a", "b"] c2
-    assertFailed "set non-eixstant failed" $ treeSet l2 ["a", "c"] c2
+    assertEqual "normal set" (Right t1) $ treeSet l2 ["a", "b"] t1
+    assertEqual "reorder keys" (Right t3) $ treeSet c2'' ["a"] t2
+    assertFailed "change keys" $ treeSet c3 ["a"] t2
+    assertFailed "change num keys" $ treeSet c1 ["a"] t2
+    assertFailed "change leaf type" $ treeSet c4 ["a", "b"] t1
+    assertFailed "change container type" $ treeSet c5 ["a"] t1
+    assertFailed "set non-eixstant" $ treeSet l2 ["a", "c"] t1
+    assertFailed "set in non-existent parent" $ treeSet l2 ["x"] t1
   where
-    c1' = Container () [] $ Map.singleton "b" l2
-    c2' = Container () [] $ Map.singleton "a" c1'
+    t1 = Map.fromList [(root, c1), (["a"], c2), (["a", "b"], l2)]
+    t3 = Map.fromList [
+      (root, c1), (["a"], c2''), (["a", "b"], l1), (["a", "c"], l2)]
+    c2'' = Container [] ["b", "c"]
+    c3 = Container [] ["x", "y"]
+    c4 = Leaf ["foo"] 1
+    c5 = Container ["foo"] ["a"]
 
 
 testMapDiff =

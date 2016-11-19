@@ -1,25 +1,27 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestTypes where
 
-import Test.HUnit ((@=?))
+import Test.HUnit ((@=?), assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 
+import Data.Maybe (isNothing)
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
 import Util (assertFailed)
 import Types (
     Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle,
-    fromClapiValue, toClapiValue)
-
+    fromClapiValue, toClapiValue, root, up, initLast)
 import Serialisation (encode, decode)
 
 
 tests = [
     testProperty "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
     testCase "roundtrip message" testBinarySerialisationRoundTrip,
-    testCase "string length" testEncodeTooLongString
+    testCase "string length" testEncodeTooLongString,
+    testCase "up" testUp,
+    testProperty "initLast" testInitLast
     ]
 
 
@@ -49,3 +51,13 @@ testEncodeTooLongString =
     where
       n = fromIntegral $ (maxBound :: Word16)
       longStr = replicate (n + 1) 'a'
+
+testUp =
+  do
+    assertEqual "root up failed" root $ up root
+    assertEqual "normal up failed" ["a"] $ up ["a", "b"]
+
+
+testInitLast :: [Int] -> Bool
+testInitLast [] = isNothing $ initLast []
+testInitLast ints = initLast ints == Just (init ints, last ints)

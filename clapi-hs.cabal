@@ -24,6 +24,7 @@ library
   build-depends:       base >= 4.7 && < 5
                      , text
                      , split
+                     , errors
                      , containers >= 0.5.8.1
                      , data-binary-ieee754
                      , parsec
@@ -54,6 +55,7 @@ test-suite clapi-hs-test
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , containers
+                     , either
   other-modules:       Util
                      , TestTypes
                      , TestTree

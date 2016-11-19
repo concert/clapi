@@ -8,6 +8,7 @@ module Types
         ClapiPath,
         root,
         up,
+        initLast,
         ClapiMethod(..),
         ClapiMessage(..),
         ClapiBundle,
@@ -89,7 +90,15 @@ up :: ClapiPath -> ClapiPath
 up [] = root
 -- FIXME: using Data.Seq would be faster than a built in list for init (removing
 -- last element)
-up cs = init cs
+up names = init names
+
+initLast :: [a] -> Maybe ([a], a)
+initLast [] = Nothing
+initLast as = Just $ internal as
+  where
+    internal (a':[]) = ([], a')
+    internal (a:as) = accumulate (internal as) a
+    accumulate (acc, a') a = (a:acc, a')
 
 data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete |
