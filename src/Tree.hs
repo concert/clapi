@@ -61,6 +61,9 @@ class AddSetRemove f k | f -> k where
 instance AddSetRemove (Map.Map k) k where
     alter = Map.alterF
 
+instance AddSetRemove (Maybe) () where
+    alter f () maybe = f maybe
+
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
