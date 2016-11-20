@@ -15,6 +15,7 @@ where
 
 import Data.Word (Word32, Word64)
 import Data.List (isPrefixOf, partition)
+import Data.Bifunctor (Bifunctor, bimap)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Map.Strict.Merge (
@@ -42,6 +43,14 @@ data Node a b =
     Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
     Container {typePath :: ClapiPath, order :: [a]}
   deriving (Eq, Show)
+
+instance Functor (Node a) where
+    fmap f l@(Leaf {leafValue = v}) = l {leafValue = fmap f v}
+    fmap _ (Container tp ord) = Container tp ord
+
+instance Bifunctor Node where
+    bimap f _ c@(Container {order = ord}) = c {order = fmap f ord}
+    bimap _ g l@(Leaf {leafValue = v}) = l {leafValue = fmap g v}
 
 type ClapiTree a = Map.Map ClapiPath (Node Name a)
 
