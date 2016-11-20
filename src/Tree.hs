@@ -51,7 +51,7 @@ addChildKey name = modifyChildKeys (\names -> Right $ name:names)
 removeChildKey :: Name -> Node a -> Either String (Node a)
 removeChildKey name = modifyChildKeys f
   where
-    f names = note "blig" $ removeElem name names
+    f names = note "Tried to remove absent child key" $ removeElem name names
 
 
 removeElem :: Eq a => a -> [a] -> Maybe [a]
@@ -76,9 +76,9 @@ type MakeError f a = String -> f a
 treeDelete :: ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeDelete path t1 =
   do
-    (ppath, name) <- note "Root path supplied to delete" $ initLast path
+    (ppath, name) <- note "Tried to delete root path" $ initLast path
     -- lookupMsg "Tried to delete absent value" path tree
-    parentNode <- lookupMsg "balh" ppath t1
+    parentNode <- lookupMsg "Deletion path not found" ppath t1
     parentNode' <- removeChildKey name parentNode
     t2 <- return $ Map.insert ppath parentNode' t1
     return $ Map.filterWithKey predicate t2
@@ -117,7 +117,7 @@ treeSet newNode path = Map.alterF set path
         | otherwise = Left "Cannot change type during set"
     doSet (Container t oldOrder) new@(Container t' newOrder)
         | t == t' && Set.fromList oldOrder == Set.fromList newOrder = Right new
-        | t == t' = Left "Cannot not change keys during set"
+        | t == t' = Left "Cannot change keys during set"
         | otherwise = Left "Cannot change type during set"
     doSet _ _ = Left "Cannot change type of container during set"
 
