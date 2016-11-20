@@ -30,8 +30,12 @@ data Interpolation = IConstant | ILinear | IBezier Word32 Word32
 type TimePoint a = (Interpolation, a)
 type TimeSeries a = Map.Map Time (TimePoint a)
 
-data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
+data Tuple a = TConstant (Maybe a) | TDynamic (TimeSeries a)
   deriving (Eq, Show)
+
+instance Functor Tuple where
+    fmap f (TConstant maybeVs) = TConstant $ fmap f maybeVs
+    fmap f (TDynamic tsVs) = TDynamic $ (fmap . fmap) f tsVs
 
 data Node a =
     Leaf {typePath :: ClapiPath, leafValue :: a} |
