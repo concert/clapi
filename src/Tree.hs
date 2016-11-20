@@ -1,6 +1,10 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE
+    ScopedTypeVariables, MultiParamTypeClasses,
+    FunctionalDependencies, FlexibleInstances
+#-}
 module Tree
     (
+        add, set, remove,
         Interpolation(..),
         TimePoint,
         TimeSeries,
@@ -25,6 +29,37 @@ import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
 import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
+
+
+type AlterF f a = Maybe a -> f (Maybe a)
+
+class AddSetRemove f k | f -> k where
+    alter :: Ord k => AlterF (Either String) a -> k -> f a ->
+       Either String (f a)
+
+    add :: Ord k => a -> k -> f a -> Either String (f a)
+    add a = alter (add' a)
+      where
+        add' :: a -> AlterF (Either String) a
+        add' new Nothing = Right . Just $ new
+        add' _ (Just _) = Left "tried to overwrite"
+
+    set :: Ord k => a -> k -> f a -> Either String (f a)
+    set a = alter (set' a)
+      where
+        set' :: a -> AlterF (Either String) a
+        set' _ Nothing = Left "tried to set absent value"
+        set' new (Just _) = Right . Just $ new
+
+    remove :: Ord k => k -> f a -> Either String (f a)
+    remove = alter remove'
+      where
+        remove' :: AlterF (Either String) a
+        remove' Nothing = Left "tried to remove absent value"
+        remove' (Just _) = Right Nothing
+
+instance AddSetRemove (Map.Map k) k where
+    alter = Map.alterF
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
@@ -101,7 +136,6 @@ lookupMsg msg path tree = note failMsg $ Map.lookup path tree
 treeGet :: ClapiPath -> ClapiTree a -> Either String (Node Name a)
 treeGet = lookupMsg "Item lookup failed"
 
-type AlterF f a = Maybe a -> f (Maybe a)
 type MakeError f a = String -> f a
 
 treeDelete :: ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
