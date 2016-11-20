@@ -25,8 +25,8 @@ tests = [
 c1 = Container [] ["a"]
 c2 = Container [] ["b"]
 c2' = Container [] ["c", "b"]
-l1 = Leaf [] 1
-l2 = Leaf [] 2
+l1 = Leaf [] (TConstant $ Just '1')
+l2 = Leaf [] (TConstant $ Just '2')
 t1 = Map.fromList [(root, c1), (["a"], c2), (["a", "b"], l1)]
 t2 = Map.fromList [
     (root, c1), (["a"], c2'), (["a", "b"], l1), (["a", "c"], l2)]
@@ -73,7 +73,7 @@ testTreeSet =
       (root, c1), (["a"], c2''), (["a", "b"], l1), (["a", "c"], l2)]
     c2'' = Container [] ["b", "c"]
     c3 = Container [] ["x", "y"]
-    c4 = Leaf ["foo"] 1
+    c4 = Leaf ["foo"] (TConstant $ Just '1')
     c5 = Container ["foo"] ["a"]
 
 

@@ -37,26 +37,27 @@ instance Functor Tuple where
     fmap f (TConstant maybeVs) = TConstant $ fmap f maybeVs
     fmap f (TDynamic tsVs) = TDynamic $ (fmap . fmap) f tsVs
 
-data Node a =
-    Leaf {typePath :: ClapiPath, leafValue :: a} |
-    Container {typePath :: ClapiPath, order :: [Name]}
+
+data Node a b =
+    Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
+    Container {typePath :: ClapiPath, order :: [a]}
   deriving (Eq, Show)
 
-type ClapiTree a = Map.Map ClapiPath (Node a)
+type ClapiTree a = Map.Map ClapiPath (Node Name a)
 
 emptyTree :: ClapiTree a
 emptyTree = Map.singleton root (Container [] [])
 
-modifyChildKeys :: ([Name] -> Either String [Name]) -> Node a ->
-    Either String (Node a)
+modifyChildKeys :: ([a] -> Either String [a]) -> Node a b ->
+    Either String (Node a b)
 modifyChildKeys f (Leaf {}) = Left "Cannot modify child keys of leaf node"
 modifyChildKeys f c@(Container {order = names}) =
     fmap (\ns -> c {order = ns}) $ f names
 
-addChildKey :: Name -> Node a -> Either String (Node a)
+addChildKey :: Eq a => a -> Node a b -> Either String (Node a b)
 addChildKey name = modifyChildKeys (\names -> Right $ name:names)
 
-removeChildKey :: Name -> Node a -> Either String (Node a)
+removeChildKey :: Eq a => a -> Node a b -> Either String (Node a b)
 removeChildKey name = modifyChildKeys f
   where
     f names = note "Tried to remove absent child key" $ removeElem name names
@@ -70,12 +71,12 @@ removeElem x xs = extract $ partitioned
     extract (_, xs) = Just xs
 
 
-lookupMsg :: String -> ClapiPath -> ClapiTree a -> Either String (Node a)
+lookupMsg :: String -> ClapiPath -> ClapiTree a -> Either String (Node Name a)
 lookupMsg msg path tree = note failMsg $ Map.lookup path tree
   where
     failMsg = msg ++ " at " ++ (show path)
 
-treeGet :: ClapiPath -> ClapiTree a -> Either String (Node a)
+treeGet :: ClapiPath -> ClapiTree a -> Either String (Node Name a)
 treeGet = lookupMsg "Item lookup failed"
 
 type AlterF f a = Maybe a -> f (Maybe a)
@@ -91,33 +92,33 @@ treeDelete path t1 =
     t2 <- return $ Map.insert ppath parentNode' t1
     return $ Map.filterWithKey predicate t2
   where
-    predicate :: ClapiPath -> Node a -> Bool
+    predicate :: ClapiPath -> Node Name a -> Bool
     predicate k _ = not $ path `isPrefixOf` k
     -- FIXME: this is O(n): I think we could do better because the keys are
     -- ordered, and we wasted time looking up the first key!
     removeSubtree = Map.filterWithKey predicate
 
 treeAdd :: forall a.
-    Node a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+    Node Name a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeAdd newNode path t1 =
   do
     (ppath, name) <- note "Root path supplied to add" $ initLast path
     t2 <- Map.alterF (parentAdd ppath name) ppath t1
     Map.alterF add path t2
   where
-    add :: AlterF (Either String) (Node a)
+    add :: AlterF (Either String) (Node Name a)
     add Nothing = Right . Just $ newNode
     add _ = Left $ "Tried to add over present value at " ++ (show path)
-    parentAdd :: ClapiPath -> Name -> AlterF (Either String) (Node a)
+    parentAdd :: ClapiPath -> Name -> AlterF (Either String) (Node Name a)
     parentAdd ppath _ Nothing = Left $ "No container at " ++ (show ppath)
     parentAdd _ name (Just c) =
         fmap Just $ addChildKey name c
 
 treeSet :: forall a.
-    Node a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+    Node Name a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeSet newNode path = Map.alterF set path
   where
-    set :: AlterF (Either String) (Node a)
+    set :: AlterF (Either String) (Node Name a)
     set (Just node) = fmap Just $ doSet node newNode
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
     doSet (Leaf {typePath = t}) new@(Leaf {typePath = t'})
