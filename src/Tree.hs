@@ -27,7 +27,7 @@ import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
-type TimePoint a = (a, Interpolation)
+type TimePoint a = (Interpolation, a)
 type TimeSeries a = Map.Map Time (TimePoint a)
 
 data Tuple = TConstant [ClapiValue] | TDynamic (TimeSeries [ClapiValue])
