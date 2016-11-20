@@ -68,6 +68,22 @@ instance Alterable (Map.Map k) k where
 instance Alterable (Maybe) () where
     alter f () maybe = f maybe
 
+class Bialterable f k1 k2 | f -> k1, f -> k2 where
+    bialter :: (Ord k1, Ord k2) =>
+        AlterF a -> AlterF a -> Either k1 k2 -> f k1 k2 a ->
+        CanFail (f k1 k2 a)
+    bialter f1 _ (Left k1) m = alterFirst f1 k1 m
+    bialter _ f2 (Right k2) m = alterSecond f2 k2 m
+
+    alterFirst :: (Ord k1, Ord k2) => AlterF a -> k1 -> f k1 k2 a ->
+        CanFail (f k1 k2 a)
+    alterFirst f1 k1 m = bialter f1 idAlter (Left k1) m
+
+    alterSecond :: (Ord k1, Ord k2) => AlterF a -> k2 -> f k1 k2 a ->
+        CanFail (f k1 k2 a)
+    alterSecond f2 k2 m = bialter idAlter f2 (Right k2) m
+    {-# MINIMAL bialter | (alterFirst, alterSecond) #-}
+
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
