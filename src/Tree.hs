@@ -68,19 +68,26 @@ data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
 type TimePoint a = (Interpolation, a)
-type TimeSeries a = Map.Map Time (TimePoint a)
+type TimeSeries a = Map.Map Time a
 
 data Tuple a = TConstant (Maybe a) | TDynamic (TimeSeries a)
   deriving (Eq, Show)
 
 instance Functor Tuple where
     fmap f (TConstant maybeVs) = TConstant $ fmap f maybeVs
-    fmap f (TDynamic tsVs) = TDynamic $ (fmap . fmap) f tsVs
+    fmap f (TDynamic tsVs) = TDynamic $ fmap f tsVs
 
 instance Foldable Tuple where
     foldMap f (TConstant maybeVs) = foldMap f maybeVs
-    foldMap f (TDynamic tsVs) = (foldMap . foldMap) f tsVs
+    foldMap f (TDynamic tsVs) = foldMap f tsVs
 
+instance AddSetRemove Tuple (Maybe Time) where
+    alter f (Just t) (TDynamic m) = fmap TDynamic $ alter f t m
+    alter f Nothing (TDynamic _) =
+        Left "Can't change dynamic without providing a time"
+    alter f Nothing (TConstant maybe) = fmap TConstant $ alter f () maybe
+    alter f (Just _) (TConstant _) =
+        Left "Can't change static and provide a time"
 
 data Node a b =
     Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
