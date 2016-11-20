@@ -89,9 +89,6 @@ treeDelete path t1 =
     -- ordered, and we wasted time looking up the first key!
     removeSubtree = Map.filterWithKey predicate
 
--- parent :: ClapiPath -> ClapiTree a -> Maybe (Node a)
--- parent path tree = hush $ treeGet (up path) tree
-
 treeAdd :: forall a.
     Node a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeAdd newNode path t1 =
