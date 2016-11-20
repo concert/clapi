@@ -31,27 +31,27 @@ import Control.Applicative (Const(..))
 import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 
 
-type AlterF a = Maybe a -> Either String (Maybe a)
+type CanFail a = Either String a
+type AlterF a = Maybe a -> CanFail (Maybe a)
 
 class Alterable f k | f -> k where
-    alter :: Ord k => AlterF a -> k -> f a ->
-       Either String (f a)
+    alter :: Ord k => AlterF a -> k -> f a -> CanFail (f a)
 
-add :: (Alterable f k, Ord k) => a -> k -> f a -> Either String (f a)
+add :: (Alterable f k, Ord k) => a -> k -> f a -> CanFail (f a)
 add a = alter (add' a)
     where
     add' :: a -> AlterF a
     add' new Nothing = Right . Just $ new
     add' _ (Just _) = Left "tried to overwrite"
 
-set :: (Alterable f k, Ord k) => a -> k -> f a -> Either String (f a)
+set :: (Alterable f k, Ord k) => a -> k -> f a -> CanFail (f a)
 set a = alter (set' a)
     where
     set' :: a -> AlterF a
     set' _ Nothing = Left "tried to set absent value"
     set' new (Just _) = Right . Just $ new
 
-remove :: (Alterable f k, Ord k) => k -> f a -> Either String (f a)
+remove :: (Alterable f k, Ord k) => k -> f a -> CanFail (f a)
 remove = alter remove'
     where
     remove' :: AlterF a
@@ -115,16 +115,15 @@ type ClapiTree a = Map.Map ClapiPath (Node Name a)
 emptyTree :: ClapiTree a
 emptyTree = Map.singleton root (Container [] [])
 
-modifyChildKeys :: ([a] -> Either String [a]) -> Node a b ->
-    Either String (Node a b)
+modifyChildKeys :: ([a] -> CanFail [a]) -> Node a b -> CanFail (Node a b)
 modifyChildKeys f (Leaf {}) = Left "Cannot modify child keys of leaf node"
 modifyChildKeys f c@(Container {order = names}) =
     fmap (\ns -> c {order = ns}) $ f names
 
-addChildKey :: Eq a => a -> Node a b -> Either String (Node a b)
+addChildKey :: Eq a => a -> Node a b -> CanFail (Node a b)
 addChildKey name = modifyChildKeys (\names -> Right $ name:names)
 
-removeChildKey :: Eq a => a -> Node a b -> Either String (Node a b)
+removeChildKey :: Eq a => a -> Node a b -> CanFail (Node a b)
 removeChildKey name = modifyChildKeys f
   where
     f names = note "Tried to remove absent child key" $ removeElem name names
@@ -138,17 +137,17 @@ removeElem x xs = extract $ partitioned
     extract (_, xs) = Just xs
 
 
-lookupMsg :: String -> ClapiPath -> ClapiTree a -> Either String (Node Name a)
+lookupMsg :: String -> ClapiPath -> ClapiTree a -> CanFail (Node Name a)
 lookupMsg msg path tree = note failMsg $ Map.lookup path tree
   where
     failMsg = msg ++ " at " ++ (show path)
 
-treeGet :: ClapiPath -> ClapiTree a -> Either String (Node Name a)
+treeGet :: ClapiPath -> ClapiTree a -> CanFail (Node Name a)
 treeGet = lookupMsg "Item lookup failed"
 
 type MakeError f a = String -> f a
 
-treeDelete :: ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+treeDelete :: ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
 treeDelete path t1 =
   do
     (ppath, name) <- note "Tried to delete root path" $ initLast path
@@ -165,7 +164,7 @@ treeDelete path t1 =
     removeSubtree = Map.filterWithKey predicate
 
 treeAdd :: forall a.
-    Node Name a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+    Node Name a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
 treeAdd newNode path t1 =
   do
     (ppath, name) <- note "Root path supplied to add" $ initLast path
@@ -181,7 +180,7 @@ treeAdd newNode path t1 =
         fmap Just $ addChildKey name c
 
 treeSet :: forall a.
-    Node Name a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
+    Node Name a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
 treeSet newNode path = Map.alterF set path
   where
     set :: AlterF (Node Name a)
