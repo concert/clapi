@@ -34,6 +34,10 @@ import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 type CanFail a = Either String a
 type AlterF a = Maybe a -> CanFail (Maybe a)
 
+idAlter :: AlterF a
+idAlter Nothing = Right Nothing
+idAlter (Just x) = Right $ Just x
+
 class Alterable f k | f -> k where
     alter :: Ord k => AlterF a -> k -> f a -> CanFail (f a)
 
