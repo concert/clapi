@@ -7,6 +7,7 @@ module Tree
         Tuple(..),
         Node(..),
         ClapiTree(..),
+        emptyTree,
         treeGet, treeAdd, treeSet, treeDelete,
         mapDiff, applyMapDiff, Delta(..)
     )
@@ -21,7 +22,7 @@ import Data.Map.Strict.Merge (
 import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
-import Types (Name, ClapiPath(..), up, initLast, Time, ClapiValue)
+import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
@@ -38,6 +39,9 @@ data Node a =
   deriving (Eq, Show)
 
 type ClapiTree a = Map.Map ClapiPath (Node a)
+
+emptyTree :: ClapiTree a
+emptyTree = Map.singleton root (Container [] [])
 
 modifyChildKeys :: ([Name] -> Either String [Name]) -> Node a ->
     Either String (Node a)
