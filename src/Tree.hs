@@ -31,30 +31,30 @@ import Control.Applicative (Const(..))
 import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 
 
-type AlterF f a = Maybe a -> f (Maybe a)
+type AlterF a = Maybe a -> Either String (Maybe a)
 
 class Alterable f k | f -> k where
-    alter :: Ord k => AlterF (Either String) a -> k -> f a ->
+    alter :: Ord k => AlterF a -> k -> f a ->
        Either String (f a)
 
 add :: (Alterable f k, Ord k) => a -> k -> f a -> Either String (f a)
 add a = alter (add' a)
     where
-    add' :: a -> AlterF (Either String) a
+    add' :: a -> AlterF a
     add' new Nothing = Right . Just $ new
     add' _ (Just _) = Left "tried to overwrite"
 
 set :: (Alterable f k, Ord k) => a -> k -> f a -> Either String (f a)
 set a = alter (set' a)
     where
-    set' :: a -> AlterF (Either String) a
+    set' :: a -> AlterF a
     set' _ Nothing = Left "tried to set absent value"
     set' new (Just _) = Right . Just $ new
 
 remove :: (Alterable f k, Ord k) => k -> f a -> Either String (f a)
 remove = alter remove'
     where
-    remove' :: AlterF (Either String) a
+    remove' :: AlterF a
     remove' Nothing = Left "tried to remove absent value"
     remove' (Just _) = Right Nothing
 
@@ -172,10 +172,10 @@ treeAdd newNode path t1 =
     t2 <- Map.alterF (parentAdd ppath name) ppath t1
     Map.alterF add path t2
   where
-    add :: AlterF (Either String) (Node Name a)
+    add :: AlterF (Node Name a)
     add Nothing = Right . Just $ newNode
     add _ = Left $ "Tried to add over present value at " ++ (show path)
-    parentAdd :: ClapiPath -> Name -> AlterF (Either String) (Node Name a)
+    parentAdd :: ClapiPath -> Name -> AlterF (Node Name a)
     parentAdd ppath _ Nothing = Left $ "No container at " ++ (show ppath)
     parentAdd _ name (Just c) =
         fmap Just $ addChildKey name c
@@ -184,7 +184,7 @@ treeSet :: forall a.
     Node Name a -> ClapiPath -> ClapiTree a -> Either String (ClapiTree a)
 treeSet newNode path = Map.alterF set path
   where
-    set :: AlterF (Either String) (Node Name a)
+    set :: AlterF (Node Name a)
     set (Just node) = fmap Just $ doSet node newNode
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
     doSet (Leaf {typePath = t}) new@(Leaf {typePath = t'})
