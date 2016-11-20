@@ -16,6 +16,7 @@ where
 import Data.Word (Word32, Word64)
 import Data.List (isPrefixOf, partition)
 import Data.Bifunctor (Bifunctor, bimap)
+import Data.Bifoldable (Bifoldable, bifoldMap, binull)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Map.Strict.Merge (
@@ -38,6 +39,10 @@ instance Functor Tuple where
     fmap f (TConstant maybeVs) = TConstant $ fmap f maybeVs
     fmap f (TDynamic tsVs) = TDynamic $ (fmap . fmap) f tsVs
 
+instance Foldable Tuple where
+    foldMap f (TConstant maybeVs) = foldMap f maybeVs
+    foldMap f (TDynamic tsVs) = (foldMap . foldMap) f tsVs
+
 
 data Node a b =
     Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
@@ -48,9 +53,17 @@ instance Functor (Node a) where
     fmap f l@(Leaf {leafValue = v}) = l {leafValue = fmap f v}
     fmap _ (Container tp ord) = Container tp ord
 
+instance Foldable (Node a) where
+    foldMap f (Leaf {leafValue = v}) = foldMap f v
+    foldMap f (Container {}) = mempty
+
 instance Bifunctor Node where
     bimap f _ c@(Container {order = ord}) = c {order = fmap f ord}
     bimap _ g l@(Leaf {leafValue = v}) = l {leafValue = fmap g v}
+
+instance Bifoldable Node where
+    bifoldMap f _ (Container {order = ord}) = foldMap f ord
+    bifoldMap _ g (Leaf {leafValue = v}) = foldMap g v
 
 type ClapiTree a = Map.Map ClapiPath (Node Name a)
 
