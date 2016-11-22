@@ -27,7 +27,7 @@ library
                      , errors
                      , lens
                      , bifunctors
-                     , containers
+                     , containers >= 0.5.8.1
                      , data-binary-ieee754
                      , parsec
                      , attoparsec

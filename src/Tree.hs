@@ -22,9 +22,9 @@ import Data.Bifunctor (Bifunctor, bimap)
 import Data.Bifoldable (Bifoldable, bifoldMap, binull)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
--- import Data.Map.Strict.Merge (
---     merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
-import Control.Lens (view, at, At, Index, IxValue)
+import Data.Map.Strict.Merge (
+    merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
+import Control.Lens (view, at, At, Index, IxValue, makeLenses)
 import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
@@ -191,29 +191,27 @@ instance Functor Delta where
     fmap f (Change a) = Change (f a)
 
 
--- mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
--- mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
---   where
---     onlyInM1 = mapMissing $ \k v1 -> Remove
---     onlyInM2 = mapMissing $ \k v2 -> Add v2
---     inBoth = zipWithMaybeMatched diffValue
---     diffValue _ x y
---         | x == y = Nothing
---         | otherwise = Just (Change y)
-mapDiff = undefined
+mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
+mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
+  where
+    onlyInM1 = mapMissing $ \k v1 -> Remove
+    onlyInM2 = mapMissing $ \k v2 -> Add v2
+    inBoth = zipWithMaybeMatched diffValue
+    diffValue _ x y
+        | x == y = Nothing
+        | otherwise = Just (Change y)
 
--- applyMapDiff :: Ord k => Map.Map k (Delta a) -> Map.Map k a -> Map.Map k a
--- applyMapDiff d m = merge onlyInD onlyInM inBoth d m
---   where
---     onlyInD = mapMissing onlyInDf
---     onlyInDf _ (Add v) = v
---     -- FIXME: These undefineds are bad error handling...
---     onlyInDf _ _ = undefined
---     onlyInM = mapMissing $ \k v -> v
---     inBoth = zipWithMaybeMatched inBothf
---     inBothf _ (Change v) _ = Just v
---     inBothf _ (Remove) _ = Nothing
-applyMapDiff = undefined
+applyMapDiff :: Ord k => Map.Map k (Delta a) -> Map.Map k a -> Map.Map k a
+applyMapDiff d m = merge onlyInD onlyInM inBoth d m
+  where
+    onlyInD = mapMissing onlyInDf
+    onlyInDf _ (Add v) = v
+    -- FIXME: These undefineds are bad error handling...
+    onlyInDf _ _ = undefined
+    onlyInM = mapMissing $ \k v -> v
+    inBoth = zipWithMaybeMatched inBothf
+    inBothf _ (Change v) _ = Just v
+    inBothf _ (Remove) _ = Nothing
 
 
 diffMaybe :: Maybe a -> Maybe a -> Maybe (Delta a)
