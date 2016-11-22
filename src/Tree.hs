@@ -1,6 +1,5 @@
 {-# LANGUAGE
-    ScopedTypeVariables, MultiParamTypeClasses,
-    FunctionalDependencies, FlexibleInstances
+    ScopedTypeVariables
 #-}
 module Tree
     (
@@ -23,8 +22,9 @@ import Data.Bifunctor (Bifunctor, bimap)
 import Data.Bifoldable (Bifoldable, bifoldMap, binull)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Data.Map.Strict.Merge (
-    merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
+-- import Data.Map.Strict.Merge (
+--     merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
+import Control.Lens (view, at, At, Index, IxValue)
 import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
@@ -38,51 +38,26 @@ idAlter :: AlterF a
 idAlter Nothing = Right Nothing
 idAlter (Just x) = Right $ Just x
 
-class Alterable f k | f -> k where
-    alter :: Ord k => AlterF a -> k -> f a -> CanFail (f a)
+add' :: a -> AlterF a
+add' new Nothing = Right . Just $ new
+add' _ (Just _) = Left "tried to overwrite"
 
-add :: (Alterable f k, Ord k) => a -> k -> f a -> CanFail (f a)
-add a = alter (add' a)
-    where
-    add' :: a -> AlterF a
-    add' new Nothing = Right . Just $ new
-    add' _ (Just _) = Left "tried to overwrite"
+add :: (At m) => IxValue m -> Index m -> m -> CanFail (m)
+add a k = at k (add' a)
 
-set :: (Alterable f k, Ord k) => a -> k -> f a -> CanFail (f a)
-set a = alter (set' a)
-    where
-    set' :: a -> AlterF a
-    set' _ Nothing = Left "tried to set absent value"
-    set' new (Just _) = Right . Just $ new
+set' :: a -> AlterF a
+set' _ Nothing = Left "tried to set absent value"
+set' new (Just _) = Right . Just $ new
 
-remove :: (Alterable f k, Ord k) => k -> f a -> CanFail (f a)
-remove = alter remove'
-    where
-    remove' :: AlterF a
-    remove' Nothing = Left "tried to remove absent value"
-    remove' (Just _) = Right Nothing
+set :: (At m) => IxValue m -> Index m -> m -> CanFail (m)
+set a k = at k (set' a)
 
-instance Alterable (Map.Map k) k where
-    alter = Map.alterF
+remove' :: AlterF a
+remove' Nothing = Left "tried to remove absent value"
+remove' (Just _) = Right Nothing
 
-instance Alterable (Maybe) () where
-    alter f () maybe = f maybe
-
-class Bialterable f k1 k2 | f -> k1, f -> k2 where
-    bialter :: (Ord k1, Ord k2) =>
-        AlterF a -> AlterF a -> Either k1 k2 -> f k1 k2 a ->
-        CanFail (f k1 k2 a)
-    bialter f1 _ (Left k1) m = alterFirst f1 k1 m
-    bialter _ f2 (Right k2) m = alterSecond f2 k2 m
-
-    alterFirst :: (Ord k1, Ord k2) => AlterF a -> k1 -> f k1 k2 a ->
-        CanFail (f k1 k2 a)
-    alterFirst f1 k1 m = bialter f1 idAlter (Left k1) m
-
-    alterSecond :: (Ord k1, Ord k2) => AlterF a -> k2 -> f k1 k2 a ->
-        CanFail (f k1 k2 a)
-    alterSecond f2 k2 m = bialter idAlter f2 (Right k2) m
-    {-# MINIMAL bialter | (alterFirst, alterSecond) #-}
+remove :: (At m) => Index m -> m -> CanFail (m)
+remove k = at k remove'
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
@@ -100,14 +75,6 @@ instance Functor Tuple where
 instance Foldable Tuple where
     foldMap f (TConstant maybeVs) = foldMap f maybeVs
     foldMap f (TDynamic tsVs) = foldMap f tsVs
-
-instance Alterable Tuple (Maybe Time) where
-    alter f (Just t) (TDynamic m) = fmap TDynamic $ alter f t m
-    alter f Nothing (TDynamic _) =
-        Left "Can't change dynamic without providing a time"
-    alter f Nothing (TConstant maybe) = fmap TConstant $ alter f () maybe
-    alter f (Just _) (TConstant _) =
-        Left "Can't change static and provide a time"
 
 data Node a b =
     Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
@@ -163,7 +130,7 @@ lookupMsg msg path tree = note failMsg $ Map.lookup path tree
     failMsg = msg ++ " at " ++ (show path)
 
 treeGet :: ClapiPath -> ClapiTree a -> CanFail (Node Name a)
-treeGet = lookupMsg "Item lookup failed"
+treeGet path tree = note "Item lookup failed" $ view (at path) tree
 
 type MakeError f a = String -> f a
 
@@ -188,8 +155,8 @@ treeAdd :: forall a.
 treeAdd newNode path t1 =
   do
     (ppath, name) <- note "Root path supplied to add" $ initLast path
-    t2 <- Map.alterF (parentAdd ppath name) ppath t1
-    Map.alterF add path t2
+    t2 <- at ppath (parentAdd ppath name) t1
+    at path add t2
   where
     add :: AlterF (Node Name a)
     add Nothing = Right . Just $ newNode
@@ -201,7 +168,7 @@ treeAdd newNode path t1 =
 
 treeSet :: forall a.
     Node Name a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
-treeSet newNode path = Map.alterF set path
+treeSet newNode path = at path set
   where
     set :: AlterF (Node Name a)
     set (Just node) = fmap Just $ doSet node newNode
@@ -224,27 +191,29 @@ instance Functor Delta where
     fmap f (Change a) = Change (f a)
 
 
-mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
-mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
-  where
-    onlyInM1 = mapMissing $ \k v1 -> Remove
-    onlyInM2 = mapMissing $ \k v2 -> Add v2
-    inBoth = zipWithMaybeMatched diffValue
-    diffValue _ x y
-        | x == y = Nothing
-        | otherwise = Just (Change y)
+-- mapDiff :: (Ord k, Eq a) => Map.Map k a -> Map.Map k a -> Map.Map k (Delta a)
+-- mapDiff m1 m2 = merge onlyInM1 onlyInM2 inBoth m1 m2
+--   where
+--     onlyInM1 = mapMissing $ \k v1 -> Remove
+--     onlyInM2 = mapMissing $ \k v2 -> Add v2
+--     inBoth = zipWithMaybeMatched diffValue
+--     diffValue _ x y
+--         | x == y = Nothing
+--         | otherwise = Just (Change y)
+mapDiff = undefined
 
-applyMapDiff :: Ord k => Map.Map k (Delta a) -> Map.Map k a -> Map.Map k a
-applyMapDiff d m = merge onlyInD onlyInM inBoth d m
-  where
-    onlyInD = mapMissing onlyInDf
-    onlyInDf _ (Add v) = v
-    -- FIXME: These undefineds are bad error handling...
-    onlyInDf _ _ = undefined
-    onlyInM = mapMissing $ \k v -> v
-    inBoth = zipWithMaybeMatched inBothf
-    inBothf _ (Change v) _ = Just v
-    inBothf _ (Remove) _ = Nothing
+-- applyMapDiff :: Ord k => Map.Map k (Delta a) -> Map.Map k a -> Map.Map k a
+-- applyMapDiff d m = merge onlyInD onlyInM inBoth d m
+--   where
+--     onlyInD = mapMissing onlyInDf
+--     onlyInDf _ (Add v) = v
+--     -- FIXME: These undefineds are bad error handling...
+--     onlyInDf _ _ = undefined
+--     onlyInM = mapMissing $ \k v -> v
+--     inBoth = zipWithMaybeMatched inBothf
+--     inBothf _ (Change v) _ = Just v
+--     inBothf _ (Remove) _ = Nothing
+applyMapDiff = undefined
 
 
 diffMaybe :: Maybe a -> Maybe a -> Maybe (Delta a)
