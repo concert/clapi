@@ -132,8 +132,6 @@ lookupMsg msg path tree = note failMsg $ Map.lookup path tree
 treeGet :: ClapiPath -> ClapiTree a -> CanFail (Node Name a)
 treeGet path tree = note "Item lookup failed" $ view (at path) tree
 
-type MakeError f a = String -> f a
-
 treeDelete :: ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
 treeDelete path t1 =
   do
