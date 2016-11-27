@@ -1,5 +1,5 @@
 {-# LANGUAGE
-    ScopedTypeVariables
+    ScopedTypeVariables, TypeFamilies
 #-}
 module Tree
     (
@@ -12,7 +12,9 @@ module Tree
         ClapiTree(..),
         emptyTree,
         treeGet, treeAdd, treeSet, treeDelete,
-        mapDiff, applyMapDiff, Delta(..)
+        mapDiff, applyMapDiff, Delta(..),
+        add', set', remove',
+        failAt,
     )
 where
 
@@ -24,7 +26,8 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Map.Strict.Merge (
     merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
-import Control.Lens (view, at, At, Index, IxValue, makeLenses)
+import Control.Lens (
+    Lens', view, at, At(..), Index(..), IxValue(..), Ixed(..))
 import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
@@ -67,6 +70,34 @@ type TimeSeries a = Map.Map Time a
 
 data Tuple a = TConstant (Maybe a) | TDynamic (TimeSeries a)
   deriving (Eq, Show)
+
+type instance Index (Tuple a) = Maybe Time
+type instance IxValue (Tuple a) = a
+instance Ixed (Tuple a) where
+  ix Nothing f tup@(TConstant ma) = case ma of
+      Nothing -> pure tup
+      (Just a) -> (\v -> TConstant $ Just v) <$> f a
+  ix (Just time) f tup@(TDynamic ts) = case Map.lookup time ts of
+      Nothing -> pure tup
+      (Just a) -> (\v -> TDynamic $ Map.insert time v ts) <$> f a
+  ix _ _ tup = pure tup
+
+instance At (Tuple a) where
+    at (Nothing) f (TConstant ma) = TConstant <$> f ma
+    at (Just time) f (TDynamic tsa) = TDynamic <$> Map.alterF f time tsa
+    at _ _ _ = undefined
+
+class Ixed m => FailAt m where
+    failAt :: Index m -> (Maybe (IxValue m) -> CanFail (Maybe (IxValue m))) ->
+        m -> CanFail m
+
+instance FailAt (Tuple a) where
+    failAt Nothing f tup@(TConstant _) = at Nothing f tup
+    failAt (Just _) f (TConstant _) =
+        Left "Can't provide time to index constant time series"
+    failAt t@(Just _) f tup@(TDynamic _) = at t f tup
+    failAt _ _ _ = Left "Must provide a time to index dynamic time series"
+
 
 instance Functor Tuple where
     fmap f (TConstant maybeVs) = TConstant $ fmap f maybeVs
