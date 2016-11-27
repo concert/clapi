@@ -1,5 +1,5 @@
 {-# LANGUAGE
-    ScopedTypeVariables, TypeFamilies
+    ScopedTypeVariables, TemplateHaskell, TypeFamilies
 #-}
 module Tree
     (
@@ -10,11 +10,12 @@ module Tree
         Tuple(..),
         Node(..),
         ClapiTree(..),
+        ClapiTree'(..),
         emptyTree,
         treeGet, treeAdd, treeSet, treeDelete,
         mapDiff, applyMapDiff, Delta(..),
         add', set', remove',
-        failAt,
+        failAt, leafValue
     )
 where
 
@@ -27,7 +28,7 @@ import qualified Data.Set as Set
 import Data.Map.Strict.Merge (
     merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
 import Control.Lens (
-    Lens', view, at, At(..), Index(..), IxValue(..), Ixed(..))
+    Lens, Lens', view, at, At(..), Index(..), IxValue(..), Ixed(..), makeLenses)
 import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
 
@@ -111,41 +112,53 @@ instance Traversable Tuple where
     traverse f (TConstant ma) = TConstant <$> traverse f ma
     traverse f (TDynamic tsa) = TDynamic <$> traverse f tsa
 
-data Node a b =
-    Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
-    Container {typePath :: ClapiPath, order :: [a]}
+data Node a =
+    Leaf {_typePath :: ClapiPath, _leafValue :: Tuple a} |
+    Container {_typePath :: ClapiPath, _order :: [Name]}
   deriving (Eq, Show)
+makeLenses ''Node
 
-instance Functor (Node a) where
-    fmap f l@(Leaf {leafValue = v}) = l {leafValue = fmap f v}
+
+instance Functor Node where
+    fmap f l@(Leaf {_leafValue = v}) = l {_leafValue = fmap f v}
     fmap _ (Container tp ord) = Container tp ord
 
-instance Foldable (Node a) where
-    foldMap f (Leaf {leafValue = v}) = foldMap f v
+instance Foldable Node where
+    foldMap f (Leaf {_leafValue = v}) = foldMap f v
     foldMap f (Container {}) = mempty
 
-instance Bifunctor Node where
-    bimap f _ c@(Container {order = ord}) = c {order = fmap f ord}
-    bimap _ g l@(Leaf {leafValue = v}) = l {leafValue = fmap g v}
+instance Traversable Node where
+    traverse f l@(Leaf {_leafValue = v}) =
+        (\v' -> l {_leafValue = v'}) <$> traverse f v
+    traverse _ (Container tp ord) = pure $ Container tp ord
 
-instance Bifoldable Node where
-    bifoldMap f _ (Container {order = ord}) = foldMap f ord
-    bifoldMap _ g (Leaf {leafValue = v}) = foldMap g v
+type ClapiTree a = Map.Map ClapiPath (Node a)
+newtype ClapiTree' a = ClapiTree' {getMap :: Map.Map ClapiPath (Node a)}
+  deriving (Show)
 
-type ClapiTree a = Map.Map ClapiPath (Node Name a)
+type instance Index (ClapiTree' a) = ClapiPath
+type instance IxValue (ClapiTree' a) = a
+instance Ixed (ClapiTree' a) where
+  ix k f tree = case Map.lookup k (getMap tree) of
+      Just leaf@(Leaf {}) -> pure tree -- fmap f leaf
+      Just (Container {}) -> pure tree
+      Nothing -> pure tree
+
+-- instance ClapiTree' At (ClapiTree') where
+--   at
 
 emptyTree :: ClapiTree a
 emptyTree = Map.singleton root (Container [] [])
 
-modifyChildKeys :: ([a] -> CanFail [a]) -> Node a b -> CanFail (Node a b)
+modifyChildKeys :: ([Name] -> CanFail [Name]) -> Node a -> CanFail (Node a)
 modifyChildKeys f (Leaf {}) = Left "Cannot modify child keys of leaf node"
-modifyChildKeys f c@(Container {order = names}) =
-    fmap (\ns -> c {order = ns}) $ f names
+modifyChildKeys f c@(Container {_order = names}) =
+    fmap (\ns -> c {_order = ns}) $ f names
 
-addChildKey :: Eq a => a -> Node a b -> CanFail (Node a b)
+addChildKey :: Name -> Node a  -> CanFail (Node a)
 addChildKey name = modifyChildKeys (\names -> Right $ name:names)
 
-removeChildKey :: Eq a => a -> Node a b -> CanFail (Node a b)
+removeChildKey :: Name -> Node a -> CanFail (Node a)
 removeChildKey name = modifyChildKeys f
   where
     f names = note "Tried to remove absent child key" $ removeElem name names
@@ -159,12 +172,12 @@ removeElem x xs = extract $ partitioned
     extract (_, xs) = Just xs
 
 
-lookupMsg :: String -> ClapiPath -> ClapiTree a -> CanFail (Node Name a)
+lookupMsg :: String -> ClapiPath -> ClapiTree a -> CanFail (Node a)
 lookupMsg msg path tree = note failMsg $ Map.lookup path tree
   where
     failMsg = msg ++ " at " ++ (show path)
 
-treeGet :: ClapiPath -> ClapiTree a -> CanFail (Node Name a)
+treeGet :: ClapiPath -> ClapiTree a -> CanFail (Node a)
 treeGet path tree = note "Item lookup failed" $ view (at path) tree
 
 treeDelete :: ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
@@ -177,36 +190,36 @@ treeDelete path t1 =
     t2 <- return $ Map.insert ppath parentNode' t1
     return $ Map.filterWithKey predicate t2
   where
-    predicate :: ClapiPath -> Node Name a -> Bool
+    predicate :: ClapiPath -> Node a -> Bool
     predicate k _ = not $ path `isPrefixOf` k
     -- FIXME: this is O(n): I think we could do better because the keys are
     -- ordered, and we wasted time looking up the first key!
     removeSubtree = Map.filterWithKey predicate
 
 treeAdd :: forall a.
-    Node Name a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
+    Node a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
 treeAdd newNode path t1 =
   do
     (ppath, name) <- note "Root path supplied to add" $ initLast path
     t2 <- at ppath (parentAdd ppath name) t1
     at path add t2
   where
-    add :: AlterF (Node Name a)
+    add :: AlterF (Node a)
     add Nothing = Right . Just $ newNode
     add _ = Left $ "Tried to add over present value at " ++ (show path)
-    parentAdd :: ClapiPath -> Name -> AlterF (Node Name a)
+    parentAdd :: ClapiPath -> Name -> AlterF (Node a)
     parentAdd ppath _ Nothing = Left $ "No container at " ++ (show ppath)
     parentAdd _ name (Just c) =
         fmap Just $ addChildKey name c
 
 treeSet :: forall a.
-    Node Name a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
+    Node a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
 treeSet newNode path = at path set
   where
-    set :: AlterF (Node Name a)
+    set :: AlterF (Node a)
     set (Just node) = fmap Just $ doSet node newNode
     set _ = Left $ "Tried to set at absent value at " ++ (show path)
-    doSet (Leaf {typePath = t}) new@(Leaf {typePath = t'})
+    doSet (Leaf {_typePath = t}) new@(Leaf {_typePath = t'})
         | t == t' = Right new
         | otherwise = Left "Cannot change type during set"
     doSet (Container t oldOrder) new@(Container t' newOrder)
