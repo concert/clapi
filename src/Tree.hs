@@ -107,6 +107,10 @@ instance Foldable Tuple where
     foldMap f (TConstant maybeVs) = foldMap f maybeVs
     foldMap f (TDynamic tsVs) = foldMap f tsVs
 
+instance Traversable Tuple where
+    traverse f (TConstant ma) = TConstant <$> traverse f ma
+    traverse f (TDynamic tsa) = TDynamic <$> traverse f tsa
+
 data Node a b =
     Leaf {typePath :: ClapiPath, leafValue :: Tuple b} |
     Container {typePath :: ClapiPath, order :: [a]}
