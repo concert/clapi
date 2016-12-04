@@ -101,8 +101,8 @@ initLast as = Just $ internal as
     accumulate (acc, a') a = (a:acc, a')
 
 data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
-    Unsubscribe | AssignType | Children | Delete |
-    Identify deriving (Eq, Show, Read, Enum, Bounded)
+    Unsubscribe | AssignType | Children | Delete
+  deriving (Eq, Show, Read, Enum, Bounded)
 
 type ClapiMessageTag = (String, ClapiValue)
 

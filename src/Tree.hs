@@ -2,231 +2,259 @@
     ScopedTypeVariables, TemplateHaskell, TypeFamilies
 #-}
 module Tree
-    (
-        add, set, remove,
-        Interpolation(..),
-        TimePoint,
-        TimeSeries,
-        Tuple(..),
-        Node(..),
-        ClapiTree(..),
-        ClapiTree'(..),
-        emptyTree,
-        treeGet, treeAdd, treeSet, treeDelete,
-        mapDiff, applyMapDiff, Delta(..),
-        add', set', remove',
-        failAt, leafValue
-    )
+    -- (
+    --     add, set, remove,
+    --     Interpolation(..),
+    --     TimePoint,
+    --     TimeSeries,
+    --     Node(..),
+    --     ClapiTree(..),
+    --     emptyTree,
+    --     -- treeGet, treeAdd, treeSet, treeDelete,
+    --     mapDiff, applyMapDiff, Delta(..),
+    --     add', set', remove',
+    --     -- getValues, getSites,
+    --     failAt,
+    -- )
 where
 
 import Data.Word (Word32, Word64)
-import Data.List (isPrefixOf, partition)
-import Data.Bifunctor (Bifunctor, bimap)
-import Data.Bifoldable (Bifoldable, bifoldMap, binull)
+import Data.List (isPrefixOf, partition, intercalate)
+import Data.Monoid ((<>))
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Map.Strict.Merge (
-    merge, mapMissing, zipWithMatched, zipWithMaybeMatched)
+    merge, mapMissing, dropMissing, preserveMissing, zipWithMatched,
+    zipWithMaybeMatched)
 import Control.Lens (
-    Lens, Lens', view, at, At(..), Index(..), IxValue(..), Ixed(..), makeLenses)
+    Lens, Lens', (.~), (&), view, over, ix, at, At(..), Index(..),
+    IxValue(..), Ixed(..), makeLenses)
 import Control.Error.Util (hush, note)
 import Control.Applicative (Const(..))
+import Text.Printf (printf)
 
+import Parsing (pathToString)
 import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 
 
 type CanFail a = Either String a
-type AlterF a = Maybe a -> CanFail (Maybe a)
 
-idAlter :: AlterF a
-idAlter Nothing = Right Nothing
-idAlter (Just x) = Right $ Just x
+maybeToMonoid :: (Monoid a) => Maybe a -> a
+maybeToMonoid Nothing = mempty
+maybeToMonoid (Just a) = a
 
-add' :: a -> AlterF a
-add' new Nothing = Right . Just $ new
-add' _ (Just _) = Left "tried to overwrite"
+foldableToMaybe :: (Foldable t) => t a -> Maybe (t a)
+foldableToMaybe t
+  | null t = Nothing
+  | otherwise = Just t
 
-add :: (At m) => IxValue m -> Index m -> m -> CanFail (m)
-add a k = at k (add' a)
+mapLookupM :: (Monoid a, Ord k) => k -> Map.Map k a -> a
+mapLookupM k m = maybeToMonoid $ Map.lookup k m
 
-set' :: a -> AlterF a
-set' _ Nothing = Left "tried to set absent value"
-set' new (Just _) = Right . Just $ new
+mapUpdateM :: (Monoid a, Ord k) => (a -> a) -> k -> Map.Map k a -> Map.Map k a
+mapUpdateM f = Map.alter (Just . f . maybeToMonoid)
 
-set :: (At m) => IxValue m -> Index m -> m -> CanFail (m)
-set a k = at k (set' a)
+type Mos k a = Map.Map k (Set.Set a)
 
-remove' :: AlterF a
-remove' Nothing = Left "tried to remove absent value"
-remove' (Just _) = Right Nothing
+mosInsert :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
+mosInsert k a = mapUpdateM (Set.insert a) k
 
-remove :: (At m) => Index m -> m -> CanFail (m)
-remove k = at k remove'
+mosDelete :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
+mosDelete k a = Map.update f k
+  where
+    f = foldableToMaybe . (Set.delete a)
+
+invertMap :: (Ord k, Ord a) => Map.Map k a -> Mos a k
+invertMap = Map.foldrWithKey (flip mosInsert) mempty
+
+mosDifference :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
+mosDifference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
+  where
+    f k sa1 sa2 = foldableToMaybe $ Set.difference sa1 sa2
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
 type TimePoint a = (Interpolation, a)
-type TimeSeries a = Map.Map Time a
+type Attributee = String
+type Attributed a = (Maybe Attributee, a)
+type TimeSeries a = Map.Map Time (Attributed (Maybe (TimePoint a)))
 
-data Tuple a = TConstant (Maybe a) | TDynamic (TimeSeries a)
-  deriving (Eq, Show)
+type Site = String
+type SiteMap a = Map.Map (Maybe Site) a
 
-type instance Index (Tuple a) = Maybe Time
-type instance IxValue (Tuple a) = a
-instance Ixed (Tuple a) where
-  ix Nothing f tup@(TConstant ma) = case ma of
-      Nothing -> pure tup
-      (Just a) -> (\v -> TConstant $ Just v) <$> f a
-  ix (Just time) f tup@(TDynamic ts) = case Map.lookup time ts of
-      Nothing -> pure tup
-      (Just a) -> (\v -> TDynamic $ Map.insert time v ts) <$> f a
-  ix _ _ tup = pure tup
-
-instance At (Tuple a) where
-    at (Nothing) f (TConstant ma) = TConstant <$> f ma
-    at (Just time) f (TDynamic tsa) = TDynamic <$> Map.alterF f time tsa
-    at _ _ _ = undefined
-
-class Ixed m => FailAt m where
-    failAt :: Index m -> (Maybe (IxValue m) -> CanFail (Maybe (IxValue m))) ->
-        m -> CanFail m
-
-instance FailAt (Tuple a) where
-    failAt Nothing f tup@(TConstant _) = at Nothing f tup
-    failAt (Just _) f (TConstant _) =
-        Left "Can't provide time to index constant time series"
-    failAt t@(Just _) f tup@(TDynamic _) = at t f tup
-    failAt _ _ _ = Left "Must provide a time to index dynamic time series"
-
-
-instance Functor Tuple where
-    fmap f (TConstant maybeVs) = TConstant $ fmap f maybeVs
-    fmap f (TDynamic tsVs) = TDynamic $ fmap f tsVs
-
-instance Foldable Tuple where
-    foldMap f (TConstant maybeVs) = foldMap f maybeVs
-    foldMap f (TDynamic tsVs) = foldMap f tsVs
-
-instance Traversable Tuple where
-    traverse f (TConstant ma) = TConstant <$> traverse f ma
-    traverse f (TDynamic tsa) = TDynamic <$> traverse f tsa
-
-data Node a =
-    Leaf {_typePath :: ClapiPath, _leafValue :: Tuple a} |
-    Container {_typePath :: ClapiPath, _order :: [Name]}
+data Node a = Node {
+    _getTypePath :: ClapiPath,
+    _getKeys :: [Name],
+    _getSites :: SiteMap (TimeSeries a)}
   deriving (Eq, Show)
 makeLenses ''Node
 
+instance Monoid (Node a) where
+    mempty = Node [] [] mempty
+    mappend (Node typePath key m1) (Node _ _ m2) = Node typePath key (m1 <> m2)
 
-instance Functor Node where
-    fmap f l@(Leaf {_leafValue = v}) = l {_leafValue = fmap f v}
-    fmap _ (Container tp ord) = Container tp ord
+clearNode :: Node a -> Node a
+clearNode (Node typePath _ _) = Node typePath [] mempty
 
-instance Foldable Node where
-    foldMap f (Leaf {_leafValue = v}) = foldMap f v
-    foldMap f (Container {}) = mempty
+append :: [a] -> a -> [a]
+append as a = as ++ [a]
+(+|) = append
 
-instance Traversable Node where
-    traverse f l@(Leaf {_leafValue = v}) =
-        (\v' -> l {_leafValue = v'}) <$> traverse f v
-    traverse _ (Container tp ord) = pure $ Container tp ord
+getChildPaths :: ClapiPath -> Node a -> [ClapiPath]
+getChildPaths rootPath node = childPaths childKeys
+  where
+    childKeys = view getKeys node
+    childPaths [] = []
+    childPaths (n:ns) = rootPath +| n : childPaths ns
 
-type ClapiTree a = Map.Map ClapiPath (Node a)
-newtype ClapiTree' a = ClapiTree' {getMap :: Map.Map ClapiPath (Node a)}
-  deriving (Show)
+type instance Index (Node a) = Maybe Site
+type instance IxValue (Node a) = TimeSeries a
 
-type instance Index (ClapiTree' a) = ClapiPath
-type instance IxValue (ClapiTree' a) = a
-instance Ixed (ClapiTree' a) where
-  ix k f tree = case Map.lookup k (getMap tree) of
-      Just leaf@(Leaf {}) -> pure tree -- fmap f leaf
-      Just (Container {}) -> pure tree
-      Nothing -> pure tree
+instance Ixed (Node a) where
+    ix site = getSites . (ix site)
 
--- instance ClapiTree' At (ClapiTree') where
---   at
+instance At (Node a) where
+    at site = getSites . (at site)
+
+data ClapiTree a = ClapiTree {
+    _getNodeMap :: Map.Map ClapiPath (Node a),
+    _getTypeUseageMap :: Mos ClapiPath ClapiPath
+    }
+  deriving (Eq)
+makeLenses ''ClapiTree
+
+type instance Index (ClapiTree a) = ClapiPath
+type instance IxValue (ClapiTree a) = Node a
+
+instance Ixed (ClapiTree a) where
+    ix path = getNodeMap . (ix path)
+
+instance At (ClapiTree a) where
+    at path = getNodeMap . (at path)
+
 
 emptyTree :: ClapiTree a
-emptyTree = Map.singleton root (Container [] [])
+emptyTree = ClapiTree (Map.singleton root mempty) (Map.empty)
 
-modifyChildKeys :: ([Name] -> CanFail [Name]) -> Node a -> CanFail (Node a)
-modifyChildKeys f (Leaf {}) = Left "Cannot modify child keys of leaf node"
-modifyChildKeys f c@(Container {_order = names}) =
-    fmap (\ns -> c {_order = ns}) $ f names
 
-addChildKey :: Name -> Node a  -> CanFail (Node a)
-addChildKey name = modifyChildKeys (\names -> Right $ name:names)
-
-removeChildKey :: Name -> Node a -> CanFail (Node a)
-removeChildKey name = modifyChildKeys f
+formatTree :: (Show a) => ClapiTree a -> String
+formatTree tree = intercalate "\n" lines
   where
-    f names = note "Tried to remove absent child key" $ removeElem name names
+    lines = mconcat $ fmap toLines $ Map.toList $ _getNodeMap tree
+    toLines (path, node) = nodeHeader path node : nodeSiteMapToLines path node
+    nodeHeader path node =
+        printf "%s [%s]" (formatPath path) (pathToString $ _getTypePath node)
+    formatPath [] = "/"
+    formatPath (n:[]) = "  " ++ n
+    formatPath (n:ns) = "  " ++ formatPath ns
+    pad path lines = let padding = replicate ((length path + 1) * 2) ' ' in
+        fmap (padding ++) lines
+    nodeSiteMapToLines path node =
+        pad path $ mconcat $ fmap siteToLines $ Map.toList $ view getSites node
+    siteToLines (Nothing, ts) = "global:" : (pad [] $ tsToLines ts)
+    siteToLines (Just site, ts) = (site ++ ":") : (pad [] $ tsToLines ts)
+    tsToLines ts = fmap attpToLine $ Map.toList ts
+    attpToLine (t, (_, Nothing)) = printf "%s: deleted" (show t)
+    attpToLine (t, (_, Just (_, a))) = printf "%s: %s" (show t) (show a)
 
+instance (Show a) => Show (ClapiTree a) where
+    show = formatTree
 
-removeElem :: Eq a => a -> [a] -> Maybe [a]
-removeElem x xs = extract $ partitioned
+treeOrphansAndMissing :: ClapiTree a -> (Set.Set ClapiPath, Set.Set ClapiPath)
+treeOrphansAndMissing tree = (orphans, missing)
   where
-    partitioned = partition (== x) xs
-    extract ([], _) = Nothing
-    extract (_, xs) = Just xs
+    nodes = Map.toList $ view getNodeMap tree
+    allChildPaths = Set.fromList . mconcat $ fmap (uncurry getChildPaths) nodes
+    allPaths = Set.fromList $ fmap fst nodes
+    orphans = Set.difference allPaths allChildPaths
+    missing = Set.difference allChildPaths allPaths
 
-
-lookupMsg :: String -> ClapiPath -> ClapiTree a -> CanFail (Node a)
-lookupMsg msg path tree = note failMsg $ Map.lookup path tree
+treeInitNode :: ClapiPath -> Node a -> ClapiTree a -> ClapiTree a
+treeInitNode path templateNode (ClapiTree nodeMap typeUsedByMap) =
+    ClapiTree newNodeMap newTypeUseageMap
   where
-    failMsg = msg ++ " at " ++ (show path)
+    newNodeMap = Map.insert path (clearNode templateNode) nodeMap
+    newNodeType = _getTypePath templateNode
+    oldNodeType = _getTypePath <$> Map.lookup path nodeMap
+    newTypeUseageMap =
+        mosDelete' oldNodeType path $ mosInsert newNodeType path $ typeUsedByMap
+    mosDelete' Nothing _ = id
+    mosDelete' (Just k) a = mosDelete k a
 
-treeGet :: ClapiPath -> ClapiTree a -> CanFail (Node a)
-treeGet path tree = note "Item lookup failed" $ view (at path) tree
+toUsedByMap :: Map.Map ClapiPath (Node a) -> Mos ClapiPath ClapiPath
+toUsedByMap nodeMap = invertMap pathToTypePathMap
+  where
+    pathToTypePathMap = fmap (view getTypePath) nodeMap
+
 
 treeDelete :: ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
-treeDelete path t1 =
-  do
-    (ppath, name) <- note "Tried to delete root path" $ initLast path
-    -- lookupMsg "Tried to delete absent value" path tree
-    parentNode <- lookupMsg "Deletion path not found" ppath t1
-    parentNode' <- removeChildKey name parentNode
-    t2 <- return $ Map.insert ppath parentNode' t1
-    return $ Map.filterWithKey predicate t2
+treeDelete path (ClapiTree nodeMap typesUsedByMap) =
+    Right $ ClapiTree remainingNodes newUsedByMap
   where
-    predicate :: ClapiPath -> Node a -> Bool
-    predicate k _ = not $ path `isPrefixOf` k
-    -- FIXME: this is O(n): I think we could do better because the keys are
-    -- ordered, and we wasted time looking up the first key!
-    removeSubtree = Map.filterWithKey predicate
+    (removedNodes, remainingNodes) = Map.partitionWithKey f nodeMap
+    f perhapsChildPath _ = isPrefixOf path perhapsChildPath
+    removedDeps = toUsedByMap removedNodes
+    newUsedByMap = mosDifference typesUsedByMap removedDeps
 
-treeAdd :: forall a.
-    Node a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
-treeAdd newNode path t1 =
-  do
-    (ppath, name) <- note "Root path supplied to add" $ initLast path
-    t2 <- at ppath (parentAdd ppath name) t1
-    at path add t2
+treeSetChildren :: ClapiPath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
+treeSetChildren path keys tree = at path f tree
   where
-    add :: AlterF (Node a)
-    add Nothing = Right . Just $ newNode
-    add _ = Left $ "Tried to add over present value at " ++ (show path)
-    parentAdd :: ClapiPath -> Name -> AlterF (Node a)
-    parentAdd ppath _ Nothing = Left $ "No container at " ++ (show ppath)
-    parentAdd _ name (Just c) =
-        fmap Just $ addChildKey name c
+    f Nothing = Left "not found"
+    f (Just node) = Right . Just $ over getKeys (const keys) node
 
-treeSet :: forall a.
-    Node a -> ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
-treeSet newNode path = at path set
+type TreeAction a = Maybe (Attributed (Maybe (TimePoint a))) ->
+    CanFail (Maybe (Attributed (Maybe (TimePoint a))))
+treeAction :: TreeAction a -> ClapiPath -> Maybe Site -> Time -> ClapiTree a ->
+    CanFail (ClapiTree a)
+treeAction action path maybeSite t tree =
+  do
+    node <- note "not found" $ view (at path) tree
+    existingTimeSeries <- return $ view (getSites . (ix maybeSite)) node
+    newTimeSeries <- at t action existingTimeSeries
+    newNode <- return $
+        node & (getSites . (at maybeSite)) .~ (foldableToMaybe newTimeSeries)
+    newTree <- return $ tree & (at path) .~ (Just newNode)
+    return newTree
+
+
+treeAdd :: forall a. Maybe Attributee -> Interpolation -> a -> ClapiPath ->
+    Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
+treeAdd att int a = treeAction add
   where
-    set :: AlterF (Node a)
-    set (Just node) = fmap Just $ doSet node newNode
-    set _ = Left $ "Tried to set at absent value at " ++ (show path)
-    doSet (Leaf {_typePath = t}) new@(Leaf {_typePath = t'})
-        | t == t' = Right new
-        | otherwise = Left "Cannot change type during set"
-    doSet (Container t oldOrder) new@(Container t' newOrder)
-        | t == t' && Set.fromList oldOrder == Set.fromList newOrder = Right new
-        | t == t' = Left "Cannot change keys during set"
-        | otherwise = Left "Cannot change type during set"
-    doSet _ _ = Left "Cannot change type of container during set"
+    add :: TreeAction a
+    add (Just (_, Just _)) = Left "time point already present"
+    add _ = Right . Just $ (att, Just (int, a))
+
+treeSet :: forall a. Maybe Attributee -> Interpolation -> a -> ClapiPath ->
+    Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
+treeSet att int a = treeAction set
+  where
+    set :: TreeAction a
+    set (Just (_, Just _)) = Right . Just $ (att, Just (int, a))
+    set _ = Left "missing time point at which to set"
+
+treeRemove :: forall a. Maybe Attributee -> ClapiPath -> Maybe Site ->
+    Time -> ClapiTree a -> CanFail (ClapiTree a)
+treeRemove _ path Nothing = treeAction globalRemove path Nothing
+  where
+    globalRemove :: TreeAction a
+    globalRemove (Just (_, Just _)) = Right Nothing
+    globalRemove _ = Left "missing time point at which to remove"
+treeRemove att path justSite = treeAction siteRemove path justSite
+  where
+    siteRemove :: TreeAction a
+    siteRemove (Just (_, Just _)) = Right . Just $ (att, Nothing)
+    siteRemove _ = Left "missing time point at which to remove"
+
+treeClear :: forall a. Maybe Attributee -> ClapiPath -> Maybe Site -> Time ->
+    ClapiTree a -> CanFail (ClapiTree a)
+treeClear _ path Nothing t tree = Left "no clearing without a site"
+treeClear att path justSite t tree = treeAction clear path justSite t tree
+  where
+    clear :: TreeAction a
+    clear (Just _) = Right Nothing
+    clear _ = Left "missing time point at which to clear"
 
 
 data Delta a = Remove | Add a | Change a deriving (Eq, Show)
