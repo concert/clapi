@@ -38,6 +38,8 @@ import Types (Name, ClapiPath(..), root, up, initLast, Time, ClapiValue)
 
 
 type CanFail a = Either String a
+type NodePath = ClapiPath
+type TypePath = ClapiPath
 
 maybeToMonoid :: (Monoid a) => Maybe a -> a
 maybeToMonoid Nothing = mempty
@@ -101,7 +103,7 @@ append :: [a] -> a -> [a]
 append as a = as ++ [a]
 (+|) = append
 
-getChildPaths :: ClapiPath -> Node a -> [ClapiPath]
+getChildPaths :: NodePath -> Node a -> [NodePath]
 getChildPaths rootPath node = childPaths childKeys
   where
     childKeys = view getKeys node
@@ -118,13 +120,13 @@ instance At (Node a) where
     at site = getSites . (at site)
 
 data ClapiTree a = ClapiTree {
-    _getNodeMap :: Map.Map ClapiPath (Node a),
-    _getTypeUseageMap :: Mos ClapiPath ClapiPath
+    _getNodeMap :: Map.Map NodePath (Node a),
+    _getTypeUseageMap :: Mos TypePath NodePath
     }
   deriving (Eq)
 makeLenses ''ClapiTree
 
-type instance Index (ClapiTree a) = ClapiPath
+type instance Index (ClapiTree a) = NodePath
 type instance IxValue (ClapiTree a) = Node a
 
 instance Ixed (ClapiTree a) where
@@ -161,7 +163,7 @@ formatTree tree = intercalate "\n" lines
 instance (Show a) => Show (ClapiTree a) where
     show = formatTree
 
-treeOrphansAndMissing :: ClapiTree a -> (Set.Set ClapiPath, Set.Set ClapiPath)
+treeOrphansAndMissing :: ClapiTree a -> (Set.Set NodePath, Set.Set NodePath)
 treeOrphansAndMissing tree = (orphans, missing)
   where
     nodes = Map.toList $ view getNodeMap tree
@@ -182,13 +184,13 @@ treeInitNode path templateNode (ClapiTree nodeMap typeUsedByMap) =
     mosDelete' Nothing _ = id
     mosDelete' (Just k) a = mosDelete k a
 
-toUsedByMap :: Map.Map ClapiPath (Node a) -> Mos ClapiPath ClapiPath
+toUsedByMap :: Map.Map NodePath (Node a) -> Mos TypePath NodePath
 toUsedByMap nodeMap = invertMap pathToTypePathMap
   where
     pathToTypePathMap = fmap (view getTypePath) nodeMap
 
 
-treeDelete :: ClapiPath -> ClapiTree a -> CanFail (ClapiTree a)
+treeDelete :: NodePath -> ClapiTree a -> CanFail (ClapiTree a)
 treeDelete path (ClapiTree nodeMap typesUsedByMap) =
     Right $ ClapiTree remainingNodes newUsedByMap
   where
@@ -197,7 +199,7 @@ treeDelete path (ClapiTree nodeMap typesUsedByMap) =
     removedDeps = toUsedByMap removedNodes
     newUsedByMap = mosDifference typesUsedByMap removedDeps
 
-treeSetChildren :: ClapiPath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
+treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
   where
     f Nothing = Left "not found"
@@ -205,7 +207,7 @@ treeSetChildren path keys tree = at path f tree
 
 type TreeAction a = Maybe (Attributed (Maybe (TimePoint a))) ->
     CanFail (Maybe (Attributed (Maybe (TimePoint a))))
-treeAction :: TreeAction a -> ClapiPath -> Maybe Site -> Time -> ClapiTree a ->
+treeAction :: TreeAction a -> NodePath -> Maybe Site -> Time -> ClapiTree a ->
     CanFail (ClapiTree a)
 treeAction action path maybeSite t tree =
   do
@@ -218,7 +220,7 @@ treeAction action path maybeSite t tree =
     return newTree
 
 
-treeAdd :: forall a. Maybe Attributee -> Interpolation -> a -> ClapiPath ->
+treeAdd :: forall a. Maybe Attributee -> Interpolation -> a -> NodePath ->
     Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
 treeAdd att int a = treeAction add
   where
@@ -226,7 +228,7 @@ treeAdd att int a = treeAction add
     add (Just (_, Just _)) = Left "time point already present"
     add _ = Right . Just $ (att, Just (int, a))
 
-treeSet :: forall a. Maybe Attributee -> Interpolation -> a -> ClapiPath ->
+treeSet :: forall a. Maybe Attributee -> Interpolation -> a -> NodePath ->
     Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
 treeSet att int a = treeAction set
   where
@@ -234,7 +236,7 @@ treeSet att int a = treeAction set
     set (Just (_, Just _)) = Right . Just $ (att, Just (int, a))
     set _ = Left "missing time point at which to set"
 
-treeRemove :: forall a. Maybe Attributee -> ClapiPath -> Maybe Site ->
+treeRemove :: forall a. Maybe Attributee -> NodePath -> Maybe Site ->
     Time -> ClapiTree a -> CanFail (ClapiTree a)
 treeRemove _ path Nothing = treeAction globalRemove path Nothing
   where
@@ -247,7 +249,7 @@ treeRemove att path justSite = treeAction siteRemove path justSite
     siteRemove (Just (_, Just _)) = Right . Just $ (att, Nothing)
     siteRemove _ = Left "missing time point at which to remove"
 
-treeClear :: forall a. Maybe Attributee -> ClapiPath -> Maybe Site -> Time ->
+treeClear :: forall a. Maybe Attributee -> NodePath -> Maybe Site -> Time ->
     ClapiTree a -> CanFail (ClapiTree a)
 treeClear _ path Nothing t tree = Left "no clearing without a site"
 treeClear att path justSite t tree = treeAction clear path justSite t tree
