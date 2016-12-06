@@ -86,18 +86,14 @@ type Site = String
 type SiteMap a = Map.Map (Maybe Site) a
 
 data Node a = Node {
-    _getTypePath :: ClapiPath,
     _getKeys :: [Name],
     _getSites :: SiteMap (TimeSeries a)}
   deriving (Eq, Show)
 makeLenses ''Node
 
 instance Monoid (Node a) where
-    mempty = Node [] [] mempty
-    mappend (Node typePath key m1) (Node _ _ m2) = Node typePath key (m1 <> m2)
-
-clearNode :: Node a -> Node a
-clearNode (Node typePath _ _) = Node typePath [] mempty
+    mempty = Node [] mempty
+    mappend (Node keys m1) (Node _ m2) = Node keys (m1 <> m2)
 
 append :: [a] -> a -> [a]
 append as a = as ++ [a]
@@ -121,10 +117,16 @@ instance At (Node a) where
 
 data ClapiTree a = ClapiTree {
     _getNodeMap :: Map.Map NodePath (Node a),
+    _getTypeMap :: Map.Map NodePath TypePath,
     _getTypeUseageMap :: Mos TypePath NodePath
     }
   deriving (Eq)
 makeLenses ''ClapiTree
+
+instance Monoid (ClapiTree a) where
+    mempty = ClapiTree mempty mempty mempty
+    mappend (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
+        ClapiTree (nm1 <> nm2) (tm1 <> tm2) (tum1 <> tum2)
 
 type instance Index (ClapiTree a) = NodePath
 type instance IxValue (ClapiTree a) = Node a
@@ -136,17 +138,14 @@ instance At (ClapiTree a) where
     at path = getNodeMap . (at path)
 
 
-emptyTree :: ClapiTree a
-emptyTree = ClapiTree (Map.singleton root mempty) (Map.empty)
-
-
 formatTree :: (Show a) => ClapiTree a -> String
-formatTree tree = intercalate "\n" lines
+formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
   where
-    lines = mconcat $ fmap toLines $ Map.toList $ _getNodeMap tree
-    toLines (path, node) = nodeHeader path node : nodeSiteMapToLines path node
-    nodeHeader path node =
-        printf "%s [%s]" (formatPath path) (pathToString $ _getTypePath node)
+    lines = mconcat $ fmap toLines $ Map.toList nodeMap
+    toLines (path, node) = nodeHeader path : nodeSiteMapToLines path node
+    nodeHeader path =
+        printf "%s [%s]" (formatPath path)
+        (pathToString $ maybeToMonoid $ Map.lookup path typeMap)
     formatPath [] = "/"
     formatPath (n:[]) = "  " ++ n
     formatPath (n:ns) = "  " ++ formatPath ns
@@ -172,32 +171,32 @@ treeOrphansAndMissing tree = (orphans, missing)
     orphans = Set.difference allPaths allChildPaths
     missing = Set.difference allChildPaths allPaths
 
-treeInitNode :: ClapiPath -> Node a -> ClapiTree a -> ClapiTree a
-treeInitNode path templateNode (ClapiTree nodeMap typeUsedByMap) =
-    ClapiTree newNodeMap newTypeUseageMap
+treeInitNode :: NodePath -> TypePath -> ClapiTree a -> ClapiTree a
+treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
+    ClapiTree newNodeMap newTypeMap newTypeUsedByMap
   where
-    newNodeMap = Map.insert path (clearNode templateNode) nodeMap
-    newNodeType = _getTypePath templateNode
-    oldNodeType = _getTypePath <$> Map.lookup path nodeMap
-    newTypeUseageMap =
-        mosDelete' oldNodeType path $ mosInsert newNodeType path $ typeUsedByMap
+    newNodeMap = Map.insert path mempty nodeMap
+    newTypeMap = Map.insert path typePath typeMap
+    maybeOldTypePath = Map.lookup path typeMap
+    newTypeUsedByMap =
+        mosDelete' maybeOldTypePath path $
+        mosInsert typePath path $
+        typeUsedByMap
     mosDelete' Nothing _ = id
     mosDelete' (Just k) a = mosDelete k a
 
-toUsedByMap :: Map.Map NodePath (Node a) -> Mos TypePath NodePath
-toUsedByMap nodeMap = invertMap pathToTypePathMap
-  where
-    pathToTypePathMap = fmap (view getTypePath) nodeMap
 
 
 treeDelete :: NodePath -> ClapiTree a -> CanFail (ClapiTree a)
-treeDelete path (ClapiTree nodeMap typesUsedByMap) =
-    Right $ ClapiTree remainingNodes newUsedByMap
+treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
+    Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
   where
     (removedNodes, remainingNodes) = Map.partitionWithKey f nodeMap
     f perhapsChildPath _ = isPrefixOf path perhapsChildPath
-    removedDeps = toUsedByMap removedNodes
-    newUsedByMap = mosDifference typesUsedByMap removedDeps
+    removedTypePaths = Map.mapMaybeWithKey lookupOldType removedNodes
+    lookupOldType nodePath _ = Map.lookup nodePath typeMap
+    newTypeMap = Map.difference typeMap removedTypePaths
+    newUsedByMap = mosDifference typesUsedByMap $ invertMap removedTypePaths
 
 treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
