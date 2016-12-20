@@ -1,81 +1,165 @@
 module TestTree where
 
 import Util (assertFailed)
+import Data.Either (isRight)
+import Data.Foldable (toList)
+import Control.Monad (liftM, liftM2, replicateM)
 import Test.HUnit (assertEqual)
+import Test.QuickCheck (
+    Gen, Arbitrary(..), arbitrary, (==>), forAll, choose, elements, shuffle,
+    oneof, frequency, listOf, sublistOf, counterexample, property)
+import Test.QuickCheck.Property (Result(..), Property(..))
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
-import Types (ClapiValue(..), root)
+import Types (ClapiPath, ClapiValue(..), Time(..))
 import Tree (
-    Tuple(..), Node(..), ClapiTree(..), treeGet, treeAdd, treeSet,
-    treeDelete, mapDiff, applyMapDiff, Delta(..)
+    CanFail, Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
+    Interpolation(..), treeAdd, treeSet, treeDelete, treeDiff, treeApply,
+    mapDiff, applyMapDiff, Delta(..), invertMap, isChildOfAny
     )
 
 tests = [
-    testCase "treeGet" testTreeGet,
-    testCase "treeAdd" testTreeAdd,
-    testCase "treeSet" testTreeSet,
-    testCase "treeDelete" testTreeDelete,
+    testProperty "treeDiff round trip" testTreeDiffRoundTrip,
     testCase "mapDiff" testMapDiff,
-    testProperty "diff roundtrip" testDiffRoundTrip
+    testProperty "mapDiff round trip" testMapDiffRoundTrip
     ]
 
-c1 = Container [] ["a"]
-c2 = Container [] ["b"]
-c2' = Container [] ["c", "b"]
-l1 = Leaf [] (TConstant $ Just '1')
-l2 = Leaf [] (TConstant $ Just '2')
-t1 = Map.fromList [(root, c1), (["a"], c2), (["a", "b"], l1)]
-t2 = Map.fromList [
-    (root, c1), (["a"], c2'), (["a", "b"], l1), (["a", "c"], l2)]
-cempty = Container [] []
-tempty = Map.singleton root cempty
 
-testTreeGet =
-  do
-    assertEqual "nested leaf get" (Right l1) $ treeGet ["a", "b"] t1
-    assertEqual "container get" (Right c2) $ treeGet ["a"] t1
-    assertFailed "too many path components" $ treeGet ["a", "b", "c"] t1
-    assertFailed "bad keys" $ treeGet ["a", "llama"] t1
+instance Arbitrary Time where
+    arbitrary = liftM2 Time arbitrary arbitrary
 
-testTreeDelete =
-  do
-    assertEqual "container delete" (Right tempty) $ treeDelete ["a"] t1
-    assertEqual "leaf delete"
-        (Right (Map.fromList [([], c1), (["a"], cempty)])) $
-        treeDelete ["a", "b"] t1
-    assertFailed "bad path did not fail 1" $ treeDelete ["a", "llama"] t1
-    -- assertFailed "bad path did not fail 2" $ treeDelete ["llama"] c2
-    -- assertFailed "bad path did not fail 3" $ treeDelete ["llama", "face"] c2
+instance Arbitrary Interpolation where
+    arbitrary = oneof [
+        return IConstant,
+        return ILinear,
+        liftM2 IBezier arbitrary arbitrary
+      ]
 
-testTreeAdd =
-  do
-    assertEqual "normal add" (Right t2) $ treeAdd l2 ["a", "c"] t1
-    assertFailed "add at root" $ treeAdd l2 root t1
-    assertFailed "add existing" $ treeAdd l2 ["a", "b"] t1
-    assertFailed "add to non-existent parent" $ treeAdd l2 ["x", "b"] t1
+arbitraryAv :: (Arbitrary a) => Gen a -> Gen (Maybe Attributee, a)
+arbitraryAv genA = do
+    att <- oneof [return Nothing, liftM Just name]
+    v <- genA
+    return (att, v)
 
-testTreeSet =
+arbitraryMap :: (Ord k) =>
+    Int -> Int -> Gen k -> (k -> Gen a) -> Gen (Map.Map k a)
+arbitraryMap min max keyG itemG =
   do
-    assertEqual "normal set" (Right t1) $ treeSet l2 ["a", "b"] t1
-    assertEqual "reorder keys" (Right t3) $ treeSet c2'' ["a"] t2
-    assertFailed "change keys" $ treeSet c3 ["a"] t2
-    assertFailed "change num keys" $ treeSet c1 ["a"] t2
-    assertFailed "change leaf type" $ treeSet c4 ["a", "b"] t1
-    assertFailed "change container type" $ treeSet c5 ["a"] t1
-    assertFailed "set non-eixstant" $ treeSet l2 ["a", "c"] t1
-    assertFailed "set in non-existent parent" $ treeSet l2 ["x"] t1
+    numItems <- choose (min, max)
+    keys <- replicateM numItems keyG
+    itemList <- sequence $ fmap (\k -> sequence (k, itemG k)) keys
+    return $ Map.fromList itemList
+
+submap :: (Ord k) => Map.Map k a -> Gen (Map.Map k a)
+submap m = Map.fromList <$> (sublistOf $ Map.toList m)
+
+slightlyDifferentMap :: (Ord k) => Gen (Map.Map k a) -> (a -> Gen a) ->
+    Map.Map k a -> Gen (Map.Map k a)
+slightlyDifferentMap g f m =
+  do
+    newBaseMap <- g
+    reducedM <- submap m
+    toTransform <- submap reducedM
+    transformedM <- sequence $ fmap f toTransform
+    return $ Map.union newBaseMap $ Map.union transformedM reducedM
+
+arbitraryTimeSeries :: (Arbitrary a) => Maybe Site -> Gen (TimeSeries a)
+arbitraryTimeSeries site =
+    arbitraryMap 1 4 arbitrary (const $ arbitraryAv siteGen)
   where
-    t1 = Map.fromList [(root, c1), (["a"], c2), (["a", "b"], l2)]
-    t3 = Map.fromList [
-      (root, c1), (["a"], c2''), (["a", "b"], l1), (["a", "c"], l2)]
-    c2'' = Container [] ["b", "c"]
-    c3 = Container [] ["x", "y"]
-    c4 = Leaf ["foo"] (TConstant $ Just '1')
-    c5 = Container ["foo"] ["a"]
+    siteGen = case site of
+      Nothing -> liftM Just arbitrary
+      _ -> arbitrary
 
+name = do
+    l <- choose (1, 5)
+    replicateM l $ elements ['a'..'z']
+
+justName = oneof [return Nothing, liftM Just name]
+
+arbitrarySiteMap :: (Arbitrary a) => Gen (SiteMap a)
+arbitrarySiteMap = arbitraryMap 1 5 justName arbitraryTimeSeries
+
+instance (Arbitrary a) => Arbitrary (Node a) where
+    arbitrary =
+      do
+        numKeys <- choose (0, 4)
+        keys <- replicateM numKeys name
+        siteMap <- arbitrarySiteMap
+        return $ Node keys siteMap
+
+
+slightlyDifferentNode :: (Arbitrary a) => Node a -> Gen (Node a)
+slightlyDifferentNode (Node keys sm) =
+  do
+    sm' <- slightlyDifferentMap arbitrarySiteMap (const arbitrary) sm
+    sm'' <- return $ Map.filter (not . null) sm'
+    keys' <- frequency [
+        (1, sublistOf keys >>= shuffle),
+        (3, return keys)
+      ]
+    return $ Node keys' sm''
+
+arbitraryPath :: Gen ClapiPath
+arbitraryPath = listOf name
+
+instance (Arbitrary a) => Arbitrary (ClapiTree a) where
+    arbitrary =
+      do
+        nm <- arbitraryMap 0 4 arbitraryPath (const arbitrary)
+        tm <- sequence $ fmap (const arbitraryPath) nm
+        return $ ClapiTree nm tm (invertMap tm)
+
+slightlyDifferentTree :: (Arbitrary a) => ClapiTree a -> Gen (ClapiTree a)
+slightlyDifferentTree (ClapiTree nm tm tum) =
+  do
+    nm' <- slightlyDifferentMap arbitrary slightlyDifferentNode nm
+    deletedKeys <- return $ Set.toList $ Set.difference (Map.keysSet nm) (Map.keysSet nm')
+    nm'' <- return $ Map.filterWithKey
+        (\k _ -> not $ k `isChildOfAny` deletedKeys) nm'
+    toDelta <- submap tm
+    deltaTm <- sequence (fmap (const arbitrary) $ toDelta)
+    deltaTm' <- return $ Map.union deltaTm tm
+    arbTm <- sequence $ fmap (const arbitraryPath) nm''
+    arbTm' <- return $ Map.intersection deltaTm' arbTm
+    tm' <- return $ Map.union arbTm' arbTm
+    return $ ClapiTree nm'' tm' (invertMap tm')
+
+data TreePair a = TreePair (ClapiTree a) (ClapiTree a) deriving (Show)
+instance (Arbitrary a) => Arbitrary (TreePair a) where
+    arbitrary = do
+        t1 <- arbitrary
+        t2 <- slightlyDifferentTree t1
+        return $ TreePair t1 t2
+    shrink (TreePair (ClapiTree nm1 tm1 _) (ClapiTree nm2 tm2 _)) = do
+        (np, n1) <- excludeSingleton $ Map.toList nm1
+        tp1 <- get np tm1
+        n2 <- get np nm2
+        tp2 <- get np tm2
+        return $ TreePair (make np n1 tp1) (make np n2 tp2)
+      where
+        excludeSingleton (a:[]) = []
+        excludeSingleton as = as
+        get k m = toList $ Map.lookup k m
+        make np n tp = ClapiTree newNm newTm newTum
+          where
+            newNm = Map.singleton np n
+            newTm = Map.singleton np tp
+            newTum = invertMap newTm
+
+
+testTreeDiffRoundTrip :: TreePair Int -> Property
+testTreeDiffRoundTrip (TreePair t1 t2) =
+    isRight d ==> counterexample (show d) $ gubbins failyT2'
+      where
+        d = treeDiff t1 t2
+        failyT2' = d >>= treeApply t1
+        gubbins (Left s) = counterexample s False
+        gubbins (Right t2') = counterexample (show t2') $ t2' == t2
 
 testMapDiff =
     assertEqual "failed mapDiff" expected $ mapDiff m1 m2
@@ -84,7 +168,7 @@ testMapDiff =
     m2 = Map.fromList [('a', 3), ('c', 4), ('d', 42)]
     expected = Map.fromList [('a', Change 3), ('b', Remove), ('c', Add 4)]
 
-testDiffRoundTrip :: Map.Map Char Int -> Map.Map Char Int -> Bool
-testDiffRoundTrip m1 m2 = applyMapDiff d m1 == m2
+testMapDiffRoundTrip :: Map.Map Char Int -> Map.Map Char Int -> Bool
+testMapDiffRoundTrip m1 m2 = applyMapDiff d m1 == m2
   where
     d = mapDiff m1 m2
