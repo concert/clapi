@@ -165,7 +165,7 @@ instance At (ClapiTree a) where
 formatTree :: (Show a) => ClapiTree a -> String
 formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
   where
-    lines = mconcat $ fmap toLines $ Map.toList nodeMap
+    lines = mconcat $ ["---"] : (fmap toLines $ Map.toList nodeMap)
     toLines (path, node) = nodeHeader path : nodeSiteMapToLines path node
     nodeHeader path =
         printf "%s [%s]" (formatPath path)
@@ -180,8 +180,12 @@ formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
     siteToLines (Nothing, ts) = "global:" : (pad [] $ tsToLines ts)
     siteToLines (Just site, ts) = (site ++ ":") : (pad [] $ tsToLines ts)
     tsToLines ts = fmap attpToLine $ Map.toList ts
-    attpToLine (t, (_, Nothing)) = printf "%s: deleted" (show t)
-    attpToLine (t, (_, Just (_, a))) = printf "%s: %s" (show t) (show a)
+    attpToLine (t, (att, Nothing)) =
+        printf "%s: deleted (%s)" (show t) (showAtt att)
+    attpToLine (t, (att, Just (_, a))) =
+        printf "%s: %s (%s)" (show t) (show a) (showAtt att)
+    showAtt Nothing = "Anon"
+    showAtt (Just att) = att
 
 instance (Show a) => Show (ClapiTree a) where
     show = formatTree
