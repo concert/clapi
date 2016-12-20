@@ -239,13 +239,18 @@ treeAction :: TreeAction a -> NodePath -> Maybe Site -> Time -> ClapiTree a ->
 treeAction action path maybeSite t tree =
   do
     node <- (note $ printf "not found %s" (show path)) $ view (at path) tree
-    existingTimeSeries <- return $ view (getSites . (ix maybeSite)) node
-    newTimeSeries <- at t action existingTimeSeries
-    newNode <- return $
-        node & (getSites . (at maybeSite)) .~ (foldableToMaybe newTimeSeries)
+    newNode <- nodeAction action maybeSite t node
     newTree <- return $ tree & (at path) .~ (Just newNode)
     return newTree
 
+nodeAction :: TreeAction a -> Maybe Site -> Time -> Node a -> CanFail (Node a)
+nodeAction action maybeSite t node =
+  do
+    newTimeSeries <- at t action existingTimeSeries
+    return $
+        node & (getSites . (at maybeSite)) .~ (foldableToMaybe newTimeSeries)
+  where
+    existingTimeSeries = view (getSites . (ix maybeSite)) node
 
 treeAdd :: forall a. Maybe Attributee -> Interpolation -> a -> NodePath ->
     Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
