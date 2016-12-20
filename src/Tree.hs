@@ -79,6 +79,21 @@ mosUnion = merge preserveMissing preserveMissing (zipWithMatched f)
   where
     f k sa1 sa2 = Set.union sa1 sa2
 
+type Mol k a = Map.Map k [a]
+
+molFromList :: (Ord k) => [(k, a)] -> Mol k a
+molFromList = foldr (uncurry molCons) mempty
+
+molToList :: (Ord k) => Mol k a -> [(k, a)]
+molToList mol = mconcat $ sequence <$> Map.toList mol
+
+molCons :: (Ord k) => k -> a -> Mol k a -> Mol k a
+molCons k a = mapUpdateM (a :) k
+
+molAppend :: (Ord k) => k -> a -> Mol k a -> Mol k a
+molAppend k a = mapUpdateM (++ [a]) k
+
+
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
