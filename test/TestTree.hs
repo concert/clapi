@@ -17,10 +17,10 @@ import qualified Data.Set as Set
 
 import qualified Data.Map.Mos as Mos
 import Path (Path(..), isChildOfAny)
-import Types (ClapiValue(..), Time(..))
+import Types (ClapiValue(..), Time(..), Interpolation(..))
 import Tree (
     CanFail, Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
-    Interpolation(..), treeAdd, treeSet, treeDelete, treeDiff, treeApply
+    treeAdd, treeSet, treeDelete, treeDiff, treeApply
     )
 
 tests = [

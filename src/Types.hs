@@ -8,6 +8,7 @@ module Types
         ClapiMessage(..),
         ClapiBundle,
         ClapiMessageTag,
+        Interpolation(..),
     )
 where
 
@@ -83,3 +84,6 @@ data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
 type ClapiMessageTag = (String, ClapiValue)
 
 type ClapiBundle = [ClapiMessage]
+
+data Interpolation = IConstant | ILinear | IBezier Word32 Word32
+  deriving (Eq, Show)
