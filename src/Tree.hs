@@ -226,6 +226,22 @@ treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
     newTypeMap = Map.difference typeMap removedTypePaths
     newUsedByMap = mosDifference typesUsedByMap $ invertMap removedTypePaths
 
+isParentPath :: ClapiPath -> ClapiPath -> Bool
+isParentPath = isPrefixOf
+
+isChildPath :: ClapiPath -> ClapiPath -> Bool
+isChildPath = flip isParentPath
+
+isParentOfAny :: ClapiPath -> [ClapiPath] -> Bool
+isParentOfAny parent candidates = or $ isParentPath parent <$> candidates
+
+isAnyParentOf :: [ClapiPath] -> ClapiPath -> Bool
+isAnyParentOf parents candidate = or $ flip isParentPath candidate <$> parents
+
+isChildOfAny :: ClapiPath -> [ClapiPath] -> Bool
+isChildOfAny candidateChild parents =
+    or $ isChildPath candidateChild <$> parents
+
 treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
   where
