@@ -19,13 +19,11 @@ import Types (ClapiPath, ClapiValue(..), Time(..))
 import Tree (
     CanFail, Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
     Interpolation(..), treeAdd, treeSet, treeDelete, treeDiff, treeApply,
-    mapDiff, applyMapDiff, Delta(..), invertMap, isChildOfAny
+    invertMap, isChildOfAny
     )
 
 tests = [
-    testProperty "treeDiff round trip" testTreeDiffRoundTrip,
-    testCase "mapDiff" testMapDiff,
-    testProperty "mapDiff round trip" testMapDiffRoundTrip
+    testProperty "treeDiff round trip" testTreeDiffRoundTrip
     ]
 
 
@@ -160,15 +158,3 @@ testTreeDiffRoundTrip (TreePair t1 t2) =
         failyT2' = d >>= treeApply t1
         gubbins (Left s) = counterexample s False
         gubbins (Right t2') = counterexample (show t2') $ t2' == t2
-
-testMapDiff =
-    assertEqual "failed mapDiff" expected $ mapDiff m1 m2
-  where
-    m1 = Map.fromList [('a', 1), ('b', 2), ('d', 42)]
-    m2 = Map.fromList [('a', 3), ('c', 4), ('d', 42)]
-    expected = Map.fromList [('a', Change 3), ('b', Remove), ('c', Add 4)]
-
-testMapDiffRoundTrip :: Map.Map Char Int -> Map.Map Char Int -> Bool
-testMapDiffRoundTrip m1 m2 = applyMapDiff d m1 == m2
-  where
-    d = mapDiff m1 m2
