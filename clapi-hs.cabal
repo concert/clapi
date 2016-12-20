@@ -21,7 +21,9 @@ library
                      , Serialisation
                      , Parsing
                      , Tree
+                     , Data.Map.Mos
   other-modules:       Data.Maybe.Clapi
+                     , Data.Map.Clapi
   build-depends:       base >= 4.7 && < 5
                      , text
                      , split

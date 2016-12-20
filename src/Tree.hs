@@ -38,40 +38,12 @@ import Parsing (pathToString)
 import Types (Name, ClapiPath(..), root, Time, ClapiValue)
 
 import qualified Data.Maybe.Clapi as Maybe
-
+import qualified Data.Map.Clapi as Map
+import qualified Data.Map.Mos as Mos
 
 type CanFail a = Either String a
 type NodePath = ClapiPath
 type TypePath = ClapiPath
-
-mapLookupM :: (Monoid a, Ord k) => k -> Map.Map k a -> a
-mapLookupM k m = Maybe.toMonoid $ Map.lookup k m
-
-mapUpdateM :: (Monoid a, Ord k) => (a -> a) -> k -> Map.Map k a -> Map.Map k a
-mapUpdateM f = Map.alter (Just . f . Maybe.toMonoid)
-
-type Mos k a = Map.Map k (Set.Set a)
-
-mosInsert :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
-mosInsert k a = mapUpdateM (Set.insert a) k
-
-mosDelete :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
-mosDelete k a = Map.update f k
-  where
-    f = Maybe.fromFoldable . (Set.delete a)
-
-invertMap :: (Ord k, Ord a) => Map.Map k a -> Mos a k
-invertMap = Map.foldrWithKey (flip mosInsert) mempty
-
-mosDifference :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
-mosDifference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
-  where
-    f k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
-
-mosUnion :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
-mosUnion = merge preserveMissing preserveMissing (zipWithMatched f)
-  where
-    f k sa1 sa2 = Set.union sa1 sa2
 
 type Mol k a = Map.Map k [a]
 
@@ -82,10 +54,10 @@ molToList :: (Ord k) => Mol k a -> [(k, a)]
 molToList mol = mconcat $ sequence <$> Map.toList mol
 
 molCons :: (Ord k) => k -> a -> Mol k a -> Mol k a
-molCons k a = mapUpdateM (a :) k
+molCons k a = Map.updateM (a :) k
 
 molAppend :: (Ord k) => k -> a -> Mol k a -> Mol k a
-molAppend k a = mapUpdateM (++ [a]) k
+molAppend k a = Map.updateM (++ [a]) k
 
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
@@ -136,7 +108,7 @@ instance At (Node a) where
 data ClapiTree a = ClapiTree {
     _getNodeMap :: Map.Map NodePath (Node a),
     _getTypeMap :: Map.Map NodePath TypePath,
-    _getTypeUseageMap :: Mos TypePath NodePath
+    _getTypeUseageMap :: Mos.Mos TypePath NodePath
     }
   deriving (Eq)
 makeLenses ''ClapiTree
@@ -202,10 +174,10 @@ treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
     maybeOldTypePath = Map.lookup path typeMap
     newTypeUsedByMap =
         mosDelete' maybeOldTypePath path $
-        mosInsert typePath path $
+        Mos.insert typePath path $
         typeUsedByMap
     mosDelete' Nothing _ = id
-    mosDelete' (Just k) a = mosDelete k a
+    mosDelete' (Just k) a = Mos.delete k a
 
 treeInitNodes :: Map.Map NodePath TypePath -> ClapiTree a -> ClapiTree a
 treeInitNodes typePathMap (ClapiTree nm tm tum) = ClapiTree newNm newTm newTum
@@ -214,9 +186,9 @@ treeInitNodes typePathMap (ClapiTree nm tm tum) = ClapiTree newNm newTm newTum
     newNm = Map.union onlyNewNm nm
     newTm = Map.union typePathMap tm
     onlyOldTum =
-      invertMap $ Map.fromList $ catMaybes $ fmap lookup $ Map.keys typePathMap
+      Mos.invertMap $ Map.fromList $ catMaybes $ fmap lookup $ Map.keys typePathMap
     lookup np = sequence (np, Map.lookup np tm)
-    newTum = mosUnion (mosDifference tum onlyOldTum) (invertMap typePathMap)
+    newTum = Mos.union (Mos.difference tum onlyOldTum) (Mos.invertMap typePathMap)
 
 
 treeDelete :: NodePath -> ClapiTree a -> CanFail (ClapiTree a)
@@ -229,7 +201,7 @@ treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
     removedTypePaths = Map.mapMaybeWithKey lookupOldType removedNodes
     lookupOldType nodePath _ = Map.lookup nodePath typeMap
     newTypeMap = Map.difference typeMap removedTypePaths
-    newUsedByMap = mosDifference typesUsedByMap $ invertMap removedTypePaths
+    newUsedByMap = Mos.difference typesUsedByMap $ Mos.invertMap removedTypePaths
 
 isParentPath :: ClapiPath -> ClapiPath -> Bool
 isParentPath = isPrefixOf
@@ -258,7 +230,7 @@ treeDeleteNodes nodePaths (ClapiTree nm tm tum)
     removedTypePaths =
         Map.mapMaybeWithKey (\np _ -> Map.lookup np tm) removedNodes
     newTypeMap = Map.difference tm removedTypePaths
-    newUsedByMap = mosDifference tum $ invertMap removedTypePaths
+    newUsedByMap = Mos.difference tum $ Mos.invertMap removedTypePaths
     missingPaths =
         Set.difference (Set.fromList nodePaths) (Map.keysSet removedNodes)
 

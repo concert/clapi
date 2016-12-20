@@ -15,11 +15,12 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
+import qualified Data.Map.Mos as Mos
 import Types (ClapiPath, ClapiValue(..), Time(..))
 import Tree (
     CanFail, Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
     Interpolation(..), treeAdd, treeSet, treeDelete, treeDiff, treeApply,
-    invertMap, isChildOfAny
+    isChildOfAny
     )
 
 tests = [
@@ -110,7 +111,7 @@ instance (Arbitrary a) => Arbitrary (ClapiTree a) where
       do
         nm <- arbitraryMap 0 4 arbitraryPath (const arbitrary)
         tm <- sequence $ fmap (const arbitraryPath) nm
-        return $ ClapiTree nm tm (invertMap tm)
+        return $ ClapiTree nm tm (Mos.invertMap tm)
 
 slightlyDifferentTree :: (Arbitrary a) => ClapiTree a -> Gen (ClapiTree a)
 slightlyDifferentTree (ClapiTree nm tm tum) =
@@ -125,7 +126,7 @@ slightlyDifferentTree (ClapiTree nm tm tum) =
     arbTm <- sequence $ fmap (const arbitraryPath) nm''
     arbTm' <- return $ Map.intersection deltaTm' arbTm
     tm' <- return $ Map.union arbTm' arbTm
-    return $ ClapiTree nm'' tm' (invertMap tm')
+    return $ ClapiTree nm'' tm' (Mos.invertMap tm')
 
 data TreePair a = TreePair (ClapiTree a) (ClapiTree a) deriving (Show)
 instance (Arbitrary a) => Arbitrary (TreePair a) where
@@ -147,7 +148,7 @@ instance (Arbitrary a) => Arbitrary (TreePair a) where
           where
             newNm = Map.singleton np n
             newTm = Map.singleton np tp
-            newTum = invertMap newTm
+            newTum = Mos.invertMap newTm
 
 
 testTreeDiffRoundTrip :: TreePair Int -> Property
