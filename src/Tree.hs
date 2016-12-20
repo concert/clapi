@@ -74,6 +74,11 @@ mosDifference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
   where
     f k sa1 sa2 = foldableToMaybe $ Set.difference sa1 sa2
 
+mosUnion :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
+mosUnion = merge preserveMissing preserveMissing (zipWithMatched f)
+  where
+    f k sa1 sa2 = Set.union sa1 sa2
+
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
 
