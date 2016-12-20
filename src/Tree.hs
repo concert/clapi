@@ -229,7 +229,7 @@ treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
 treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
   where
-    f Nothing = Left "not found"
+    f Nothing = Left $ printf "not found %s" (show path)
     f (Just node) = Right . Just $ over getKeys (const keys) node
 
 type TreeAction a = Maybe (Attributed (Maybe (TimePoint a))) ->
@@ -238,7 +238,7 @@ treeAction :: TreeAction a -> NodePath -> Maybe Site -> Time -> ClapiTree a ->
     CanFail (ClapiTree a)
 treeAction action path maybeSite t tree =
   do
-    node <- note "not found" $ view (at path) tree
+    node <- (note $ printf "not found %s" (show path)) $ view (at path) tree
     existingTimeSeries <- return $ view (getSites . (ix maybeSite)) node
     newTimeSeries <- at t action existingTimeSeries
     newNode <- return $
@@ -257,24 +257,27 @@ treeAdd att int a = treeAction add
 
 treeSet :: forall a. Maybe Attributee -> Interpolation -> a -> NodePath ->
     Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
-treeSet att int a = treeAction set
+treeSet att int a path site t = treeAction set path site t
   where
     set :: TreeAction a
     set (Just (_, Just _)) = Right . Just $ (att, Just (int, a))
-    set _ = Left "missing time point at which to set"
+    set _ = Left $
+        printf "missing time point at which to set %s: %s %s" (show path)
+        (show t) (show site)
 
 treeRemove :: forall a. Maybe Attributee -> NodePath -> Maybe Site ->
     Time -> ClapiTree a -> CanFail (ClapiTree a)
-treeRemove _ path Nothing = treeAction globalRemove path Nothing
+treeRemove _ path Nothing t = treeAction globalRemove path Nothing t
   where
     globalRemove :: TreeAction a
     globalRemove (Just (_, Just _)) = Right Nothing
-    globalRemove _ = Left "missing time point at which to remove"
-treeRemove att path justSite = treeAction siteRemove path justSite
+    globalRemove _ = Left $
+        printf "missing time point at which to remove %s: %s" (show path)
+        (show t)
+treeRemove att path justSite t = treeAction siteRemove path justSite t
   where
     siteRemove :: TreeAction a
-    siteRemove (Just (_, Just _)) = Right . Just $ (att, Nothing)
-    siteRemove _ = Left "missing time point at which to remove"
+    siteRemove _ = Right . Just $ (att, Nothing)
 
 treeClear :: forall a. Maybe Attributee -> NodePath -> Maybe Site -> Time ->
     ClapiTree a -> CanFail (ClapiTree a)
@@ -283,7 +286,9 @@ treeClear att path justSite t tree = treeAction clear path justSite t tree
   where
     clear :: TreeAction a
     clear (Just _) = Right Nothing
-    clear _ = Left "missing time point at which to clear"
+    clear _ = Left $
+        printf "missing time point at which to clear %s: %s %s" (show path)
+        (show t) (show justSite)
 
 
 data Delta a = Remove | Add a | Change a deriving (Eq, Show)
