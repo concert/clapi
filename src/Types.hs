@@ -4,7 +4,6 @@ module Types
         ClapiValue(..),
         fromClapiValue,
         toClapiValue,
-        initLast,
         ClapiMethod(..),
         ClapiMessage(..),
         ClapiBundle,
@@ -76,14 +75,6 @@ instance Clapiable T.Text where
 instance Clapiable a => Clapiable [a] where
     toClapiValue = CList . (map toClapiValue)
     fromClapiValue (CList xs) = map fromClapiValue xs
-
-initLast :: [a] -> Maybe ([a], a)
-initLast [] = Nothing
-initLast as = Just $ internal as
-  where
-    internal (a':[]) = ([], a')
-    internal (a:as) = accumulate (internal as) a
-    accumulate (acc, a') a = (a:acc, a')
 
 data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete

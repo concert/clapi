@@ -13,7 +13,7 @@ import Util (assertFailed)
 import Path (root, up)
 import Types (
     Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle,
-    fromClapiValue, toClapiValue, initLast)
+    fromClapiValue, toClapiValue)
 import Serialisation (encode, decode)
 
 
@@ -21,8 +21,7 @@ tests = [
     testProperty "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
     testCase "roundtrip message" testBinarySerialisationRoundTrip,
     testCase "string length" testEncodeTooLongString,
-    testCase "up" testUp,
-    testProperty "initLast" testInitLast
+    testCase "up" testUp
     ]
 
 
@@ -57,8 +56,3 @@ testUp =
   do
     assertEqual "root up failed" root $ up root
     assertEqual "normal up failed" ["a"] $ up ["a", "b"]
-
-
-testInitLast :: [Int] -> Bool
-testInitLast [] = isNothing $ initLast []
-testInitLast ints = initLast ints == Just (init ints, last ints)
