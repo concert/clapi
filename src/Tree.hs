@@ -291,10 +291,10 @@ treeClear att path justSite t tree = treeAction clear path justSite t tree
 data TreeDelta a = Init TypePath
   | Delete
   | SetChildren [Name]
-  | Clear' Time (Maybe Site) (Maybe Attributee)
-  | Remove' Time (Maybe Site) (Maybe Attributee)
-  | Add' Time a Interpolation (Maybe Site) (Maybe Attributee)
-  | Set' Time a Interpolation (Maybe Site) (Maybe Attributee)
+  | Clear Time (Maybe Site) (Maybe Attributee)
+  | Remove Time (Maybe Site) (Maybe Attributee)
+  | Add Time a Interpolation (Maybe Site) (Maybe Attributee)
+  | Set Time a Interpolation (Maybe Site) (Maybe Attributee)
   deriving (Eq, Show)
 
 
@@ -339,7 +339,7 @@ minimiseClears allDeltas = inits ++ minimalClears ++ others
     isInit (Init _) = True
     isInit _ = False
     (inits, _others) = partition (isInit . snd) allDeltas
-    isClear (Clear' {}) = True
+    isClear (Clear {}) = True
     isClear _ = False
     (clears, others) = partition (isClear . snd) _others
     initPaths = Set.fromList $ fmap fst inits
@@ -375,23 +375,23 @@ timeSeriesDiff site ts1 ts2 = fmap snd <$> Map.toList <$> sequence failyTsDiff
         (mapMissing onlyInTs2)
         (zipWithMaybeMatched inBoth) ts1 ts2
 
-    rOrC t Nothing att (Just _) = Right $ Remove' t Nothing att
+    rOrC t Nothing att (Just _) = Right $ Remove t Nothing att
     rOrC t Nothing att Nothing = Left "wat"
-    rOrC t site att _ = Right $ Clear' t site att
+    rOrC t site att _ = Right $ Clear t site att
     onlyInTs1 t (att1, a) = rOrC t site att1 a
 
     allowedR t Nothing att = Left "noo removes stored on global site"
-    allowedR t site att = Right $ Remove' t site att
+    allowedR t site att = Right $ Remove t site att
     onlyInTs2 t (att2, Nothing) = allowedR t site att2
-    onlyInTs2 t (att2, (Just (int2, a2))) = Right $ Add' t a2 int2 site att2
+    onlyInTs2 t (att2, (Just (int2, a2))) = Right $ Add t a2 int2 site att2
 
     inBoth t (att1, Nothing) (att2, Nothing) = Just $ Left "poop"
     inBoth t (att1, Nothing) (att2, (Just (int2, a2))) =
-        Just . Right $ Add' t a2 int2 site att2
+        Just . Right $ Add t a2 int2 site att2
     inBoth t (att1, (Just (int1, a1))) (att2, Nothing) =
         Just $ allowedR t site att2
     inBoth t (att1, (Just (int1, a1))) (att2, (Just (int2, a2)))
-      | int1 /= int2 || a1 /= a2 = Just . Right $ Set' t a2 int2 site att2
+      | int1 /= int2 || a1 /= a2 = Just . Right $ Set t a2 int2 site att2
       | otherwise = Nothing
 
 
@@ -402,8 +402,8 @@ treeApply = foldM (flip f)
     f (np, (Init tp)) = treeInitNode' np tp
     f (np, Delete) = treeDelete np
     f (np, (SetChildren keys)) = treeSetChildren np keys
-    f (np, (Clear' t s a)) = treeClear a np s t
-    f (np, (Remove' t s a)) = treeRemove a np s t
-    f (np, (Add' t v i s a)) = treeAdd a i v np s t
-    f (np, (Set' t v i s a)) = treeSet a i v np s t
+    f (np, (Clear t s a)) = treeClear a np s t
+    f (np, (Remove t s a)) = treeRemove a np s t
+    f (np, (Add t v i s a)) = treeAdd a i v np s t
+    f (np, (Set t v i s a)) = treeSet a i v np s t
     treeInitNode' np tp t = return $ treeInitNode np tp t
