@@ -4,10 +4,6 @@ module Types
         ClapiValue(..),
         fromClapiValue,
         toClapiValue,
-        Name,
-        ClapiPath,
-        root,
-        up,
         initLast,
         ClapiMethod(..),
         ClapiMessage(..),
@@ -20,8 +16,10 @@ import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 
+import Path (Path)
+
 data ClapiMessage = CMessage {
-    msgPath :: ClapiPath,
+    msgPath :: Path,
     msgMethod :: ClapiMethod,
     msgArgs :: [ClapiValue],
     msgTags :: [ClapiMessageTag]
@@ -78,19 +76,6 @@ instance Clapiable T.Text where
 instance Clapiable a => Clapiable [a] where
     toClapiValue = CList . (map toClapiValue)
     fromClapiValue (CList xs) = map fromClapiValue xs
-
-
-type Name = String
-type ClapiPath = [Name]
-
-root :: ClapiPath
-root = []
-
-up :: ClapiPath -> ClapiPath
-up [] = root
--- FIXME: using Data.Seq would be faster than a built in list for init (removing
--- last element)
-up names = init names
 
 initLast :: [a] -> Maybe ([a], a)
 initLast [] = Nothing

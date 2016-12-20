@@ -21,6 +21,8 @@ library
                      , Serialisation
                      , Parsing
                      , Tree
+                     , Path
+                     , Path.Parsing
                      , Data.Map.Mos
   other-modules:       Data.Maybe.Clapi
                      , Data.Map.Clapi

@@ -10,9 +10,10 @@ import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
 import Util (assertFailed)
+import Path (root, up)
 import Types (
     Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle,
-    fromClapiValue, toClapiValue, root, up, initLast)
+    fromClapiValue, toClapiValue, initLast)
 import Serialisation (encode, decode)
 
 

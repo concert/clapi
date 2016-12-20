@@ -27,10 +27,12 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Types(
-    ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle, ClapiPath,
+    ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle,
     ClapiMethod(..), Time(..)
     )
-import Parsing (pathToString, pathParser, methodToString, methodParser)
+import qualified Path
+import qualified Path.Parsing as Path
+import Parsing (methodToString, methodParser)
 import Util (composeParsers)
 
 (<<>>) = liftM2 (<>)
@@ -79,9 +81,9 @@ instance Serialisable T.Text where
         onError s Nothing = Nothing  -- End of input
         onError s (Just c) = Just '?'  -- Undecodable
 
-instance Serialisable ClapiPath where
-    builder = builder . pathToString
-    parser = composeParsers parser pathParser
+instance Serialisable Path.Path where
+    builder = builder . Path.toString
+    parser = composeParsers parser Path.pathP
 
 instance Serialisable ClapiMethod where
     builder = builder . methodToString

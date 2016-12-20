@@ -16,11 +16,11 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 import qualified Data.Map.Mos as Mos
-import Types (ClapiPath, ClapiValue(..), Time(..))
+import Path (Path(..), isChildOfAny)
+import Types (ClapiValue(..), Time(..))
 import Tree (
     CanFail, Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
-    Interpolation(..), treeAdd, treeSet, treeDelete, treeDiff, treeApply,
-    isChildOfAny
+    Interpolation(..), treeAdd, treeSet, treeDelete, treeDiff, treeApply
     )
 
 tests = [
@@ -103,7 +103,7 @@ slightlyDifferentNode (Node keys sm) =
       ]
     return $ Node keys' sm''
 
-arbitraryPath :: Gen ClapiPath
+arbitraryPath :: Gen Path
 arbitraryPath = listOf name
 
 instance (Arbitrary a) => Arbitrary (ClapiTree a) where

@@ -34,8 +34,9 @@ import Control.Monad (foldM)
 import Control.Error.Util (hush, note)
 import Text.Printf (printf)
 
-import Parsing (pathToString)
-import Types (Name, ClapiPath(..), root, Time, ClapiValue)
+import Path (Name, Path, isChildOfAny)
+import Path.Parsing (toString)
+import Types (Time, ClapiValue)
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
@@ -43,8 +44,8 @@ import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 
 type CanFail a = Either String a
-type NodePath = ClapiPath
-type TypePath = ClapiPath
+type NodePath = Path
+type TypePath = Path
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
@@ -121,7 +122,7 @@ formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
     toLines (path, node) = nodeHeader path : nodeSiteMapToLines path node
     nodeHeader path =
         printf "%s [%s]" (formatPath path)
-        (pathToString $ Maybe.toMonoid $ Map.lookup path typeMap)
+        (toString $ Maybe.toMonoid $ Map.lookup path typeMap)
     formatPath [] = "/"
     formatPath (n:[]) = "  " ++ n
     formatPath (n:ns) = "  " ++ formatPath ns
@@ -188,22 +189,6 @@ treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
     lookupOldType nodePath _ = Map.lookup nodePath typeMap
     newTypeMap = Map.difference typeMap removedTypePaths
     newUsedByMap = Mos.difference typesUsedByMap $ Mos.invertMap removedTypePaths
-
-isParentPath :: ClapiPath -> ClapiPath -> Bool
-isParentPath = isPrefixOf
-
-isChildPath :: ClapiPath -> ClapiPath -> Bool
-isChildPath = flip isParentPath
-
-isParentOfAny :: ClapiPath -> [ClapiPath] -> Bool
-isParentOfAny parent candidates = or $ isParentPath parent <$> candidates
-
-isAnyParentOf :: [ClapiPath] -> ClapiPath -> Bool
-isAnyParentOf parents candidate = or $ flip isParentPath candidate <$> parents
-
-isChildOfAny :: ClapiPath -> [ClapiPath] -> Bool
-isChildOfAny candidateChild parents =
-    or $ isChildPath candidateChild <$> parents
 
 treeDeleteNodes :: [NodePath] -> ClapiTree a -> CanFail (ClapiTree a)
 treeDeleteNodes nodePaths (ClapiTree nm tm tum)
