@@ -37,25 +37,18 @@ import Text.Printf (printf)
 import Parsing (pathToString)
 import Types (Name, ClapiPath(..), root, Time, ClapiValue)
 
+import qualified Data.Maybe.Clapi as Maybe
+
 
 type CanFail a = Either String a
 type NodePath = ClapiPath
 type TypePath = ClapiPath
 
-maybeToMonoid :: (Monoid a) => Maybe a -> a
-maybeToMonoid Nothing = mempty
-maybeToMonoid (Just a) = a
-
-foldableToMaybe :: (Foldable t) => t a -> Maybe (t a)
-foldableToMaybe t
-  | null t = Nothing
-  | otherwise = Just t
-
 mapLookupM :: (Monoid a, Ord k) => k -> Map.Map k a -> a
-mapLookupM k m = maybeToMonoid $ Map.lookup k m
+mapLookupM k m = Maybe.toMonoid $ Map.lookup k m
 
 mapUpdateM :: (Monoid a, Ord k) => (a -> a) -> k -> Map.Map k a -> Map.Map k a
-mapUpdateM f = Map.alter (Just . f . maybeToMonoid)
+mapUpdateM f = Map.alter (Just . f . Maybe.toMonoid)
 
 type Mos k a = Map.Map k (Set.Set a)
 
@@ -65,7 +58,7 @@ mosInsert k a = mapUpdateM (Set.insert a) k
 mosDelete :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
 mosDelete k a = Map.update f k
   where
-    f = foldableToMaybe . (Set.delete a)
+    f = Maybe.fromFoldable . (Set.delete a)
 
 invertMap :: (Ord k, Ord a) => Map.Map k a -> Mos a k
 invertMap = Map.foldrWithKey (flip mosInsert) mempty
@@ -73,7 +66,7 @@ invertMap = Map.foldrWithKey (flip mosInsert) mempty
 mosDifference :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 mosDifference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
   where
-    f k sa1 sa2 = foldableToMaybe $ Set.difference sa1 sa2
+    f k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
 
 mosUnion :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 mosUnion = merge preserveMissing preserveMissing (zipWithMatched f)
@@ -170,7 +163,7 @@ formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
     toLines (path, node) = nodeHeader path : nodeSiteMapToLines path node
     nodeHeader path =
         printf "%s [%s]" (formatPath path)
-        (pathToString $ maybeToMonoid $ Map.lookup path typeMap)
+        (pathToString $ Maybe.toMonoid $ Map.lookup path typeMap)
     formatPath [] = "/"
     formatPath (n:[]) = "  " ++ n
     formatPath (n:ns) = "  " ++ formatPath ns
@@ -304,7 +297,7 @@ nodeAction action maybeSite t node =
   do
     newTimeSeries <- at t action existingTimeSeries
     return $
-        node & (getSites . (at maybeSite)) .~ (foldableToMaybe newTimeSeries)
+        node & (getSites . (at maybeSite)) .~ (Maybe.fromFoldable newTimeSeries)
   where
     existingTimeSeries = view (getSites . (ix maybeSite)) node
 
@@ -379,7 +372,7 @@ treeDiff (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
         ((maybeToList $ Init <$> Map.lookup np tm2) ++) <$>
         nodeDiff mempty n2
     inBoth np n1 n2
-      | tp1 /= tp2 = ((maybeToMonoid $ sequence $ [Init <$> tp2]) ++) <$> nodeDiff mempty n2
+      | tp1 /= tp2 = ((Maybe.toMonoid $ sequence $ [Init <$> tp2]) ++) <$> nodeDiff mempty n2
       | otherwise = nodeDiff n1 n2
       where
         tp1 = Map.lookup np tm1
