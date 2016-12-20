@@ -24,6 +24,7 @@ library
                      , Data.Map.Mos
   other-modules:       Data.Maybe.Clapi
                      , Data.Map.Clapi
+                     , Data.Map.Mol
   build-depends:       base >= 4.7 && < 5
                      , text
                      , split

@@ -40,25 +40,11 @@ import Types (Name, ClapiPath(..), root, Time, ClapiValue)
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 import qualified Data.Map.Mos as Mos
+import qualified Data.Map.Mol as Mol
 
 type CanFail a = Either String a
 type NodePath = ClapiPath
 type TypePath = ClapiPath
-
-type Mol k a = Map.Map k [a]
-
-molFromList :: (Ord k) => [(k, a)] -> Mol k a
-molFromList = foldr (uncurry molCons) mempty
-
-molToList :: (Ord k) => Mol k a -> [(k, a)]
-molToList mol = mconcat $ sequence <$> Map.toList mol
-
-molCons :: (Ord k) => k -> a -> Mol k a -> Mol k a
-molCons k a = Map.updateM (a :) k
-
-molAppend :: (Ord k) => k -> a -> Mol k a -> Mol k a
-molAppend k a = Map.updateM (++ [a]) k
-
 
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Eq, Show)
@@ -372,7 +358,7 @@ minimiseClears allDeltas = inits ++ minimalClears ++ others
     isClear _ = False
     (clears, others) = partition (isClear . snd) _others
     initPaths = Set.fromList $ fmap fst inits
-    minimalClears = molToList $ Map.withoutKeys (molFromList clears) initPaths
+    minimalClears = Mol.toList $ Map.withoutKeys (Mol.fromList clears) initPaths
 
 
 nodeDiff :: (Eq a) => Node a -> Node a -> CanFail [TreeDelta a]
