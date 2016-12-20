@@ -213,6 +213,16 @@ treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
     mosDelete' Nothing _ = id
     mosDelete' (Just k) a = mosDelete k a
 
+treeInitNodes :: Map.Map NodePath TypePath -> ClapiTree a -> ClapiTree a
+treeInitNodes typePathMap (ClapiTree nm tm tum) = ClapiTree newNm newTm newTum
+  where
+    onlyNewNm = fmap (const mempty) typePathMap
+    newNm = Map.union onlyNewNm nm
+    newTm = Map.union typePathMap tm
+    onlyOldTum =
+      invertMap $ Map.fromList $ catMaybes $ fmap lookup $ Map.keys typePathMap
+    lookup np = sequence (np, Map.lookup np tm)
+    newTum = mosUnion (mosDifference tum onlyOldTum) (invertMap typePathMap)
 
 
 treeDelete :: NodePath -> ClapiTree a -> CanFail (ClapiTree a)
@@ -242,11 +252,39 @@ isChildOfAny :: ClapiPath -> [ClapiPath] -> Bool
 isChildOfAny candidateChild parents =
     or $ isChildPath candidateChild <$> parents
 
+treeDeleteNodes :: [NodePath] -> ClapiTree a -> CanFail (ClapiTree a)
+treeDeleteNodes nodePaths (ClapiTree nm tm tum)
+  | length removedNodes < length nodePaths =
+      Left $"could not delete paths " ++ (show missingPaths)
+  | otherwise = Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
+  where
+    (removedNodes, remainingNodes) =
+        Map.partitionWithKey (\np _ -> isChildOfAny np nodePaths) nm
+    removedTypePaths =
+        Map.mapMaybeWithKey (\np _ -> Map.lookup np tm) removedNodes
+    newTypeMap = Map.difference tm removedTypePaths
+    newUsedByMap = mosDifference tum $ invertMap removedTypePaths
+    missingPaths =
+        Set.difference (Set.fromList nodePaths) (Map.keysSet removedNodes)
+
 treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
   where
     f Nothing = Left $ printf "not found %s" (show path)
     f (Just node) = Right . Just $ over getKeys (const keys) node
+
+treeSetChildren' :: Map.Map NodePath [Name] -> ClapiTree a ->
+    CanFail (ClapiTree a)
+treeSetChildren' childKeyMap tree@(ClapiTree nm _ _) =
+  do
+    changedNodes <- sequence $ merge
+        (mapMissing notFound)
+        dropMissing
+        (zipWithMatched changeChildren) childKeyMap nm
+    return $ tree & getNodeMap .~ Map.union changedNodes nm
+  where
+    notFound np _ = Left $ printf "not found %s" (show np)
+    changeChildren _ children node = Right $ node & getKeys .~ children
 
 type TreeAction a = Maybe (Attributed (Maybe (TimePoint a))) ->
     CanFail (Maybe (Attributed (Maybe (TimePoint a))))
