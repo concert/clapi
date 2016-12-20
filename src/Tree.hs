@@ -115,6 +115,10 @@ instance Monoid (Node a) where
     mempty = Node [] mempty
     mappend (Node keys m1) (Node _ m2) = Node keys (m1 <> m2)
 
+instance Functor Node where
+    -- Holy nested functors Batman!
+    fmap f (Node keys m) = Node keys $ (fmap . fmap . fmap . fmap . fmap) f m
+
 append :: [a] -> a -> [a]
 append as a = as ++ [a]
 (+|) = append
