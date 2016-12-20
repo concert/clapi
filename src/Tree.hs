@@ -103,11 +103,11 @@ type Attributed a = (Maybe Attributee, a)
 type TimeSeries a = Map.Map Time (Attributed (Maybe (TimePoint a)))
 
 type Site = String
-type SiteMap a = Map.Map (Maybe Site) a
+type SiteMap a = Map.Map (Maybe Site) (TimeSeries a)
 
 data Node a = Node {
     _getKeys :: [Name],
-    _getSites :: SiteMap (TimeSeries a)}
+    _getSites :: SiteMap a}
   deriving (Eq, Show)
 makeLenses ''Node
 
