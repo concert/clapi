@@ -149,6 +149,9 @@ treeOrphansAndMissing tree = (orphans, missing)
     orphans = Set.difference allPaths allChildPaths
     missing = Set.difference allChildPaths allPaths
 
+treeGetType :: NodePath -> ClapiTree a -> CanFail TypePath
+treeGetType p (ClapiTree _ tm _) = note "Can't find type" $ Map.lookup p tm
+
 treeInitNode :: NodePath -> TypePath -> ClapiTree a -> ClapiTree a
 treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
     ClapiTree newNodeMap newTypeMap newTypeUsedByMap
