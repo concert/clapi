@@ -21,6 +21,7 @@ library
                      , Serialisation
                      , Parsing
                      , Tree
+                     , Valuespace
                      , Path
                      , Path.Parsing
                      , Data.Map.Mos
