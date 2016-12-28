@@ -2,6 +2,7 @@ module Types
     (
         Time(..),
         ClapiValue(..),
+        Clapiable,
         fromClapiValue,
         toClapiValue,
         ClapiMethod(..),

@@ -22,6 +22,7 @@ library
                      , Parsing
                      , Tree
                      , Valuespace
+                     , Validator
                      , Path
                      , Path.Parsing
                      , Data.Map.Mos
@@ -30,6 +31,7 @@ library
                      , Data.Map.Mol
   build-depends:       base >= 4.7 && < 5
                      , text
+                     , regex-pcre
                      , split
                      , errors
                      , lens
