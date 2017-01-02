@@ -117,6 +117,9 @@ initStruct root children vs =
     prependRoot (name, tp) = (root +| name, tp)
     typePathMap = Map.fromList $ fmap prependRoot children
 
+addConst :: [ClapiValue] -> NodePath -> Valuespace -> CanFail Valuespace
+addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
+
 getBaseValuespace :: Valuespace
 getBaseValuespace = unpack (
     mempty &
@@ -126,7 +129,8 @@ getBaseValuespace = unpack (
         ] >>=
     initStruct ["api"]
         [("types", ["api", "types", "containers", "types"]),
-         ("version", ["api", "types", "self", "version"])
+         ("version", ["api", "types", "self", "version"]),
+         ("build", ["api", "types", "self", "build"])
         ] >>=
     initStruct ["api", "types"]
         [("base", ["api", "types", "containers", "base"]),
@@ -138,21 +142,49 @@ getBaseValuespace = unpack (
          ("struct", tupleTypePath),
          ("array", tupleTypePath)
         ] >>=
+    addConst (defToValues baseTupleDef) tupleTypePath >>=
+    addConst (defToValues baseStructDef) structTypePath >>=
+    addConst (defToValues baseArrayDef) arrayTypePath >>=
+    initStruct ["api", "types", "self"]
+        [("version", tupleTypePath),
+         ("build", tupleTypePath)
+        ] >>=
+    addConst (defToValues versionDef) ["api", "types", "self", "version"] >>=
+    addConst (defToValues buildDef) ["api", "types", "self", "build"] >>=
     initStruct ["api", "types", "containers"]
         [("root", structTypePath),
          ("api", structTypePath),
+         ("types", structTypePath),
          ("base", structTypePath),
          ("self", structTypePath),
          ("containers", structTypePath)
         ] >>=
-    initStruct ["api", "types", "self"]
-        [("version", tupleTypePath)] >>=
-    treeAdd anon IConstant (defToValues baseTupleDef) tupleTypePath
-        globalSite tconst >>=
-    treeAdd anon IConstant (defToValues baseStructDef) structTypePath
-        globalSite tconst >>=
-    treeAdd anon IConstant (defToValues baseArrayDef) arrayTypePath
-        globalSite tconst
+    addConst (defToValues rootSDef) ["api", "types", "containers", "root"] >>=
+    addConst (defToValues apiSDef) ["api", "types", "containers", "api"] >>=
+    addConst (defToValues typesSDef) ["api", "types", "containers", "types"] >>=
+    addConst (defToValues baseSDef) ["api", "types", "containers", "base"] >>=
+    addConst (defToValues selfSDef) ["api", "types", "containers", "self"] >>=
+    addConst (defToValues containersSDef) ["api", "types", "containers", "containers"]
     )
   where
     unpack (Right v) = v
+    versionDef = TupleDef Cannot "v" ["maj", "min"] ["noope"] []
+    buildDef = TupleDef Cannot "b" ["value"] ["none here"] []
+    -- FIXME: there's quite a lot of repetition here - should try to do inference
+    rootSDef = StructDef Cannot "r" ["api"] [
+        ["api", "types", "containers", "api"]] []
+    apiSDef = StructDef Cannot "a" ["types", "version", "build"] [
+        ["api", "types", "containers", "types"],
+        ["api", "types", "self", "version"],
+        ["api", "types", "self", "build"]] []
+    typesSDef = StructDef Cannot "t" ["base", "containers", "self"] [
+        ["api", "types", "containers", "base"],
+        ["api", "types", "containers", "containers"],
+        ["api", "types", "containers", "self"]] []
+    baseSDef = StructDef Cannot "b" ["tuple", "struct", "array"] [
+        tupleTypePath, tupleTypePath, tupleTypePath] []
+    selfSDef = StructDef Cannot "s" ["version", "build"] [
+        tupleTypePath, tupleTypePath] []
+    containersSDef = StructDef Cannot "c"
+        ["root", "api", "types", "self", "base", "containers"]
+        (replicate 6 structTypePath) []
