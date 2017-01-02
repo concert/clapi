@@ -28,7 +28,8 @@ tests = [
 -- FIXME: we should define a QuickCheck.Arbitrary instance for ClapiValue and
 -- use it to generate better random values
 testClapiValueConversionRoundTrip :: [Float] -> Bool
-testClapiValueConversionRoundTrip f = (fromClapiValue . toClapiValue) f == f
+testClapiValueConversionRoundTrip f =
+    (fromClapiValue . toClapiValue) f == Just f
 
 testBinarySerialisationRoundTrip =
     Right bundle @=? result where
