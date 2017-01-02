@@ -209,7 +209,7 @@ treeDeleteNodes nodePaths (ClapiTree nm tm tum)
 treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
   where
-    f Nothing = Left $ printf "not found %s" (show path)
+    f Nothing = Left $ printf "not found %s" (toString path)
     f (Just node) = Right . Just $ over getKeys (const keys) node
 
 treeSetChildren' :: Map.Map NodePath [Name] -> ClapiTree a ->
@@ -222,7 +222,7 @@ treeSetChildren' childKeyMap tree@(ClapiTree nm _ _) =
         (zipWithMatched changeChildren) childKeyMap nm
     return $ tree & getNodeMap .~ Map.union changedNodes nm
   where
-    notFound np _ = Left $ printf "not found %s" (show np)
+    notFound np _ = Left $ printf "not found %s" (toString np)
     changeChildren _ children node = Right $ node & getKeys .~ children
 
 type TreeAction a = Maybe (Attributed (Maybe (TimePoint a))) ->
@@ -231,7 +231,7 @@ treeAction :: TreeAction a -> NodePath -> Maybe Site -> Time -> ClapiTree a ->
     CanFail (ClapiTree a)
 treeAction action path maybeSite t tree =
   do
-    node <- (note $ printf "not found %s" (show path)) $ view (at path) tree
+    node <- (note $ printf "not found %s" (toString path)) $ view (at path) tree
     newNode <- nodeAction action maybeSite t node
     newTree <- return $ tree & (at path) .~ (Just newNode)
     return newTree
