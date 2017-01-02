@@ -46,7 +46,7 @@ instance Show ClapiValue where
         show' (CFloat x) = show x
         show' (CDouble x) = show x
         show' (CString x) = show x
-        show' (CList x) = show x
+        show' (CList xs) = show xs
 
 class Clapiable a where
     toClapiValue :: a -> ClapiValue
