@@ -1,5 +1,6 @@
 module Valuespace where
 
+import Control.Monad (liftM)
 import Control.Lens ((&))
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -10,7 +11,7 @@ import qualified Path.Parsing as Path
 import Types (ClapiValue(..), Interpolation(..), Time(..))
 import Tree (
   CanFail, (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
-  treeInitNodes, treeAdd)
+  treeInitNodes, treeSetChildren, treeAdd)
 
 data Liberty = Cannot | May | Must deriving (Show)
 data Definition =
@@ -106,21 +107,46 @@ globalSite = Nothing
 anon = Nothing
 tconst = Time 0 0
 
-initStruct :: NodePath -> [Path.Name] -> [TypePath] -> Valuespace -> Valuespace
-initStruct root names typePaths = treeInitNodes map
+initStruct :: NodePath -> [(Path.Name, TypePath)] -> Valuespace ->
+    CanFail Valuespace
+initStruct root children vs =
+    vs &
+    treeInitNodes typePathMap &
+    treeSetChildren root (fmap fst children)
   where
-    map = Map.fromList $ zip (fmap (root +|) names) typePaths
+    prependRoot (name, tp) = (root +| name, tp)
+    typePathMap = Map.fromList $ fmap prependRoot children
 
-getEmptyValuespace :: Valuespace
-getEmptyValuespace = unpack (
+getBaseValuespace :: Valuespace
+getBaseValuespace = unpack (
     mempty &
-    treeInitNode tupleTypePath tupleTypePath &
-    treeInitNode structTypePath tupleTypePath &
-    treeInitNode arrayTypePath tupleTypePath &
-    treeInitNode ["api", "types", "self", "version"] tupleTypePath &
-    treeInitNode ["api", "version"] ["api", "types", "self", "version"] &
+    treeInitNode Path.root ["api", "types", "containers", "root"] &
+    initStruct Path.root
+        [("api", ["api", "types", "containers", "api"])
+        ] >>=
+    initStruct ["api"]
+        [("types", ["api", "types", "containers", "types"]),
+         ("version", ["api", "types", "self", "version"])
+        ] >>=
+    initStruct ["api", "types"]
+        [("base", ["api", "types", "containers", "base"]),
+         ("self", ["api", "types", "containers", "self"]),
+         ("containers", ["api", "types", "containers", "containers"])
+        ] >>=
+    initStruct ["api", "types", "base"]
+        [("tuple", tupleTypePath),
+         ("struct", tupleTypePath),
+         ("array", tupleTypePath)
+        ] >>=
     initStruct ["api", "types", "containers"]
-        ["root", "api", "base", "self", "containers"] (repeat structTypePath) &
+        [("root", structTypePath),
+         ("api", structTypePath),
+         ("base", structTypePath),
+         ("self", structTypePath),
+         ("containers", structTypePath)
+        ] >>=
+    initStruct ["api", "types", "self"]
+        [("version", tupleTypePath)] >>=
     treeAdd anon IConstant (defToValues baseTupleDef) tupleTypePath
         globalSite tconst >>=
     treeAdd anon IConstant (defToValues baseStructDef) structTypePath
