@@ -34,7 +34,7 @@ import Control.Monad (foldM)
 import Control.Error.Util (hush, note)
 import Text.Printf (printf)
 
-import Path (Name, Path, isChildOfAny)
+import Path (Name, Path, root, isChildOfAny)
 import Path.Parsing (toString)
 import Types (Time, ClapiValue, Interpolation(..))
 
@@ -145,8 +145,9 @@ treeOrphansAndMissing tree = (orphans, missing)
   where
     nodes = Map.toList $ view getNodeMap tree
     allChildPaths = Set.fromList . mconcat $ fmap (uncurry getChildPaths) nodes
+    allChildPaths' = Set.insert root allChildPaths
     allPaths = Set.fromList $ fmap fst nodes
-    orphans = Set.difference allPaths allChildPaths
+    orphans = Set.difference allPaths allChildPaths'
     missing = Set.difference allChildPaths allPaths
 
 treeGetType :: NodePath -> ClapiTree a -> CanFail TypePath
