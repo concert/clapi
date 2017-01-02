@@ -1,10 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Valuespace where
 
 import Control.Monad (liftM)
 import Control.Lens ((&))
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-import Data.Text (pack)
+import Data.Text (Text, pack)
 
 import qualified Path
 import qualified Path.Parsing as Path
@@ -18,19 +19,19 @@ data Liberty = Cannot | May | Must deriving (Show)
 data Definition =
     TupleDef {
       liberty :: Liberty,
-      doc :: String,
+      doc :: Text,
       valueNames :: [Path.Name],
-      validators :: [String], -- [ClapiValue -> Maybe String],
+      validators :: [Text],
       permittedInterpolations :: [Interpolation]}
   | StructDef {
       liberty :: Liberty,
-      doc :: String,
+      doc :: Text,
       childNames :: [Path.Name],
       childTypes :: [Path.Path],
       childLiberties :: [Liberty]}
   | ArrayDef {
       liberty :: Liberty,
-      doc :: String,
+      doc :: Text,
       childType :: Path.Path,
       childLiberty :: Liberty}
   deriving Show
@@ -51,15 +52,15 @@ defToValues :: Definition -> [ClapiValue]
 defToValues (TupleDef l d ns vs is) =
   [
     CString $ pack $ show l,
-    CString $ pack d,
+    CString d,
     CList $ fmap (CString . pack) ns,
-    CList $ fmap (CString . pack) vs,
+    CList $ fmap CString vs,
     CList $ fmap (CString . pack . show) is
   ]
 defToValues (StructDef l d ns ts ls) =
   [
     CString $ pack $ show l,
-    CString $ pack d,
+    CString $ d,
     CList $ fmap (CString . pack) ns,
     CList $ fmap (CString . pack . Path.toString) ts,
     CList $ fmap (CString . pack . show) ls
@@ -67,7 +68,7 @@ defToValues (StructDef l d ns ts ls) =
 defToValues (ArrayDef l d t cl) =
   [
     CString $ pack $ show l,
-    CString $ pack d,
+    CString $ d,
     CString $ pack $ Path.toString t,
     CString $ pack $ show cl
   ]
@@ -118,7 +119,7 @@ getMetaType p (Valuespace tree _) =
       | otherwise = Left "Weird metapath!"
 
 
-initStruct :: NodePath -> TypePath -> Liberty -> String ->
+initStruct :: NodePath -> TypePath -> Liberty -> Text ->
     [(Path.Name, TypePath)] -> Valuespace -> CanFail Valuespace
 initStruct np tp lib doc children =
     updateVs updateTree updateVmap
