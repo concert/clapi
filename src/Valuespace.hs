@@ -12,6 +12,7 @@ import Types (ClapiValue(..), Interpolation(..), Time(..))
 import Tree (
   CanFail, (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
+import Validator (Validator)
 
 data Liberty = Cannot | May | Must deriving (Show)
 data Definition =
@@ -75,7 +76,21 @@ defToValues (ArrayDef l d t cl) =
 -- valuesToDef = undefined
 
 data MetaType = Tuple | Struct | Array deriving (Eq, Show)
-type Valuespace = ClapiTree [ClapiValue]
+type VsTree = ClapiTree [ClapiValue]
+type Vmap = Map.Map NodePath [Validator]
+data Valuespace = Valuespace {getTree :: VsTree, getVmap :: Vmap}
+
+updateVs :: (VsTree -> CanFail VsTree) -> (Vmap -> CanFail Vmap) ->
+    Valuespace -> CanFail Valuespace
+updateVs f g (Valuespace vsTree vmap) =
+  do
+    vsTree' <- f vsTree
+    vmap' <- g vmap
+    return $ Valuespace vsTree' vmap'
+
+updateVsTree :: (VsTree -> CanFail VsTree) -> Valuespace -> CanFail Valuespace
+updateVsTree f = updateVs f return
+
 
 apiRoot :: Path.Path
 apiRoot = ["api"]
@@ -90,10 +105,10 @@ arrayTypePath :: Path.Path
 arrayTypePath = ["api", "types", "base", "array"]
 
 getMetaType :: NodePath -> Valuespace -> CanFail MetaType
-getMetaType p vs =
+getMetaType p (Valuespace tree _) =
   do
-    tp <- treeGetType p vs
-    mtp <- treeGetType tp vs
+    tp <- treeGetType p tree
+    mtp <- treeGetType tp tree
     categorise mtp
   where
     categorise mtp
@@ -105,31 +120,35 @@ getMetaType p vs =
 
 initStruct :: NodePath -> TypePath -> Liberty -> String ->
     [(Path.Name, TypePath)] -> Valuespace -> CanFail Valuespace
-initStruct np tp lib doc children vs =
-    vs &
-    treeInitNode tp structTypePath &
-    treeInitNode np tp &
-    addConst (defToValues structDef) tp >>=
-    \x -> pure (treeInitNodes typePathMap x) >>=
-    treeSetChildren np childNames
+initStruct np tp lib doc children =
+    updateVs updateTree updateVmap
   where
-    childNames = fmap fst children
-    childTypes = fmap snd children
-    prependRoot (name, tp) = (np +| name, tp)
-    typePathMap = Map.fromList $ fmap prependRoot children
-    structDef = StructDef lib doc childNames childTypes []
+    updateTree tree =
+        tree &
+        treeInitNode tp structTypePath &
+        treeInitNode np tp &
+        addConst (defToValues structDef) tp >>=
+        \x -> pure (treeInitNodes typePathMap x) >>=
+        treeSetChildren np childNames
+      where
+        childNames = fmap fst children
+        childTypes = fmap snd children
+        prependRoot (name, tp) = (np +| name, tp)
+        typePathMap = Map.fromList $ fmap prependRoot children
+        structDef = StructDef lib doc childNames childTypes []
+    updateVmap vmap = return undefined
 
 
 globalSite = Nothing
 anon = Nothing
 tconst = Time 0 0
 
-addConst :: [ClapiValue] -> NodePath -> Valuespace -> CanFail Valuespace
+addConst :: [ClapiValue] -> NodePath -> VsTree -> CanFail VsTree
 addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
 
 getBaseValuespace :: Valuespace
 getBaseValuespace = unpack (
-    mempty &
+    Valuespace mempty mempty &
     initStruct Path.root
         ["api", "types", "containers", "root"]
         Cannot "doc"
@@ -155,20 +174,19 @@ getBaseValuespace = unpack (
          ("struct", tupleTypePath),
          ("array", tupleTypePath)
         ] >>=
-    addConst (defToValues baseTupleDef) tupleTypePath >>=
-    addConst (defToValues baseStructDef) structTypePath >>=
-    addConst (defToValues baseArrayDef) arrayTypePath >>=
+    addConst' (defToValues baseTupleDef) tupleTypePath >>=
+    addConst' (defToValues baseStructDef) structTypePath >>=
+    addConst' (defToValues baseArrayDef) arrayTypePath >>=
     initStruct ["api", "types", "self"]
         ["api", "types", "containers", "self"]
         Cannot "doc"
         [("version", tupleTypePath),
          ("build", tupleTypePath)
         ] >>=
-    addConst (defToValues versionDef) ["api", "types", "self", "version"] >>=
-    addConst (defToValues buildDef) ["api", "types", "self", "build"] >>=
-    \vs -> pure
-        (treeInitNode ["api", "types", "containers"] structTypePath vs) >>=
-    treeSetChildren ["api", "types", "containers"]
+    addConst' (defToValues versionDef) ["api", "types", "self", "version"] >>=
+    addConst' (defToValues buildDef) ["api", "types", "self", "build"] >>=
+    treeInitNode' ["api", "types", "containers"] structTypePath >>=
+    treeSetChildren' ["api", "types", "containers"]
         ["root", "api", "types", "base", "self"]
     )
   where
@@ -176,3 +194,10 @@ getBaseValuespace = unpack (
     unpack (Left v) = error v
     versionDef = TupleDef Cannot "v" ["maj", "min"] ["noope"] []
     buildDef = TupleDef Cannot "b" ["value"] ["none here"] []
+    addConst' cvs tp = updateVsTree (addConst cvs tp)
+    treeInitNode' np tp = updateVsTree f
+      where
+        f tree = pure $ treeInitNode np tp tree
+    treeSetChildren' np children = updateVsTree f
+      where
+        f tree = treeSetChildren np children tree

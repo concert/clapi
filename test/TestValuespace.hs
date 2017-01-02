@@ -7,7 +7,7 @@ import Data.Maybe (isNothing)
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
-import Valuespace (getBaseValuespace)
+import Valuespace (getBaseValuespace, getTree)
 import Tree (treeOrphansAndMissing)
 
 tests = [
@@ -15,4 +15,6 @@ tests = [
     ]
 
 testBaseValuespace = assertEqual "clean base valuespace" (mempty, mempty) $
-    treeOrphansAndMissing getBaseValuespace
+    treeOrphansAndMissing baseVsTree
+  where
+    baseVsTree = getTree getBaseValuespace
