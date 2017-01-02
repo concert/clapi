@@ -63,7 +63,7 @@ defToValues (StructDef l d ns ts ls) =
     CList $ fmap (CString . pack . Path.toString) ts,
     CList $ fmap (CString . pack . show) ls
   ]
-defToValues (ArrayDef l d t cl) = undefined
+defToValues (ArrayDef l d t cl) =
   [
     CString $ pack $ show l,
     CString $ pack d,
