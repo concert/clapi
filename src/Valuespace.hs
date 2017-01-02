@@ -13,7 +13,7 @@ import Types (ClapiValue(..), Interpolation(..), Time(..))
 import Tree (
   CanFail, (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
-import Validator (Validator)
+import Validator (Validator, fromText)
 
 data Liberty = Cannot | May | Must deriving (Show)
 data Definition =
@@ -72,6 +72,10 @@ defToValues (ArrayDef l d t cl) =
     CString $ pack $ Path.toString t,
     CString $ pack $ show cl
   ]
+
+defToValidators :: Definition -> CanFail [Validator]
+defToValidators t@(TupleDef {}) = sequence $ fmap fromText $ validators t
+defToValidators _ = Right []
 
 -- valuesToDef :: Values -> Definition
 -- valuesToDef = undefined
