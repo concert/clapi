@@ -103,19 +103,26 @@ getMetaType p vs =
       | otherwise = Left "Weird metapath!"
 
 
+initStruct :: NodePath -> TypePath -> Liberty -> String ->
+    [(Path.Name, TypePath)] -> Valuespace -> CanFail Valuespace
+initStruct np tp lib doc children vs =
+    vs &
+    treeInitNode tp structTypePath &
+    treeInitNode np tp &
+    addConst (defToValues structDef) tp >>=
+    \x -> pure (treeInitNodes typePathMap x) >>=
+    treeSetChildren np childNames
+  where
+    childNames = fmap fst children
+    childTypes = fmap snd children
+    prependRoot (name, tp) = (np +| name, tp)
+    typePathMap = Map.fromList $ fmap prependRoot children
+    structDef = StructDef lib doc childNames childTypes []
+
+
 globalSite = Nothing
 anon = Nothing
 tconst = Time 0 0
-
-initStruct :: NodePath -> [(Path.Name, TypePath)] -> Valuespace ->
-    CanFail Valuespace
-initStruct root children vs =
-    vs &
-    treeInitNodes typePathMap &
-    treeSetChildren root (fmap fst children)
-  where
-    prependRoot (name, tp) = (root +| name, tp)
-    typePathMap = Map.fromList $ fmap prependRoot children
 
 addConst :: [ClapiValue] -> NodePath -> Valuespace -> CanFail Valuespace
 addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
@@ -123,21 +130,27 @@ addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
 getBaseValuespace :: Valuespace
 getBaseValuespace = unpack (
     mempty &
-    treeInitNode Path.root ["api", "types", "containers", "root"] &
     initStruct Path.root
-        [("api", ["api", "types", "containers", "api"])
-        ] >>=
+        ["api", "types", "containers", "root"]
+        Cannot "doc"
+        [("api", ["api", "types", "containers", "api"])] >>=
     initStruct ["api"]
+        ["api", "types", "containers", "api"]
+        Cannot "doc"
         [("types", ["api", "types", "containers", "types"]),
          ("version", ["api", "types", "self", "version"]),
          ("build", ["api", "types", "self", "build"])
         ] >>=
     initStruct ["api", "types"]
+        ["api", "types", "containers", "types"]
+        Cannot "doc"
         [("base", ["api", "types", "containers", "base"]),
          ("self", ["api", "types", "containers", "self"]),
          ("containers", ["api", "types", "containers", "containers"])
         ] >>=
     initStruct ["api", "types", "base"]
+        ["api", "types", "containers", "base"]
+        Cannot "doc"
         [("tuple", tupleTypePath),
          ("struct", tupleTypePath),
          ("array", tupleTypePath)
@@ -146,45 +159,20 @@ getBaseValuespace = unpack (
     addConst (defToValues baseStructDef) structTypePath >>=
     addConst (defToValues baseArrayDef) arrayTypePath >>=
     initStruct ["api", "types", "self"]
+        ["api", "types", "containers", "self"]
+        Cannot "doc"
         [("version", tupleTypePath),
          ("build", tupleTypePath)
         ] >>=
     addConst (defToValues versionDef) ["api", "types", "self", "version"] >>=
     addConst (defToValues buildDef) ["api", "types", "self", "build"] >>=
-    initStruct ["api", "types", "containers"]
-        [("root", structTypePath),
-         ("api", structTypePath),
-         ("types", structTypePath),
-         ("base", structTypePath),
-         ("self", structTypePath),
-         ("containers", structTypePath)
-        ] >>=
-    addConst (defToValues rootSDef) ["api", "types", "containers", "root"] >>=
-    addConst (defToValues apiSDef) ["api", "types", "containers", "api"] >>=
-    addConst (defToValues typesSDef) ["api", "types", "containers", "types"] >>=
-    addConst (defToValues baseSDef) ["api", "types", "containers", "base"] >>=
-    addConst (defToValues selfSDef) ["api", "types", "containers", "self"] >>=
-    addConst (defToValues containersSDef) ["api", "types", "containers", "containers"]
+    \vs -> pure
+        (treeInitNode ["api", "types", "containers"] structTypePath vs) >>=
+    treeSetChildren ["api", "types", "containers"]
+        ["root", "api", "types", "base", "self"]
     )
   where
     unpack (Right v) = v
+    unpack (Left v) = error v
     versionDef = TupleDef Cannot "v" ["maj", "min"] ["noope"] []
     buildDef = TupleDef Cannot "b" ["value"] ["none here"] []
-    -- FIXME: there's quite a lot of repetition here - should try to do inference
-    rootSDef = StructDef Cannot "r" ["api"] [
-        ["api", "types", "containers", "api"]] []
-    apiSDef = StructDef Cannot "a" ["types", "version", "build"] [
-        ["api", "types", "containers", "types"],
-        ["api", "types", "self", "version"],
-        ["api", "types", "self", "build"]] []
-    typesSDef = StructDef Cannot "t" ["base", "containers", "self"] [
-        ["api", "types", "containers", "base"],
-        ["api", "types", "containers", "containers"],
-        ["api", "types", "containers", "self"]] []
-    baseSDef = StructDef Cannot "b" ["tuple", "struct", "array"] [
-        tupleTypePath, tupleTypePath, tupleTypePath] []
-    selfSDef = StructDef Cannot "s" ["version", "build"] [
-        tupleTypePath, tupleTypePath] []
-    containersSDef = StructDef Cannot "c"
-        ["root", "api", "types", "self", "base", "containers"]
-        (replicate 6 structTypePath) []
