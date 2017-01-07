@@ -29,6 +29,7 @@ library
   other-modules:       Data.Maybe.Clapi
                      , Data.Map.Clapi
                      , Data.Map.Mol
+                     , Data.Map.ChainMap
   build-depends:       base >= 4.7 && < 5
                      , text
                      , regex-pcre
