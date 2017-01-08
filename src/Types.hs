@@ -1,7 +1,9 @@
+{-# LANGUAGE ExistentialQuantification #-}
 module Types
     (
         Time(..),
         ClapiValue(..),
+        Enumerated(..),
         Clapiable,
         fromClapiValue,
         toClapiValue,
@@ -13,7 +15,7 @@ module Types
     )
 where
 
-import Data.Word (Word32, Word64)
+import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 
@@ -29,7 +31,7 @@ data ClapiMessage = CMessage {
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
 data ClapiValue = CBool Bool | CTime Time |
-    CWord32 Word32 | CWord64 Word64 |
+    CEnum Word8 | CWord32 Word32 | CWord64 Word64 |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |
     CString T.Text | CList [ClapiValue] deriving (Eq)
@@ -39,6 +41,7 @@ instance Show ClapiValue where
       where
         show' (CBool x) = show x
         show' (CTime x) = show x
+        show' (CEnum x) = show x
         show' (CWord32 x) = show x
         show' (CWord64 x) = show x
         show' (CInt32 x) = show x
@@ -47,6 +50,21 @@ instance Show ClapiValue where
         show' (CDouble x) = show x
         show' (CString x) = show x
         show' (CList xs) = show xs
+
+data Enumerated a = (Enum a, Bounded a) => Enumerated {getEnum :: a}
+instance (Show a) => Show (Enumerated a) where
+  show (Enumerated a) = "Enumerated " ++ show a
+
+-- http://stackoverflow.com/questions/2743858/safe-and-polymorphic-toenum
+safeToEnum :: (Enum a, Bounded a) => Int -> Maybe a
+safeToEnum i =
+  let
+    r = toEnum i
+    max = maxBound `asTypeOf` r
+    min = minBound `asTypeOf` r
+  in if fromEnum min <= i && i <= fromEnum max
+  then Just r
+  else Nothing
 
 class Clapiable a where
     toClapiValue :: a -> ClapiValue
@@ -60,6 +78,11 @@ instance Clapiable Bool where
 instance Clapiable Time where
     toClapiValue = CTime
     fromClapiValue (CTime x) = Just x
+    fromClapiValue _ = Nothing
+
+instance (Enum a, Bounded a) => Clapiable (Enumerated a) where
+    toClapiValue (Enumerated x) = CEnum $ fromIntegral $ fromEnum x
+    fromClapiValue (CEnum x) = Enumerated <$> (safeToEnum $ fromIntegral x)
     fromClapiValue _ = Nothing
 
 instance Clapiable Word32 where
