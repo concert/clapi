@@ -11,8 +11,8 @@ import Control.Monad (liftM2)
 import qualified Data.ByteString as B
 import Data.Word (Word8, Word16)
 import Blaze.ByteString.Builder (
-  Builder, toByteString, fromInt32be, fromInt64be, fromWord16be, fromWord32be,
-  fromWord64be)
+    Builder, toByteString, fromInt32be, fromInt64be, fromWord8, fromWord16be,
+    fromWord32be, fromWord64be)
 import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromText, fromString)
@@ -21,7 +21,7 @@ import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8With)
 
-import Data.Attoparsec.ByteString (Parser, parseOnly, count)
+import Data.Attoparsec.ByteString (Parser, parseOnly, count, anyWord8)
 import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
@@ -94,6 +94,7 @@ typeTag :: ClapiValue -> Char
 typeTag (CBool False) = 'F'
 typeTag (CBool True) = 'T'
 typeTag (CTime _) = 't'
+typeTag (CEnum _) = 'e'
 typeTag (CWord32 _) = 'u'
 typeTag (CWord64 _) = 'U'
 typeTag (CInt32 _) = 'i'
@@ -106,6 +107,7 @@ typeTag (CList _) = 'l'
 cvBuilder :: ClapiValue -> Either String Builder
 cvBuilder (CBool _) = Right mempty
 cvBuilder (CTime (Time x y)) = Right $ fromWord64be x <> fromWord32be y
+cvBuilder (CEnum x) = Right $ fromWord8 x
 cvBuilder (CWord32 x) = Right $ fromWord32be x
 cvBuilder (CWord64 x) = Right $ fromWord64be x
 cvBuilder (CInt32 x) = Right $ fromInt32be x
@@ -122,6 +124,7 @@ cvParser 't' =
     foo <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
   where
     foo x y = CTime $ Time x y
+cvParser 'e' = CEnum <$> anyWord8
 cvParser 'u' = CWord32 <$> anyWord32be
 cvParser 'U' = CWord64 <$> anyWord64be
 cvParser 'i' = CInt32 <$> fromIntegral <$> anyWord32be
@@ -147,7 +150,7 @@ sequenceParsers (p:ps) = do
 
 -- FIXME: Repitition of tag chars :-(
 parseTags :: APT.Parser String
-parseTags = APT.many' $ APT.satisfy (APT.inClass "NFTtuUiIdDsl")
+parseTags = APT.many' $ APT.satisfy (APT.inClass "NFTteuUiIdDsl")
 
 instance Serialisable [ClapiValue] where
     builder = taggedEncode derive cvBuilder where
