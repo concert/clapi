@@ -15,9 +15,9 @@ import qualified Data.Attoparsec.Text as Dat
 
 import Path.Parsing (nameP)
 import Types (ClapiValue(..), Time(..), Clapiable, fromClapiValue)
-import Tree (CanFail)
+import Tree (ClapiTree(..), CanFail)
 
-type Validator = ClapiValue -> CanFail ()
+type Validator = ClapiTree [ClapiValue] -> ClapiValue -> CanFail ()
 success = Right ()
 
 maybeP :: Dat.Parser a -> Dat.Parser (Maybe a)
@@ -71,28 +71,31 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
     floatP = toRealFloat <$> Dat.scientific :: Dat.Parser Float
     doubleP = toRealFloat <$> Dat.scientific :: Dat.Parser Double
 
-validate :: [Validator] -> [ClapiValue] -> CanFail ()
-validate vs cvs
+validate :: ClapiTree [ClapiValue] -> [Validator] -> [ClapiValue] -> CanFail ()
+validate tree vs cvs
   | length vs > length cvs = Left "Insufficient values"
   | length vs < length cvs = Left "Insufficient validators"
-  | otherwise = softValidate vs cvs
+  | otherwise = softValidate tree vs cvs
 
 -- validate where lengths of lists aren't important
-softValidate :: [Validator] -> [ClapiValue] -> CanFail ()
-softValidate vs cvs =  foldl (>>) (Right ()) $ zipWith ($) vs cvs
+softValidate :: ClapiTree [ClapiValue] -> [Validator] -> [ClapiValue] ->
+    CanFail ()
+softValidate tree vs cvs =
+    foldl (>>) success $
+    zipWith ($) [v tree | v <- vs] cvs
 
 boolValidator :: Validator
-boolValidator (CBool _) = success
-boolValidator _ = Left "Bad type"  -- FIXME: should say which!
+boolValidator _ (CBool _) = success
+boolValidator _ _ = Left "Bad type"  -- FIXME: should say which!
 
 timeValidator :: Validator
-timeValidator (CTime (Time _ _)) = success
-timeValidator _ = Left "Bad type"  -- FIXME: should say which!
+timeValidator _ (CTime (Time _ _)) = success
+timeValidator _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getNumValidator :: forall a. (Clapiable a, Ord a, PrintfArg a) =>
     Maybe a -> Maybe a -> Validator
 getNumValidator min max =
-    \cv -> checkType cv >>= bound min max
+    \_ cv -> checkType cv >>= bound min max
   where
     -- FIXME: should say which type!
     checkType cv = note "Bad type" (fromClapiValue cv :: Maybe a)
@@ -109,23 +112,23 @@ getNumValidator min max =
       | otherwise = Left $ printf "%v not between %v and %v" v min max
 
 getEnumValidator :: [String] -> Validator
-getEnumValidator names (CEnum x)
+getEnumValidator names _ (CEnum x)
   | x <= max = success
   | otherwise = Left $ printf "Enum value not <= %v" (max)
   where
     max = fromIntegral $ length names - 1
-getEnumValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+getEnumValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getStringValidator :: Maybe String -> Validator
-getStringValidator Nothing (CString t) = success
-getStringValidator (Just pattern) (CString t) =
+getStringValidator Nothing _ (CString t) = success
+getStringValidator (Just pattern) _ (CString t) =
     note errStr ((Text.unpack t) =~~ pattern :: Maybe ())
   where
     errStr = printf "did not match '%s'" pattern
-getStringValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+getStringValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getListValidator :: Validator -> Validator
 getListValidator itemValidator = listValidator
   where
-    listValidator (CList xs) = softValidate (repeat itemValidator) xs
-    listValidator _ = Left "Bad type"  -- FIXME: should say which!
+    listValidator tree (CList xs) = softValidate tree (repeat itemValidator) xs
+    listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
