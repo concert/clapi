@@ -1,4 +1,4 @@
-module Path.Parsing (toString, pathP) where
+module Path.Parsing (toString, pathP, nameP) where
 
 import Data.Char (isLetter, isDigit)
 import Control.Applicative ((<|>))

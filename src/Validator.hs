@@ -13,6 +13,7 @@ import Text.Printf (printf, PrintfArg)
 
 import qualified Data.Attoparsec.Text as Dat
 
+import Path.Parsing (nameP)
 import Types (ClapiValue(..), Time(..), Clapiable, fromClapiValue)
 import Tree (CanFail)
 
@@ -40,6 +41,7 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
     argsParserMap = Map.fromList [
         ("bool", optionalEmpty boolValidator),
         ("time", optionalEmpty timeValidator),
+        ("enum", mandatoryArgs1 getEnumValidator enumP),
         ("word32", optionalArgs2 getNumValidator word32P word32P),
         ("word64", optionalArgs2 getNumValidator word64P word64P),
         ("int32", optionalArgs2 getNumValidator int32P int32P),
@@ -61,6 +63,7 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
       where
         g = f <$> (maybeP argAP) <*> (maybeP $ sep >> argBP)
     mandatoryArgs1 f p = f <$> bracket p
+    enumP = Dat.sepBy nameP (Dat.char ',')
     word32P = Dat.decimal :: Dat.Parser Word32
     word64P = Dat.decimal :: Dat.Parser Word64
     int32P = Dat.signed Dat.decimal :: Dat.Parser Int32
@@ -104,6 +107,14 @@ getNumValidator min max =
     bound (Just min) (Just max) v
       | v >= min && v <= max = success
       | otherwise = Left $ printf "%v not between %v and %v" v min max
+
+getEnumValidator :: [String] -> Validator
+getEnumValidator names (CEnum x)
+  | x <= max = success
+  | otherwise = Left $ printf "Enum value not <= %v" (max)
+  where
+    max = fromIntegral $ length names - 1
+getEnumValidator _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getStringValidator :: Maybe String -> Validator
 getStringValidator Nothing (CString t) = success
