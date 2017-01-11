@@ -4,12 +4,10 @@ import Util (assertFailed)
 import Data.Either (isRight)
 import Data.Foldable (toList)
 import Control.Monad (liftM, liftM2, replicateM)
-import Test.HUnit (assertEqual)
 import Test.QuickCheck (
     Gen, Arbitrary(..), arbitrary, (==>), forAll, choose, elements, shuffle,
     oneof, frequency, listOf, sublistOf, counterexample, property)
 import Test.QuickCheck.Property (Result(..), Property(..))
-import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import qualified Data.Map.Strict as Map
