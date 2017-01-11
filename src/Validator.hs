@@ -13,9 +13,10 @@ import Text.Printf (printf, PrintfArg)
 
 import qualified Data.Attoparsec.Text as Dat
 
-import Path.Parsing (nameP)
+import Path (Path, isChildOf)
+import Path.Parsing (nameP, pathP, toString)
 import Types (ClapiValue(..), Time(..), Clapiable, fromClapiValue)
-import Tree (ClapiTree(..), CanFail)
+import Tree (ClapiTree(..), CanFail, treeGetType)
 
 type Validator = ClapiTree [ClapiValue] -> ClapiValue -> CanFail ()
 success = Right ()
@@ -50,6 +51,7 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
         ("double", optionalArgs2 getNumValidator doubleP doubleP),
         -- FIXME: avoiding square brackets won't do for regexs :-(
         ("string", optionalArgs1 getStringValidator (Dat.many' $ Dat.notChar ']')),
+        ("ref", mandatoryArgs1 getRefValidator pathP),
         ("list", mandatoryArgs1 getListValidator mainParser)
         ]
     nothing = pure ()
@@ -126,6 +128,17 @@ getStringValidator (Just pattern) _ (CString t) =
   where
     errStr = printf "did not match '%s'" pattern
 getStringValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
+
+getRefValidator :: Path -> Validator
+getRefValidator requiredTypePath tree (CString x) =
+  do
+    nodePath <- Dat.parseOnly pathP x
+    typePath <- treeGetType nodePath tree
+    if isChildOf requiredTypePath typePath
+    then success
+    else Left $ printf "%v is of type %v, rather than expected %v"
+       (toString nodePath) (toString typePath) (toString requiredTypePath)
+getRefValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getListValidator :: Validator -> Validator
 getListValidator itemValidator = listValidator
