@@ -3,10 +3,13 @@ module Validator where
 
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
+import Data.List (intercalate)
 import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
 import Data.Scientific (toRealFloat)
+import Data.Foldable (toList)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
