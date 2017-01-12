@@ -3,10 +3,7 @@ module Parsing (
     methodParser,
     ) where
 
-import Data.Char (isLetter, isDigit)
-import Control.Applicative ((<|>))
-
-import Data.Attoparsec.Text (Parser, char, letter, satisfy, many')
+import Data.Attoparsec.Text (Parser)
 
 import Util (parseType, uncamel)
 import Types (ClapiMethod)
