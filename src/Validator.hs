@@ -55,12 +55,14 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
         -- FIXME: avoiding square brackets won't do for regexs :-(
         ("string", optionalArgs1 getStringValidator (Dat.many' $ Dat.notChar ']')),
         ("ref", mandatoryArgs1 getRefValidator pathP),
+        ("validator", mandatoryEmpty validatorValidator),
         ("list", mandatoryArgs1 getListValidator mainParser),
         -- FIXME: ulist or some other name implying uniquenss + order
         ("set", mandatoryArgs1 getSetValidator mainParser)
         ]
     nothing = pure ()
     optionalEmpty validator = bracket nothing <|> nothing >> pure validator
+    mandatoryEmpty validator = nothing >> pure validator
     optionalArgs1 f argP =
         Dat.option (f Nothing) (bracket g)
       where
@@ -144,6 +146,11 @@ getRefValidator requiredTypePath tree (CString x) =
     else Left $ printf "%v is of type %v, rather than expected %v"
        (toString nodePath) (toString typePath) (toString requiredTypePath)
 getRefValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
+
+validatorValidator :: Validator
+validatorValidator _ (CString x) = fromText x >> success
+validatorValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+
 
 getListValidator :: Validator -> Validator
 getListValidator itemValidator = listValidator

@@ -10,10 +10,11 @@ import qualified Data.Set as Set
 
 import Types (ClapiValue(..))
 import Tree (treeInitNode)
-import Validator (success, fromText, duplicates)
+import Validator (success, fromText, validatorValidator, duplicates)
 
 tests = [
     testCase "ref validator" testRefValidator,
+    testCase "validator validator" testValidatorValidator,
     testCase "duplicates" testDuplicates
     ]
 
@@ -28,6 +29,18 @@ testRefValidator =
         mempty
     fv = fromText "ref[/test/target_type]"
     result cv = join (fv <*> pure tree <*> pure cv)
+
+
+testValidatorValidator =
+  do
+    assertFailed "bad description" $ fromText badValue
+    assertFailed "bad description" $ fromText badValue'
+    assertFailed "bad value" $ validate (CString badValue)
+    assertEqual "success" success $ validate (CString "bool")
+  where
+    validate = validatorValidator mempty
+    badValue = "validator[]"
+    badValue' = "validator[foo]"
 
 
 testDuplicates =
