@@ -27,7 +27,7 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Types(
-    ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle,
+    CanFail, ClapiValue(..), ClapiMessage(..), ClapiMessageTag, ClapiBundle,
     ClapiMethod(..), Time(..)
     )
 import qualified Path
@@ -37,25 +37,25 @@ import Util (composeParsers)
 
 (<<>>) = liftM2 (<>)
 
-encode :: Serialisable a => a -> Either String B.ByteString
+encode :: Serialisable a => a -> CanFail B.ByteString
 encode x = toByteString <$> builder x
 
-decode :: Serialisable a => B.ByteString -> Either String a
+decode :: Serialisable a => B.ByteString -> CanFail a
 decode = parseOnly parser
 
 class Serialisable a where
-    builder :: a -> Either String Builder
+    builder :: a -> CanFail Builder
     parser :: Parser a
 
 instance Serialisable Word16 where
-    builder = Right . fromWord16be
+    builder = return . fromWord16be
     parser = anyWord16be
 
 instance Serialisable a => Serialisable (Sum a) where
     builder (Sum i) = builder i
     parser = Sum <$> parser
 
-prefixLength :: Builder -> Either String Builder
+prefixLength :: Builder -> CanFail Builder
 prefixLength b = (lenBuilder byteSize) <<>> (return b) where
     lenBuilder x
       | x <= fromIntegral (maxBound :: Word16) =
@@ -104,7 +104,7 @@ typeTag (CDouble _) = 'D'
 typeTag (CString _) = 's'
 typeTag (CList _) = 'l'
 
-cvBuilder :: ClapiValue -> Either String Builder
+cvBuilder :: ClapiValue -> CanFail Builder
 cvBuilder (CBool _) = Right mempty
 cvBuilder (CTime (Time x y)) = Right $ fromWord64be x <> fromWord32be y
 cvBuilder (CEnum x) = Right $ fromWord8 x
@@ -136,7 +136,7 @@ cvParser 'l' = CList <$> (parser :: Parser [ClapiValue])
 
 
 taggedEncode :: (Monoid b, Serialisable b) =>
-    (a -> b) -> (a -> Either String Builder) -> [a] -> Either String Builder
+    (a -> b) -> (a -> CanFail Builder) -> [a] -> CanFail Builder
 taggedEncode derive build xs = derived <<>> built where
     built = foldl (<<>>) (return mempty) (map build xs)
     derived = builder $ foldl (<>) mempty (map derive xs)
