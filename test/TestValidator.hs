@@ -9,7 +9,7 @@ import qualified Data.Set as Set
 
 import Types (ClapiValue(..))
 import Tree (treeInitNode)
-import Validator (success, getRefValidator, duplicates)
+import Validator (success, fromText, duplicates)
 
 tests = [
     testCase "ref validator" testRefValidator,
@@ -18,14 +18,15 @@ tests = [
 
 testRefValidator =
   do
-    assertEqual "success case" success $ v tree (CString "/test/good_value/")
-    assertFailed "failure case" $ v tree (CString "/test/bad_value")
+    assertEqual "success case" success $ result (CString "/test/good_value/")
+    assertFailed "failure case" $ result (CString "/test/bad_value")
   where
     tree =
         treeInitNode ["test", "good_value"] ["test", "target_type"] $
         treeInitNode ["test", "bad_value"] ["test", "wrong_type"]
         mempty
-    v = getRefValidator ["test", "target_type"]
+    fv = fromText "ref[/test/target_type]"
+    result cv = join (fv <*> pure tree <*> pure cv)
 
 
 testDuplicates =
