@@ -5,6 +5,7 @@ import Util (assertFailed)
 import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 
+import Control.Monad (join)
 import qualified Data.Set as Set
 
 import Types (ClapiValue(..))
