@@ -52,7 +52,9 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
         -- FIXME: avoiding square brackets won't do for regexs :-(
         ("string", optionalArgs1 getStringValidator (Dat.many' $ Dat.notChar ']')),
         ("ref", mandatoryArgs1 getRefValidator pathP),
-        ("list", mandatoryArgs1 getListValidator mainParser)
+        ("list", mandatoryArgs1 getListValidator mainParser),
+        -- FIXME: ulist or some other name implying uniquenss + order
+        ("set", mandatoryArgs1 getSetValidator mainParser)
         ]
     nothing = pure ()
     optionalEmpty validator = bracket nothing <|> nothing >> pure validator
@@ -145,3 +147,21 @@ getListValidator itemValidator = listValidator
   where
     listValidator tree (CList xs) = softValidate tree (repeat itemValidator) xs
     listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+
+duplicates :: (Ord a) => [a] -> Set.Set a
+duplicates as = Map.keysSet $ Map.filter (>1) map
+  where
+    count a m = Map.insertWith (const (+1)) a 1 m
+    map = foldr count mempty as
+
+showJoin :: (Show a, Foldable t) => String -> t a -> String
+showJoin sep as = intercalate sep $ fmap show (toList as)
+
+getSetValidator :: Validator -> Validator
+getSetValidator itemValidator = undefined
+  where
+    listValidator = getListValidator itemValidator
+    setValidator tree (CList xs) =
+        let dups = duplicates xs in
+        if null dups then success
+        else Left $ printf "Duplicate elements %v" $ showJoin ", " dups

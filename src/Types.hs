@@ -34,7 +34,7 @@ data ClapiValue = CBool Bool | CTime Time |
     CEnum Word8 | CWord32 Word32 | CWord64 Word64 |
     CInt32 Int32 | CInt64 Int64 |
     CFloat Float | CDouble Double |
-    CString T.Text | CList [ClapiValue] deriving (Eq)
+    CString T.Text | CList [ClapiValue] deriving (Eq, Ord)
 
 instance Show ClapiValue where
     show x = '_' : (show' x)

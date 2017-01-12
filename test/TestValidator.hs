@@ -5,12 +5,15 @@ import Util (assertFailed)
 import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 
+import qualified Data.Set as Set
+
 import Types (ClapiValue(..))
 import Tree (treeInitNode)
-import Validator (success, getRefValidator)
+import Validator (success, getRefValidator, duplicates)
 
 tests = [
-    testCase "ref validator" testRefValidator
+    testCase "ref validator" testRefValidator,
+    testCase "duplicates" testDuplicates
     ]
 
 testRefValidator =
@@ -23,3 +26,13 @@ testRefValidator =
         treeInitNode ["test", "bad_value"] ["test", "wrong_type"]
         mempty
     v = getRefValidator ["test", "target_type"]
+
+
+testDuplicates =
+  do
+    assertEqual "empty" mempty $ duplicates ([] :: [Char])
+    assertEqual "unique" mempty $ duplicates ['a', 'b', 'c', 'd']
+    assertEqual "duplicates" dups $ duplicates as
+  where
+    as = ['a', 'b', 'a', 'c', 'd', 'd', 'e', 'd']
+    dups = Set.fromList ['a', 'd']

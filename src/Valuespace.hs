@@ -6,6 +6,7 @@ import Control.Lens ((&))
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Text (Text, pack)
+import Text.Printf (printf)
 
 import qualified Path
 import qualified Path.Parsing as Path
