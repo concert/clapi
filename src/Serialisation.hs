@@ -141,13 +141,6 @@ taggedEncode derive build xs = derived <<>> built where
     built = foldl (<<>>) (return mempty) (map build xs)
     derived = builder $ foldl (<>) mempty (map derive xs)
 
-sequenceParsers :: [Parser a] -> Parser [a]
-sequenceParsers [] = return []
-sequenceParsers (p:ps) = do
-    result <- p
-    rest <- sequenceParsers ps
-    return $ result : rest
-
 -- FIXME: Repitition of tag chars :-(
 parseTags :: APT.Parser String
 parseTags = APT.many' $ APT.satisfy (APT.inClass "NFTteuUiIdDsl")
@@ -157,7 +150,7 @@ instance Serialisable [ClapiValue] where
         derive cv = [typeTag cv]
     parser = do
         typeTags <- composeParsers parser parseTags
-        sequenceParsers $ map cvParser typeTags
+        sequence $ map cvParser typeTags
 
 -- FIXME: not sure this instance flexibility is a good thing or not!
 instance Serialisable [ClapiMessageTag] where
@@ -167,7 +160,7 @@ instance Serialisable [ClapiMessageTag] where
     parser = do
         -- FIXME: this feels really... proceedural :-/
         typeTags <- parser :: Parser T.Text
-        sequenceParsers $ map getPairParser (T.unpack typeTags) where
+        sequence $ map getPairParser (T.unpack typeTags) where
             getPairParser typeTag = do
                 name <- parser :: Parser T.Text
                 value <- cvParser typeTag
