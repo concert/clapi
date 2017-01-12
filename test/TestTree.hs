@@ -15,9 +15,9 @@ import qualified Data.Set as Set
 
 import qualified Data.Map.Mos as Mos
 import Path (Path(..), isChildOfAny)
-import Types (ClapiValue(..), Time(..), Interpolation(..))
+import Types (CanFail, ClapiValue(..), Time(..), Interpolation(..))
 import Tree (
-    CanFail, Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
+    Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
     treeAdd, treeSet, treeDelete, treeDiff, treeApply
     )
 

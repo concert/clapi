@@ -10,9 +10,9 @@ import Text.Printf (printf)
 
 import qualified Path
 import qualified Path.Parsing as Path
-import Types (ClapiValue(..), Interpolation(..), Time(..))
+import Types (CanFail, ClapiValue(..), Interpolation(..), Time(..))
 import Tree (
-  CanFail, (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
+  (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
 import Validator (Validator, fromText)
 

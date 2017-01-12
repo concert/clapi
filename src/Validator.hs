@@ -18,8 +18,8 @@ import qualified Data.Attoparsec.Text as Dat
 
 import Path (Path, isChildOf)
 import Path.Parsing (nameP, pathP, toString)
-import Types (ClapiValue(..), Time(..), Clapiable, fromClapiValue)
-import Tree (ClapiTree(..), CanFail, treeGetType)
+import Types (CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
+import Tree (ClapiTree(..), treeGetType)
 
 type Validator = ClapiTree [ClapiValue] -> ClapiValue -> CanFail ()
 success = Right ()

@@ -36,14 +36,13 @@ import Text.Printf (printf)
 
 import Path (Name, Path, root, isChildOfAny)
 import Path.Parsing (toString)
-import Types (Time, ClapiValue, Interpolation(..))
+import Types (CanFail, Time, ClapiValue, Interpolation(..))
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 
-type CanFail a = Either String a
 type NodePath = Path
 type TypePath = Path
 

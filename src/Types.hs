@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Types
     (
+        CanFail,
         Time(..),
         ClapiValue(..),
         Enumerated(..),
@@ -20,6 +21,8 @@ import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 
 import Path (Path)
+
+type CanFail a = Either String a
 
 data ClapiMessage = CMessage {
     msgPath :: Path,
