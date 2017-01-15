@@ -12,7 +12,8 @@ module Types
         ClapiMessage(..),
         ClapiBundle,
         ClapiMessageTag,
-        Interpolation(..),
+        InterpolationType(..),
+        Interpolation,
     )
 where
 
@@ -136,5 +137,6 @@ type ClapiMessageTag = (String, ClapiValue)
 
 type ClapiBundle = [ClapiMessage]
 
-data Interpolation = IConstant | ILinear | IBezier Word32 Word32
-  deriving (Eq, Show)
+data InterpolationType = IConstant | ILinear | IBezier
+  deriving (Show, Eq, Enum, Bounded)
+type Interpolation = (InterpolationType, [ClapiValue])

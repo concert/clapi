@@ -10,7 +10,9 @@ import Text.Printf (printf)
 
 import qualified Path
 import qualified Path.Parsing as Path
-import Types (CanFail, ClapiValue(..), Interpolation(..), Time(..))
+import Types (
+    CanFail, ClapiValue(..), InterpolationType(..), Interpolation,
+    Time(..))
 import Tree (
   (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
@@ -23,7 +25,7 @@ data Definition =
       doc :: Text,
       valueNames :: [Path.Name],
       validators :: [Text],
-      permittedInterpolations :: [Interpolation]}
+      permittedInterpolations :: [InterpolationType]}
   | StructDef {
       liberty :: Liberty,
       doc :: Text,
@@ -148,9 +150,10 @@ initStruct np tp lib doc children =
 globalSite = Nothing
 anon = Nothing
 tconst = Time 0 0
+iconst = (IConstant, [])
 
 addConst :: [ClapiValue] -> NodePath -> VsTree -> CanFail VsTree
-addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
+addConst cvs np = treeAdd anon iconst cvs np globalSite tconst
 
 getBaseValuespace :: Valuespace
 getBaseValuespace = unpack (
