@@ -16,9 +16,9 @@ import Types (
 import Tree (
   (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
-import Validator (Validator, fromText)
+import Validator (Validator, fromText, enumDesc)
 
-data Liberty = Cannot | May | Must deriving (Show)
+data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 data Definition =
     TupleDef {
       liberty :: Liberty,
@@ -39,14 +39,23 @@ data Definition =
       childLiberty :: Liberty}
   deriving Show
 
+libertyDesc = enumDesc Cannot
+interpolationTypeDesc = enumDesc IConstant
+listDesc d = pack $ printf "list[%v]" d
+setDesc d = pack $ printf "set[%v]" d
+-- FIXME: would like to include and share a regex for names:
+namesDesc = "set[string[]]"
+typeDesc = "ref[/api/types/base]"
+
 baseTupleDef = TupleDef
-    Cannot "t" ["liberty", "doc", "valueNames", "validators", "int"]
-    ["srsly?"] mempty
+    Cannot "t" ["liberty", "doc", "valueNames", "validators", "interpolationTypes"]
+    [libertyDesc, "string", namesDesc, "list[validator]", setDesc interpolationTypeDesc] mempty
 baseStructDef = TupleDef
     Cannot "s" ["liberty", "doc", "childNames", "childTypes", "clibs"]
-    ["srsly?"] mempty
+    [libertyDesc, "string", namesDesc, listDesc typeDesc, listDesc libertyDesc] mempty
 baseArrayDef = TupleDef
-    Cannot "a" ["liberty", "doc", "childType", "clib"] ["srsly?"] mempty
+    Cannot "a" ["liberty", "doc", "childType", "clib"]
+    [libertyDesc, "string", typeDesc, libertyDesc] mempty
 
 -- data Values = Tuple [ClapiValue] | Struct [ClapiValue] | Array [ClapiValue]
 --   deriving (Show)

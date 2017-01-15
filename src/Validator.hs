@@ -80,6 +80,11 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
     floatP = toRealFloat <$> Dat.scientific :: Dat.Parser Float
     doubleP = toRealFloat <$> Dat.scientific :: Dat.Parser Double
 
+
+enumDesc :: (Enum a, Bounded a, Show a) => a -> Text.Text
+enumDesc enum = Text.toLower . Text.pack $ printf "enum[%v]" $
+    intercalate "," $ fmap show [minBound..maxBound `asTypeOf` enum]
+
 validate :: ClapiTree [ClapiValue] -> [Validator] -> [ClapiValue] -> CanFail ()
 validate tree vs cvs
   | length vs > length cvs = Left "Insufficient values"
