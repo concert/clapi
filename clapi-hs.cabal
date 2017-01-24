@@ -25,6 +25,7 @@ library
                      , Validator
                      , Path
                      , Path.Parsing
+                     , Server
                      , Data.Map.Mos
   other-modules:       Data.Maybe.Clapi
                      , Data.Map.Clapi
@@ -44,6 +45,7 @@ library
                      , bytestring
                      , utf8-string
                      , blaze-builder
+                     , network
   default-language:    Haskell2010
 
 executable clapi-hs-exe
