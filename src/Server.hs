@@ -11,23 +11,19 @@ import Network.Socket.ByteString (send)
 import Blaze.ByteString.Builder (toByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
-serve :: PortNumber -> IO ()
-serve port =
+serve :: (Socket -> IO ()) -> PortNumber -> IO ()
+serve action port =
   do
     sock <- socket AF_INET Stream 0
     setSocketOption sock ReuseAddr 1  -- make socket immediately reusable - eases debugging.
     bind sock (SockAddrInet port iNADDR_ANY)
     listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
-    handle sock action
-
-handle :: Socket -> (Socket -> IO ()) -> IO ()
-handle sock action = forever $
-  do
-    (sock', _) <- accept sock
-    forkIO (action sock')
+    forever $ do
+        (sock', _) <- accept sock
+        forkIO (action sock')
 
 action :: Socket -> IO ()
 action sock =
-    do
+  do
     send sock (toByteString . fromString $ "hello\n")
     close sock
