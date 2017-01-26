@@ -11,20 +11,22 @@ import Network.Socket (
     bind, listen, accept, close, iNADDR_ANY)
 import Network.Socket.ByteString (send)
 
+import Text.Printf (printf)
 import Blaze.ByteString.Builder (toByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 type WriteChan a = InChan a
 type ReadChan a = OutChan a
 
-serve :: (Show a) => (Socket -> WriteChan a -> ReadChan String -> IO ()) ->
-    PortNumber -> IO ()
+type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
+
+serve :: (Show a) => Action a String -> PortNumber -> IO ()
 serve action port =
   do
     (inWrite, inRead) <- newChan
     (outWrite, outRead) <- newChan
     forkIO $ worker inRead outWrite -- FIXME: how do we clean up the worker?
-    bracket startListening stopListening (handleConnections inWrite outWrite)
+    bracket startListening stopListening (handleConnections [1..] inWrite outWrite)
   where
     startListening = do
         sock <- socket AF_INET Stream 0
@@ -33,21 +35,22 @@ serve action port =
         listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
         return sock
     stopListening = close
-    handleConnections inWrite outWrite sock = forever $ do
+    handleConnections (i:is) inWrite outWrite sock = do
         (sock', _) <- accept sock
         -- FIXME: dupChan outWrite should be drawing from our lsit of outReads :-/
         c <- dupChan outWrite
-        forkIO (action sock' inWrite c)
+        forkIO (action i sock' inWrite c)
+        handleConnections is inWrite outWrite sock
     worker inRead outWrite = forever $ do
         value <- readChan inRead
-        putStrLn $ show value
-        writeChan outWrite "planet!"
+        putStrLn $ printf "got %v" (show value)
+        writeChan outWrite $ printf "planet %v!" (show value)
 
-action :: (Show b) => Socket -> WriteChan String -> ReadChan b -> IO ()
-action sock inWrite outRead =
+action :: (Show b) => Action Int b
+action i sock inWrite outRead =
   do
-    send sock $ bytes "hello\n"
-    writeChan inWrite "world"
+    send sock $ bytes $ printf "hello %v\n" i
+    writeChan inWrite i
     forever $ do
         value <- readChan outRead
         send sock $ bytes $ show value
