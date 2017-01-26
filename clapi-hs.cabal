@@ -46,6 +46,7 @@ library
                      , utf8-string
                      , blaze-builder
                      , network
+                     , unagi-chan
   default-language:    Haskell2010
 
 executable clapi-hs-exe
