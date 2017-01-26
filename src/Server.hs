@@ -17,12 +17,14 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 type WriteChan a = InChan a
 type ReadChan a = OutChan a
 
-serve :: (Show a) => (Socket -> WriteChan a -> IO ()) -> PortNumber -> IO ()
+serve :: (Show a) => (Socket -> WriteChan a -> ReadChan String -> IO ()) ->
+    PortNumber -> IO ()
 serve action port =
   do
     (inWrite, inRead) <- newChan
-    forkIO $ worker inRead  -- FIXME: how do we clean up the worker?
-    bracket startListening stopListening (handleConnections inWrite)
+    (outWrite, outRead) <- newChan
+    forkIO $ worker inRead outWrite -- FIXME: how do we clean up the worker?
+    bracket startListening stopListening (handleConnections inWrite outWrite)
   where
     startListening = do
         sock <- socket AF_INET Stream 0
@@ -31,16 +33,24 @@ serve action port =
         listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
         return sock
     stopListening = close
-    handleConnections inWrite sock = forever $ do
+    handleConnections inWrite outWrite sock = forever $ do
         (sock', _) <- accept sock
-        forkIO (action sock' inWrite)
-    worker inRead = forever $ do
+        -- FIXME: dupChan outWrite should be drawing from our lsit of outReads :-/
+        c <- dupChan outWrite
+        forkIO (action sock' inWrite c)
+    worker inRead outWrite = forever $ do
         value <- readChan inRead
         putStrLn $ show value
+        writeChan outWrite "planet!"
 
-action :: Socket -> WriteChan String -> IO ()
-action sock inWrite =
+action :: (Show b) => Socket -> WriteChan String -> ReadChan b -> IO ()
+action sock inWrite outRead =
   do
-    send sock (toByteString . fromString $ "hello\n")
+    send sock $ bytes "hello\n"
     writeChan inWrite "world"
-    close sock
+    forever $ do
+        value <- readChan outRead
+        send sock $ bytes $ show value
+    close sock  -- Never get here!
+  where
+    bytes = toByteString . fromString
