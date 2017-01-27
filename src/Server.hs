@@ -5,7 +5,7 @@ import Control.Concurrent (forkIO)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
-import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
+import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Network.Socket (
     Socket, PortNumber, Family(AF_INET), SocketType(Stream),
     SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
@@ -45,7 +45,7 @@ serve action port =
     handleConnections (i:is) clientChansRef workerInWrite sock = do
         (sock', _) <- accept sock
         (clientWrite, clientRead) <- newChan
-        modifyIORef' clientChansRef (Map.insert i clientWrite)
+        atomicUpdate clientChansRef (Map.insert i clientWrite)
         forkIO (action i sock' workerInWrite clientRead)
         handleConnections is clientChansRef workerInWrite sock
     worker clientChansRef workerInRead = forever $ do
@@ -62,6 +62,10 @@ action i sock inWrite outRead =
     forever $ do
         value <- readChan outRead
         send sock $ bytes $ show value
-    close sock  -- Never get here!
+    close sock  -- Never get here! Also need to handle client disconnect
   where
     bytes = toByteString . fromString
+
+
+atomicUpdate :: IORef a -> (a -> a) -> IO ()
+atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
