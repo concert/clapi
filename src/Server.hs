@@ -4,12 +4,16 @@ import Control.Monad (forever)
 import Control.Concurrent (forkIO)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
-    InChan, OutChan, newChan, dupChan, writeChan, readChan)
+    InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
+import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
 import Network.Socket (
     Socket, PortNumber, Family(AF_INET), SocketType(Stream),
     SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
     bind, listen, accept, close, iNADDR_ANY)
 import Network.Socket.ByteString (send)
+
+import Data.Foldable (toList)
+import qualified Data.Map as Map
 
 import Text.Printf (printf)
 import Blaze.ByteString.Builder (toByteString)
@@ -23,10 +27,13 @@ type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
 serve :: (Show a) => Action a String -> PortNumber -> IO ()
 serve action port =
   do
-    (inWrite, inRead) <- newChan
-    (outWrite, outRead) <- newChan
-    forkIO $ worker inRead outWrite -- FIXME: how do we clean up the worker?
-    bracket startListening stopListening (handleConnections [1..] inWrite outWrite)
+    (workerInWrite, workerInRead) <- newChan
+    clientChansRef <- newIORef mempty :: IO (IORef (Map.Map Int (WriteChan a)))
+    forkIO $ worker clientChansRef workerInRead -- FIXME: how do we clean up the worker?
+    bracket
+        startListening
+        stopListening
+        (handleConnections [1..] clientChansRef workerInWrite)
   where
     startListening = do
         sock <- socket AF_INET Stream 0
@@ -35,16 +42,17 @@ serve action port =
         listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
         return sock
     stopListening = close
-    handleConnections (i:is) inWrite outWrite sock = do
+    handleConnections (i:is) clientChansRef workerInWrite sock = do
         (sock', _) <- accept sock
-        -- FIXME: dupChan outWrite should be drawing from our lsit of outReads :-/
-        c <- dupChan outWrite
-        forkIO (action i sock' inWrite c)
-        handleConnections is inWrite outWrite sock
-    worker inRead outWrite = forever $ do
-        value <- readChan inRead
-        putStrLn $ printf "got %v" (show value)
-        writeChan outWrite $ printf "planet %v!" (show value)
+        (clientWrite, clientRead) <- newChan
+        modifyIORef' clientChansRef (Map.insert i clientWrite)
+        forkIO (action i sock' workerInWrite clientRead)
+        handleConnections is clientChansRef workerInWrite sock
+    worker clientChansRef workerInRead = forever $ do
+        value <- readChan workerInRead
+        clientChans <- readIORef clientChansRef
+        putStrLn $ show $ fmap fst $ Map.toList clientChans
+        sequence $ fmap (flip writeChan "planet!") $ toList $ clientChans
 
 action :: (Show b) => Action Int b
 action i sock inWrite outRead =
