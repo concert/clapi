@@ -1,7 +1,7 @@
 module Server where
 
 import Control.Monad (forever)
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, forkFinally)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
@@ -45,9 +45,15 @@ serve action port =
     handleConnections (i:is) clientChansRef workerInWrite sock = do
         (sock', _) <- accept sock
         (clientWrite, clientRead) <- newChan
-        atomicUpdate clientChansRef (Map.insert i clientWrite)
-        forkIO (action i sock' workerInWrite clientRead)
+        registerClient i clientWrite
+        forkFinally
+            (action i sock' workerInWrite clientRead)
+            (const $ unregisterClient i)
         handleConnections is clientChansRef workerInWrite sock
+      where
+        updateCCs = atomicUpdate clientChansRef
+        registerClient i clientWrite = updateCCs (Map.insert i clientWrite)
+        unregisterClient i = updateCCs (Map.delete i)
     worker clientChansRef workerInRead = forever $ do
         value <- readChan workerInRead
         clientChans <- readIORef clientChansRef
@@ -59,12 +65,16 @@ action i sock inWrite outRead =
   do
     send sock $ bytes $ printf "hello %v\n" i
     writeChan inWrite i
-    forever $ do
-        value <- readChan outRead
-        send sock $ bytes $ show value
-    close sock  -- Never get here! Also need to handle client disconnect
+    shuffleOut 0
+    -- close sock  -- Never get here! Also need to handle client disconnect
   where
     bytes = toByteString . fromString
+    shuffleOut i = do
+        value <- readChan outRead
+        send sock $ bytes $ show value
+        if i == 2
+            then (send sock $ bytes "bye\n") >> close sock
+            else shuffleOut (i + 1)
 
 
 atomicUpdate :: IORef a -> (a -> a) -> IO ()
