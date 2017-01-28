@@ -11,12 +11,13 @@ import Network.Socket (
     Socket, PortNumber, Family(AF_INET), SocketType(Stream),
     SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
     bind, listen, accept, close, iNADDR_ANY)
-import Network.Socket.ByteString (send)
+import Network.Socket.ByteString (send, recv)
 
 import Data.Foldable (toList)
 import qualified Data.Map as Map
 
 import Text.Printf (printf)
+import Data.ByteString (ByteString)
 import Blaze.ByteString.Builder (toByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
@@ -59,14 +60,13 @@ serve action port =
         value <- readChan workerInRead
         clientChans <- readIORef clientChansRef
         putStrLn $ show $ fmap fst $ Map.toList clientChans
-        sequence $ fmap (flip writeChan "planet!") $ toList $ clientChans
+        sequence $ fmap (flip writeChan $ show value) $ toList $ clientChans
 
-action :: (Show b) => Action Int b
+action :: (Show b) => Action ByteString b
 action i sock inWrite outRead =
   do
     send sock $ bytes $ printf "hello %v\n" i
-    writeChan inWrite i
-    shuffleOut 0
+    forkAndJoin [shuffleOut 0, shuffleIn]
     -- close sock  -- Never get here! Also need to handle client disconnect
   where
     bytes = toByteString . fromString
@@ -76,6 +76,9 @@ action i sock inWrite outRead =
         if i == 2
             then (send sock $ bytes "bye\n") >> close sock
             else shuffleOut (i + 1)
+    shuffleIn = forever $ do
+        byteString <- recv sock 4096
+        writeChan inWrite byteString
 
 
 forkAndJoin :: [IO ()] -> IO ()
