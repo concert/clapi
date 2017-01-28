@@ -1,11 +1,11 @@
 module Server where
 
 import Control.Monad (forever)
-import Control.Concurrent (forkIO, forkFinally)
+import Control.Concurrent (ThreadId, forkIO, forkFinally)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Network.Socket (
     Socket, PortNumber, Family(AF_INET), SocketType(Stream),
@@ -81,15 +81,20 @@ action i sock inWrite outRead =
         writeChan inWrite byteString
 
 
+forkMVar :: IO () -> IO (ThreadId, MVar ())
+forkMVar action = do
+    mvar <- newEmptyMVar
+    threadId <- forkFinally action (const $ putMVar mvar ())
+    return (threadId, mvar)
+
+joinMVars :: [MVar a] -> IO ()
+joinMVars mvars = (sequence $ fmap takeMVar mvars) >> return ()
+
 forkAndJoin :: [IO ()] -> IO ()
 forkAndJoin actions =
   do
-    mvars <- sequence $ fmap (const newEmptyMVar) actions
-    sequence $ zipWith fork actions mvars
-    sequence $ fmap takeMVar mvars
-    return ()
-  where
-    fork action mvar = forkFinally action (const $ putMVar mvar ())
+    mvars <- (fmap . fmap) snd $ sequence $ fmap forkMVar actions
+    joinMVars mvars
 
 
 atomicUpdate :: IORef a -> (a -> a) -> IO ()
