@@ -5,6 +5,7 @@ import Control.Concurrent (forkIO, forkFinally)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Network.Socket (
     Socket, PortNumber, Family(AF_INET), SocketType(Stream),
@@ -75,6 +76,17 @@ action i sock inWrite outRead =
         if i == 2
             then (send sock $ bytes "bye\n") >> close sock
             else shuffleOut (i + 1)
+
+
+forkAndJoin :: [IO ()] -> IO ()
+forkAndJoin actions =
+  do
+    mvars <- sequence $ fmap (const newEmptyMVar) actions
+    sequence $ zipWith fork actions mvars
+    sequence $ fmap takeMVar mvars
+    return ()
+  where
+    fork action mvar = forkFinally action (const $ putMVar mvar ())
 
 
 atomicUpdate :: IORef a -> (a -> a) -> IO ()
