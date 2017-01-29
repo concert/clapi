@@ -17,7 +17,7 @@ import Data.Foldable (toList)
 import qualified Data.Map as Map
 
 import Text.Printf (printf)
-import Data.ByteString (ByteString)
+import qualified Data.ByteString as B
 import Blaze.ByteString.Builder (toByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
@@ -62,12 +62,13 @@ serve action port =
         putStrLn $ show $ fmap fst $ Map.toList clientChans
         sequence $ fmap (flip writeChan $ show value) $ toList $ clientChans
 
-action :: (Show b) => Action ByteString b
+action :: (Show b) => Action B.ByteString b
 action i sock inWrite outRead =
   do
     send sock $ bytes $ printf "hello %v\n" i
-    forkAndJoin [shuffleOut 0, shuffleIn]
-    -- close sock  -- Never get here! Also need to handle client disconnect
+    (outId, outMVar) <- forkMVar $ shuffleOut 0
+    (_, inMVar) <- forkMVar $ shuffleIn outId
+    joinMVars [outMVar, inMVar]
   where
     bytes = toByteString . fromString
     shuffleOut i = do
@@ -76,9 +77,11 @@ action i sock inWrite outRead =
         if i == 2
             then (send sock $ bytes "bye\n") >> close sock
             else shuffleOut (i + 1)
-    shuffleIn = forever $ do
+    shuffleIn outThreadId = do
         byteString <- recv sock 4096
-        writeChan inWrite byteString
+        if B.null byteString
+            then killThread outThreadId  -- Client closed connection
+            else writeChan inWrite byteString >> shuffleIn outThreadId
 
 
 forkMVar :: IO () -> IO (ThreadId, MVar ())
