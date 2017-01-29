@@ -23,6 +23,16 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 type WriteChan a = InChan a
 type ReadChan a = OutChan a
+-- FIXME: Pipe isn't really the right name for this, as we're not using it to
+-- represent the connection between things, we're using to represent the two
+-- ends of a component...
+data Pipe a b = Pipe (ReadChan a) (WriteChan b)
+
+writePipe :: Pipe a b -> b -> IO ()
+writePipe (Pipe _ w) b = writeChan w b
+
+readPipe :: Pipe a b -> IO a
+readPipe (Pipe r _) = readChan r
 
 type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
 
