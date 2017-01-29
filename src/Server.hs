@@ -1,7 +1,7 @@
 module Server where
 
 import Control.Monad (forever)
-import Control.Concurrent (ThreadId, forkIO, forkFinally)
+import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
