@@ -106,7 +106,7 @@ action i sock inWrite outRead =
         byteString <- recv sock 4096
         if B.null byteString
             -- Client closed connection:
-            then writeChan inWrite (i, Nothing) >> killThread outThreadId
+            then writeChan inWrite (i, Nothing) >> close sock >>  killThread outThreadId
             else writeChan inWrite (i, Just byteString) >> shuffleIn outThreadId
 
 
