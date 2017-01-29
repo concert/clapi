@@ -36,10 +36,12 @@ readPipe :: Pipe a b -> IO a
 readPipe (Pipe r _) = readChan r
 
 type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
+type Worker a b = Pipe a b -> IO ()
 type ClientMap a = Map.Map Int (WriteChan a)
 
-serve :: Action (Int, Maybe B.ByteString) B.ByteString -> PortNumber -> IO ()
-serve action port =
+serve :: Worker (Int, B.ByteString) B.ByteString ->
+    Action (Int, Maybe B.ByteString) B.ByteString -> PortNumber -> IO ()
+serve worker action port =
   do
     (workerInWrite, workerInRead) <- newChan
     (workerOutWrite, workerOutRead) <- newChan
@@ -48,7 +50,7 @@ serve action port =
     (dispatcherOutWrite, dispatcherOutRead) <- newChan
     forkIO $ subscriptionDude (Pipe subsInRead workerInWrite) (Pipe workerOutRead dispatcherOutWrite)
     forkIO $ dispatcher dispatcherOutRead clientChansRef
-    forkIO $ worker workerInRead workerOutWrite -- FIXME: how do we clean up the worker?
+    forkIO $ worker (Pipe workerInRead workerOutWrite) -- FIXME: how do we clean up the worker?
     bracket
         startListening
         stopListening
@@ -74,9 +76,6 @@ serve action port =
         updateCCs = atomicUpdate clientChansRef
         registerClient i clientWrite = updateCCs (Map.insert i clientWrite)
         unregisterClient i = updateCCs (Map.delete i)
-    worker workerInRead workerOutWrite = forever $ do
-        (i, value) <- readChan workerInRead
-        writeChan workerOutWrite value
     dispatcher dispatcherOutRead clientChansRef = forever $ do
         messages <- readChan dispatcherOutRead :: IO [(Int, B.ByteString)]
         clientChans <- readIORef clientChansRef
