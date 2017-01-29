@@ -62,7 +62,8 @@ serve action port =
         return sock
     stopListening = close
     handleConnections (i:is) clientChansRef subsInWrite sock = do
-        (sock', _) <- accept sock
+        (sock', addr) <- accept sock
+        putStrLn $ show addr ++ " connected"
         (clientWrite, clientRead) <- newChan
         registerClient i clientWrite
         forkFinally
