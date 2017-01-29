@@ -26,12 +26,14 @@ type ReadChan a = OutChan a
 
 type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
 
-serve :: (Show a) => Action a String -> PortNumber -> IO ()
+serve :: Action (Int, B.ByteString) B.ByteString -> PortNumber -> IO ()
 serve action port =
   do
     (workerInWrite, workerInRead) <- newChan
     clientChansRef <- newIORef mempty :: IO (IORef (Map.Map Int (WriteChan a)))
-    forkIO $ worker clientChansRef workerInRead -- FIXME: how do we clean up the worker?
+    (dispatcherInWrite, dispatcherInRead) <- newChan
+    forkIO $ dispatcher dispatcherInRead clientChansRef
+    forkIO $ worker clientChansRef workerInRead dispatcherInWrite -- FIXME: how do we clean up the worker?
     bracket
         startListening
         stopListening
@@ -56,13 +58,21 @@ serve action port =
         updateCCs = atomicUpdate clientChansRef
         registerClient i clientWrite = updateCCs (Map.insert i clientWrite)
         unregisterClient i = updateCCs (Map.delete i)
-    worker clientChansRef workerInRead = forever $ do
-        value <- readChan workerInRead
+    worker clientChansRef workerInRead dispatcherInWrite = forever $ do
+        (i, value) <- readChan workerInRead
+        clientChans <- readIORef clientChansRef  -- FIXME: should become subsriptions
+        writeChan dispatcherInWrite $ zip (Map.keys clientChans) (repeat value)
+    dispatcher dispatcherInRead clientChansRef = forever $ do
+        messages <- readChan dispatcherInRead :: IO [(Int, B.ByteString)]
         clientChans <- readIORef clientChansRef
         putStrLn $ show $ fmap fst $ Map.toList clientChans
-        sequence $ fmap (flip writeChan $ show value) $ toList $ clientChans
+        sequence $ fmap (dispatch clientChans) messages
+      where
+        dispatch clientChans (i, msg) = case Map.lookup i clientChans of
+            Just chan -> writeChan chan msg
+            Nothing -> return ()
 
-action :: (Show b) => Action B.ByteString b
+action :: (Show b) => Action (Int, B.ByteString) b
 action i sock inWrite outRead =
   do
     send sock $ bytes $ printf "hello %v\n" i
@@ -81,7 +91,7 @@ action i sock inWrite outRead =
         byteString <- recv sock 4096
         if B.null byteString
             then killThread outThreadId  -- Client closed connection
-            else writeChan inWrite byteString >> shuffleIn outThreadId
+            else writeChan inWrite (i, byteString) >> shuffleIn outThreadId
 
 
 forkMVar :: IO () -> IO (ThreadId, MVar ())
