@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Server where
 
 import Control.Monad (forever)
@@ -35,19 +36,23 @@ readPipe :: Pipe a b -> IO a
 readPipe (Pipe r _) = readChan r
 
 type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
+type ClientMap a = Map.Map Int (WriteChan a)
 
 serve :: Action (Int, B.ByteString) B.ByteString -> PortNumber -> IO ()
 serve action port =
   do
     (workerInWrite, workerInRead) <- newChan
-    clientChansRef <- newIORef mempty :: IO (IORef (Map.Map Int (WriteChan a)))
-    (dispatcherInWrite, dispatcherInRead) <- newChan
-    forkIO $ dispatcher dispatcherInRead clientChansRef
-    forkIO $ worker clientChansRef workerInRead dispatcherInWrite -- FIXME: how do we clean up the worker?
+    (workerOutWrite, workerOutRead) <- newChan
+    clientChansRef <- newIORef mempty :: IO (IORef (ClientMap a))
+    (subsInWrite, subsInRead) <- newChan
+    (dispatcherOutWrite, dispatcherOutRead) <- newChan
+    forkIO $ subscriptionDude (Pipe subsInRead workerInWrite) (Pipe workerOutRead dispatcherOutWrite)
+    forkIO $ dispatcher dispatcherOutRead clientChansRef
+    forkIO $ worker workerInRead workerOutWrite -- FIXME: how do we clean up the worker?
     bracket
         startListening
         stopListening
-        (handleConnections [1..] clientChansRef workerInWrite)
+        (handleConnections [1..] clientChansRef subsInWrite)
   where
     startListening = do
         sock <- socket AF_INET Stream 0
@@ -56,24 +61,23 @@ serve action port =
         listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
         return sock
     stopListening = close
-    handleConnections (i:is) clientChansRef workerInWrite sock = do
+    handleConnections (i:is) clientChansRef subsInWrite sock = do
         (sock', _) <- accept sock
         (clientWrite, clientRead) <- newChan
         registerClient i clientWrite
         forkFinally
-            (action i sock' workerInWrite clientRead)
+            (action i sock' subsInWrite clientRead)
             (const $ unregisterClient i)
-        handleConnections is clientChansRef workerInWrite sock
+        handleConnections is clientChansRef subsInWrite sock
       where
         updateCCs = atomicUpdate clientChansRef
         registerClient i clientWrite = updateCCs (Map.insert i clientWrite)
         unregisterClient i = updateCCs (Map.delete i)
-    worker clientChansRef workerInRead dispatcherInWrite = forever $ do
+    worker workerInRead workerOutWrite = forever $ do
         (i, value) <- readChan workerInRead
-        clientChans <- readIORef clientChansRef  -- FIXME: should become subsriptions
-        writeChan dispatcherInWrite $ zip (Map.keys clientChans) (repeat value)
-    dispatcher dispatcherInRead clientChansRef = forever $ do
-        messages <- readChan dispatcherInRead :: IO [(Int, B.ByteString)]
+        writeChan workerOutWrite value
+    dispatcher dispatcherOutRead clientChansRef = forever $ do
+        messages <- readChan dispatcherOutRead :: IO [(Int, B.ByteString)]
         clientChans <- readIORef clientChansRef
         putStrLn $ show $ fmap fst $ Map.toList clientChans
         sequence $ fmap (dispatch clientChans) messages
@@ -85,6 +89,7 @@ serve action port =
 action :: (Show b) => Action (Int, B.ByteString) b
 action i sock inWrite outRead =
   do
+    -- Here is where our authentication dialogue will go
     send sock $ bytes $ printf "hello %v\n" i
     (outId, outMVar) <- forkMVar $ shuffleOut 0
     (_, inMVar) <- forkMVar $ shuffleIn outId
@@ -102,6 +107,27 @@ action i sock inWrite outRead =
         if B.null byteString
             then killThread outThreadId  -- Client closed connection
             else writeChan inWrite (i, byteString) >> shuffleIn outThreadId
+
+
+subscriptionDude :: Pipe (Int, B.ByteString) (Int, B.ByteString) ->
+    Pipe B.ByteString [(Int, B.ByteString)] -> IO ()
+subscriptionDude inboundPipe outboundPipe =
+  do
+    clientChansRef <- newIORef mempty :: IO (IORef (Map.Map Int ()))
+    forkIO $ inProc clientChansRef
+    outProc clientChansRef
+  where
+    inProc ccr = forever $ do
+        (i, v) <- readPipe inboundPipe
+        putStrLn $ show v
+        if v == "register\n"
+            -- FIXME: subscriptions never go away!
+            then atomicUpdate ccr (Map.insert i ())
+            else writePipe inboundPipe (i, v)
+    outProc ccr = forever $ do
+        v <- readPipe outboundPipe
+        ccs <- readIORef ccr
+        writePipe outboundPipe $ fmap (\i -> (i, v)) (Map.keys ccs)
 
 
 forkMVar :: IO () -> IO (ThreadId, MVar ())
