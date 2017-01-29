@@ -38,7 +38,7 @@ readPipe (Pipe r _) = readChan r
 type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
 type ClientMap a = Map.Map Int (WriteChan a)
 
-serve :: Action (Int, B.ByteString) B.ByteString -> PortNumber -> IO ()
+serve :: Action (Int, Maybe B.ByteString) B.ByteString -> PortNumber -> IO ()
 serve action port =
   do
     (workerInWrite, workerInRead) <- newChan
@@ -86,7 +86,7 @@ serve action port =
             Just chan -> writeChan chan msg
             Nothing -> return ()
 
-action :: (Show b) => Action (Int, B.ByteString) b
+action :: (Show b) => Action (Int, Maybe B.ByteString) b
 action i sock inWrite outRead =
   do
     -- Here is where our authentication dialogue will go
@@ -105,11 +105,12 @@ action i sock inWrite outRead =
     shuffleIn outThreadId = do
         byteString <- recv sock 4096
         if B.null byteString
-            then killThread outThreadId  -- Client closed connection
-            else writeChan inWrite (i, byteString) >> shuffleIn outThreadId
+            -- Client closed connection:
+            then writeChan inWrite (i, Nothing) >> killThread outThreadId
+            else writeChan inWrite (i, Just byteString) >> shuffleIn outThreadId
 
 
-subscriptionDude :: Pipe (Int, B.ByteString) (Int, B.ByteString) ->
+subscriptionDude :: Pipe (Int, Maybe B.ByteString) (Int, B.ByteString) ->
     Pipe B.ByteString [(Int, B.ByteString)] -> IO ()
 subscriptionDude inboundPipe outboundPipe =
   do
@@ -118,12 +119,13 @@ subscriptionDude inboundPipe outboundPipe =
     outProc clientChansRef
   where
     inProc ccr = forever $ do
-        (i, v) <- readPipe inboundPipe
-        putStrLn $ show v
-        if v == "register\n"
-            -- FIXME: subscriptions never go away!
-            then atomicUpdate ccr (Map.insert i ())
-            else writePipe inboundPipe (i, v)
+        (i, mv) <- readPipe inboundPipe
+        putStrLn $ show mv
+        case mv of
+            Just "register\n" -> atomicUpdate ccr (Map.insert i ())
+            Just "unregister\n" -> atomicUpdate ccr (Map.delete i)
+            Just v -> writePipe inboundPipe (i, v)
+            Nothing -> atomicUpdate ccr (Map.delete i)
     outProc ccr = forever $ do
         v <- readPipe outboundPipe
         ccs <- readIORef ccr
