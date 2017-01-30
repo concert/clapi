@@ -80,7 +80,7 @@ serve worker action port =
         messages <- readChan dispatcherOutRead :: IO [(Int, B.ByteString)]
         clientChans <- readIORef clientChansRef
         putStrLn $ show $ fmap fst $ Map.toList clientChans
-        sequence $ fmap (dispatch clientChans) messages
+        mapM (dispatch clientChans) messages
       where
         dispatch clientChans (i, msg) = case Map.lookup i clientChans of
             Just chan -> writeChan chan msg
@@ -139,12 +139,12 @@ forkMVar action = do
     return (threadId, mvar)
 
 joinMVars :: [MVar a] -> IO ()
-joinMVars mvars = (sequence $ fmap takeMVar mvars) >> return ()
+joinMVars mvars = (mapM takeMVar mvars) >> return ()
 
 forkAndJoin :: [IO ()] -> IO ()
 forkAndJoin actions =
   do
-    mvars <- (fmap . fmap) snd $ sequence $ fmap forkMVar actions
+    mvars <- (fmap . fmap) snd $ mapM forkMVar actions
     joinMVars mvars
 
 
