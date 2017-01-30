@@ -42,6 +42,7 @@ library
                      , scientific
                      , attoparsec
                      , attoparsec-binary
+                     , async
                      , bytestring
                      , utf8-string
                      , blaze-builder

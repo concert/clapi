@@ -3,6 +3,7 @@ module Server where
 
 import Control.Monad (forever)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
+import Control.Concurrent.Async (race_)
 import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
@@ -91,9 +92,7 @@ action i sock inWrite outRead =
   do
     -- Here is where our authentication dialogue will go
     send sock $ bytes $ printf "hello %v\n" i
-    (outId, outMVar) <- forkMVar $ shuffleOut 0
-    (_, inMVar) <- forkMVar $ shuffleIn outId
-    joinMVars [outMVar, inMVar]
+    race_ (shuffleOut 0) shuffleIn
   where
     bytes = toByteString . fromString
     shuffleOut i = do
@@ -102,12 +101,12 @@ action i sock inWrite outRead =
         if i == 2
             then (send sock $ bytes "bye\n") >> close sock
             else shuffleOut (i + 1)
-    shuffleIn outThreadId = do
+    shuffleIn = do
         byteString <- recv sock 4096
         if B.null byteString
             -- Client closed connection:
-            then writeChan inWrite (i, Nothing) >> close sock >>  killThread outThreadId
-            else writeChan inWrite (i, Just byteString) >> shuffleIn outThreadId
+            then writeChan inWrite (i, Nothing) >> close sock
+            else writeChan inWrite (i, Just byteString) >> shuffleIn
 
 
 relayWorker :: Worker (Int, B.ByteString) B.ByteString
@@ -136,22 +135,6 @@ subscriptionDude inboundPipe outboundPipe =
         v <- readPipe outboundPipe
         ccs <- readIORef ccr
         writePipe outboundPipe $ fmap (\i -> (i, v)) (Map.keys ccs)
-
-
-forkMVar :: IO () -> IO (ThreadId, MVar ())
-forkMVar action = do
-    mvar <- newEmptyMVar
-    threadId <- forkFinally action (const $ putMVar mvar ())
-    return (threadId, mvar)
-
-joinMVars :: [MVar a] -> IO ()
-joinMVars mvars = (mapM takeMVar mvars) >> return ()
-
-forkAndJoin :: [IO ()] -> IO ()
-forkAndJoin actions =
-  do
-    mvars <- (fmap . fmap) snd $ mapM forkMVar actions
-    joinMVars mvars
 
 
 atomicUpdate :: IORef a -> (a -> a) -> IO ()
