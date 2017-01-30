@@ -110,6 +110,12 @@ action i sock inWrite outRead =
             else writeChan inWrite (i, Just byteString) >> shuffleIn outThreadId
 
 
+relayWorker :: Worker (Int, B.ByteString) B.ByteString
+relayWorker p = forever $ do
+    (i, value) <- readPipe p
+    writePipe p value
+
+
 subscriptionDude :: Pipe (Int, Maybe B.ByteString) (Int, B.ByteString) ->
     Pipe B.ByteString [(Int, B.ByteString)] -> IO ()
 subscriptionDude inboundPipe outboundPipe =
