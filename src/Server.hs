@@ -10,7 +10,7 @@ import Control.Concurrent.Chan.Unagi (
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Network.Socket (
-    Socket, PortNumber, Family(AF_INET), SocketType(Stream),
+    Socket, SockAddr, PortNumber, Family(AF_INET), SocketType(Stream),
     SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
     bind, listen, accept, close, iNADDR_ANY)
 import Network.Socket.ByteString (send, recv)
@@ -36,12 +36,14 @@ writePipe (Pipe _ w) b = writeChan w b
 readPipe :: Pipe a b -> IO a
 readPipe (Pipe r _) = readChan r
 
-type Action a b = Int -> Socket -> WriteChan a -> ReadChan b -> IO ()
-type Worker a b = Pipe a b -> IO ()
-type ClientMap a = Map.Map Int (WriteChan a)
+data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
-serve :: Worker (Int, B.ByteString) B.ByteString ->
-    Action (Int, Maybe B.ByteString) B.ByteString -> PortNumber -> IO ()
+type Action a b = SockAddr -> User -> Socket -> WriteChan a -> ReadChan b -> IO ()
+type Worker a b = Pipe a b -> IO ()
+type ClientMap a = Map.Map SockAddr (WriteChan a)
+
+serve :: Worker (User, B.ByteString) B.ByteString ->
+    Action (SockAddr, User, Maybe B.ByteString) B.ByteString -> PortNumber -> IO ()
 serve worker action port =
   do
     (workerInWrite, workerInRead) <- newChan
@@ -55,7 +57,7 @@ serve worker action port =
     bracket
         startListening
         stopListening
-        (handleConnections [1..] clientChansRef subsInWrite)
+        (handleConnections (cycle [Alice, Bob, Charlie]) clientChansRef subsInWrite)
   where
     startListening = do
         sock <- socket AF_INET Stream 0
@@ -64,34 +66,34 @@ serve worker action port =
         listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
         return sock
     stopListening = close
-    handleConnections (i:is) clientChansRef subsInWrite sock = do
+    handleConnections (u:us) clientChansRef subsInWrite sock = do
         (sock', addr) <- accept sock
         putStrLn $ show addr ++ " connected"
         (clientWrite, clientRead) <- newChan
-        registerClient i clientWrite
+        registerClient addr clientWrite
         forkFinally
-            (action i sock' subsInWrite clientRead)
-            (const $ unregisterClient i)
-        handleConnections is clientChansRef subsInWrite sock
+            (action addr u sock' subsInWrite clientRead)
+            (const $ unregisterClient addr)
+        handleConnections us clientChansRef subsInWrite sock
       where
         updateCCs = atomicUpdate clientChansRef
         registerClient i clientWrite = updateCCs (Map.insert i clientWrite)
         unregisterClient i = updateCCs (Map.delete i)
     dispatcher dispatcherOutRead clientChansRef = forever $ do
-        messages <- readChan dispatcherOutRead :: IO [(Int, B.ByteString)]
+        messages <- readChan dispatcherOutRead :: IO [(SockAddr, B.ByteString)]
         clientChans <- readIORef clientChansRef
         putStrLn $ show $ fmap fst $ Map.toList clientChans
         mapM (dispatch clientChans) messages
       where
-        dispatch clientChans (i, msg) = case Map.lookup i clientChans of
+        dispatch clientChans (u, msg) = case Map.lookup u clientChans of
             Just chan -> writeChan chan msg
             Nothing -> return ()
 
-action :: (Show b) => Action (Int, Maybe B.ByteString) b
-action i sock inWrite outRead =
+action :: (Show b) => Action (SockAddr, User, Maybe B.ByteString) b
+action addr u sock inWrite outRead =
   do
     -- Here is where our authentication dialogue will go
-    send sock $ bytes $ printf "hello %v\n" i
+    send sock $ bytes $ printf "hello %s\n" $ show u
     race_ (shuffleOut 0) shuffleIn
   where
     bytes = toByteString . fromString
@@ -105,36 +107,37 @@ action i sock inWrite outRead =
         byteString <- recv sock 4096
         if B.null byteString
             -- Client closed connection:
-            then writeChan inWrite (i, Nothing) >> close sock
-            else writeChan inWrite (i, Just byteString) >> shuffleIn
+            then writeChan inWrite (addr, u, Nothing) >> close sock
+            else writeChan inWrite (addr, u, Just byteString) >> shuffleIn
 
 
-relayWorker :: Worker (Int, B.ByteString) B.ByteString
+relayWorker :: Worker (User, B.ByteString) B.ByteString
 relayWorker p = forever $ do
-    (i, value) <- readPipe p
+    (u, value) <- readPipe p
     writePipe p value
 
 
-subscriptionDude :: Pipe (Int, Maybe B.ByteString) (Int, B.ByteString) ->
-    Pipe B.ByteString [(Int, B.ByteString)] -> IO ()
+subscriptionDude ::
+    Pipe (SockAddr, User, Maybe B.ByteString) (User, B.ByteString) ->
+    Pipe B.ByteString [(SockAddr, B.ByteString)] -> IO ()
 subscriptionDude inboundPipe outboundPipe =
   do
-    clientChansRef <- newIORef mempty :: IO (IORef (Map.Map Int ()))
+    clientChansRef <- newIORef mempty :: IO (IORef (Map.Map SockAddr ()))
     forkIO $ inProc clientChansRef
     outProc clientChansRef
   where
     inProc ccr = forever $ do
-        (i, mv) <- readPipe inboundPipe
+        (addr, u, mv) <- readPipe inboundPipe
         putStrLn $ show mv
         case mv of
-            Just "register\n" -> atomicUpdate ccr (Map.insert i ())
-            Just "unregister\n" -> atomicUpdate ccr (Map.delete i)
-            Just v -> writePipe inboundPipe (i, v)
-            Nothing -> atomicUpdate ccr (Map.delete i)
+            Just "register\n" -> atomicUpdate ccr (Map.insert addr ())
+            Just "unregister\n" -> atomicUpdate ccr (Map.delete addr)
+            Just v -> writePipe inboundPipe (u, v)
+            Nothing -> atomicUpdate ccr (Map.delete addr)
     outProc ccr = forever $ do
         v <- readPipe outboundPipe
         ccs <- readIORef ccr
-        writePipe outboundPipe $ fmap (\i -> (i, v)) (Map.keys ccs)
+        writePipe outboundPipe $ fmap (\a -> (a, v)) (Map.keys ccs)
 
 
 atomicUpdate :: IORef a -> (a -> a) -> IO ()
