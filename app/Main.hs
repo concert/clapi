@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import Server
 
 main :: IO ()
-main = someFunc
+main = serve relayWorker action 1234
