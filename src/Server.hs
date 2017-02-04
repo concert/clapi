@@ -147,6 +147,18 @@ atomicUpdate :: IORef a -> (a -> a) -> IO ()
 atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
 
 
+socketClient :: Socket -> Client B.ByteString B.ByteString IO ()
+socketClient sock =
+  do
+    byteString <- lift $ recv sock 4096
+    if B.null byteString
+      then return ()
+      else do
+        resp <- request byteString
+        lift $ send sock resp
+        socketClient sock
+
+
 examplePipesClient :: Client String String IO ()
 examplePipesClient =
   do
@@ -155,22 +167,27 @@ examplePipesClient =
     reply <- request "world"
     lift $ putStrLn reply
 
-examplePipesProxy :: String -> Proxy String String String String IO ()
+examplePipesProxy :: (Show a) => a -> Proxy a a a a IO ()
 examplePipesProxy input =
   do
-    lift $ putStrLn $ "Proxy saw input " ++ input
+    lift $ putStrLn $ "Proxy saw input " ++ (show input)
     response <- request input
-    lift $ putStrLn $ "Proxy saw response " ++ response
+    lift $ putStrLn $ "Proxy saw response " ++ (show response)
     nextInput <- respond response
     examplePipesProxy nextInput
 
-examplePipesServer :: String -> Server String String IO ()
-examplePipesServer input =
+echoServer :: B.ByteString -> Server B.ByteString B.ByteString IO ()
+echoServer input =
   do
-    lift $ putStrLn input
-    nextInput <- respond $ input ++ "!"
-    examplePipesServer nextInput
+    nextInput <- respond input
+    echoServer nextInput
 
 examplePipesMain :: IO ()
-examplePipesMain = runEffect $
-    examplePipesClient <<+ examplePipesProxy <<+ examplePipesServer
+examplePipesMain =
+  do
+    sock <- socket AF_INET Stream 0
+    setSocketOption sock ReuseAddr 1  -- make socket immediately reusable - eases debugging.
+    bind sock (SockAddrInet 1234 iNADDR_ANY)
+    listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
+    (sock', addr) <- accept sock
+    runEffect $ socketClient sock' <<+ examplePipesProxy <<+ echoServer
