@@ -15,6 +15,9 @@ import Network.Socket (
     bind, listen, accept, close, iNADDR_ANY)
 import Network.Socket.ByteString (send, recv)
 
+import Pipes (runEffect, lift)
+import Pipes.Core (Server, Client, request, respond, (<<+))
+
 import Data.Foldable (toList)
 import qualified Data.Map as Map
 
@@ -142,3 +145,22 @@ subscriptionDude inboundPipe outboundPipe =
 
 atomicUpdate :: IORef a -> (a -> a) -> IO ()
 atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
+
+
+examplePipesClient :: Client String String IO ()
+examplePipesClient =
+  do
+    reply <- request "hello"
+    lift $ putStrLn reply
+    reply <- request "world"
+    lift $ putStrLn reply
+
+examplePipesServer :: String -> Server String String IO ()
+examplePipesServer input =
+  do
+    lift $ putStrLn input
+    nextInput <- respond $ input ++ "!"
+    examplePipesServer nextInput
+
+examplePipesMain :: IO ()
+examplePipesMain = runEffect $ examplePipesClient <<+ examplePipesServer

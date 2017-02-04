@@ -43,6 +43,7 @@ library
                      , attoparsec
                      , attoparsec-binary
                      , async
+                     , pipes
                      , bytestring
                      , utf8-string
                      , blaze-builder
