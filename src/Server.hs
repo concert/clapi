@@ -15,7 +15,7 @@ import Network.Socket (
     bind, listen, accept, close, iNADDR_ANY)
 import Network.Socket.ByteString (send, recv)
 
-import Pipes (runEffect, lift)
+import Pipes (runEffect, lift, Proxy)
 import Pipes.Core (Server, Client, request, respond, (<<+))
 
 import Data.Foldable (toList)
@@ -155,6 +155,15 @@ examplePipesClient =
     reply <- request "world"
     lift $ putStrLn reply
 
+examplePipesProxy :: String -> Proxy String String String String IO ()
+examplePipesProxy input =
+  do
+    lift $ putStrLn $ "Proxy saw input " ++ input
+    response <- request input
+    lift $ putStrLn $ "Proxy saw response " ++ response
+    nextInput <- respond response
+    examplePipesProxy nextInput
+
 examplePipesServer :: String -> Server String String IO ()
 examplePipesServer input =
   do
@@ -163,4 +172,5 @@ examplePipesServer input =
     examplePipesServer nextInput
 
 examplePipesMain :: IO ()
-examplePipesMain = runEffect $ examplePipesClient <<+ examplePipesServer
+examplePipesMain = runEffect $
+    examplePipesClient <<+ examplePipesProxy <<+ examplePipesServer
