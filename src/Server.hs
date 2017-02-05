@@ -4,7 +4,7 @@ module Server where
 import Control.Monad (forever)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
 import Control.Concurrent.Async (race_)
-import Control.Exception (bracket)
+-- import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
@@ -16,10 +16,11 @@ import Network.Socket (
 import Network.Socket.ByteString (send, recv)
 
 import Pipes (
-  runEffect, lift, Proxy, Producer, yield, Consumer, await, Pipe, (>->))
+  runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->))
 import qualified Pipes.Prelude as P
 import Pipes.Core (Server, respond, Client, request, (<<+))
 import Pipes.Concurrent (spawn, unbounded, Input, Output, fromInput, toOutput)
+import Pipes.Safe (SafeT, runSafeT, bracket)
 
 import Data.Foldable (toList)
 import qualified Data.Map as Map
@@ -185,13 +186,13 @@ echoServer input =
     nextInput <- respond input
     echoServer nextInput
 
-socketProducer :: PortNumber -> Producer (Socket, SockAddr) IO ()
+socketProducer :: PortNumber -> Producer (Socket, SockAddr) (SafeT IO) ()
 socketProducer port =
   do
-    sock <- lift setup
-    forever $ do
-        sa <- lift $ accept sock
-        yield sa
+    bracket
+        setup
+        stopListening
+        acceptLoop
   where
     setup = do
         sock <- socket AF_INET Stream 0
@@ -199,20 +200,22 @@ socketProducer port =
         bind sock (SockAddrInet port iNADDR_ANY)
         listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
         return sock
+    acceptLoop sock = (liftIO $ accept sock) >>= yield >> acceptLoop sock
+    stopListening sock = liftIO $ close sock
 
-socketConsumer :: Output B.ByteString -> Consumer (Socket, SockAddr) IO ()
+socketConsumer :: Output B.ByteString -> Consumer (Socket, SockAddr) (SafeT IO) ()
 socketConsumer output =
   do
     (sock, addr) <- await
     -- liftM2 race_ fromSock toSock
-    lift $ forkIO $ runEffect $ fromSock sock >-> toOutput output
+    liftIO $ forkIO $ runEffect $ fromSock sock >-> toOutput output
     -- lift $ putStrLn $ "I is closing " ++ (show addr)
     -- lift $ close sock
     socketConsumer output
   where
     fromSock sock =
       do
-        byteString <- lift $ recv sock 4096
+        byteString <- liftIO $ recv sock 4096
         if B.null byteString
           then return ()
           else do
@@ -230,7 +233,7 @@ exampleSocketPipeline =
   do
     (output, input) <- spawn unbounded
     forkIO $ runEffect $ fromInput input >-> bsToString >-> P.stdoutLn
-    runEffect $ socketProducer 1234 >-> socketConsumer output
+    runSafeT $ runEffect $ socketProducer 1234 >-> socketConsumer output
 
 examplePipesMain :: IO ()
 examplePipesMain =

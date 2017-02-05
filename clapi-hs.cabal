@@ -45,6 +45,7 @@ library
                      , async
                      , pipes
                      , pipes-concurrency
+                     , pipes-safe
                      , bytestring
                      , utf8-string
                      , blaze-builder
