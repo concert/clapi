@@ -15,8 +15,8 @@ import Network.Socket (
     bind, listen, accept, close, iNADDR_ANY)
 import Network.Socket.ByteString (send, recv)
 
-import Pipes (runEffect, lift, Proxy)
-import Pipes.Core (Server, Client, request, respond, (<<+))
+import Pipes (runEffect, lift, Proxy, Producer, yield, Consumer, await, (>->))
+import Pipes.Core (Server, respond, Client, request, (<<+))
 
 import Data.Foldable (toList)
 import qualified Data.Map as Map
@@ -181,6 +181,32 @@ echoServer input =
   do
     nextInput <- respond input
     echoServer nextInput
+
+socketProducer :: PortNumber -> Producer (Socket, SockAddr) IO ()
+socketProducer port =
+  do
+    sock <- lift setup
+    forever $ do
+        sa <- lift $ accept sock
+        yield sa
+  where
+    setup = do
+        sock <- socket AF_INET Stream 0
+        setSocketOption sock ReuseAddr 1  -- make socket immediately reusable - eases debugging.
+        bind sock (SockAddrInet port iNADDR_ANY)
+        listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
+        return sock
+
+socketConsumer :: Consumer (Socket, SockAddr) IO ()
+socketConsumer =
+  do
+    (sock, addr) <- await
+    lift $ putStrLn $ "I is closing " ++ (show addr)
+    lift $ close sock
+    socketConsumer
+
+exampleSocketPipeline :: IO ()
+exampleSocketPipeline = runEffect $ socketProducer 1234 >-> socketConsumer
 
 examplePipesMain :: IO ()
 examplePipesMain =
