@@ -2,6 +2,7 @@
 module Server where
 
 import Control.Monad (forever)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
 import Control.Concurrent.Async (race_)
 -- import Control.Exception (bracket)
@@ -203,7 +204,8 @@ socketProducer port =
     acceptLoop sock = (liftIO $ accept sock) >>= yield >> acceptLoop sock
     stopListening sock = liftIO $ close sock
 
-socketConsumer :: Output B.ByteString -> Consumer (Socket, SockAddr) (SafeT IO) ()
+socketConsumer :: (MonadIO m) => Output B.ByteString ->
+    Consumer (Socket, SockAddr) m ()
 socketConsumer output =
   do
     (sock, addr) <- await
