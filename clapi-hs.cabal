@@ -44,6 +44,7 @@ library
                      , attoparsec-binary
                      , async
                      , pipes
+                     , pipes-concurrency
                      , bytestring
                      , utf8-string
                      , blaze-builder
