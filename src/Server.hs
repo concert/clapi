@@ -25,7 +25,7 @@ import Pipes.Core (Server, respond, Client, request, (<<+))
 import Pipes.Concurrent (spawn, unbounded, Input, Output, fromInput, toOutput)
 import qualified Pipes.Concurrent as PC
 import Pipes.Safe (SafeT, runSafeT, bracket)
-import Pipes.Network.TCP (fromSocket)
+import Pipes.Network.TCP (fromSocket, toSocket)
 
 import Data.Foldable (toList)
 import qualified Data.Map as Map
@@ -40,7 +40,7 @@ data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 myServe :: IO ()
 myServe = serve HostAny "1234" thing
   where
-    thing (sock, addr) = putStrLn (show addr) >> close sock
+    thing (sock, addr) = runEffect $ fromSocket sock 4096 >-> toSocket sock
 
 
 -- type WriteChan a = InChan a
