@@ -40,7 +40,13 @@ data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 myServe :: IO ()
 myServe = serve HostAny "1234" thing
   where
-    thing (sock, addr) = runEffect $ fromSocket sock 4096 >-> toSocket sock
+    thing (sock, addr) = do
+        (inboundWrite, inboundRead) <- spawn unbounded
+        (outboundWrite, outboundRead) <- spawn unbounded
+        forkIO $ runEffect $ fromSocket sock 4096 >-> toOutput inboundWrite
+        forkIO $ runEffect $ fromInput outboundRead >-> toSocket sock
+        runEffect $ fromInput inboundRead >-> toOutput outboundWrite
+
 
 
 -- type WriteChan a = InChan a
