@@ -45,7 +45,9 @@ library
                      , async
                      , pipes
                      , pipes-concurrency
+                     , pipes-network
                      , pipes-safe
+                     , network-simple
                      , stm
                      , bytestring
                      , utf8-string
