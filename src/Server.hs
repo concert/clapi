@@ -46,7 +46,7 @@ type ReadChan a = OutChan a
 -- readPipe :: Pipe a b -> IO a
 -- readPipe (Pipe r _) = readChan r
 
--- data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
+data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
 -- type Action a b = SockAddr -> User -> Socket -> WriteChan a -> ReadChan b -> IO ()
 -- type Worker a b = Pipe a b -> IO ()
@@ -154,26 +154,6 @@ type ReadChan a = OutChan a
 -- atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
 
 
-socketClient :: Socket -> Client B.ByteString B.ByteString IO ()
-socketClient sock =
-  do
-    byteString <- lift $ recv sock 4096
-    if B.null byteString
-      then return ()
-      else do
-        resp <- request byteString
-        lift $ send sock resp
-        socketClient sock
-
-
-examplePipesClient :: Client String String IO ()
-examplePipesClient =
-  do
-    reply <- request "hello"
-    lift $ putStrLn reply
-    reply <- request "world"
-    lift $ putStrLn reply
-
 examplePipesProxy :: (Show a) => a -> Proxy a a a a IO ()
 examplePipesProxy input =
   do
@@ -182,6 +162,15 @@ examplePipesProxy input =
     lift $ putStrLn $ "Proxy saw response " ++ (show response)
     nextInput <- respond response
     examplePipesProxy nextInput
+
+stripper :: (SockAddr, User, B.ByteString) ->
+    Proxy B.ByteString B.ByteString (SockAddr, User, B.ByteString) B.ByteString
+    IO ()
+stripper (a, u, bs) =
+  do
+    bs' <- request bs
+    next <- respond bs'
+    stripper next
 
 echoServer :: B.ByteString -> Server B.ByteString B.ByteString IO ()
 echoServer input =
@@ -192,10 +181,7 @@ echoServer input =
 socketProducer :: PortNumber -> Producer (Socket, SockAddr) (SafeT IO) ()
 socketProducer port =
   do
-    bracket
-        setup
-        stopListening
-        acceptLoop
+    bracket setup stopListening acceptLoop
   where
     setup = do
         sock <- socket AF_INET Stream 0
@@ -206,25 +192,35 @@ socketProducer port =
     acceptLoop sock = (liftIO $ accept sock) >>= yield >> acceptLoop sock
     stopListening sock = liftIO $ close sock
 
-socketConsumer :: (MonadIO m) => Output B.ByteString ->
+socketConsumer :: (MonadIO m) => Output (SockAddr, User, B.ByteString) ->
     Consumer (Socket, SockAddr) m ()
-socketConsumer output =
-  do
-    (sock, addr) <- await
-    -- liftM2 race_ fromSock toSock
-    liftIO $ forkIO $ runEffect $ fromSock sock >-> toOutput output
-    -- lift $ putStrLn $ "I is closing " ++ (show addr)
-    -- lift $ close sock
-    socketConsumer output
+socketConsumer toRelay = loop mempty $ cycle [Alice, Bob, Charlie]
   where
-    fromSock sock =
+    loop activeSocks (u:us) =
+      do
+        (sock, addr) <- await
+        let activeSocks' = Map.insert addr () activeSocks
+        liftIO $ putStrLn $ show addr ++ " connected"
+        liftIO $ putStrLn $ show activeSocks'
+        -- liftM2 race_ fromSock toSock
+        -- FIXME: It's in the pipline below that we'll actually parse incoming msgs:
+        liftIO $ forkIO $ runEffect $
+            fromSock (\bs -> (addr, u, bs)) sock >-> toOutput toRelay
+        -- lift $ putStrLn $ "I is closing " ++ (show addr)
+        -- lift $ close sock
+        loop activeSocks' us
+    fromSock wrap sock =
       do
         byteString <- liftIO $ recv sock 4096
         if B.null byteString
           then return ()
           else do
-            yield byteString
-            fromSock sock
+            yield $ wrap byteString
+            fromSock wrap sock
+    toSock sock =
+      forever $ do
+        byteString <- await
+        liftIO $ send sock byteString
 
 bsToString :: Pipe B.ByteString String IO ()
 bsToString =
@@ -249,16 +245,14 @@ pairToClient input output = loop
 exampleSocketPipeline :: IO ()
 exampleSocketPipeline =
   do
-    (output, input) <- spawn unbounded
-    forkIO $ runEffect $ fromInput input >-> bsToString >-> P.stdoutLn
-    runSafeT $ runEffect $ socketProducer 1234 >-> socketConsumer output
-
-examplePipesMain :: IO ()
-examplePipesMain =
-  do
-    sock <- socket AF_INET Stream 0
-    setSocketOption sock ReuseAddr 1  -- make socket immediately reusable - eases debugging.
-    bind sock (SockAddrInet 1234 iNADDR_ANY)
-    listen sock 2  -- set a max of 2 queued connections  see maxListenQueue
-    (sock', addr) <- accept sock
-    runEffect $ socketClient sock' <<+ examplePipesProxy <<+ echoServer
+    (inboundWrite, inboundRead) <- spawn unbounded
+    (outboundWrite, outboundRead) <- spawn unbounded
+    forkIO $ runEffect $ relayPipeline inboundRead outboundWrite
+    runSafeT $ runEffect $ listenPipeline inboundWrite
+  where
+    relayPipeline i o =
+        pairToClient i o <<+
+        stripper <<+
+        examplePipesProxy <<+
+        echoServer
+    listenPipeline o = socketProducer 1234 >-> socketConsumer o
