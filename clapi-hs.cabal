@@ -46,6 +46,7 @@ library
                      , pipes
                      , pipes-concurrency
                      , pipes-safe
+                     , stm
                      , bytestring
                      , utf8-string
                      , blaze-builder

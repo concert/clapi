@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Server where
 
-import Control.Monad (forever)
+import Control.Monad (forever, when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
 import Control.Concurrent.Async (race_)
+import Control.Concurrent.STM (atomically)
 -- import Control.Exception (bracket)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
@@ -21,6 +22,7 @@ import Pipes (
 import qualified Pipes.Prelude as P
 import Pipes.Core (Server, respond, Client, request, (<<+))
 import Pipes.Concurrent (spawn, unbounded, Input, Output, fromInput, toOutput)
+import qualified Pipes.Concurrent as PC
 import Pipes.Safe (SafeT, runSafeT, bracket)
 
 import Data.Foldable (toList)
@@ -229,6 +231,20 @@ bsToString =
   forever $ do
     bs <- await
     yield $ show bs
+
+
+pairToClient :: Input a -> Output b -> Client a b IO ()
+pairToClient input output = loop
+  where
+    loop = do
+      ma <- liftIO $ atomically $ PC.recv input
+      case ma of
+          Nothing -> return ()
+          Just a -> do
+              resp <- request a
+              alive <- liftIO $ atomically $ PC.send output resp
+              when alive loop
+
 
 exampleSocketPipeline :: IO ()
 exampleSocketPipeline =
