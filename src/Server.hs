@@ -11,6 +11,7 @@ import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
+import Data.Traversable (forM)
 import Network.Socket (
     Socket, SockAddr, PortNumber, Family(AF_INET), SocketType(Stream),
     SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
@@ -48,6 +49,12 @@ myServe = serve HostAny "1234" thing
         runEffect $ fromInput inboundRead >-> toOutput outboundWrite
 
 
+broadcast :: IO [Output a] -> Consumer a IO ()
+broadcast getChans =
+  forever $ do
+    a <- await
+    chans <- liftIO getChans
+    liftIO $ atomically $ forM chans (flip PC.send a)
 
 -- type WriteChan a = InChan a
 -- type ReadChan a = OutChan a
