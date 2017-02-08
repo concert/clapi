@@ -21,7 +21,7 @@ import Network.Simple.TCP (HostPreference(HostAny), serve)
 
 import Pipes (
   runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->))
-import qualified Pipes.Prelude as P
+import qualified Pipes.Prelude as PP
 import Pipes.Core (Server, respond, Client, request, (<<+))
 import Pipes.Concurrent (spawn, unbounded, Input, Output, fromInput, toOutput)
 import qualified Pipes.Concurrent as PC
@@ -39,15 +39,30 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
 myServe :: IO ()
-myServe = serve HostAny "1234" thing
+myServe =
+  do
+    (relayInWrite, relayInRead) <- spawn unbounded
+    (relayOutWrite, relayOutRead) <- spawn unbounded
+    connectedR <- newIORef mempty :: IO (IORef (Map.Map SockAddr (Output B.ByteString)))
+    forkIO $ serve HostAny "1234" $ thing relayInWrite connectedR
+    forkIO $ runEffect $ fromInput relayOutRead >-> dispatch connectedR
+    runEffect $
+        pairToClient relayInRead relayOutWrite <<+
+        examplePipesProxy <<+ stripper <<+ echoServer
   where
-    thing (sock, addr) = do
-        (inboundWrite, inboundRead) <- spawn unbounded
+    thing relayInWrite connectedR (sock, addr) = do
         (outboundWrite, outboundRead) <- spawn unbounded
-        forkIO $ runEffect $ fromSocket sock 4096 >-> toOutput inboundWrite
-        forkIO $ runEffect $ fromInput outboundRead >-> toSocket sock
-        runEffect $ fromInput inboundRead >-> toOutput outboundWrite
-
+        atomicUpdate connectedR (Map.insert addr outboundWrite)
+        forkIO $ runEffect $
+            fromSocket sock 4096 >-> PP.map ((,) addr) >-> toOutput relayInWrite
+        runEffect $ fromInput outboundRead >-> toSocket sock
+    dispatch connectedR = do
+        (addr, bs) <- await
+        connected <- liftIO $ readIORef connectedR
+        case Map.lookup addr connected of
+            Just out -> liftIO $ atomically $ PC.send out bs
+            Nothing -> return True  -- PC.send gives False if the sink is exhausted
+        dispatch connectedR
 
 broadcast :: IO [Output a] -> Consumer a IO ()
 broadcast getChans =
@@ -171,34 +186,34 @@ broadcast getChans =
 --         writePipe outboundPipe $ fmap (\a -> (a, v)) (Map.keys ccs)
 
 
--- atomicUpdate :: IORef a -> (a -> a) -> IO ()
--- atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
+atomicUpdate :: IORef a -> (a -> a) -> IO ()
+atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
 
 -----------------------------------------------
 
--- examplePipesProxy :: (Show a) => a -> Proxy a a a a IO ()
--- examplePipesProxy input =
---   do
---     lift $ putStrLn $ "Proxy saw input " ++ (show input)
---     response <- request input
---     lift $ putStrLn $ "Proxy saw response " ++ (show response)
---     nextInput <- respond response
---     examplePipesProxy nextInput
+examplePipesProxy :: (Show a) => a -> Proxy a a a a IO ()
+examplePipesProxy input =
+  do
+    lift $ putStrLn $ "Proxy saw input " ++ (show input)
+    response <- request input
+    lift $ putStrLn $ "Proxy saw response " ++ (show response)
+    nextInput <- respond response
+    examplePipesProxy nextInput
 
--- stripper :: (SockAddr, User, B.ByteString) ->
---     Proxy B.ByteString B.ByteString (SockAddr, User, B.ByteString) B.ByteString
---     IO ()
--- stripper (a, u, bs) =
---   do
---     bs' <- request bs
---     next <- respond bs'
---     stripper next
+stripper :: (SockAddr, B.ByteString) ->
+    Proxy B.ByteString B.ByteString (SockAddr, B.ByteString) (SockAddr, B.ByteString)
+    IO ()
+stripper (a, bs) =
+  do
+    bs' <- request bs
+    next <- respond (a, bs')
+    stripper next
 
--- echoServer :: B.ByteString -> Server B.ByteString B.ByteString IO ()
--- echoServer input =
---   do
---     nextInput <- respond input
---     echoServer nextInput
+echoServer :: B.ByteString -> Server B.ByteString B.ByteString IO ()
+echoServer input =
+  do
+    nextInput <- respond input
+    echoServer nextInput
 
 -- data ConnStatus = Connected (Socket, SockAddr) | Disconnected (Socket, SockAddr)
 
@@ -259,17 +274,17 @@ broadcast getChans =
 --     yield $ show bs
 
 
--- pairToClient :: Input a -> Output b -> Client a b IO ()
--- pairToClient input output = loop
---   where
---     loop = do
---       ma <- liftIO $ atomically $ PC.recv input
---       case ma of
---           Nothing -> return ()
---           Just a -> do
---               resp <- request a
---               alive <- liftIO $ atomically $ PC.send output resp
---               when alive loop
+pairToClient :: Input a -> Output b -> Client a b IO ()
+pairToClient input output = loop
+  where
+    loop = do
+      ma <- liftIO $ atomically $ PC.recv input
+      case ma of
+          Nothing -> return ()
+          Just a -> do
+              resp <- request a
+              alive <- liftIO $ atomically $ PC.send output resp
+              when alive loop
 
 
 -- exampleSocketPipeline :: IO ()
