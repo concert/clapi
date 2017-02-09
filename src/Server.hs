@@ -4,9 +4,10 @@ module Server where
 import Control.Monad (forever, when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
-import Control.Concurrent.Async (race_)
-import Control.Concurrent.STM (atomically)
+import Control.Concurrent.Async (race_, async, wait, cancel)
+import Control.Concurrent.STM (STM, atomically)
 -- import Control.Exception (bracket)
+import Control.Exception (bracket_, finally)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
@@ -22,10 +23,11 @@ import Network.Simple.TCP (HostPreference(HostAny), serve)
 import Pipes (
   runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->))
 import qualified Pipes.Prelude as PP
-import Pipes.Core (Server, respond, Client, request, (<<+))
-import Pipes.Concurrent (spawn, unbounded, Input, Output, fromInput, toOutput)
+import Pipes.Core (Server, respond, Client, request, (>>~))
+import Pipes.Concurrent (
+  spawn', withSpawn, unbounded, Input, Output, fromInput, toOutput, performGC)
 import qualified Pipes.Concurrent as PC
-import Pipes.Safe (SafeT, runSafeT, bracket)
+-- import Pipes.Safe (SafeT, runSafeT, bracket)
 import Pipes.Network.TCP (fromSocket, toSocket)
 
 import Data.Foldable (toList)
@@ -38,31 +40,91 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
+
 myServe :: IO ()
-myServe =
+myServe = runEffect $
+    socketServer >>~ examplePipesProxy >>~ stripper >>~ echoServer
+
+
+socketServer :: Server [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) IO ()
+socketServer =
   do
-    (relayInWrite, relayInRead) <- spawn unbounded
-    (relayOutWrite, relayOutRead) <- spawn unbounded
-    connectedR <- newIORef mempty :: IO (IORef (Map.Map SockAddr (Output B.ByteString)))
-    forkIO $ serve HostAny "1234" $ thing relayInWrite connectedR
-    forkIO $ runEffect $ fromInput relayOutRead >-> dispatch connectedR
-    runEffect $
-        pairToClient relayInRead relayOutWrite <<+
-        examplePipesProxy <<+ stripper <<+ echoServer
+    connectedR <- liftIO $ (newIORef mempty :: IO (IORef (Map.Map SockAddr (Output B.ByteString))))
+    -- FIXME: bracket cleanup of these resources
+    (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
+    (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
+    as1 <- liftIO $ async $ serve HostAny "1234" $ thing relayInWrite connectedR
+    as2 <- liftIO $ async $ runEffect $ fromInput relayOutRead >-> dispatch connectedR
+    pairToServer relayOutWrite relayInRead
+    liftIO $ atomically sealOut >> atomically sealIn >> wait as1 >> wait as2
   where
     thing relayInWrite connectedR (sock, addr) = do
-        (outboundWrite, outboundRead) <- spawn unbounded
-        atomicUpdate connectedR (Map.insert addr outboundWrite)
-        forkIO $ runEffect $
-            fromSocket sock 4096 >-> PP.map ((,) addr) >-> toOutput relayInWrite
-        runEffect $ fromInput outboundRead >-> toSocket sock
+        putStrLn $ (show addr) ++ " connected"
+        (outboundWrite, outboundRead, seal) <- spawn' unbounded
+        bracket_
+            (atomicUpdate connectedR $ Map.insert addr outboundWrite)
+            (do
+                atomicUpdate connectedR $ Map.delete addr
+                putStrLn $ (show addr) ++ " disconnected")
+            (do
+                a <- async $ do
+                    runEffect $
+                        fromSocket sock 4096 >->
+                        PP.map ((,) addr) >->
+                        -- FIXME: in the case where we've sealed relayInWrite,
+                        -- we still are awaiting input from the socket before we
+                        -- try writing and see that it is closed :(
+                        toOutput relayInWrite
+                    atomically seal
+                runEffect $ fromInput outboundRead >-> PP.take 3 >-> toSocket sock
+                -- If we don't wait on a here, thing returns and serve frees the
+                -- associated socket, meaning we get a bad file descriptor error
+                -- when we try to read again
+                wait a)
+    -- FIXME: this is utterly pants, has a race with newly connecting threads
+    -- and causes bad file descriptor errors to pop out of the thing threads:
+    killAllTheThings connectedR = do
+        atomicUpdate connectedR (const mempty)
+        performGC
     dispatch connectedR = do
-        (addr, bs) <- await
+        msgs <- await
         connected <- liftIO $ readIORef connectedR
-        case Map.lookup addr connected of
-            Just out -> liftIO $ atomically $ PC.send out bs
-            Nothing -> return True  -- PC.send gives False if the sink is exhausted
+        liftIO $ putStrLn $ show $ Map.keys connected
+        forM msgs $ \(addr, bs) ->
+            case Map.lookup addr connected of
+                Just out -> liftIO $ atomically $ PC.send out bs
+                Nothing -> return True
         dispatch connectedR
+
+
+-- socketProducer :: Producer
+--     (SockAddr, Maybe (Output B.ByteString, Input B.ByteString, STM ())) IO ()
+-- socketProducer =
+--   do
+--     (sockCtrlWrite, sockCtrlRead, seal) <- liftIO $ spawn' unbounded
+--     as1 <- liftIO $ async $ serve HostAny "1234" $ thing sockCtrlWrite
+--     fromInput sockCtrlRead
+--     -- FIXME: bracket this resource acquisition and cleanup
+--     liftIO $ wait as1
+--     liftIO $ atomically seal
+--   where
+--     thing sockCtrlWrite (sock, addr) =
+--       do
+--         (sockOutWrite, sockOutRead, sealOut) <- spawn' unbounded
+--         (sockInWrite, sockInRead, sealIn) <- spawn' unbounded
+--         atomically $ PC.send sockCtrlWrite
+--             (addr, Just (sockInWrite, sockOutRead, sealIn))
+--         finally
+--           (do
+--             as1 <- async $ runEffect $ fromSocket sock 4096 >-> toOutput sockOutWrite
+--             as2 <- async $ runEffect $ fromInput sockInRead >-> toSocket sock
+--             wait as1
+--             wait as2)
+--           (do
+--             atomically sealOut
+--             atomically sealIn
+--             atomically $ PC.send sockCtrlWrite (addr, Nothing))
+
 
 broadcast :: IO [Output a] -> Consumer a IO ()
 broadcast getChans =
@@ -191,28 +253,28 @@ atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
 
 -----------------------------------------------
 
-examplePipesProxy :: (Show a) => a -> Proxy a a a a IO ()
+-- examplePipesProxy :: (Show a, Show a') => b' -> Proxy a' a b' b IO ()
 examplePipesProxy input =
   do
     lift $ putStrLn $ "Proxy saw input " ++ (show input)
-    response <- request input
-    lift $ putStrLn $ "Proxy saw response " ++ (show response)
-    nextInput <- respond response
+    req <- respond input
+    lift $ putStrLn $ "Proxy saw response " ++ (show req)
+    nextInput <- request req
     examplePipesProxy nextInput
 
 stripper :: (SockAddr, B.ByteString) ->
-    Proxy B.ByteString B.ByteString (SockAddr, B.ByteString) (SockAddr, B.ByteString)
-    IO ()
+    Proxy [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) B.ByteString
+    B.ByteString IO ()
 stripper (a, bs) =
   do
-    bs' <- request bs
-    next <- respond (a, bs')
+    bs' <- respond bs
+    next <- request $ [(a, bs')]
     stripper next
 
-echoServer :: B.ByteString -> Server B.ByteString B.ByteString IO ()
+echoServer :: B.ByteString -> Client B.ByteString B.ByteString IO ()
 echoServer input =
   do
-    nextInput <- respond input
+    nextInput <- request input
     echoServer nextInput
 
 -- data ConnStatus = Connected (Socket, SockAddr) | Disconnected (Socket, SockAddr)
@@ -285,6 +347,19 @@ pairToClient input output = loop
               resp <- request a
               alive <- liftIO $ atomically $ PC.send output resp
               when alive loop
+
+
+pairToServer :: Output a -> Input b -> Server a b IO ()
+pairToServer output input = loop
+  where
+    loop = do
+        mb <- liftIO $ atomically $ PC.recv input
+        case mb of
+            Nothing -> return ()
+            Just b -> do
+                a <- respond b
+                alive <- liftIO $ atomically $ PC.send output a
+                when alive loop
 
 
 -- exampleSocketPipeline :: IO ()
