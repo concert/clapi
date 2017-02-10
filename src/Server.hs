@@ -7,16 +7,17 @@ import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
 import Control.Concurrent.Async (race_, async, wait, cancel)
 import Control.Concurrent.STM (STM, atomically)
 -- import Control.Exception (bracket)
-import Control.Exception (bracket_, finally)
+import Control.Exception (bracket_)
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Data.Traversable (forM)
 import Network.Socket (
-    Socket, SockAddr, PortNumber, Family(AF_INET), SocketType(Stream),
-    SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
-    bind, listen, accept, close, iNADDR_ANY)
+    Socket, SockAddr, PortNumber--, Family(AF_INET), SocketType(Stream),
+    -- SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
+    -- bind, listen, accept, close, iNADDR_ANY
+    )
 import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), serve)
 
@@ -27,7 +28,7 @@ import Pipes.Core (Server, respond, Client, request, (>>~))
 import Pipes.Concurrent (
   spawn', withSpawn, unbounded, Input, Output, fromInput, toOutput, performGC)
 import qualified Pipes.Concurrent as PC
--- import Pipes.Safe (SafeT, runSafeT, bracket)
+import Pipes.Safe (SafeT, MonadSafe, runSafeT, bracket, finally)
 import Pipes.Network.TCP (fromSocket, toSocket)
 
 import Data.Foldable (toList)
@@ -42,11 +43,12 @@ data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
 
 myServe :: IO ()
-myServe = runEffect $
+myServe = runSafeT $ runEffect $
     socketServer >>~ examplePipesProxy >>~ stripper >>~ echoServer
 
 
-socketServer :: Server [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) IO ()
+socketServer ::
+  Server [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) (SafeT IO) ()
 socketServer =
   do
     connectedR <- liftIO $ (newIORef mempty :: IO (IORef (Map.Map SockAddr (Output B.ByteString))))
@@ -55,8 +57,11 @@ socketServer =
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
     as1 <- liftIO $ async $ serve HostAny "1234" $ thing relayInWrite connectedR
     as2 <- liftIO $ async $ runEffect $ fromInput relayOutRead >-> dispatch connectedR
-    pairToServer relayOutWrite relayInRead
-    liftIO $ atomically sealOut >> atomically sealIn >> wait as1 >> wait as2
+    finally
+        (pairToServer relayOutWrite relayInRead)
+        (liftIO $
+         putStrLn "dope" >>
+         atomically sealOut >> atomically sealIn >> cancel as1 >> wait as2)
   where
     thing relayInWrite connectedR (sock, addr) = do
         putStrLn $ (show addr) ++ " connected"
@@ -253,25 +258,25 @@ atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
 
 -----------------------------------------------
 
--- examplePipesProxy :: (Show a, Show a') => b' -> Proxy a' a b' b IO ()
+examplePipesProxy :: (Show a, Show b, MonadIO m) => b -> Proxy a b a b m ()
 examplePipesProxy input =
   do
-    lift $ putStrLn $ "Proxy saw input " ++ (show input)
+    liftIO $ putStrLn $ "Proxy saw input " ++ (show input)
     req <- respond input
-    lift $ putStrLn $ "Proxy saw response " ++ (show req)
+    liftIO $ putStrLn $ "Proxy saw response " ++ (show req)
     nextInput <- request req
     examplePipesProxy nextInput
 
-stripper :: (SockAddr, B.ByteString) ->
+stripper :: (Monad m) => (SockAddr, B.ByteString) ->
     Proxy [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) B.ByteString
-    B.ByteString IO ()
+    B.ByteString m ()
 stripper (a, bs) =
   do
     bs' <- respond bs
     next <- request $ [(a, bs')]
     stripper next
 
-echoServer :: B.ByteString -> Client B.ByteString B.ByteString IO ()
+echoServer :: (Monad m) => B.ByteString -> Client B.ByteString B.ByteString m ()
 echoServer input =
   do
     nextInput <- request input
@@ -349,7 +354,7 @@ pairToClient input output = loop
               when alive loop
 
 
-pairToServer :: Output a -> Input b -> Server a b IO ()
+pairToServer :: (MonadIO m) => Output a -> Input b -> Server a b m ()
 pairToServer output input = loop
   where
     loop = do
