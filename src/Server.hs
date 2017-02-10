@@ -102,35 +102,6 @@ socketServer =
         dispatch connectedR
 
 
--- socketProducer :: Producer
---     (SockAddr, Maybe (Output B.ByteString, Input B.ByteString, STM ())) IO ()
--- socketProducer =
---   do
---     (sockCtrlWrite, sockCtrlRead, seal) <- liftIO $ spawn' unbounded
---     as1 <- liftIO $ async $ serve HostAny "1234" $ thing sockCtrlWrite
---     fromInput sockCtrlRead
---     -- FIXME: bracket this resource acquisition and cleanup
---     liftIO $ wait as1
---     liftIO $ atomically seal
---   where
---     thing sockCtrlWrite (sock, addr) =
---       do
---         (sockOutWrite, sockOutRead, sealOut) <- spawn' unbounded
---         (sockInWrite, sockInRead, sealIn) <- spawn' unbounded
---         atomically $ PC.send sockCtrlWrite
---             (addr, Just (sockInWrite, sockOutRead, sealIn))
---         finally
---           (do
---             as1 <- async $ runEffect $ fromSocket sock 4096 >-> toOutput sockOutWrite
---             as2 <- async $ runEffect $ fromInput sockInRead >-> toSocket sock
---             wait as1
---             wait as2)
---           (do
---             atomically sealOut
---             atomically sealIn
---             atomically $ PC.send sockCtrlWrite (addr, Nothing))
-
-
 broadcast :: IO [Output a] -> Consumer a IO ()
 broadcast getChans =
   forever $ do
