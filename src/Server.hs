@@ -4,7 +4,7 @@ module Server where
 import Control.Monad (forever, when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
-import Control.Concurrent.Async (race_, async, wait, cancel)
+import Control.Concurrent.Async (race_, async, wait, cancel, link)
 import Control.Concurrent.STM (STM, atomically)
 -- import Control.Exception (bracket)
 import Control.Exception (bracket_)
@@ -18,8 +18,9 @@ import Network.Socket (
     -- SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
     -- bind, listen, accept, close, iNADDR_ANY
     )
+import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
-import Network.Simple.TCP (HostPreference(HostAny), serve)
+import Network.Simple.TCP (HostPreference(HostAny), serve, listen)
 
 import Pipes (
   runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->))
@@ -40,6 +41,22 @@ import Blaze.ByteString.Builder (toByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
+
+serve' ::
+    HostPreference -> NS.ServiceName -> ((Socket, SockAddr) -> IO ()) -> IO ()
+serve' hp port f =
+  do
+    v <- newEmptyMVar
+    listen hp port $ \(listenSock,_) -> do
+      a <- async $ do
+        a <- takeMVar v
+        forever $ do
+            (sock, addr) <- NS.accept listenSock
+            forkFinally
+                (link a >> f (sock, addr))
+                (const $ NS.close sock)
+      putMVar v a
+      wait a
 
 
 myServe :: IO ()
