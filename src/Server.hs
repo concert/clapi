@@ -117,14 +117,6 @@ socketServer inboundPipe outboundPipe hp port =
                 Nothing -> return True
         dispatch connectedR
 
-
-broadcast :: IO [Output a] -> Consumer a IO ()
-broadcast getChans =
-  forever $ do
-    a <- await
-    chans <- liftIO getChans
-    liftIO $ atomically $ forM chans (flip PC.send a)
-
 -- type WriteChan a = InChan a
 -- type ReadChan a = OutChan a
 -- FIXME: Pipe isn't really the right name for this, as we're not using it to
