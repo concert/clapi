@@ -22,7 +22,7 @@ import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), serve, listen)
 
 import Pipes (
-  runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->))
+  runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->), cat)
 import qualified Pipes.Prelude as PP
 import Pipes.Core (Server, respond, Client, request, (>>~))
 import Pipes.Concurrent (
@@ -61,13 +61,16 @@ serve' hp port f =
 
 myServe :: IO ()
 myServe = runSafeT $ runEffect $
-    socketServer HostAny "1234" >>~ examplePipesProxy >>~ stripper >>~ echoServer
+    let s = socketServer cat (PP.take 3) HostAny "1234" in
+    s >>~ examplePipesProxy >>~ stripper >>~ echoServer
 
 
 socketServer ::
+  Pipe (SockAddr, B.ByteString) a IO () ->
+  Pipe b B.ByteString IO () ->
   HostPreference -> NS.ServiceName ->
-  Server [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) (SafeT IO) ()
-socketServer hp port =
+  Server [(SockAddr, b)] a (SafeT IO) ()
+socketServer inboundPipe outboundPipe hp port =
   do
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
@@ -90,16 +93,17 @@ socketServer hp port =
                     runEffect $
                         fromSocket sock 4096 >->
                         PP.map ((,) addr) >->
+                        inboundPipe >->
                         toOutput relayInWrite
                     atomically seal)
                 (const $
                     runEffect $
                         fromInput outboundRead >->
-                        PP.take 3 >->
+                        outboundPipe >->
                         toSocket sock))
     dispatch ::
-        IORef (Map.Map SockAddr (Output B.ByteString)) ->
-        Consumer [(SockAddr, B.ByteString)] IO ()
+        IORef (Map.Map SockAddr (Output a)) ->
+        Consumer [(SockAddr, a)] IO ()
     dispatch connectedR = do
         msgs <- await
         connected <- liftIO $ readIORef connectedR
