@@ -61,23 +61,26 @@ serve' hp port f =
 
 myServe :: IO ()
 myServe = runSafeT $ runEffect $
-    socketServer >>~ examplePipesProxy >>~ stripper >>~ echoServer
+    socketServer HostAny "1234" >>~ examplePipesProxy >>~ stripper >>~ echoServer
 
 
 socketServer ::
+  HostPreference -> NS.ServiceName ->
   Server [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) (SafeT IO) ()
-socketServer =
+socketServer hp port =
   do
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    as1 <- liftIO $ async $ serve' HostAny "1234" $ thing relayInWrite connectedR
-    as2 <- liftIO $ async $ runEffect $ fromInput relayOutRead >-> dispatch connectedR
+    as1 <- liftIO $ async $
+        serve' hp port $ socketHandler relayInWrite connectedR
+    as2 <- liftIO $ async $
+        runEffect $ fromInput relayOutRead >-> dispatch connectedR
     pairToServer relayOutWrite relayInRead
       `PS.finally` (liftIO $
          cancel as1 >> atomically sealOut >> atomically sealIn >> wait as2)
   where
-    thing relayInWrite connectedR (sock, addr) = do
+    socketHandler relayInWrite connectedR (sock, addr) = do
         (outboundWrite, outboundRead, seal) <- spawn' unbounded
         E.bracket_
             (atomicUpdate connectedR $ Map.insert addr outboundWrite)
