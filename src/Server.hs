@@ -3,11 +3,10 @@ module Server where
 
 import Control.Monad (forever, when)
 import Control.Monad.IO.Class (MonadIO)
-import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread)
-import Control.Concurrent.Async (race_, async, wait, cancel, link)
+import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDelay)
+import Control.Concurrent.Async (race_, async, wait, cancel, link, withAsync)
 import Control.Concurrent.STM (STM, atomically)
--- import Control.Exception (bracket)
-import Control.Exception (bracket_)
+import qualified Control.Exception as E
 import Control.Concurrent.Chan.Unagi (
     InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
@@ -29,7 +28,8 @@ import Pipes.Core (Server, respond, Client, request, (>>~))
 import Pipes.Concurrent (
   spawn', withSpawn, unbounded, Input, Output, fromInput, toOutput, performGC)
 import qualified Pipes.Concurrent as PC
-import Pipes.Safe (SafeT, MonadSafe, runSafeT, bracket, finally)
+import Pipes.Safe (SafeT, MonadSafe, runSafeT)
+import qualified Pipes.Safe as PS
 import Pipes.Network.TCP (fromSocket, toSocket)
 
 import Data.Foldable (toList)
@@ -69,45 +69,31 @@ socketServer ::
 socketServer =
   do
     connectedR <- liftIO $ (newIORef mempty :: IO (IORef (Map.Map SockAddr (Output B.ByteString))))
-    -- FIXME: bracket cleanup of these resources
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    as1 <- liftIO $ async $ serve HostAny "1234" $ thing relayInWrite connectedR
+    as1 <- liftIO $ async $ serve' HostAny "1234" $ thing relayInWrite connectedR
     as2 <- liftIO $ async $ runEffect $ fromInput relayOutRead >-> dispatch connectedR
-    finally
-        (pairToServer relayOutWrite relayInRead)
-        (liftIO $
-         putStrLn "dope" >>
-         atomically sealOut >> atomically sealIn >> cancel as1 >> wait as2)
+    pairToServer relayOutWrite relayInRead
+      `PS.finally` (liftIO $
+         cancel as1 >> atomically sealOut >> atomically sealIn >> wait as2)
   where
     thing relayInWrite connectedR (sock, addr) = do
-        putStrLn $ (show addr) ++ " connected"
         (outboundWrite, outboundRead, seal) <- spawn' unbounded
-        bracket_
+        E.bracket_
             (atomicUpdate connectedR $ Map.insert addr outboundWrite)
-            (do
-                atomicUpdate connectedR $ Map.delete addr
-                putStrLn $ (show addr) ++ " disconnected")
-            (do
-                a <- async $ do
+            (atomicUpdate connectedR $ Map.delete addr)
+            (withAsync
+                (do
                     runEffect $
                         fromSocket sock 4096 >->
                         PP.map ((,) addr) >->
-                        -- FIXME: in the case where we've sealed relayInWrite,
-                        -- we still are awaiting input from the socket before we
-                        -- try writing and see that it is closed :(
                         toOutput relayInWrite
-                    atomically seal
-                runEffect $ fromInput outboundRead >-> PP.take 3 >-> toSocket sock
-                -- If we don't wait on a here, thing returns and serve frees the
-                -- associated socket, meaning we get a bad file descriptor error
-                -- when we try to read again
-                wait a)
-    -- FIXME: this is utterly pants, has a race with newly connecting threads
-    -- and causes bad file descriptor errors to pop out of the thing threads:
-    killAllTheThings connectedR = do
-        atomicUpdate connectedR (const mempty)
-        performGC
+                    atomically seal)
+                (const $
+                    runEffect $
+                        fromInput outboundRead >->
+                        PP.take 3 >->
+                        toSocket sock))
     dispatch connectedR = do
         msgs <- await
         connected <- liftIO $ readIORef connectedR
