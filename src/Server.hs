@@ -88,6 +88,8 @@ socketServer inboundPipe outboundPipe hp port =
         E.bracket_
             (atomicUpdate connectedR $ Map.insert addr outboundWrite)
             (atomicUpdate connectedR $ Map.delete addr)
+            -- We use withAsync here to make sure that if our outbound pipeline
+            -- terminates or is killed we will also terminate our inbound thread
             (withAsync
                 (do
                     runEffect $
@@ -95,6 +97,8 @@ socketServer inboundPipe outboundPipe hp port =
                         PP.map ((,) addr) >->
                         inboundPipe >->
                         toOutput relayInWrite
+                    -- We seal so that if the client closes their connection we
+                    -- correctly terminate the outbound pipeline too
                     atomically seal)
                 (const $
                     runEffect $
