@@ -68,7 +68,7 @@ socketServer ::
   Server [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) (SafeT IO) ()
 socketServer =
   do
-    connectedR <- liftIO $ (newIORef mempty :: IO (IORef (Map.Map SockAddr (Output B.ByteString))))
+    connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
     as1 <- liftIO $ async $ serve' HostAny "1234" $ thing relayInWrite connectedR
@@ -94,10 +94,12 @@ socketServer =
                         fromInput outboundRead >->
                         PP.take 3 >->
                         toSocket sock))
+    dispatch ::
+        IORef (Map.Map SockAddr (Output B.ByteString)) ->
+        Consumer [(SockAddr, B.ByteString)] IO ()
     dispatch connectedR = do
         msgs <- await
         connected <- liftIO $ readIORef connectedR
-        liftIO $ putStrLn $ show $ Map.keys connected
         forM msgs $ \(addr, bs) ->
             case Map.lookup addr connected of
                 Just out -> liftIO $ atomically $ PC.send out bs
