@@ -61,8 +61,8 @@ serve' hp port f =
 
 myServe :: IO ()
 myServe = runSafeT $ runEffect $
-    let s = socketServer cat (PP.take 3) HostAny "1234" in
-    s >>~ examplePipesProxy >>~ stripper >>~ echoServer
+    let s = socketServer authentication (PP.take 3) HostAny "1234" in
+    s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer
 
 
 socketServer ::
@@ -116,6 +116,32 @@ socketServer inboundPipe outboundPipe hp port =
                 Just out -> liftIO $ atomically $ PC.send out bs
                 Nothing -> return True
         dispatch connectedR
+
+
+authentication ::
+    Pipe (SockAddr, B.ByteString) (SockAddr, User, B.ByteString) IO ()
+authentication = forever $ do
+    (addr, bs) <- await
+    yield (addr, Alice, bs)
+
+
+subscriptionRegistrar ::
+    (Monad m) =>
+    (SockAddr, User, B.ByteString) ->
+    Proxy [(SockAddr, B.ByteString)] (SockAddr, User, B.ByteString)
+    B.ByteString (User, B.ByteString) m ()
+subscriptionRegistrar = loop mempty
+  where
+    loop registered (a, u, bs) =
+      do
+        let registered' = case bs of
+              "subscribe\n" -> Map.insert a () registered
+              "unsubscribe\n" -> Map.delete a registered
+              _ -> registered
+        bs' <- respond (u, bs)
+        req <- request $ Map.toList $ fmap (const $ bs') registered'
+        loop registered' req
+
 
 -- type WriteChan a = InChan a
 -- type ReadChan a = OutChan a
@@ -246,13 +272,12 @@ examplePipesProxy input =
     nextInput <- request req
     examplePipesProxy nextInput
 
-stripper :: (Monad m) => (SockAddr, B.ByteString) ->
-    Proxy [(SockAddr, B.ByteString)] (SockAddr, B.ByteString) B.ByteString
-    B.ByteString m ()
-stripper (a, bs) =
+stripper :: (Monad m) => (User, B.ByteString) ->
+    Proxy B.ByteString (User, B.ByteString) B.ByteString B.ByteString m ()
+stripper (u, bs) =
   do
     bs' <- respond bs
-    next <- request $ [(a, bs')]
+    next <- request $ bs'
     stripper next
 
 echoServer :: (Monad m) => B.ByteString -> Client B.ByteString B.ByteString m ()
