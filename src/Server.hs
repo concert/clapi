@@ -66,23 +66,25 @@ serve' listenSock handler =
 
 
 myServe :: IO ()
-myServe = runSafeT $ runEffect $
-    let s = socketServer authentication (PP.take 3) HostAny "1234" in
-    s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer
+myServe = E.bracket
+    (listen' HostAny "0")
+    (NS.close . fst)
+    (\(listenSock, _) ->
+        let s = socketServer authentication (PP.take 3) listenSock in
+        runSafeT $ runEffect $
+        s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer)
 
 
 socketServer ::
   Pipe (SockAddr, B.ByteString) a IO () ->
   Pipe b B.ByteString IO () ->
-  HostPreference -> NS.ServiceName ->
+  Socket ->
   Server [(SockAddr, b)] a (SafeT IO) ()
-socketServer inboundPipe outboundPipe hp port =
+socketServer inboundPipe outboundPipe listenSock =
   do
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    -- FIXME: close this socket!
-    (listenSock, _) <- liftIO $ listen' hp port
     as1 <- liftIO $
         serve' listenSock $ socketHandler relayInWrite connectedR
     liftIO $ link as1
