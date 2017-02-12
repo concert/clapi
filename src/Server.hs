@@ -4,7 +4,7 @@ module Server where
 import Control.Monad (forever, when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDelay)
-import Control.Concurrent.Async (race_, async, wait, cancel, link, withAsync)
+import Control.Concurrent.Async (Async, race_, async, wait, cancel, link, withAsync)
 import Control.Concurrent.STM (STM, atomically)
 import qualified Control.Exception as E
 import Control.Concurrent.Chan.Unagi (
@@ -42,32 +42,27 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
-listen' :: HostPreference -> NS.ServiceName -> ((Socket, SockAddr) -> IO r) ->
-    IO r
-listen' hp port = E.bracket listen'' (NS.close . fst)
-  where
-    listen'' = do
-        -- The addr returned by bindSock is useless when we bind "0":
-        (boundSock, _) <- bindSock hp port
-        NS.listen boundSock $ max 2048 NS.maxListenQueue
-        (,) <$> return boundSock <*> NS.getSocketName boundSock
+listen' :: HostPreference -> NS.ServiceName -> IO (Socket, SockAddr)
+listen' hp port = do
+    -- The addr returned by bindSock is useless when we bind "0":
+    (boundSock, _) <- bindSock hp port
+    NS.listen boundSock $ max 2048 NS.maxListenQueue
+    (,) <$> return boundSock <*> NS.getSocketName boundSock
 
 
-serve' ::
-    HostPreference -> NS.ServiceName -> ((Socket, SockAddr) -> IO ()) -> IO ()
-serve' hp port f =
+serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async r)
+serve' listenSock handler =
   do
     v <- newEmptyMVar
-    listen hp port $ \(listenSock,_) -> do
-      a <- async $ do
+    a <- async $ do
         a <- takeMVar v
         forever $ do
-            (sock, addr) <- NS.accept listenSock
+            x@(sock, addr) <- NS.accept listenSock
             forkFinally
-                (link a >> f (sock, addr))
+                (link a >> handler x)
                 (const $ NS.close sock)
-      putMVar v a
-      wait a
+    putMVar v a
+    return a
 
 
 myServe :: IO ()
@@ -86,8 +81,10 @@ socketServer inboundPipe outboundPipe hp port =
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    as1 <- liftIO $ async $
-        serve' hp port $ socketHandler relayInWrite connectedR
+    -- FIXME: close this socket!
+    (listenSock, _) <- liftIO $ listen' hp port
+    as1 <- liftIO $
+        serve' listenSock $ socketHandler relayInWrite connectedR
     liftIO $ link as1
     as2 <- liftIO $ async $
         runEffect $ fromInput relayOutRead >-> dispatch connectedR
