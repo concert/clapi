@@ -24,6 +24,7 @@ tests = [
     testCase "self-aware async" testSelfAwareAsync,
     testCase "server kills children" testKillServeKillsHandlers,
     testCase "handler term closes socket" testHandlerTerminationClosesSocket,
+    testCase "handler error closes socket" testHandlerErrorClosesSocket,
     testCase "multiple connections" $ testMultipleConnections 42
     ]
 
@@ -69,15 +70,18 @@ testKillServeKillsHandlers =
         (\ThreadKilled -> putMVar v (Right ()))
 
 
-testHandlerTerminationClosesSocket =
+socketCloseTest handler =
   do
     (lsock, laddr) <- listen' HostAny "0"
-    a <- serve' lsock return
+    a <- serve' lsock handler
     mbs <- timeout (seconds 0.1) $
         connect "localhost" (show . getPort $ laddr)
             (\(csock, _) -> recv csock 4096)
     assertEqual "didn't get closed" (Just "") mbs
         `E.finally` (cancel a)
+
+testHandlerTerminationClosesSocket = socketCloseTest return
+testHandlerErrorClosesSocket = socketCloseTest $ error "part of test"
 
 
 testMultipleConnections n =
