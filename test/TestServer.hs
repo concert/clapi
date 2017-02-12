@@ -6,6 +6,7 @@ import Test.Framework.Providers.HUnit (testCase)
 
 import Data.Either (isRight)
 import System.Timeout
+import Control.Monad (replicateM)
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay)
@@ -22,7 +23,8 @@ tests = [
     testCase "zero listen" testListenZeroGivesPort,
     testCase "self-aware async" testSelfAwareAsync,
     testCase "server kills children" testKillServeKillsHandlers,
-    testCase "handler term closes socket" testHandlerTerminationClosesSocket
+    testCase "handler term closes socket" testHandlerTerminationClosesSocket,
+    testCase "multiple connections" $ testMultipleConnections 42
     ]
 
 seconds n = truncate $ n * 1e6
@@ -75,4 +77,15 @@ testHandlerTerminationClosesSocket =
         connect "localhost" (show . getPort $ laddr)
             (\(csock, _) -> recv csock 4096)
     assertEqual "didn't get closed" (Just "") mbs
+        `E.finally` (cancel a)
+
+
+testMultipleConnections n =
+  do
+    (lsock, laddr) <- listen' HostAny "0"
+    a <- serve' lsock (\(hsock, _) -> send hsock "hello")
+    res <- replicateM n $ timeout (seconds 0.1) $ connect "localhost"
+        (show . getPort $ laddr)
+        (\(csock, _) -> recv csock 4096)
+    (assertEqual "bad thread data" res $ replicate n (Just "hello"))
         `E.finally` (cancel a)
