@@ -5,6 +5,7 @@ import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 
 import Data.Either (isRight)
+import System.Timeout
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay)
@@ -20,7 +21,8 @@ import Server (selfAwareAsync, listen', serve')
 tests = [
     testCase "zero listen" testListenZeroGivesPort,
     testCase "self-aware async" testSelfAwareAsync,
-    testCase "server kills children" testKillServeKillsHandlers
+    testCase "server kills children" testKillServeKillsHandlers,
+    testCase "handler term closes socket" testHandlerTerminationClosesSocket
     ]
 
 seconds n = truncate $ n * 1e6
@@ -54,6 +56,7 @@ testKillServeKillsHandlers =
     a <- serve' lsock (handler v)
     connect "localhost" (show . getPort $ laddr)
         (\(csock, _) -> recv csock 4096 >> cancel a)
+    -- wait a -- FIXME: why does this hang the world?!
     res <- takeMVar v
     assertBool "timed out waiting for thread to be killed" $ isRight res
   where
@@ -62,3 +65,14 @@ testKillServeKillsHandlers =
          threadDelay (seconds 0.1) >>
          putMVar v (Left ()))
         (\ThreadKilled -> putMVar v (Right ()))
+
+
+testHandlerTerminationClosesSocket =
+  do
+    (lsock, laddr) <- listen' HostAny "0"
+    a <- serve' lsock return
+    mbs <- timeout (seconds 0.1) $
+        connect "localhost" (show . getPort $ laddr)
+            (\(csock, _) -> recv csock 4096)
+    assertEqual "didn't get closed" (Just "") mbs
+        `E.finally` (cancel a)
