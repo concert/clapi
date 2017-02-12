@@ -19,7 +19,7 @@ import Network.Socket (
     )
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
-import Network.Simple.TCP (HostPreference(HostAny), serve, listen)
+import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 
 import Pipes (
   runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->), cat)
@@ -41,6 +41,17 @@ import Blaze.ByteString.Builder (toByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
+
+listen' :: HostPreference -> NS.ServiceName -> ((Socket, SockAddr) -> IO r) ->
+    IO r
+listen' hp port = E.bracket listen'' (NS.close . fst)
+  where
+    listen'' = do
+        -- The addr returned by bindSock is useless when we bind "0":
+        (boundSock, _) <- bindSock hp port
+        NS.listen boundSock $ max 2048 NS.maxListenQueue
+        (,) <$> return boundSock <*> NS.getSocketName boundSock
+
 
 serve' ::
     HostPreference -> NS.ServiceName -> ((Socket, SockAddr) -> IO ()) -> IO ()
