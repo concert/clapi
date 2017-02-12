@@ -77,6 +77,7 @@ socketServer inboundPipe outboundPipe hp port =
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
     as1 <- liftIO $ async $
         serve' hp port $ socketHandler relayInWrite connectedR
+    liftIO $ link as1
     as2 <- liftIO $ async $
         runEffect $ fromInput relayOutRead >-> dispatch connectedR
     pairToServer relayOutWrite relayInRead
