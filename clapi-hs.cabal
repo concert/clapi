@@ -75,6 +75,7 @@ test-suite clapi-hs-test
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2
+                     , async
                      , containers
                      , either
                      , network

@@ -7,11 +7,12 @@ import qualified Control.Exception as E
 import qualified Network.Socket as NS
 import Network.Simple.TCP (HostPreference(HostAny))
 
-import Server (listen')
+import Server (selfAwareAsync, listen')
 
 
 tests = [
-    testCase "zero listen" testListenZeroGivesPort
+    testCase "zero listen" testListenZeroGivesPort,
+    testCase "self-aware async" testSelfAwareAsync
     ]
 
 
@@ -26,3 +27,10 @@ testListenZeroGivesPort =
         (listen' HostAny "0")
         (NS.close . fst)
         (return . getPort . snd)
+
+
+testSelfAwareAsync =
+  do
+    a <- selfAwareAsync (return . asyncThreadId)
+    tid <- wait a
+    assertEqual "async ids in and out" tid $ asyncThreadId a

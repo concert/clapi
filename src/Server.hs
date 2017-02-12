@@ -50,19 +50,22 @@ listen' hp port = do
     (,) <$> return boundSock <*> NS.getSocketName boundSock
 
 
-serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async r)
-serve' listenSock handler =
+selfAwareAsync :: (Async a -> IO a) -> IO (Async a)
+selfAwareAsync io =
   do
     v <- newEmptyMVar
-    a <- async $ do
-        a <- takeMVar v
-        forever $ do
-            x@(sock, addr) <- NS.accept listenSock
-            forkFinally
-                (link a >> handler x)
-                (const $ NS.close sock)
+    a <- async $ takeMVar v >>= io
     putMVar v a
     return a
+
+serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async r)
+serve' listenSock handler = selfAwareAsync loop
+  where
+    loop a = forever $ do
+        x@(sock, addr) <- NS.accept listenSock
+        forkFinally
+            (link a >> handler x)
+            (const $ NS.close sock)
 
 
 myServe :: NS.ServiceName -> IO ()
