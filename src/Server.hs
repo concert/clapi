@@ -65,9 +65,10 @@ serve' listenSock handler =
     return a
 
 
-myServe :: IO ()
-myServe = E.bracket
-    (listen' HostAny "0")
+myServe :: NS.ServiceName -> IO ()
+myServe port =
+  E.bracket
+    (listen' HostAny port)
     (NS.close . fst)
     (\(listenSock, _) ->
         let s = socketServer authentication (PP.take 3) listenSock in
