@@ -4,6 +4,7 @@ module Main (
 
 import Test.Framework (defaultMain, Test)
 
+import qualified TestServer (tests)
 import qualified TestTypes (tests)
 import qualified TestTree (tests)
 import qualified TestValuespace (tests)
@@ -14,6 +15,7 @@ main = defaultMain tests
 
 tests :: [Test]
 tests = mconcat [
+    TestServer.tests,
     TestTypes.tests,
     TestValuespace.tests,
     TestValidator.tests,

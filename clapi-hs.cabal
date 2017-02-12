@@ -77,7 +77,10 @@ test-suite clapi-hs-test
                      , test-framework-quickcheck2
                      , containers
                      , either
+                     , network
+                     , network-simple
   other-modules:       Util
+                     , TestServer
                      , TestTypes
                      , TestTree
                      , TestValuespace
