@@ -78,6 +78,8 @@ test-suite clapi-hs-test
                      , async
                      , containers
                      , either
+                     , pipes
+                     , pipes-safe
                      , network
                      , network-simple
   other-modules:       Util

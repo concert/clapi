@@ -42,12 +42,16 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
-listen' :: HostPreference -> NS.ServiceName -> IO (Socket, SockAddr)
-listen' hp port = do
-    -- The addr returned by bindSock is useless when we bind "0":
-    (boundSock, _) <- bindSock hp port
-    NS.listen boundSock $ max 2048 NS.maxListenQueue
-    (,) <$> return boundSock <*> NS.getSocketName boundSock
+withListen :: HostPreference -> NS.ServiceName ->
+    ((Socket, SockAddr) -> IO r) -> IO r
+withListen hp port =
+    E.bracket
+      (do
+        -- The addr returned by bindSock is useless when we bind "0":
+        (boundSock, _) <- bindSock hp port
+        NS.listen boundSock $ max 2048 NS.maxListenQueue
+        (,) <$> return boundSock <*> NS.getSocketName boundSock)
+      (NS.close . fst)
 
 
 selfAwareAsync :: (Async a -> IO a) -> IO (Async a)
@@ -69,14 +73,10 @@ serve' listenSock handler = selfAwareAsync loop
 
 
 myServe :: NS.ServiceName -> IO ()
-myServe port =
-  E.bracket
-    (listen' HostAny port)
-    (NS.close . fst)
-    (\(listenSock, _) ->
-        let s = socketServer authentication (PP.take 3) listenSock in
-        runSafeT $ runEffect $
-        s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer)
+myServe port = withListen HostAny port (\(listenSock, _) ->
+    let s = socketServer authentication (PP.take 3) listenSock in
+    runSafeT $ runEffect $
+    s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer)
 
 
 socketServer ::
