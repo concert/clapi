@@ -18,7 +18,7 @@ import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
 
 import Pipes (runEffect, cat)
-import Pipes.Core (request, respond, (>>~))
+import Pipes.Core (Client, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
@@ -98,6 +98,8 @@ testMultipleConnections n = withServe' handler $ \port ->
   where
     handler (hsock, _) = send hsock "hello"
 
+echoMap :: (Monad m) => (a -> b) -> a -> Client b a m r
+echoMap f input = request (f input) >>= echoMap f
 
 testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
   let
@@ -111,4 +113,3 @@ testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
         assertEqual "received words" words receivedWords
   where
     words = ["hello", "world", "llama", "train"]
-    echoMap f input = request (f input) >>= echoMap f
