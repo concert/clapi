@@ -6,12 +6,12 @@ import Test.Framework.Providers.HUnit (testCase)
 
 import Data.Either (isRight)
 import System.Timeout
-import Control.Monad (replicateM, mapM)
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (
-    async, withAsync, wait, cancel, asyncThreadId, mapConcurrently)
+    async, withAsync, wait, cancel, asyncThreadId, mapConcurrently,
+    replicateConcurrently)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
@@ -92,9 +92,8 @@ testHandlerErrorClosesSocket = socketCloseTest $ error "part of test"
 
 testMultipleConnections n = withServe' handler $ \port ->
   do
-    as <- replicateM n $ async $ timeout (seconds 0.1) $
+    res <- replicateConcurrently n $ timeout (seconds 0.1) $
         connect "localhost" port (\(csock, _) -> recv csock 4096)
-    res <- mapM wait as
     assertEqual "bad thread data" res $ replicate n (Just "hello")
   where
     handler (hsock, _) = send hsock "hello"
