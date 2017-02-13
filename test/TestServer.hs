@@ -34,15 +34,12 @@ getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
+withListen = E.bracket (listen' HostAny "0") (NS.close . fst)
+
 testListenZeroGivesPort =
   do
-    p <- port
-    assertBool "port == 0" $ p /= 0
-  where
-    port = E.bracket
-        (listen' HostAny "0")
-        (NS.close . fst)
-        (return . getPort . snd)
+    port <- withListen (return . getPort . snd)
+    assertBool "port == 0" $ port /= 0
 
 
 testSelfAwareAsync =
@@ -52,9 +49,8 @@ testSelfAwareAsync =
     assertEqual "async ids in and out" tid $ asyncThreadId a
 
 
-testKillServeKillsHandlers =
+testKillServeKillsHandlers = withListen $ \(lsock, laddr) ->
   do
-    (lsock, laddr) <- listen' HostAny "0"
     v <- newEmptyMVar
     a <- serve' lsock (handler v)
     connect "localhost" (show . getPort $ laddr)
@@ -70,9 +66,8 @@ testKillServeKillsHandlers =
         (\ThreadKilled -> putMVar v (Right ()))
 
 
-socketCloseTest handler =
+socketCloseTest handler = withListen $ \(lsock, laddr) ->
   do
-    (lsock, laddr) <- listen' HostAny "0"
     a <- serve' lsock handler
     mbs <- timeout (seconds 0.1) $
         connect "localhost" (show . getPort $ laddr)
@@ -84,9 +79,8 @@ testHandlerTerminationClosesSocket = socketCloseTest return
 testHandlerErrorClosesSocket = socketCloseTest $ error "part of test"
 
 
-testMultipleConnections n =
+testMultipleConnections n = withListen $ \(lsock, laddr) ->
   do
-    (lsock, laddr) <- listen' HostAny "0"
     a <- serve' lsock (\(hsock, _) -> send hsock "hello")
     res <- replicateM n $ timeout (seconds 0.1) $ connect "localhost"
         (show . getPort $ laddr)
