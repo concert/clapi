@@ -35,6 +35,11 @@ getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
 withListen = E.bracket (listen' HostAny "0") (NS.close . fst)
+withServe lsock handler = E.bracket (serve' lsock handler) cancel
+withServe' handler io =
+    withListen $ \(lsock, laddr) ->
+        withServe lsock handler $ \_ ->
+            io (show . getPort $ laddr)
 
 testListenZeroGivesPort =
   do
@@ -52,12 +57,13 @@ testSelfAwareAsync =
 testKillServeKillsHandlers = withListen $ \(lsock, laddr) ->
   do
     v <- newEmptyMVar
-    a <- serve' lsock (handler v)
-    connect "localhost" (show . getPort $ laddr)
-        (\(csock, _) -> recv csock 4096 >> cancel a)
-    -- wait a -- FIXME: why does this hang the world?!
-    res <- takeMVar v
-    assertBool "timed out waiting for thread to be killed" $ isRight res
+    withServe lsock (handler v) $ \a ->
+     do
+        connect "localhost" (show . getPort $ laddr)
+            (\(csock, _) -> recv csock 4096 >> cancel a)
+        -- wait a -- FIXME: why does this hang the world?!
+        res <- takeMVar v
+        assertBool "timed out waiting for thread to be killed" $ isRight res
   where
     handler v (hsock, _) = E.catch
         (send hsock "hello" >>
@@ -66,24 +72,22 @@ testKillServeKillsHandlers = withListen $ \(lsock, laddr) ->
         (\ThreadKilled -> putMVar v (Right ()))
 
 
-socketCloseTest handler = withListen $ \(lsock, laddr) ->
+socketCloseTest handler = withServe' handler $ \port->
   do
-    a <- serve' lsock handler
     mbs <- timeout (seconds 0.1) $
-        connect "localhost" (show . getPort $ laddr)
+        connect "localhost" port
             (\(csock, _) -> recv csock 4096)
     assertEqual "didn't get closed" (Just "") mbs
-        `E.finally` (cancel a)
 
 testHandlerTerminationClosesSocket = socketCloseTest return
 testHandlerErrorClosesSocket = socketCloseTest $ error "part of test"
 
 
-testMultipleConnections n = withListen $ \(lsock, laddr) ->
+testMultipleConnections n = withServe' handler $ \port ->
   do
-    a <- serve' lsock (\(hsock, _) -> send hsock "hello")
     res <- replicateM n $ timeout (seconds 0.1) $ connect "localhost"
         (show . getPort $ laddr)
         (\(csock, _) -> recv csock 4096)
-    (assertEqual "bad thread data" res $ replicate n (Just "hello"))
-        `E.finally` (cancel a)
+    assertEqual "bad thread data" res $ replicate n (Just "hello")
+  where
+    handler (hsock, _) = send hsock "hello"
