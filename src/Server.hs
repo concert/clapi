@@ -62,7 +62,7 @@ selfAwareAsync io =
     putMVar v a
     return a
 
-serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async r)
+serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async ())
 serve' listenSock handler = selfAwareAsync loop
   where
     loop a = forever $ do
