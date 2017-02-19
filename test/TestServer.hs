@@ -32,7 +32,8 @@ tests = [
     testCase "handler term closes socket" testHandlerTerminationClosesSocket,
     testCase "handler error closes socket" testHandlerErrorClosesSocket,
     testCase "multiple connections" $ testMultipleConnections 42,
-    testCase "socketServer echo" testSocketServerBasicEcho
+    testCase "socketServer echo" testSocketServerBasicEcho,
+    testCase "socketServer graceful interrupt" testSocketServerClosesGracefully
     ]
 
 seconds n = truncate $ n * 1e6
@@ -113,3 +114,12 @@ testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
         assertEqual "received words" words receivedWords
   where
     words = ["hello", "world", "llama", "train"]
+
+
+testSocketServerClosesGracefully = withListen' $ \(lsock, laddr) -> do
+    let s = socketServer cat cat lsock
+    a <- async (runSafeT $ runEffect $ s >>~ echoMap pure)
+    mbs <- timeout (seconds 0.1) $
+        connect "localhost" (show $ getPort laddr) $ \(csock, _) ->
+            cancel a >> recv csock 4096
+    assertEqual "timed out waiting for close" (Just "") mbs
