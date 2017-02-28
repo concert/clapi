@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Server where
 
-import Control.Monad (forever, when)
+import Control.Monad (forever, when, filterM, liftM)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDelay)
-import Control.Concurrent.Async (Async, race_, async, wait, cancel, link, withAsync)
+import Control.Concurrent.Async (Async, race_, async, wait, cancel, poll, link, withAsync)
 import Control.Concurrent.STM (STM, atomically)
 import qualified Control.Exception as E
 import Control.Concurrent.Chan.Unagi (
@@ -12,6 +12,7 @@ import Control.Concurrent.Chan.Unagi (
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Data.Traversable (forM)
+import Data.Maybe (isNothing)
 import Network.Socket (
     Socket, SockAddr, PortNumber--, Family(AF_INET), SocketType(Stream),
     -- SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
@@ -62,14 +63,25 @@ selfAwareAsync io =
     putMVar v a
     return a
 
-serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async ())
-serve' listenSock handler = selfAwareAsync loop
+doubleCatch :: IO a -> IO b -> IO c -> IO c
+doubleCatch softHandle hardHandle action =
+    action `E.onException` (
+        (E.allowInterrupt >> softHandle) `E.onException` hardHandle)
+
+
+serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO ()
+serve' listenSock handler = E.mask_ $ loop []
   where
-    loop a = forever $ do
-        x@(sock, addr) <- NS.accept listenSock
-        forkFinally
-            (link a >> handler x)
-            (const $ NS.close sock)
+    loop as =
+      do
+        as' <- doubleCatch (putStrLn softMsg >> mapM wait as) (mapM cancel as) (
+          do
+            -- FIXME: do we need to handle accept throwing synchronous excs?
+            x@(sock, addr) <- NS.accept listenSock
+            a <- async (handler x `E.finally` NS.close sock)
+            filterM (\a -> poll a >>= \m -> return (isNothing m)) (a:as))
+        loop as'
+    softMsg = "Waiting for handlers to exit cleanly. Press Ctrl+C again to terminate forcefully"
 
 
 myServe :: NS.ServiceName -> IO ()
@@ -89,7 +101,7 @@ socketServer inboundPipe outboundPipe listenSock =
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    as1 <- liftIO $
+    as1 <- liftIO $ async $
         serve' listenSock $ socketHandler relayInWrite connectedR
     liftIO $ link as1
     as2 <- liftIO $ async $
