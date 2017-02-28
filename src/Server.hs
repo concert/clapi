@@ -63,25 +63,25 @@ selfAwareAsync io =
     putMVar v a
     return a
 
-doubleCatch :: IO a -> IO b -> IO c -> IO c
+doubleCatch :: IO a -> IO b -> IO a -> IO a
 doubleCatch softHandle hardHandle action =
     action `E.onException` (
         (E.allowInterrupt >> softHandle) `E.onException` hardHandle)
 
 
-serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO ()
+serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO r
 serve' listenSock handler = E.mask_ $ loop []
   where
     loop as =
       do
-        as' <- doubleCatch (putStrLn softMsg >> mapM wait as) (mapM cancel as) (
+        as' <- doubleCatch (putStrLn softMsg >> mapM wait as >> return []) (mapM cancel as) (
           do
             -- FIXME: do we need to handle accept throwing synchronous excs?
             x@(sock, addr) <- NS.accept listenSock
             a <- async (handler x `E.finally` NS.close sock)
             filterM (\a -> poll a >>= \m -> return (isNothing m)) (a:as))
         loop as'
-    softMsg = "Waiting for handlers to exit cleanly. Press Ctrl+C again to terminate forcefully"
+    softMsg = "Waiting for handlers to exit cleanly. Press Ctrl+C to terminate forcefully"
 
 
 myServe :: NS.ServiceName -> IO ()
