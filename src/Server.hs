@@ -45,14 +45,16 @@ data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
 withListen :: HostPreference -> NS.ServiceName ->
     ((Socket, SockAddr) -> IO r) -> IO r
-withListen hp port =
-    E.bracket
-      (do
-        -- The addr returned by bindSock is useless when we bind "0":
-        (boundSock, _) <- bindSock hp port
-        NS.listen boundSock $ max 2048 NS.maxListenQueue
-        (,) <$> return boundSock <*> NS.getSocketName boundSock)
-      (NS.close . fst)
+withListen hp port action = E.mask $ \restore -> do
+    -- The addr returned by bindSock is useless when we bind "0":
+    (lsock, _) <- bindSock hp port
+    NS.listen lsock $ max 2048 NS.maxListenQueue
+    addr <- NS.getSocketName lsock
+    a <- async $ action (lsock, addr)
+    restore $ doubleCatch
+       (\(e :: E.SomeException) -> NS.close lsock >> wait a)
+       (cancel a)
+       (wait a >>= \r -> NS.close lsock >> return r)
 
 doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
 doubleCatch softHandle hardHandle action =
