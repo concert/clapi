@@ -43,6 +43,10 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
+swallowExc :: a -> E.SomeException -> a
+swallowExc = const
+
+
 withListen :: HostPreference -> NS.ServiceName ->
     ((Socket, SockAddr) -> IO r) -> IO r
 withListen hp port action = E.mask $ \restore -> do
@@ -52,7 +56,7 @@ withListen hp port action = E.mask $ \restore -> do
     addr <- NS.getSocketName lsock
     a <- async $ action (lsock, addr)
     restore $ doubleCatch
-       (\(e :: E.SomeException) -> NS.close lsock >> wait a)
+       (swallowExc $ NS.close lsock >> wait a)
        (cancel a)
        (wait a >>= \r -> NS.close lsock >> return r)
 

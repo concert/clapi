@@ -22,7 +22,7 @@ import Pipes.Core (Client, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
-import Server (doubleCatch, withListen, serve', socketServer)
+import Server (doubleCatch, swallowExc, withListen, serve', socketServer)
 
 
 tests = [
@@ -61,16 +61,13 @@ assertAsyncKilled a =
     timeout (seconds 0.1) (E.try $ wait a) >>=
     assertEqual "thread wasn't killed" (Just $ Left E.ThreadKilled)
 
-ignoreAnyException :: a -> E.SomeException -> a
-ignoreAnyException = const
-
 testDoubleCatchKills =
   do
     body <- newEmptyMVar
     soft <- newEmptyMVar
     hard <- newEmptyMVar
     a <- async $ doubleCatch
-        (ignoreAnyException $ putMVar soft () >> threadDelay 500000)
+        (swallowExc $ putMVar soft () >> threadDelay 500000)
         (putMVar hard ())
         (putMVar body () >> threadDelay 500000)
     let die = killThread $ asyncThreadId a
@@ -89,11 +86,11 @@ testDoubleCatchKills =
         return $ called /= Nothing
 
 testDoubleCatchReturn =
-    doubleCatch (ignoreAnyException undefined) undefined (return 42) >>=
+    doubleCatch (swallowExc undefined) undefined (return 42) >>=
     assertEqual "bad return value" 42
 
 testDoubleCatchSoftKill =
-    doubleCatch (ignoreAnyException $ return 42) undefined undefined >>=
+    doubleCatch (swallowExc $ return 42) undefined undefined >>=
     assertEqual "bad return value" 42
 
 testKillServeKillsHandlers = withListen' $ \(lsock, laddr) ->
