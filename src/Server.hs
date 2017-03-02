@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Server where
 
-import Control.Monad (forever, when, filterM, liftM)
+import Control.Monad (forever, when, filterM, liftM, (>=>))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDelay)
 import Control.Concurrent.Async (Async, race_, async, wait, cancel, poll, link, withAsync)
@@ -61,17 +61,21 @@ doubleCatch softHandle hardHandle action =
     action `E.catch` (\e -> (softHandle e) `E.onException` hardHandle)
 
 
+throwAfter :: IO a -> E.SomeException -> IO b
+throwAfter action e = action >> E.throwIO e
+
+
 serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO r
 serve' listenSock handler = E.mask_ $ loop []
   where
     loop as =
       do
-        as' <- doubleCatch (putStrLn softMsg >> mapM wait as >> return []) (mapM cancel as) (
-          do
-            -- FIXME: do we need to handle accept throwing synchronous excs?
-            x@(sock, addr) <- NS.accept listenSock
-            a <- async (handler x `E.finally` NS.close sock)
-            filterM (\a -> poll a >>= \m -> return (isNothing m)) (a:as))
+        as' <- doubleCatch
+            (throwAfter $ putStrLn softMsg >> mapM wait as)
+            (mapM cancel as) (do
+                x@(sock, addr) <- NS.accept listenSock
+                a <- async (handler x `E.finally` NS.close sock)
+                filterM (poll >=> return . isNothing) (a:as))
         loop as'
     softMsg = "Waiting for handlers to exit cleanly. Press Ctrl+C to terminate forcefully"
 
