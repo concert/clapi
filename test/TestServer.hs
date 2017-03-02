@@ -22,7 +22,7 @@ import Pipes.Core (Client, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
-import Server (selfAwareAsync, withListen, serve', socketServer)
+import Server (doubleCatch, withListen, serve', socketServer)
 
 
 tests = [
@@ -31,7 +31,6 @@ tests = [
     testCase "doubleCatch return" testDoubleCatchReturn,
     testCase "doubleCatch soft kill" testDoubleCatchSoftKill,
     testCase "server kills children" testKillServeWaitsHandlers
-    testCase "self-aware async" testSelfAwareAsync,
     testCase "server kills children" testKillServeKillsHandlers,
     testCase "handler term closes socket" testHandlerTerminationClosesSocket,
     testCase "handler error closes socket" testHandlerErrorClosesSocket,
@@ -66,7 +65,6 @@ ignoreAnyException :: a -> E.SomeException -> a
 ignoreAnyException = const
 
 testDoubleCatchKills =
-testSelfAwareAsync =
   do
     body <- newEmptyMVar
     soft <- newEmptyMVar
@@ -93,9 +91,6 @@ testSelfAwareAsync =
 testDoubleCatchReturn =
     doubleCatch (ignoreAnyException undefined) undefined (return 42) >>=
     assertEqual "bad return value" 42
-    a <- selfAwareAsync (return . asyncThreadId)
-    tid <- wait a
-    assertEqual "async ids in and out" tid $ asyncThreadId a
 
 testDoubleCatchSoftKill =
     doubleCatch (ignoreAnyException $ return 42) undefined undefined >>=

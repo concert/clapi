@@ -54,15 +54,6 @@ withListen hp port =
         (,) <$> return boundSock <*> NS.getSocketName boundSock)
       (NS.close . fst)
 
-
-selfAwareAsync :: (Async a -> IO a) -> IO (Async a)
-selfAwareAsync io =
-  do
-    v <- newEmptyMVar
-    a <- async $ takeMVar v >>= io
-    putMVar v a
-    return a
-
 doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
 doubleCatch softHandle hardHandle action =
     action `E.catch` (\e -> (softHandle e) `E.onException` hardHandle)
