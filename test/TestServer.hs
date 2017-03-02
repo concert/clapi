@@ -27,6 +27,10 @@ import Server (selfAwareAsync, withListen, serve', socketServer)
 
 tests = [
     testCase "zero listen" testListenZeroGivesPort,
+    testCase "double kill" testDoubleCatchKills,
+    testCase "doubleCatch return" testDoubleCatchReturn,
+    testCase "doubleCatch soft kill" testDoubleCatchSoftKill,
+    testCase "server kills children" testKillServeWaitsHandlers
     testCase "self-aware async" testSelfAwareAsync,
     testCase "server kills children" testKillServeKillsHandlers,
     testCase "handler term closes socket" testHandlerTerminationClosesSocket,
@@ -54,13 +58,48 @@ testListenZeroGivesPort =
     port <- withListen' (return . getPort . snd)
     assertBool "port == 0" $ port /= 0
 
+assertAsyncKilled a =
+    timeout (seconds 0.1) (E.try $ wait a) >>=
+    assertEqual "thread wasn't killed" (Just $ Left E.ThreadKilled)
 
+ignoreAnyException :: a -> E.SomeException -> a
+ignoreAnyException = const
+
+testDoubleCatchKills =
 testSelfAwareAsync =
   do
+    body <- newEmptyMVar
+    soft <- newEmptyMVar
+    hard <- newEmptyMVar
+    a <- async $ doubleCatch
+        (ignoreAnyException $ putMVar soft () >> threadDelay 500000)
+        (putMVar hard ())
+        (putMVar body () >> threadDelay 500000)
+    let die = killThread $ asyncThreadId a
+    taken body >>= assertBool "body not executed"
+    (not <$> taken body) >>= assertBool "soft handler executed early"
+    die
+    taken soft >>= assertBool "soft handler not executed"
+    (not <$> taken hard) >>= assertBool "hard handler executed early"
+    die
+    taken hard >>= assertBool "hard handler not executed"
+    assertAsyncKilled a
+  where
+    taken mvar =
+      do
+        called <- timeout (seconds 0.1) $ takeMVar mvar
+        return $ called /= Nothing
+
+testDoubleCatchReturn =
+    doubleCatch (ignoreAnyException undefined) undefined (return 42) >>=
+    assertEqual "bad return value" 42
     a <- selfAwareAsync (return . asyncThreadId)
     tid <- wait a
     assertEqual "async ids in and out" tid $ asyncThreadId a
 
+testDoubleCatchSoftKill =
+    doubleCatch (ignoreAnyException $ return 42) undefined undefined >>=
+    assertEqual "bad return value" 42
 
 testKillServeKillsHandlers = withListen' $ \(lsock, laddr) ->
   do

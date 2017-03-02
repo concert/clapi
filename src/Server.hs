@@ -63,10 +63,9 @@ selfAwareAsync io =
     putMVar v a
     return a
 
-doubleCatch :: IO a -> IO b -> IO a -> IO a
+doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
 doubleCatch softHandle hardHandle action =
-    action `E.onException` (
-        (E.allowInterrupt >> softHandle) `E.onException` hardHandle)
+    action `E.catch` (\e -> (softHandle e) `E.onException` hardHandle)
 
 
 serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO r
