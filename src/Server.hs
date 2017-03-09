@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Server where
 
-import Control.Monad (forever, when)
+import Control.Monad (forever, when, filterM, liftM, (>=>))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDelay)
-import Control.Concurrent.Async (Async, race_, async, wait, cancel, link, withAsync)
+import Control.Concurrent.Async (Async, race_, async, wait, cancel, poll, link, withAsync)
 import Control.Concurrent.STM (STM, atomically)
 import qualified Control.Exception as E
 import Control.Concurrent.Chan.Unagi (
@@ -12,6 +12,7 @@ import Control.Concurrent.Chan.Unagi (
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Data.Traversable (forM)
+import Data.Maybe (isNothing)
 import Network.Socket (
     Socket, SockAddr, PortNumber--, Family(AF_INET), SocketType(Stream),
     -- SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
@@ -42,34 +43,44 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
+swallowExc :: a -> E.SomeException -> a
+swallowExc = const
+
+
 withListen :: HostPreference -> NS.ServiceName ->
     ((Socket, SockAddr) -> IO r) -> IO r
-withListen hp port =
-    E.bracket
-      (do
-        -- The addr returned by bindSock is useless when we bind "0":
-        (boundSock, _) <- bindSock hp port
-        NS.listen boundSock $ max 2048 NS.maxListenQueue
-        (,) <$> return boundSock <*> NS.getSocketName boundSock)
-      (NS.close . fst)
+withListen hp port action = E.mask $ \restore -> do
+    -- The addr returned by bindSock is useless when we bind "0":
+    (lsock, _) <- bindSock hp port
+    NS.listen lsock $ max 2048 NS.maxListenQueue
+    addr <- NS.getSocketName lsock
+    a <- async $ action (lsock, addr)
+    restore $ doubleCatch
+       (swallowExc $ NS.close lsock >> wait a)
+       (cancel a)
+       (wait a >>= \r -> NS.close lsock >> return r)
+
+doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
+doubleCatch softHandle hardHandle action =
+    action `E.catch` (\e -> (softHandle e) `E.onException` hardHandle)
 
 
-selfAwareAsync :: (Async a -> IO a) -> IO (Async a)
-selfAwareAsync io =
-  do
-    v <- newEmptyMVar
-    a <- async $ takeMVar v >>= io
-    putMVar v a
-    return a
+throwAfter :: IO a -> E.SomeException -> IO b
+throwAfter action e = action >> E.throwIO e
 
-serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO (Async ())
-serve' listenSock handler = selfAwareAsync loop
+
+serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO r
+serve' listenSock handler = E.mask_ $ loop []
   where
-    loop a = forever $ do
-        x@(sock, addr) <- NS.accept listenSock
-        forkFinally
-            (link a >> handler x)
-            (const $ NS.close sock)
+    loop as =
+      do
+        as' <- doubleCatch
+            (throwAfter $ mapM wait as)
+            (mapM cancel as) (do
+                x@(sock, addr) <- NS.accept listenSock
+                a <- async (handler x `E.finally` NS.close sock)
+                filterM (poll >=> return . isNothing) (a:as))
+        loop as'
 
 
 myServe :: NS.ServiceName -> IO ()
@@ -84,17 +95,17 @@ socketServer ::
   Pipe b B.ByteString IO () ->
   Socket ->
   Server [(SockAddr, b)] a (SafeT IO) ()
-socketServer inboundPipe outboundPipe listenSock =
+socketServer inboundPipe outboundPipe listenSock = PS.mask $ \restore ->
   do
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
     (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    as1 <- liftIO $
+    as1 <- liftIO $ async $
         serve' listenSock $ socketHandler relayInWrite connectedR
     liftIO $ link as1
     as2 <- liftIO $ async $
         runEffect $ fromInput relayOutRead >-> dispatch connectedR
-    pairToServer relayOutWrite relayInRead
+    restore $ pairToServer relayOutWrite relayInRead
       `PS.finally` (liftIO $
          cancel as1 >> atomically sealOut >> atomically sealIn >> wait as2)
   where

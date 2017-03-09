@@ -5,10 +5,11 @@ import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 
 import Data.Either (isRight)
+import Data.Maybe (isJust, fromJust)
 import System.Timeout
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Async (
     async, withAsync, wait, cancel, asyncThreadId, mapConcurrently,
     replicateConcurrently)
@@ -22,13 +23,16 @@ import Pipes.Core (Client, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
-import Server (selfAwareAsync, withListen, serve', socketServer)
+import Server (doubleCatch, swallowExc, withListen, serve', socketServer)
 
 
 tests = [
     testCase "zero listen" testListenZeroGivesPort,
-    testCase "self-aware async" testSelfAwareAsync,
-    testCase "server kills children" testKillServeKillsHandlers,
+    testCase "double kill" testDoubleCatchKills,
+    testCase "doubleCatch return" testDoubleCatchReturn,
+    testCase "doubleCatch soft kill" testDoubleCatchSoftKill,
+    testCase "server waits children" testKillServeWaitsHandlers,
+    testCase "server can kill children" testDoubleKillServerKillsHandlers,
     testCase "handler term closes socket" testHandlerTerminationClosesSocket,
     testCase "handler error closes socket" testHandlerErrorClosesSocket,
     testCase "multiple connections" $ testMultipleConnections 42,
@@ -43,7 +47,7 @@ getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
 withListen' = withListen HostAny "0"
-withServe lsock handler = E.bracket (serve' lsock handler) cancel
+withServe lsock handler = E.bracket (async $ serve' lsock handler) cancel
 withServe' handler io =
     withListen' $ \(lsock, laddr) ->
         withServe lsock handler $ \_ ->
@@ -54,30 +58,72 @@ testListenZeroGivesPort =
     port <- withListen' (return . getPort . snd)
     assertBool "port == 0" $ port /= 0
 
+assertAsyncKilled a =
+    timeout (seconds 0.1) (E.try $ wait a) >>=
+    assertEqual "thread wasn't killed" (Just $ Left E.ThreadKilled)
 
-testSelfAwareAsync =
+timeLimit :: IO a -> IO a
+timeLimit action = (timeout (seconds 0.1) action) >>= \r ->
+    assertBool "timed out" (isJust r) >> return (fromJust r)
+
+testDoubleCatchKills =
   do
-    a <- selfAwareAsync (return . asyncThreadId)
-    tid <- wait a
-    assertEqual "async ids in and out" tid $ asyncThreadId a
+    body <- newEmptyMVar
+    soft <- newEmptyMVar
+    hard <- newEmptyMVar
+    a <- async $ doubleCatch
+        (swallowExc $ putMVar soft () >> threadDelay 500000)
+        (putMVar hard ())
+        (putMVar body () >> threadDelay 500000)
+    let die = killThread $ asyncThreadId a
+    taken body >>= assertBool "body not executed"
+    (not <$> taken body) >>= assertBool "soft handler executed early"
+    die
+    taken soft >>= assertBool "soft handler not executed"
+    (not <$> taken hard) >>= assertBool "hard handler executed early"
+    die
+    taken hard >>= assertBool "hard handler not executed"
+    assertAsyncKilled a
+  where
+    taken mvar =
+      do
+        called <- timeout (seconds 0.1) $ takeMVar mvar
+        return $ called /= Nothing
+
+testDoubleCatchReturn =
+    doubleCatch (swallowExc undefined) undefined (return 42) >>=
+    assertEqual "bad return value" 42
+
+testDoubleCatchSoftKill =
+    doubleCatch (swallowExc $ return 42) undefined undefined >>=
+    assertEqual "bad return value" 42
 
 
-testKillServeKillsHandlers = withListen' $ \(lsock, laddr) ->
+killServerHelper connector handler = withListen' $ \(lsock, laddr) ->
   do
     v <- newEmptyMVar
-    withServe lsock (handler v) $ \a ->
+    withServe lsock (\(hsock, _) -> handler v hsock) $ \a ->
      do
-        connect "localhost" (show . getPort $ laddr)
-            (\(csock, _) -> recv csock 4096 >> cancel a)
-        -- wait a -- FIXME: why does this hang the world?!
-        res <- takeMVar v
-        assertBool "timed out waiting for thread to be killed" $ isRight res
+        connect "localhost" (show . getPort $ laddr) $
+            \(csock, _) -> connector a csock
+        timeLimit (takeMVar v)
+        assertAsyncKilled a
+
+
+testKillServeWaitsHandlers = killServerHelper connector handler
   where
-    handler v (hsock, _) = E.catch
-        (send hsock "hello" >>
-         threadDelay (seconds 0.1) >>
-         putMVar v (Left ()))
-        (\ThreadKilled -> putMVar v (Right ()))
+    connector a csock = recv csock 4096 >> killThread (asyncThreadId a) >> send csock "bye"
+    handler v hsock = send hsock "hello" >> recv hsock 4096 >> putMVar v ()
+
+
+testDoubleKillServerKillsHandlers = killServerHelper connector handler
+  where
+    connector a csock =
+        let kill = killThread (asyncThreadId a) in
+        recv csock 4096 >> kill >> kill
+    handler v hsock = E.catch
+        (send hsock "hello" >> threadDelay (seconds 1))
+        (\E.ThreadKilled -> putMVar v ())
 
 
 socketCloseTest handler = withServe' handler $ \port->
@@ -116,10 +162,23 @@ testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
     words = ["hello", "world", "llama", "train"]
 
 
-testSocketServerClosesGracefully = withListen' $ \(lsock, laddr) -> do
-    let s = socketServer cat cat lsock
-    a <- async (runSafeT $ runEffect $ s >>~ echoMap pure)
-    mbs <- timeout (seconds 0.1) $
-        connect "localhost" (show $ getPort laddr) $ \(csock, _) ->
-            cancel a >> recv csock 4096
-    assertEqual "timed out waiting for close" (Just "") mbs
+testSocketServerClosesGracefully =
+  do
+    addrV <- newEmptyMVar
+    a <- async $ withListen' $ \(lsock, laddr) -> E.mask $ \restore -> do
+        let s = socketServer cat cat lsock
+        putMVar addrV laddr
+        restore $ runSafeT $ runEffect $ s >>~ echoMap pure
+    let kill = killThread (asyncThreadId a)
+    port <- show . getPort <$> takeMVar addrV
+    bs <- timeLimit $ connect "localhost" port $ \(csock, _) -> do
+        -- We have to do some initial chatting to ensure the connection has
+        -- been established before we kill the server, otherwise recv gets a
+        -- "connection reset by peer":
+        send csock "hello"
+        recv csock 4096
+        kill >> kill
+        recv csock 4096
+    -- FIXME: can also try to send and, if you wait long enough, get a
+    -- "connection reset by peer"
+    assertEqual "Connection not closed cleanly" "" bs
