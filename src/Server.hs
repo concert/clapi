@@ -75,13 +75,12 @@ serve' listenSock handler = E.mask_ $ loop []
     loop as =
       do
         as' <- doubleCatch
-            (throwAfter $ putStrLn softMsg >> mapM wait as)
+            (throwAfter $ mapM wait as)
             (mapM cancel as) (do
                 x@(sock, addr) <- NS.accept listenSock
                 a <- async (handler x `E.finally` NS.close sock)
                 filterM (poll >=> return . isNothing) (a:as))
         loop as'
-    softMsg = "Waiting for handlers to exit cleanly. Press Ctrl+C to terminate forcefully"
 
 
 myServe :: NS.ServiceName -> IO ()
