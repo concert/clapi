@@ -171,7 +171,7 @@ testSocketServerClosesGracefully =
         restore $ runSafeT $ runEffect $ s >>~ echoMap pure
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
-    bs <- timeLimit $ connect "localhost" port $ \(csock, _) -> do
+    timeLimit $ connect "localhost" port $ \(csock, _) -> do
         let chat = send csock "hello" >> recv csock 4096
         -- We have to do some initial chatting to ensure the connection has
         -- been established before we kill the server, otherwise recv can get a
@@ -183,7 +183,5 @@ testSocketServerClosesGracefully =
         connect "localhost" port undefined
             `E.catch` (\(e :: E.IOException) -> return ())
         kill
-        recv csock 4096
-    -- FIXME: can also try to send and, if you wait long enough, get a
-    -- "connection reset by peer"
-    assertEqual "Connection not closed cleanly" "" bs
+        bs <- recv csock 4096
+        assertEqual "Connection not closed cleanly" "" bs
