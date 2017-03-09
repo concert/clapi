@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 module TestServer where
 
 import Test.HUnit (assertEqual, assertBool)
@@ -172,12 +172,17 @@ testSocketServerClosesGracefully =
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
     bs <- timeLimit $ connect "localhost" port $ \(csock, _) -> do
+        let chat = send csock "hello" >> recv csock 4096
         -- We have to do some initial chatting to ensure the connection has
-        -- been established before we kill the server, otherwise recv gets a
+        -- been established before we kill the server, otherwise recv can get a
         -- "connection reset by peer":
-        send csock "hello"
-        recv csock 4096
-        kill >> kill
+        chat
+        kill
+        -- killing once should just have stopped us listening
+        chat
+        connect "localhost" port undefined
+            `E.catch` (\(e :: E.IOException) -> return ())
+        kill
         recv csock 4096
     -- FIXME: can also try to send and, if you wait long enough, get a
     -- "connection reset by peer"
