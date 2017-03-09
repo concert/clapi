@@ -95,7 +95,7 @@ socketServer ::
   Pipe b B.ByteString IO () ->
   Socket ->
   Server [(SockAddr, b)] a (SafeT IO) ()
-socketServer inboundPipe outboundPipe listenSock =
+socketServer inboundPipe outboundPipe listenSock = PS.mask $ \restore ->
   do
     connectedR <- liftIO $ newIORef mempty
     (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
@@ -105,7 +105,7 @@ socketServer inboundPipe outboundPipe listenSock =
     liftIO $ link as1
     as2 <- liftIO $ async $
         runEffect $ fromInput relayOutRead >-> dispatch connectedR
-    pairToServer relayOutWrite relayInRead
+    restore $ pairToServer relayOutWrite relayInRead
       `PS.finally` (liftIO $
          cancel as1 >> atomically sealOut >> atomically sealIn >> wait as2)
   where
