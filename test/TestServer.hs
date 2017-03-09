@@ -5,6 +5,7 @@ import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 
 import Data.Either (isRight)
+import Data.Maybe (isJust, fromJust)
 import System.Timeout
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
@@ -60,6 +61,10 @@ testListenZeroGivesPort =
 assertAsyncKilled a =
     timeout (seconds 0.1) (E.try $ wait a) >>=
     assertEqual "thread wasn't killed" (Just $ Left E.ThreadKilled)
+
+timeLimit :: IO a -> IO a
+timeLimit action = (timeout (seconds 0.1) action) >>= \r ->
+    assertBool "timed out" (isJust r) >> return (fromJust r)
 
 testDoubleCatchKills =
   do
