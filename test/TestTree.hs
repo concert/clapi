@@ -16,7 +16,8 @@ import qualified Data.Text as T
 
 import qualified Data.Map.Mos as Mos
 import Path (Path(..), isChildOfAny)
-import Types (CanFail, ClapiValue(..), Time(..), InterpolationType(..))
+import Types (
+    CanFail, ClapiValue(..), Time(..), InterpolationType(..), Interpolation(..))
 import Tree (
     Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
     treeAdd, treeSet, treeDelete, treeDiff, treeApply
@@ -48,7 +49,11 @@ instance Arbitrary T.Text where
     arbitrary = T.pack <$> arbitrary
 
 instance Arbitrary InterpolationType where
-    arbitrary = oneof $ return <$> [IConstant, ILinear, IBezier]
+    arbitrary = oneof $ return <$> [ITConstant, ITLinear, ITBezier]
+
+instance Arbitrary Interpolation where
+    arbitrary = oneof [
+      return IConstant, return ILinear, IBezier <$> arbitrary <*> arbitrary]
 
 arbitraryAv :: (Arbitrary a) => Gen a -> Gen (Maybe Attributee, a)
 arbitraryAv genA = do

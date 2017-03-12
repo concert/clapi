@@ -13,7 +13,8 @@ module Types
         ClapiBundle,
         ClapiMessageTag,
         InterpolationType(..),
-        Interpolation,
+        Interpolation(..),
+        interpolation
     )
 where
 
@@ -137,6 +138,13 @@ type ClapiMessageTag = (String, ClapiValue)
 
 type ClapiBundle = [ClapiMessage]
 
-data InterpolationType = IConstant | ILinear | IBezier
+data InterpolationType = ITConstant | ITLinear | ITBezier
   deriving (Show, Eq, Enum, Bounded)
-type Interpolation = (InterpolationType, [ClapiValue])
+data Interpolation = IConstant | ILinear | IBezier Word32 Word32
+  deriving (Show, Eq)
+
+interpolation :: InterpolationType -> [ClapiValue] -> CanFail Interpolation
+interpolation ITConstant [] = Right $ IConstant
+interpolation ITLinear [] = Right $ ILinear
+interpolation ITBezier [CWord32 a, CWord32 b] = Right $ IBezier a b
+interpolation _ _ = Left "Bad interpolation args"
