@@ -7,8 +7,6 @@ import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDela
 import Control.Concurrent.Async (Async, race_, async, wait, cancel, poll, link, withAsync)
 import Control.Concurrent.STM (STM, atomically)
 import qualified Control.Exception as E
-import Control.Concurrent.Chan.Unagi (
-    InChan, OutChan, newChan, writeChan, readChan, tryReadChan, getChanContents)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Data.Traversable (forM)
