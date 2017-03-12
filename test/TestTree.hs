@@ -6,16 +6,17 @@ import Data.Foldable (toList)
 import Control.Monad (liftM, liftM2, replicateM)
 import Test.QuickCheck (
     Gen, Arbitrary(..), arbitrary, (==>), forAll, choose, elements, shuffle,
-    oneof, frequency, listOf, sublistOf, counterexample, property)
+    oneof, frequency, listOf, vectorOf, sublistOf, counterexample, property)
 import Test.QuickCheck.Property (Result(..), Property(..))
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 
 import qualified Data.Map.Mos as Mos
 import Path (Path(..), isChildOfAny)
-import Types (CanFail, ClapiValue(..), Time(..), Interpolation(..))
+import Types (CanFail, ClapiValue(..), Time(..), InterpolationType(..))
 import Tree (
     Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
     treeAdd, treeSet, treeDelete, treeDiff, treeApply
@@ -29,12 +30,31 @@ tests = [
 instance Arbitrary Time where
     arbitrary = liftM2 Time arbitrary arbitrary
 
-instance Arbitrary Interpolation where
+instance Arbitrary ClapiValue where
     arbitrary = oneof [
-        return IConstant,
-        return ILinear,
-        liftM2 IBezier arbitrary arbitrary
-      ]
+        CBool <$> arbitrary,
+        CTime <$> arbitrary,
+        CEnum <$> arbitrary,
+        CWord32 <$> arbitrary,
+        CWord64 <$> arbitrary,
+        CInt32 <$> arbitrary,
+        CInt64 <$> arbitrary,
+        CFloat <$> arbitrary,
+        CDouble <$> arbitrary,
+        CString <$> arbitrary,
+        clist]
+      where
+        clist =
+          do
+            len <- choose (0, 4)
+            elems <- vectorOf len arbitrary
+            return $ CList elems
+
+instance Arbitrary T.Text where
+    arbitrary = T.pack <$> arbitrary
+
+instance Arbitrary InterpolationType where
+    arbitrary = oneof $ return <$> [IConstant, ILinear, IBezier]
 
 arbitraryAv :: (Arbitrary a) => Gen a -> Gen (Maybe Attributee, a)
 arbitraryAv genA = do
