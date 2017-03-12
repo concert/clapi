@@ -42,13 +42,7 @@ instance Arbitrary ClapiValue where
         CFloat <$> arbitrary,
         CDouble <$> arbitrary,
         CString <$> arbitrary,
-        clist]
-      where
-        clist =
-          do
-            len <- choose (0, 4)
-            elems <- vectorOf len arbitrary
-            return $ CList elems
+        CList <$> (choose (0, 4) >>= flip vectorOf arbitrary)]
 
 instance Arbitrary T.Text where
     arbitrary = T.pack <$> arbitrary
