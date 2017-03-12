@@ -1,43 +1,27 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Server where
 
-import Control.Monad (forever, when, filterM, liftM, (>=>))
-import Control.Monad.IO.Class (MonadIO)
-import Control.Concurrent (ThreadId, forkIO, forkFinally, killThread, threadDelay)
-import Control.Concurrent.Async (Async, race_, async, wait, cancel, poll, link, withAsync)
-import Control.Concurrent.STM (STM, atomically)
+import Control.Concurrent.Async (async, cancel, link, poll, wait, withAsync)
+import Control.Concurrent.STM (atomically)
 import qualified Control.Exception as E
-import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
-import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
-import Data.Traversable (forM)
+import Control.Monad (filterM, forever, forM, when, (>=>))
+import Control.Monad.IO.Class (liftIO, MonadIO)
+import Data.IORef (atomicModifyIORef', IORef, newIORef, readIORef)
+import qualified Data.Map as Map
 import Data.Maybe (isNothing)
-import Network.Socket (
-    Socket, SockAddr, PortNumber--, Family(AF_INET), SocketType(Stream),
-    -- SocketOption(ReuseAddr), SockAddr(SockAddrInet), socket, setSocketOption,
-    -- bind, listen, accept, close, iNADDR_ANY
-    )
 import qualified Network.Socket as NS
-import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 
-import Pipes (
-  runEffect, lift, liftIO, Proxy, Producer, yield, Consumer, await, Pipe, (>->), cat)
+import Pipes (await, Consumer, Pipe, runEffect, yield, (>->))
+import Pipes.Core (Client, Proxy, request, respond, Server, (>>~))
 import qualified Pipes.Prelude as PP
-import Pipes.Core (Server, respond, Client, request, (>>~))
-import Pipes.Concurrent (
-  spawn', withSpawn, unbounded, Input, Output, fromInput, toOutput, performGC)
-import qualified Pipes.Concurrent as PC
-import Pipes.Safe (SafeT, MonadSafe, runSafeT)
 import qualified Pipes.Safe as PS
+import Pipes.Concurrent (fromInput, Input, Output, spawn', toOutput, unbounded)
+import qualified Pipes.Concurrent as PC
 import Pipes.Network.TCP (fromSocket, toSocket)
 
-import Data.Foldable (toList)
-import qualified Data.Map as Map
 
-import Text.Printf (printf)
 import qualified Data.ByteString as B
-import Blaze.ByteString.Builder (toByteString)
-import Blaze.ByteString.Builder.Char.Utf8 (fromString)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -46,7 +30,7 @@ swallowExc = const
 
 
 withListen :: HostPreference -> NS.ServiceName ->
-    ((Socket, SockAddr) -> IO r) -> IO r
+    ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
 withListen hp port action = E.mask $ \restore -> do
     -- The addr returned by bindSock is useless when we bind "0":
     (lsock, _) <- bindSock hp port
@@ -67,7 +51,7 @@ throwAfter :: IO a -> E.SomeException -> IO b
 throwAfter action e = action >> E.throwIO e
 
 
-serve' :: Socket -> ((Socket, SockAddr) -> IO r) -> IO r
+serve' :: NS.Socket -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
 serve' listenSock handler = E.mask_ $ loop []
   where
     loop as =
@@ -84,15 +68,15 @@ serve' listenSock handler = E.mask_ $ loop []
 myServe :: NS.ServiceName -> IO ()
 myServe port = withListen HostAny port (\(listenSock, _) ->
     let s = socketServer authentication (PP.take 3) listenSock in
-    runSafeT $ runEffect $
+    PS.runSafeT $ runEffect $
     s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer)
 
 
 socketServer ::
-  Pipe (SockAddr, B.ByteString) a IO () ->
+  Pipe (NS.SockAddr, B.ByteString) a IO () ->
   Pipe b B.ByteString IO () ->
-  Socket ->
-  Server [(SockAddr, b)] a (SafeT IO) ()
+  NS.Socket ->
+  Server [(NS.SockAddr, b)] a (PS.SafeT IO) ()
 socketServer inboundPipe outboundPipe listenSock = PS.mask $ \restore ->
   do
     connectedR <- liftIO $ newIORef mempty
@@ -130,8 +114,8 @@ socketServer inboundPipe outboundPipe listenSock = PS.mask $ \restore ->
                         outboundPipe >->
                         toSocket sock))
     dispatch ::
-        IORef (Map.Map SockAddr (Output a)) ->
-        Consumer [(SockAddr, a)] IO ()
+        IORef (Map.Map NS.SockAddr (Output a)) ->
+        Consumer [(NS.SockAddr, a)] IO ()
     dispatch connectedR = do
         msgs <- await
         connected <- liftIO $ readIORef connectedR
@@ -143,7 +127,7 @@ socketServer inboundPipe outboundPipe listenSock = PS.mask $ \restore ->
 
 
 authentication ::
-    Pipe (SockAddr, B.ByteString) (SockAddr, User, B.ByteString) IO ()
+    Pipe (NS.SockAddr, B.ByteString) (NS.SockAddr, User, B.ByteString) IO ()
 authentication = forever $ do
     (addr, bs) <- await
     yield (addr, Alice, bs)
@@ -151,8 +135,8 @@ authentication = forever $ do
 
 subscriptionRegistrar ::
     (Monad m) =>
-    (SockAddr, User, B.ByteString) ->
-    Proxy [(SockAddr, B.ByteString)] (SockAddr, User, B.ByteString)
+    (NS.SockAddr, User, B.ByteString) ->
+    Proxy [(NS.SockAddr, B.ByteString)] (NS.SockAddr, User, B.ByteString)
     B.ByteString (User, B.ByteString) m ()
 subscriptionRegistrar = loop mempty
   where
