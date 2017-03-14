@@ -95,10 +95,11 @@ name = do
     l <- choose (1, 5)
     replicateM l $ elements ['a'..'z']
 
-justName = oneof [return Nothing, liftM Just name]
-
 arbitrarySiteMap :: (Arbitrary a) => Gen (SiteMap a)
 arbitrarySiteMap = arbitraryMap 1 5 justName arbitraryTimeSeries
+  where
+    justName = oneof [return Nothing, liftM Just name]
+
 
 instance (Arbitrary a) => Arbitrary (Node a) where
     arbitrary =
