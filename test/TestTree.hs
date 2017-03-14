@@ -31,26 +31,6 @@ tests = [
 instance Arbitrary Time where
     arbitrary = liftM2 Time arbitrary arbitrary
 
-instance Arbitrary ClapiValue where
-    arbitrary = oneof [
-        CBool <$> arbitrary,
-        CTime <$> arbitrary,
-        CEnum <$> arbitrary,
-        CWord32 <$> arbitrary,
-        CWord64 <$> arbitrary,
-        CInt32 <$> arbitrary,
-        CInt64 <$> arbitrary,
-        CFloat <$> arbitrary,
-        CDouble <$> arbitrary,
-        CString <$> arbitrary,
-        CList <$> (choose (0, 4) >>= flip vectorOf arbitrary)]
-
-instance Arbitrary T.Text where
-    arbitrary = T.pack <$> arbitrary
-
-instance Arbitrary InterpolationType where
-    arbitrary = oneof $ return <$> [ITConstant, ITLinear, ITBezier]
-
 instance Arbitrary Interpolation where
     arbitrary = oneof [
       return IConstant, return ILinear, IBezier <$> arbitrary <*> arbitrary]
