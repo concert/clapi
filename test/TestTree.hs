@@ -24,7 +24,7 @@ import Tree (
     )
 
 tests = [
-    testProperty "treeDiff round trip" testTreeDiffRoundTrip
+    testProperty "treeDiff round trip" propTreeDiffRoundTrip
     ]
 
 
@@ -169,8 +169,8 @@ instance (Arbitrary a) => Arbitrary (TreePair a) where
             newTum = Mos.invertMap newTm
 
 
-testTreeDiffRoundTrip :: TreePair Int -> Property
-testTreeDiffRoundTrip (TreePair t1 t2) =
+propTreeDiffRoundTrip :: TreePair Int -> Property
+propTreeDiffRoundTrip (TreePair t1 t2) =
     isRight d ==> counterexample (show d) $ gubbins failyT2'
       where
         d = treeDiff t1 t2
