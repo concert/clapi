@@ -19,6 +19,7 @@ library
                      , Parsing
                      , Path
                      , Path.Parsing
+                     , Pipeline
                      , Serialisation
                      , Server
                      , Types
