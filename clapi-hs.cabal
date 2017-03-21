@@ -16,6 +16,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Data.Map.Mos
+                     , Data.Map.Clapi
                      , Parsing
                      , Path
                      , Path.Parsing
@@ -28,7 +29,6 @@ library
                      , Valuespace
                      , Util
   other-modules:       Data.Maybe.Clapi
-                     , Data.Map.Clapi
                      , Data.Map.Mol
                      , Data.Map.ChainMap
   build-depends:       base >= 4.7 && < 5

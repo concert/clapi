@@ -4,6 +4,8 @@ module TestPipeline where
 import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 
+import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import Control.Monad (forever)
 
 import Pipes (runEffect, liftIO)
@@ -11,6 +13,7 @@ import Pipes.Core (Client, Server, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
+import Data.Map.Clapi (joinM)
 import Tree ((+|))
 import Types (ClapiBundle, ClapiMessage(..), ClapiMethod(..), ClapiValue(..))
 import Server (User(..))
@@ -29,13 +32,14 @@ msg path method = CMessage path method [] []
 
 testSubscribeUnclaimed = do
     response <- trackerHelper [(42, Alice, [msg path Subscribe])]
-    assertEqual "single response set" 1 $ length response
-    mapM_ (assertEqual "single msg" 1 . length) $ response
-    (assertErrorMsg . snd) <$$> response
-    (assertMsgPath path . snd) <$$> response
+    assertEqual "single recipient" 1 $ Map.size response
+    let aliceBs = fromJust $ Map.lookup 42 response
+    assertEqual "single bundle" 1 $ length aliceBs
+    mapM_ (assertEqual "single msg" 1 . length) aliceBs
+    mapM_ assertErrorMsg aliceBs
+    mapM_ (assertMsgPath path) aliceBs
   where
     path = ["hello"]
-    (<$$>) = mapM_ . mapM_
 
 
 listServer :: (Monad m) => [a] -> Server b a m [b]
@@ -46,8 +50,10 @@ listServer as = listServer' as mempty
 
 
 trackerHelper :: (Monad m, Ord i) =>
-    [(i, User, ClapiBundle)] -> m [[(i, ClapiBundle)]]
-trackerHelper as = runEffect $
-    listServer as >>~ namespaceTracker >>~ echoMap dropDetails
+    [(i, User, ClapiBundle)] -> m (Map.Map i [ClapiBundle])
+trackerHelper as = collect <$> (runEffect $
+    listServer as >>~ namespaceTracker >>~ echoMap dropDetails)
   where
     dropDetails (_, taggedMs) = snd <$> taggedMs
+    collect :: (Ord i) => [[(i, ClapiBundle)]] -> Map.Map i [ClapiBundle]
+    collect = joinM . fmap Map.fromList
