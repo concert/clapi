@@ -24,6 +24,10 @@ namespace :: Path -> CanFail Name
 namespace [] = Left "Root path does not imply a namespace"
 namespace (n:ns) = Right n
 
+isNamespace :: Path -> Bool
+isNamespace (n:[]) = True
+isNamespace _ = False
+
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
 type BundleWithOwnership = [(Ownership, ClapiMessage)]
 
@@ -92,7 +96,7 @@ namespaceTracker =
 -- FIXME: an actually useful name would be nice
 check :: ClapiMethod -> ClapiMessage -> Bool
 -- FIXME: would like to avoid taking length of Path
-check method msg = msgMethod msg == method && (length $ msgPath msg) == 1
+check method msg = msgMethod msg == method && (isNamespace $ msgPath msg)
 
 extractNewOwnerships :: [ClapiMessage] -> [Name]
 extractNewOwnerships = fmap (head . msgPath) . filter (check AssignType)
