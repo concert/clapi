@@ -4,6 +4,7 @@ module Pipeline where
 import Control.Applicative (liftA2)
 import Data.Bifunctor (bimap)
 import Data.List (partition)
+import Data.Monoid ((<>))
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -11,6 +12,7 @@ import qualified Network.Socket as NS
 
 import Pipes.Core (Proxy, request, respond)
 
+import Data.Maybe.Clapi (toMonoid, fromFoldable)
 import qualified Data.Map.Mos as Mos
 import Path (Name, Path)
 import Types (
@@ -57,33 +59,35 @@ bounceOrForward bwo = (errorBundle, goodBwo)
 
 -- Tracks both namespace ownership and path subscriptions
 namespaceTracker ::
-    (Monad m) =>
-    (NS.SockAddr, User, ClapiBundle) ->
-    Proxy [(Ownership, ClapiMessage)]  (NS.SockAddr, User, ClapiBundle)
-    [(Ownership, ClapiMessage)] (User, [(Ownership, ClapiMessage)]) m ()
+    (Monad m, Ord i) =>
+    (i, User, ClapiBundle) ->
+    Proxy [(i, ClapiBundle)]  (i, User, ClapiBundle)
+    ClapiBundle (User, [(Ownership, ClapiMessage)]) m r
 namespaceTracker =
     loop
-        (mempty :: Map.Map Name NS.SockAddr)
-        (mempty :: Mos.Mos Path NS.SockAddr)
+        (mempty :: Ord i => Map.Map Name i)
+        (mempty :: Ord i => Mos.Mos i Path)
   where
     loop owners registered (addr, user, ms) = do
         let (bounceMs, forwardMs) = unright $ bounceOrForward <$> assignOwnership getOwnership ms
         ms' <- respond (user, forwardMs)
-        (addr', user', bundle') <- request ms'
-        loop (owners' ms') (registered' ms') (addr', user', bundle')
+        let registered' = updateRegistered ms'
+        let toSend = fanOutBundle registered' ms'
+        let toSend' = Map.alter (\maybeMs -> fromFoldable (bounceMs <> toMonoid maybeMs)) addr toSend
+        (addr', user', bundle') <- request $ Map.toList toSend'
+        loop (updateOwners ms') registered' (addr', user', bundle')
       where
         getOwnership name = case Map.lookup name owners of
             -- FIXME: Should we define a constant for the relay NS somewhere?
             Nothing -> if name == "api" then Client else Unclaimed
             Just addr' -> if addr' == addr then Owner else Client
         unright (Right a) = a  -- FIXME: arg!
-        owners' ms' = updateMapByKeys addr owners
-            (extractNewOwnerships $ snd <$> ms')
-            (extractCeasedOwnerships $ snd <$> ms')
-        registered' :: [(a, ClapiMessage)] -> Mos.Mos Path NS.SockAddr
-        registered' ms' = updateMosByKeys addr registered
-            (extractNewSubscriptions $ snd <$> ms')
-            (extractCeasedSubscriptions $ snd <$> ms')
+        updateOwners ms' = updateMapByKeys addr owners
+            (extractNewOwnerships  ms')
+            (extractCeasedOwnerships ms')
+        updateRegistered ms' = updateMosAtKey addr registered
+            (extractNewSubscriptions ms')
+            (extractCeasedSubscriptions ms')
 
 -- FIXME: an actually useful name would be nice
 check :: ClapiMethod -> ClapiMessage -> Bool
@@ -103,13 +107,21 @@ updateMapByKeys :: (Ord k) => a -> Map.Map k a -> [k] -> [k] -> Map.Map k a
 updateMapByKeys a m addedKeys removedKeys =
     Map.difference (Map.union (constMap a addedKeys) m) (constMap a removedKeys)
 
-updateMosByKeys :: (Ord k, Ord a) => a -> Mos.Mos k a -> [k] -> [k] -> Mos.Mos k a
-updateMosByKeys a m addedKeys removedKeys =
-    let sa = Set.singleton a in
-    Mos.difference (Mos.union (constMap sa addedKeys) m) (constMap sa removedKeys)
+updateMosAtKey :: (Ord k, Ord a) => k -> Mos.Mos k a -> [a] -> [a] -> Mos.Mos k a
+updateMosAtKey k m addedVals removedVals = m'
+  where
+    withAdded = foldr (Mos.insert k) m addedVals
+    m' = foldr (Mos.delete k) withAdded removedVals
 
 extractNewSubscriptions :: [ClapiMessage] -> [Path]
 extractNewSubscriptions msgs = msgPath <$> filter ((== Subscribe) . msgMethod) msgs
 
 extractCeasedSubscriptions :: [ClapiMessage] -> [Path]
 extractCeasedSubscriptions msgs = msgPath <$> filter ((== Unsubscribe) . msgMethod) msgs
+
+fanOutBundle :: (Ord i) => Mos.Mos i Path -> ClapiBundle ->
+    Map.Map i ClapiBundle
+fanOutBundle registered bundle = filterBundle bundle <$> registered
+
+filterBundle :: ClapiBundle -> Set.Set Path -> ClapiBundle
+filterBundle b ps = filter (\msg -> (msgPath msg) `elem` ps) b

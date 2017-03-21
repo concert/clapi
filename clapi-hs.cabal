@@ -87,6 +87,7 @@ test-suite clapi-hs-test
                      , test-framework-quickcheck2
                      , text
   other-modules:       Util
+                     , TestPipeline
                      , TestServer
                      , TestTree
                      , TestTypes
