@@ -22,7 +22,9 @@ import Pipeline
 import TestServer (echoMap)
 
 tests = [
-    testCase "subscribe to unclaimed forbidden" testSubscribeUnclaimed
+    testCase "owner-like msg to root path" testMessageToRoot,
+    testCase "subscribe to unclaimed" testSubscribeUnclaimed,
+    testCase "subscribe to claimed " testSubscribeClaimed
     ]
 
 assertErrorMsg [msg] = assertEqual "blah" Error $ msgMethod msg
@@ -30,16 +32,30 @@ assertMsgPath path [msg] = assertEqual "mleh" path $ msgPath msg
 
 msg path method = CMessage path method [] []
 
-testSubscribeUnclaimed = do
-    response <- trackerHelper [(42, Alice, [msg path Subscribe])]
+assertSingleError i path response =
+    let bundles = fromJust $ Map.lookup i response in do
+    assertEqual "single bundle" 1 $ length bundles
+    mapM_ (assertEqual "single msg" 1 . length) bundles
+    mapM_ assertErrorMsg bundles
+    mapM_ (assertMsgPath path) bundles
+
+
+testMessageToRoot = do
+    response <- trackerHelper [(42, Alice, [msg [] Error])]
     assertEqual "single recipient" 1 $ Map.size response
-    let aliceBs = fromJust $ Map.lookup 42 response
-    assertEqual "single bundle" 1 $ length aliceBs
-    mapM_ (assertEqual "single msg" 1 . length) aliceBs
-    mapM_ assertErrorMsg aliceBs
-    mapM_ (assertMsgPath path) aliceBs
-  where
-    path = ["hello"]
+    assertSingleError 42 [] response
+
+testSubscribeUnclaimed = do
+    response <- trackerHelper [(42, Alice, [msg ["hello"] Subscribe])]
+    assertEqual "single recipient" 1 $ Map.size response
+    assertSingleError 42 ["hello"] response
+
+testSubscribeClaimed = do
+    response <- trackerHelper [
+        (42, Alice, [msg ["hello"] AssignType]),
+        (42, Alice, [msg ["hello"] Subscribe])]
+    assertEqual "single recipient" 1 $ Map.size response
+    assertSingleError 42 ["hello"] response
 
 
 listServer :: (Monad m) => [a] -> Server b a m [b]

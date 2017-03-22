@@ -20,23 +20,18 @@ import Types (
     msgPath, msgMethod, msgArgs)
 import Server (User)
 
-namespace :: Path -> CanFail Name
-namespace [] = Left "Root path does not imply a namespace"
-namespace (n:ns) = Right n
+namespace :: Path -> Name
+namespace [] = ""
+namespace (n:ns) = n
 
 isNamespace :: Path -> Bool
 isNamespace (n:[]) = True
 isNamespace _ = False
 
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
-type BundleWithOwnership = [(Ownership, ClapiMessage)]
 
-assignOwnership :: (Name -> Ownership) -> ClapiBundle ->
-    CanFail BundleWithOwnership
-assignOwnership getOwnership ms = liftA2 zip ownerships (pure ms)
-  where
-    namespaces = traverse (namespace . msgPath) ms
-    ownerships = fmap getOwnership <$> namespaces
+tag :: (a -> b) -> [a] -> [(b, a)]
+tag f as = zip (f <$> as) as
 
 methodAllowed :: Ownership -> ClapiMethod -> Bool
 methodAllowed Client m = m /= Error
@@ -44,11 +39,18 @@ methodAllowed _ Subscribe = False
 methodAllowed _ Unsubscribe = False
 methodAllowed _ _ = True
 
-bounceOrForward :: BundleWithOwnership -> (ClapiBundle, BundleWithOwnership)
-bounceOrForward bwo = (errorBundle, goodBwo)
+
+partitionMap :: (a -> Bool) -> (a -> b) -> (a -> c) -> [a] -> ([b], [c])
+partitionMap p ft ff = foldr select ([], [])
   where
-    (badBwo, goodBwo) = partition (not . uncurry methodAllowed . fmap msgMethod) bwo
-    errorBundle = fmap (uncurry toErrMsg) badBwo
+    select a (ts, fs) | p a = (ft a:ts, fs)
+                      | otherwise = (ts, ff a:fs)
+
+forwardOrBounce :: [(Ownership, ClapiMessage)] ->
+    ([(Ownership, ClapiMessage)], [ClapiMessage])
+forwardOrBounce =
+    partitionMap (uncurry methodAllowed . fmap msgMethod) id (uncurry toErrMsg)
+  where
     toErrMsg owner msg = msg {
         msgMethod=Error,
         msgArgs=errMsgArgs owner msg
@@ -73,7 +75,7 @@ namespaceTracker =
         (mempty :: Ord i => Mos.Mos i Path)
   where
     loop owners registered (addr, user, ms) = do
-        let (bounceMs, forwardMs) = unright $ bounceOrForward <$> assignOwnership getOwnership ms
+        let (forwardMs, bounceMs) = forwardOrBounce $ tag getMsgOwnership ms
         ms' <- respond (user, forwardMs)
         let registered' = updateRegistered ms'
         let toSend = fanOutBundle registered' ms'
@@ -81,11 +83,13 @@ namespaceTracker =
         (addr', user', bundle') <- request $ Map.toList toSend'
         loop (updateOwners ms') registered' (addr', user', bundle')
       where
-        getOwnership name = case Map.lookup name owners of
+        getNsOwnership name = case Map.lookup name owners of
             -- FIXME: Should we define a constant for the relay NS somewhere?
-            Nothing -> if name == "api" then Client else Unclaimed
+            -- FIXME: Should these instead be prepopulated in the map as being
+            -- owned by NS.SockAddrCan 0 or something like that?
+            Nothing -> if name == "" || name == "api" then Client else Unclaimed
             Just addr' -> if addr' == addr then Owner else Client
-        unright (Right a) = a  -- FIXME: arg!
+        getMsgOwnership = getNsOwnership . namespace . msgPath
         updateOwners ms' = updateMapByKeys addr owners
             (extractNewOwnerships  ms')
             (extractCeasedOwnerships ms')
