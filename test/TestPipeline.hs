@@ -5,8 +5,10 @@ import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 
 import qualified Data.Map as Map
+import qualified Data.Set as Set
+import Data.List (partition)
 import Data.Maybe (fromJust)
-import Control.Monad (forever)
+import Control.Monad (forever, join)
 
 import Pipes (runEffect, liftIO)
 import Pipes.Core (Client, Server, request, respond, (>>~))
@@ -24,11 +26,14 @@ import TestServer (echoMap)
 tests = [
     testCase "owner-like msg to root path" testMessageToRoot,
     testCase "subscribe to unclaimed" testSubscribeUnclaimed,
-    testCase "subscribe to claimed " testSubscribeClaimed
+    testCase "subscribe as owner" testSubscribeAsOwner,
+    testCase "unsubscribe unsubscribed" testUnsubscribeWhenNotSubscribed,
+    testCase "subscribe as client" testSubscribeAsClient
     ]
 
 assertErrorMsg [msg] = assertEqual "blah" Error $ msgMethod msg
 assertMsgPath path [msg] = assertEqual "mleh" path $ msgPath msg
+assertOnlyKeysInMap expected m = assertEqual "keys in map" (Set.fromList expected) $ Map.keysSet m
 
 msg path method = CMessage path method [] []
 
@@ -50,12 +55,37 @@ testSubscribeUnclaimed = do
     assertEqual "single recipient" 1 $ Map.size response
     assertSingleError 42 ["hello"] response
 
-testSubscribeClaimed = do
+testSubscribeAsOwner = do
     response <- trackerHelper [
         (42, Alice, [msg ["hello"] AssignType]),
         (42, Alice, [msg ["hello"] Subscribe])]
     assertEqual "single recipient" 1 $ Map.size response
     assertSingleError 42 ["hello"] response
+
+testUnsubscribeWhenNotSubscribed = do
+    response <- trackerHelper [(42, Alice, [msg [] Unsubscribe])]
+    assertEqual "no messages" 0 $ Map.size response
+
+mapPartition :: (Ord k) => (a -> Bool) -> Map.Map k [a] ->
+    (Map.Map k [a], Map.Map k [a])
+mapPartition p m = let m' = partition p <$> m in (fst <$> m', snd <$> m')
+
+testSubscribeAsClient = do
+    -- Get informed of changes by owner
+    -- Doesn't get bounced any Subscription messages
+    -- Can Unsubscribe
+    response <- trackerHelper [
+        (42, Alice, [msg ["hello"] AssignType]),
+        (43, Alice, [msg ["hello"] Subscribe]),
+        (44, Alice, [msg ["hello"] Subscribe]),
+        (45, Alice, [msg ["hello"] Subscribe, msg ["hello"] Unsubscribe]),
+        (46, Alice, [msg ["hello"] Subscribe]),
+        (46, Alice, [msg ["hello"] Unsubscribe]),
+        (42, Alice, [msg ["hello"] Set])]
+    assertOnlyKeysInMap [43, 44] response
+    let (subMsgs, otherMsgs) = mapPartition ((== Subscribe) . msgMethod) $ join <$> response
+    mapM_ (assertEqual "subscription msgs" []) subMsgs
+    mapM_ (assertEqual "other msgs" [msg ["hello"] Set]) otherMsgs
 
 
 listServer :: (Monad m) => [a] -> Server b a m [b]

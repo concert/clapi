@@ -129,7 +129,14 @@ extractCeasedSubscriptions msgs = msgPath <$> filter ((== Unsubscribe) . msgMeth
 
 fanOutBundle :: (Ord i) => Mos.Mos i Path -> ClapiBundle ->
     Map.Map i ClapiBundle
-fanOutBundle registered bundle = filterBundle bundle <$> registered
+fanOutBundle registered bundle =
+    filterSubMsgs <$> filterBundlePaths bundle <$> registered
 
-filterBundle :: ClapiBundle -> Set.Set Path -> ClapiBundle
-filterBundle b ps = filter (\msg -> (msgPath msg) `elem` ps) b
+filterBundlePaths :: [ClapiMessage] -> Set.Set Path -> [ClapiMessage]
+filterBundlePaths b ps = filter (\msg -> (msgPath msg) `elem` ps) b
+
+filterSubMsgs :: [ClapiMessage] -> [ClapiMessage]
+filterSubMsgs = filter allowed
+  where
+    allowed msg = let method = msgMethod msg in
+        method /= Subscribe && method /= Unsubscribe
