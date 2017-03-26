@@ -1,24 +1,23 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 module Pipeline where
 
-import Control.Applicative (liftA2)
-import Data.Bifunctor (bimap)
+import Control.Monad (when)
+import Control.Monad.State (StateT(..), evalStateT, get, modify)
 import Data.List (partition)
-import Data.Monoid ((<>))
-import qualified Data.Text as T
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Network.Socket as NS
 
+import Pipes (lift)
 import Pipes.Core (Proxy, request, respond)
 
-import Data.Maybe.Clapi (toMonoid, fromFoldable)
 import qualified Data.Map.Mos as Mos
 import Path (Name, Path)
-import Types (
-    CanFail, ClapiBundle, ClapiMessage, ClapiMethod(..), ClapiValue(..),
-    msgPath, msgMethod, msgArgs)
+import Types (ClapiMessage(..), ClapiMethod(..))
 import Server (User)
+
+data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
+type Owners i = Map.Map Name i
+type Registered i = Mos.Mos i Path
 
 namespace :: Path -> Name
 namespace [] = ""
@@ -28,115 +27,135 @@ isNamespace :: Path -> Bool
 isNamespace (n:[]) = True
 isNamespace _ = False
 
-data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
-
-tag :: (a -> b) -> [a] -> [(b, a)]
-tag f as = zip (f <$> as) as
+tag :: (Functor f) => (a -> b) -> f a -> f (b, a)
+tag f = fmap (\a -> (f a, a))
 
 methodAllowed :: Ownership -> ClapiMethod -> Bool
 methodAllowed Client m = m /= Error
+methodAllowed Unclaimed Error = False
 methodAllowed _ Subscribe = False
 methodAllowed _ Unsubscribe = False
 methodAllowed _ _ = True
 
 
-partitionMap :: (a -> Bool) -> (a -> b) -> (a -> c) -> [a] -> ([b], [c])
-partitionMap p ft ff = foldr select ([], [])
-  where
-    select a (ts, fs) | p a = (ft a:ts, fs)
-                      | otherwise = (ts, ff a:fs)
+handleOutboundMsgsO ::
+    (Monad m, Ord i) => i -> [(Ownership, ClapiMessage)] ->
+    StateT (Owners i) m [(Ownership, ClapiMessage)]
+handleOutboundMsgsO i = mapM (handleOutboundMsgO i)
 
-forwardOrBounce :: [(Ownership, ClapiMessage)] ->
-    ([(Ownership, ClapiMessage)], [ClapiMessage])
-forwardOrBounce =
-    partitionMap (uncurry methodAllowed . fmap msgMethod) id (uncurry toErrMsg)
-  where
-    toErrMsg owner msg = msg {
-        msgMethod=Error,
-        msgArgs=errMsgArgs owner msg
-    }
-    role Client = "a client"
-    role _ = "the owner"
-    errMsgTxt ownership method = T.concat [
-        "Method ", T.pack $ show method, " forbidden when acting as ",
-        role ownership]
-    errMsgArgs owner msg = [CString $ errMsgTxt owner (msgMethod msg)]
+handleOutboundMsgO ::
+    (Monad m) => i -> (Ownership, ClapiMessage) ->
+    StateT (Owners i) m (Ownership, ClapiMessage)
+handleOutboundMsgO i x@(Unclaimed, CMessage path AssignType _ _)
+  | isNamespace path =
+        modify (Map.insert (namespace path) i) >> return x
+handleOutboundMsgO _ x@(Owner, CMessage path Delete _ _)
+  | isNamespace path =
+        modify (Map.delete (namespace path)) >> return x
+handleOutboundMsgO _ x = return x
 
+handleOutboundMsgsR ::
+    forall m i. (Monad m, Ord i) => i -> [(Ownership, ClapiMessage)] ->
+    StateT (Registered i) m (Map.Map i [ClapiMessage])
+handleOutboundMsgsR _ [] = return mempty
+handleOutboundMsgsR i ((o, m):oms) =
+  do
+    dropMsg <- handleSubs o m
+    if dropMsg
+        then handleOutboundMsgsR i oms
+        else do
+            msgMap <- bar m
+            bundleMap <- handleOutboundMsgsR i oms
+            return $ Map.unionWith (++) msgMap bundleMap
+  where
+    handleSubs :: Ownership -> ClapiMessage -> StateT (Registered i) m Bool
+    handleSubs Client (CMessage path Subscribe _ _) =
+        modify (Mos.insert i path) >> return True
+    handleSubs Client (CMessage path Unsubscribe _ _) =
+        modify (Mos.delete i path) >> return True
+    handleSubs _ _ = return False
+
+    bar :: ClapiMessage -> StateT (Registered i) m (Map.Map i [ClapiMessage])
+    bar m = get >>= return . Map.mapWithKey (includeMsg m)
+    includeMsg m i' paths =
+        if (o == Client && i' == i) || (msgPath m `elem` paths) then [m] else []
+
+handleInboundMsgsR ::
+    (Monad m, Ord i) => i -> [a] -> StateT (Registered i) m [a]
+handleInboundMsgsR i [] = modify (Map.delete i) >> return []
+handleInboundMsgsR _ as  = return as
+
+handleInboundMsgsO ::
+    (Monad m, Eq i) => i -> [(Ownership, ClapiMessage)] ->
+    StateT (Owners i) m [(Ownership, ClapiMessage)]
+handleInboundMsgsO i [] =
+    get >>= return . fmap namespaceDeleteMsg . Map.keys . Map.filter (== i)
+  where
+    namespaceDeleteMsg name = (Owner, CMessage [name] Delete [] [])
+handleInboundMsgsO _ oms = return oms
+
+tagOwnership ::
+    (Monad m, Eq i) => i -> [ClapiMessage] ->
+    StateT (Owners i) m [(Ownership, ClapiMessage)]
+tagOwnership i ms = do
+    owners <- get
+    return $ tag (getNsOwnership owners . namespace . msgPath) ms
+  where
+    getNsOwnership owners name = case Map.lookup name owners of
+      Nothing -> Unclaimed
+      Just i' -> if i' == i then Owner else Client
+
+
+type TrackerState i m = StateT (Owners i, Registered i) m
+
+liftO :: (Monad m) => StateT (Owners i) m r -> TrackerState i m r
+liftO f = StateT $ \(o, r) -> do
+    (a, o') <- runStateT f o
+    return (a, (o', r))
+
+liftO' f a = liftO (f a)
+
+liftR :: (Monad m) => StateT (Registered i) m r -> TrackerState i m r
+liftR f = StateT $ \(o, r) -> do
+    (a, r') <- runStateT f r
+    return (a, (o, r'))
+
+liftR' f a = liftR (f a)
+
+
+type TrackerProxy i m =
+    Proxy
+        [(i, [ClapiMessage])] (i, User, [ClapiMessage])
+        [(Ownership, ClapiMessage)] (User, [(Ownership, ClapiMessage)])
+        m
 
 -- Tracks both namespace ownership and path subscriptions
+-- * Inbound we
+--    * Tag individual messages with whether the originator owns the path or not.
+--    * Perform basic validation as to whether methods are permitted given the
+--      submitter's role
+--    * Handle disconnections (empty bundles)
+-- * Outbound we
+--    * Intercept subscription and namespaces type assignments and deletions in
+--      order to track the required state
+--    * Filter out subscription messages
+--    * "Fan out" messages according to who's registered to what paths
 namespaceTracker ::
-    (Monad m, Ord i) =>
-    (i, User, ClapiBundle) ->
-    Proxy [(i, ClapiBundle)]  (i, User, ClapiBundle)
-    ClapiBundle (User, [(Ownership, ClapiMessage)]) m r
-namespaceTracker =
-    loop
-        (mempty :: Ord i => Map.Map Name i)
-        (mempty :: Ord i => Mos.Mos i Path)
-  where
-    loop owners registered (addr, user, ms) = do
-        let (forwardMs, bounceMs) = forwardOrBounce $ tag getMsgOwnership ms
-        ms' <- respond (user, forwardMs)
-        let registered' = updateRegistered ms'
-        let toSend = fanOutBundle registered' ms'
-        let toSend' = Map.alter (\maybeMs -> fromFoldable (bounceMs <> toMonoid maybeMs)) addr toSend
-        (addr', user', bundle') <- request $ Map.toList toSend'
-        loop (updateOwners ms') registered' (addr', user', bundle')
-      where
-        getNsOwnership name = case Map.lookup name owners of
-            -- FIXME: Should we define a constant for the relay NS somewhere?
-            -- FIXME: Should these instead be prepopulated in the map as being
-            -- owned by NS.SockAddrCan 0 or something like that?
-            Nothing -> if name == "" || name == "api" then Client else Unclaimed
-            Just addr' -> if addr' == addr then Owner else Client
-        getMsgOwnership = getNsOwnership . namespace . msgPath
-        updateOwners ms' = updateMapByKeys addr owners
-            (extractNewOwnerships  ms')
-            (extractCeasedOwnerships ms')
-        updateRegistered ms' = updateMosAtKey addr registered
-            (extractNewSubscriptions ms')
-            (extractCeasedSubscriptions ms')
+    (Monad m, Ord i) => Owners i -> Registered i -> (i, User, [ClapiMessage]) -> TrackerProxy i m r
+namespaceTracker o r x = evalStateT (_namespaceTracker x) (o, r)
 
--- FIXME: an actually useful name would be nice
-check :: ClapiMethod -> ClapiMessage -> Bool
--- FIXME: would like to avoid taking length of Path
-check method msg = msgMethod msg == method && (isNamespace $ msgPath msg)
-
-extractNewOwnerships :: [ClapiMessage] -> [Name]
-extractNewOwnerships = fmap (head . msgPath) . filter (check AssignType)
-
-extractCeasedOwnerships :: [ClapiMessage] -> [Name]
-extractCeasedOwnerships = fmap (head . msgPath) . filter (check Delete)
-
-constMap :: (Ord k) => a -> [k] -> Map.Map k a
-constMap a ks = Map.fromList $ (flip (,) a) <$> ks
-
-updateMapByKeys :: (Ord k) => a -> Map.Map k a -> [k] -> [k] -> Map.Map k a
-updateMapByKeys a m addedKeys removedKeys =
-    Map.difference (Map.union (constMap a addedKeys) m) (constMap a removedKeys)
-
-updateMosAtKey :: (Ord k, Ord a) => k -> Mos.Mos k a -> [a] -> [a] -> Mos.Mos k a
-updateMosAtKey k m addedVals removedVals = m'
-  where
-    withAdded = foldr (Mos.insert k) m addedVals
-    m' = foldr (Mos.delete k) withAdded removedVals
-
-extractNewSubscriptions :: [ClapiMessage] -> [Path]
-extractNewSubscriptions msgs = msgPath <$> filter ((== Subscribe) . msgMethod) msgs
-
-extractCeasedSubscriptions :: [ClapiMessage] -> [Path]
-extractCeasedSubscriptions msgs = msgPath <$> filter ((== Unsubscribe) . msgMethod) msgs
-
-fanOutBundle :: (Ord i) => Mos.Mos i Path -> ClapiBundle ->
-    Map.Map i ClapiBundle
-fanOutBundle registered bundle =
-    filterSubMsgs <$> filterBundlePaths bundle <$> registered
-
-filterBundlePaths :: [ClapiMessage] -> Set.Set Path -> [ClapiMessage]
-filterBundlePaths b ps = filter (\msg -> (msgPath msg) `elem` ps) b
-
-filterSubMsgs :: [ClapiMessage] -> [ClapiMessage]
-filterSubMsgs = filter allowed
-  where
-    allowed msg = let method = msgMethod msg in
-        method /= Subscribe && method /= Unsubscribe
+_namespaceTracker ::
+    (Monad m, Ord i) => (i, User, [ClapiMessage]) ->
+    TrackerState i (TrackerProxy i m) r
+_namespaceTracker (i, u, ms) =
+  do
+    oms <- return ms >>=
+        liftO' (tagOwnership i) >>=
+        liftR' (handleInboundMsgsR i) >>=
+        liftO' (handleInboundMsgsO i)
+    let (fwdOms, badOms) = partition (uncurry methodAllowed . fmap msgMethod) oms
+    -- FIXME handle badOms
+    bundleMap <- (lift $ respond (u, fwdOms)) >>=
+        liftO' (handleOutboundMsgsO i) >>=
+        liftR' (handleOutboundMsgsR i)
+    (lift $ request $ Map.toList bundleMap) >>= _namespaceTracker

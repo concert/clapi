@@ -43,6 +43,7 @@ library
                      , lens
                      , network
                      , network-simple
+                     , mtl
                      , pipes
                      , pipes-concurrency
                      , pipes-network
