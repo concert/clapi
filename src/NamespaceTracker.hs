@@ -32,12 +32,12 @@ isNamespace _ = False
 tag :: (Functor f) => (a -> b) -> f a -> f (b, a)
 tag f = fmap (\a -> (f a, a))
 
-methodAllowed :: Ownership -> ClapiMethod -> Bool
-methodAllowed Client m = m /= Error
-methodAllowed Unclaimed Error = False
-methodAllowed _ Subscribe = False
-methodAllowed _ Unsubscribe = False
-methodAllowed _ _ = True
+methodAllowed :: (Ownership, ClapiMethod) -> Bool
+methodAllowed (Client, m) = m /= Error
+methodAllowed (Unclaimed, Error) = False
+methodAllowed (_, Subscribe) = False
+methodAllowed (_, Unsubscribe) = False
+methodAllowed _ = True
 
 disallowedMsg :: Ownership -> ClapiMessage -> ClapiMessage
 disallowedMsg o m = m {msgMethod=Error, msgArgs=[CString $ txt]}
@@ -166,7 +166,7 @@ _namespaceTracker (i, u, ms) =
         liftO' (tagOwnership i) >>=
         liftR' (handleDisconnectR i) >>=
         liftO' (handleDisconnectO i)
-    let (fwdOms, badOms) = partition (uncurry methodAllowed . fmap msgMethod) oms
+    let (fwdOms, badOms) = partition (methodAllowed . fmap msgMethod) oms
     oms' <- case fwdOms of
       [] -> return mempty
       _ -> (lift $ respond (u, fwdOms)) >>= liftO' (updateOwnerships i)
