@@ -18,6 +18,9 @@ delete k a = Map.update f k
   where
     f = Maybe.fromFoldable . (Set.delete a)
 
+remove :: (Ord k, Ord a) => a -> Mos k a -> Mos k a
+remove a = Map.mapMaybe (Maybe.fromFoldable . (Set.delete a))
+
 invertMap :: (Ord k, Ord a) => Map.Map k a -> Mos a k
 invertMap = Map.foldrWithKey (flip insert) mempty
 
