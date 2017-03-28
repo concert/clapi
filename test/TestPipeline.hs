@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestPipeline where
 
-import Test.HUnit (assertEqual, assertBool)
+import Test.HUnit (assertEqual, assertBool, assertFailure)
 import Test.Framework.Providers.HUnit (testCase)
 
 import qualified Data.Map as Map
@@ -24,7 +24,7 @@ import Pipeline
 import TestServer (echoMap)
 
 tests = [
-    testCase "owner-like msg to root path" testMessageToRoot,
+    testCase "owner-like msg to preowned path" testMessageToPreowned,
     testCase "subscribe to unclaimed" testSubscribeUnclaimed,
     testCase "subscribe as owner" testSubscribeAsOwner,
     testCase "unsubscribe unsubscribed" testUnsubscribeWhenNotSubscribed,
@@ -32,14 +32,20 @@ tests = [
     testCase "second owner forbidden" testSecondOwnerForbidden,
     testCase "claim unclaim in bunde" testClaimUnclaimInBundle,
     testCase "client disconnect unsubscribes" testClientDisconnectUnsubs,
-    testCase "client disconnect resubscribes" testClientDisconnectUnsubsResubs,
+    testCase "client disconnects resubscribes" testClientDisconnectUnsubsResubs,
     testCase "owner disconnect disowns" testOwnerDisconnectDisowns
     ]
 
 assertErrorMsg [msg] = assertEqual "blah" Error $ msgMethod msg
 assertMsgPath path [msg] = assertEqual "mleh" path $ msgPath msg
 assertOnlyKeysInMap expected m = assertEqual "keys in map" (Set.fromList expected) $ Map.keysSet m
-assertNoEmptyLists = assertBool "empty list" . all (/= [])
+-- assertNoEmptyLists = assertBool "empty list" . all (/= [])
+assertMapKey k m = case Map.lookup k m of
+    Nothing -> assertFailure (show k ++ " not found") >> undefined
+    Just a -> return a
+assertMapValue k a m =
+    assertMapKey k m >>=
+    assertEqual ("Map[" ++ show k ++ "]") a
 
 msg path method = CMessage path method [] []
 
@@ -51,8 +57,9 @@ assertSingleError i path response =
     mapM_ (assertMsgPath path) bundles
 
 
-testMessageToRoot = do
-    response <- trackerHelper [(42, Alice, [msg [] Error])]
+testMessageToPreowned =
+    let owners = Map.singleton "" 0 in do
+    response <- trackerHelper' owners mempty [(42, Alice, [msg [] Error])]
     assertEqual "single recipient" 1 $ Map.size response
     assertSingleError 42 [] response
 
@@ -68,8 +75,9 @@ testSubscribeAsOwner = do
     assertEqual "single recipient" 1 $ Map.size response
     assertSingleError 42 ["hello"] response
 
-testUnsubscribeWhenNotSubscribed = do
-    response <- trackerHelper [(42, Alice, [msg [] Unsubscribe])]
+testUnsubscribeWhenNotSubscribed =
+    let owners = Map.singleton "owned" 0 in do
+    response <- trackerHelper' owners mempty [(42, Alice, [msg ["owned"] Unsubscribe])]
     assertEqual "no messages" 0 $ Map.size response
 
 mapPartition :: (Ord k) => (a -> Bool) -> Map.Map k [a] ->
@@ -88,18 +96,12 @@ testSubscribeAsClient = do
         (46, Alice, [msg ["hello"] Subscribe]),
         (46, Alice, [msg ["hello"] Unsubscribe]),
         (42, Alice, [msg ["hello"] Set])]
-    mapM_ (putStrLn . show) $ Map.toList response
     assertEqual "response check" (Map.fromList [
         (43, [[msg ["hello"] Remove], [msg ["hello"] Set]]),
         (44, [[msg ["hello"] Remove], [msg ["hello"] Set]]),
         (46, [[msg ["hello"] Remove]])
         ])
         response
-    assertOnlyKeysInMap [43, 44] response
-    mapM_ assertNoEmptyLists response
-    let (subMsgs, otherMsgs) = mapPartition ((== Subscribe) . msgMethod) $ join <$> response
-    mapM_ (assertEqual "subscription msgs" []) subMsgs
-    mapM_ (assertEqual "other msgs" [msg ["hello"] Remove, msg ["hello"] Set]) otherMsgs
 
 testSecondOwnerForbidden = do
     response <- trackerHelper [
@@ -111,23 +113,35 @@ testSecondOwnerForbidden = do
     assertEqual "single recipient" 1 $ Map.size response
     assertSingleError 43 ["hello"] response
 
-testClaimUnclaimInBundle = undefined
+testClaimUnclaimInBundle = do
+    response <- trackerHelper [
+        (42, Alice, [msg ["hello"] AssignType, msg ["hello"] Delete]),
+        (43, Alice, [msg ["hello"] Subscribe])]
+    assertSingleError 43 ["hello"] response
 
 _disconnectUnsubsBase = [
     (42, Alice, [msg ["hello"] AssignType]),
     (43, Alice, [msg ["hello"] Subscribe]),
     (43, Alice, []),
+    -- Should miss this message:
     (42, Alice, [msg ["hello"] Set])]
 
 testClientDisconnectUnsubs = do
     response <- trackerHelper _disconnectUnsubsBase
-    assertEqual "no msgs" 0 $ Map.size response
+    assertEqual "43: init msgs"
+        (Map.singleton 43 [[msg ["hello"] Remove]])
+        response
 
 testClientDisconnectUnsubsResubs = do
     response <- trackerHelper $ _disconnectUnsubsBase ++ [
         (43, Alice, [msg ["hello"] Subscribe]),
         (42, Alice, [msg ["hello"] Add])]
-    mapM_ (assertEqual "add msg" [msg ["hello"] Add]) $ join <$> response
+    assertEqual "43: 2 * init msgs + add msg"
+        (Map.singleton 43 [
+            [msg ["hello"] Remove],
+            [msg ["hello"] Remove],
+            [msg ["hello"] Add]])
+        response
 
 testOwnerDisconnectDisowns = do
     -- and unregisters clients
@@ -139,8 +153,12 @@ testOwnerDisconnectDisowns = do
         (44, Alice, [msg ["hello"] Subscribe]),
         -- No subscriber => no AssignType msg:
         (45, Alice, [msg ["hello"] AssignType])]
-    -- assertOnlyKeysInMap []
-    error $ show response
+    assertOnlyKeysInMap [43, 44] response
+    assertMapValue 43 [
+        [msg ["hello"] Remove], [msg ["hello"] Delete]] response
+    fourFour <- assertMapKey 44 response
+    assertEqual "44: num msgs" 1 $ length fourFour
+    assertErrorMsg $ head fourFour
 
 
 listServer :: (Monad m) => [a] -> Server b a m [b]
@@ -150,11 +168,14 @@ listServer as = listServer' as mempty
     listServer' (a:as) bs = respond a >>= \b -> listServer' as (bs +| b)
 
 
-trackerHelper :: -- (Monad m, Ord i) =>
+trackerHelper = trackerHelper' mempty mempty
+
+trackerHelper' :: -- (Monad m, Ord i) =>
     (Ord i, Show i) =>
-    [(i, User, ClapiBundle)] -> IO (Map.Map i [ClapiBundle])
-trackerHelper as = collect <$> (runEffect $
-    listServer as >>~ namespaceTracker mempty mempty >>~ echoMap dropDetails)
+    Owners i -> Registered i -> [(i, User, ClapiBundle)] ->
+    IO (Map.Map i [ClapiBundle])
+trackerHelper' owners registered as = collect <$> (runEffect $
+    listServer as >>~ namespaceTracker owners registered >>~ echoMap dropDetails)
   where
     dropDetails (_, taggedMs) = join $ fmap foo taggedMs
     -- Adding in the extra Remove message simulates retreiving the current state
