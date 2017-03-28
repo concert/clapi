@@ -19,6 +19,7 @@ import Server (User)
 
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
 type Owners i = Map.Map Name i
+type Om = (Ownership, ClapiMessage)
 type Registered i = Mos.Mos i Path
 
 namespace :: Path -> Name
@@ -50,11 +51,10 @@ disallowedMsg o m = m {msgMethod=Error, msgArgs=[CString $ txt]}
 
 
 updateOwnerships ::
-    forall m i. (Monad m, Ord i) => i -> [(Ownership, ClapiMessage)] ->
-    StateT (Owners i) m [(Ownership, ClapiMessage)]
+    forall m i. (Monad m, Ord i) => i -> [Om] -> StateT (Owners i) m [Om]
 updateOwnerships i = mapM handle
   where
-    handle :: (Ownership, ClapiMessage) -> StateT (Owners i) m (Ownership, ClapiMessage)
+    handle :: Om -> StateT (Owners i) m Om
     handle x@(Unclaimed, CMessage path AssignType _ _) | isNamespace path =
         modify (Map.insert (namespace path) i) >> return x
     handle x@(ownership, CMessage path Delete _ _)
@@ -63,11 +63,10 @@ updateOwnerships i = mapM handle
     handle x = return x
 
 registerSubscriptions ::
-    forall m i. (Monad m, Ord i) => i -> [(Ownership, ClapiMessage)] ->
-    StateT (Registered i) m [(Ownership, ClapiMessage)]
+    forall m i. (Monad m, Ord i) => i -> [Om] -> StateT (Registered i) m [Om]
 registerSubscriptions i oms = filterM processMsg oms
   where
-    processMsg :: (Ownership, ClapiMessage) -> StateT (Registered i) m Bool
+    processMsg :: Om -> StateT (Registered i) m Bool
     processMsg (Client, CMessage path Subscribe _ _) =
         modify (Mos.insert i path) >> return False
     processMsg (Client, CMessage path Unsubscribe _ _) =
@@ -75,7 +74,7 @@ registerSubscriptions i oms = filterM processMsg oms
     processMsg _ = return True
 
 fanOutBundle ::
-    (Monad m, Ord i) => i -> [(Ownership, ClapiMessage)] ->
+    (Monad m, Ord i) => i -> [Om] ->
     StateT (Registered i) m (Map.Map i [ClapiMessage])
 fanOutBundle i oms = get >>=
     return . Map.filter (not . null) . Map.mapWithKey (deriveMsgs oms)
@@ -85,8 +84,7 @@ fanOutBundle i oms = get >>=
         if o == Client then i' == i else msgPath m `elem` ps
 
 handleDeletedNamespace ::
-    (Monad m, Ord i) => (Ownership, ClapiMessage) ->
-    StateT (Registered i) m (Ownership, ClapiMessage)
+    (Monad m, Ord i) => Om -> StateT (Registered i) m Om
 handleDeletedNamespace om@(ownership, CMessage path Delete _ _) | isNamespace path =
     modify (Mos.remove path) >> return om
 handleDeletedNamespace om = return om
@@ -97,8 +95,7 @@ handleDisconnectR i [] = modify (Map.delete i) >> return []
 handleDisconnectR _ as  = return as
 
 handleDisconnectO ::
-    (Monad m, Eq i) => i -> [(Ownership, ClapiMessage)] ->
-    StateT (Owners i) m [(Ownership, ClapiMessage)]
+    (Monad m, Eq i) => i -> [Om] -> StateT (Owners i) m [Om]
 handleDisconnectO i [] =
     get >>= return . fmap namespaceDeleteMsg . Map.keys . Map.filter (== i)
   where
@@ -106,8 +103,7 @@ handleDisconnectO i [] =
 handleDisconnectO _ oms = return oms
 
 tagOwnership ::
-    (Monad m, Eq i) => i -> [ClapiMessage] ->
-    StateT (Owners i) m [(Ownership, ClapiMessage)]
+    (Monad m, Eq i) => i -> [ClapiMessage] -> StateT (Owners i) m [Om]
 tagOwnership i ms = do
     owners <- get
     return $ tag (getNsOwnership owners . namespace . msgPath) ms
@@ -135,10 +131,7 @@ liftR' f a = liftR (f a)
 
 
 type TrackerProxy i m =
-    Proxy
-        [(i, [ClapiMessage])] (i, User, [ClapiMessage])
-        [(Ownership, ClapiMessage)] (User, [(Ownership, ClapiMessage)])
-        m
+    Proxy [(i, [ClapiMessage])] (i, User, [ClapiMessage]) [Om] (User, [Om]) m
 
 -- Tracks both namespace ownership and path subscriptions
 -- * Inbound we
