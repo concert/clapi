@@ -16,4 +16,10 @@ cons :: (Ord k) => k -> a -> Mol k a -> Mol k a
 cons k a = Map.updateM (a :) k
 
 append :: (Ord k) => k -> a -> Mol k a -> Mol k a
-append k a = Map.updateM (++ [a]) k
+append k a = extend k [a]
+
+extend :: (Ord k) => k -> [a] -> Mol k a -> Mol k a
+extend k as = Map.updateM (++ as) k
+
+prepend :: (Ord k) => k -> [a] -> Mol k a -> Mol k a
+prepend k as = Map.updateM (as ++) k

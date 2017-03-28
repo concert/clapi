@@ -15,44 +15,45 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib
-                     , Util
-                     , Types
-                     , Serialisation
+  exposed-modules:     Data.Map.Mos
+                     , Data.Map.Clapi
+                     , NamespaceTracker
                      , Parsing
-                     , Tree
-                     , Valuespace
-                     , Validator
                      , Path
                      , Path.Parsing
+                     , Serialisation
                      , Server
-                     , Data.Map.Mos
+                     , Types
+                     , Tree
+                     , Validator
+                     , Valuespace
+                     , Util
   other-modules:       Data.Maybe.Clapi
-                     , Data.Map.Clapi
                      , Data.Map.Mol
                      , Data.Map.ChainMap
   build-depends:       base >= 4.7 && < 5
-                     , text
-                     , regex-pcre
-                     , split
-                     , errors
-                     , lens
-                     , containers >= 0.5.8.1
-                     , data-binary-ieee754
-                     , scientific
+                     , async
                      , attoparsec
                      , attoparsec-binary
-                     , async
+                     , blaze-builder
+                     , bytestring
+                     , containers >= 0.5.8.1
+                     , data-binary-ieee754
+                     , errors
+                     , lens
+                     , network
+                     , network-simple
+                     , mtl
                      , pipes
                      , pipes-concurrency
                      , pipes-network
                      , pipes-safe
-                     , network-simple
+                     , regex-pcre
+                     , scientific
+                     , split
+                     , text
                      , stm
-                     , bytestring
                      , utf8-string
-                     , blaze-builder
-                     , network
   default-language:    Haskell2010
 
 executable clapi-hs-exe
@@ -72,26 +73,27 @@ test-suite clapi-hs-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base
+                     , async
+                     , containers
                      , clapi-hs
+                     , either
                      , HUnit
+                     , network
+                     , network-simple
+                     , pipes
+                     , pipes-safe
                      , QuickCheck
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2
-                     , async
-                     , containers
-                     , either
-                     , pipes
-                     , pipes-safe
                      , text
-                     , network
-                     , network-simple
   other-modules:       Util
+                     , TestNamespaceTracker
                      , TestServer
-                     , TestTypes
                      , TestTree
-                     , TestValuespace
+                     , TestTypes
                      , TestValidator
+                     , TestValuespace
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
