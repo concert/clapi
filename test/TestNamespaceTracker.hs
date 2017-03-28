@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module TestPipeline where
+module TestNamespaceTracker where
 
 import Test.HUnit (assertEqual, assertBool, assertFailure)
 import Test.Framework.Providers.HUnit (testCase)
@@ -19,7 +19,7 @@ import Data.Map.Clapi (joinM)
 import Tree ((+|))
 import Types (ClapiBundle, ClapiMessage(..), ClapiMethod(..), ClapiValue(..))
 import Server (User(..))
-import Pipeline
+import NamespaceTracker (namespaceTracker, Ownership(..), Owners, Registered)
 
 import TestServer (echoMap)
 

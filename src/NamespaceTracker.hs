@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
-module Pipeline where
+module NamespaceTracker where
 
 import Control.Monad (filterM)
 import Control.Monad.State (StateT(..), evalStateT, get, modify)

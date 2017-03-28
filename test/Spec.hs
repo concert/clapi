@@ -4,7 +4,7 @@ module Main (
 
 import Test.Framework (defaultMain, Test)
 
-import qualified TestPipeline (tests)
+import qualified TestNamespaceTracker (tests)
 import qualified TestServer (tests)
 import qualified TestTypes (tests)
 import qualified TestTree (tests)
@@ -16,7 +16,7 @@ main = defaultMain tests
 
 tests :: [Test]
 tests = mconcat [
-    TestPipeline.tests,
+    TestNamespaceTracker.tests,
     TestServer.tests,
     TestTypes.tests,
     TestValuespace.tests,

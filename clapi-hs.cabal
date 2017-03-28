@@ -17,10 +17,10 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Clapi
+                     , NamespaceTracker
                      , Parsing
                      , Path
                      , Path.Parsing
-                     , Pipeline
                      , Serialisation
                      , Server
                      , Types
@@ -88,7 +88,7 @@ test-suite clapi-hs-test
                      , test-framework-quickcheck2
                      , text
   other-modules:       Util
-                     , TestPipeline
+                     , TestNamespaceTracker
                      , TestServer
                      , TestTree
                      , TestTypes
