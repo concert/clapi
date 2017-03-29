@@ -21,6 +21,7 @@ library
                      , Parsing
                      , Path
                      , Path.Parsing
+                     , Relay
                      , Serialisation
                      , Server
                      , Types
