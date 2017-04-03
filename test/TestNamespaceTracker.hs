@@ -17,7 +17,8 @@ import Pipes.Safe (runSafeT)
 
 import Data.Map.Clapi (joinM)
 import Tree ((+|))
-import Types (ClapiBundle, ClapiMessage(..), ClapiMethod(..), ClapiValue(..))
+import Path (Path)
+import Types (Time(..), Interpolation(..), Message(..), msgPath', msgMethod', ClapiMethod(..), ClapiValue(..))
 import Server (User(..))
 import NamespaceTracker (namespaceTracker, Ownership(..), Owners, Registered)
 
@@ -36,8 +37,8 @@ tests = [
     testCase "owner disconnect disowns" testOwnerDisconnectDisowns
     ]
 
-assertErrorMsg [msg] = assertEqual "blah" Error $ msgMethod msg
-assertMsgPath path [msg] = assertEqual "mleh" path $ msgPath msg
+assertErrorMsg [msg] = assertEqual "blah" Error $ msgMethod' msg
+assertMsgPath path [msg] = assertEqual "mleh" path $ msgPath' msg
 assertOnlyKeysInMap expected m = assertEqual "keys in map" (Set.fromList expected) $ Map.keysSet m
 -- assertNoEmptyLists = assertBool "empty list" . all (/= [])
 assertMapKey k m = case Map.lookup k m of
@@ -47,7 +48,17 @@ assertMapValue k a m =
     assertMapKey k m >>=
     assertEqual ("Map[" ++ show k ++ "]") a
 
-msg path method = CMessage path method [] []
+msg :: Path -> ClapiMethod -> Message
+msg path Error = MsgError path ""
+msg path Set = MsgSet path (Time 0 0) [] IConstant Nothing Nothing
+msg path Add = MsgAdd path (Time 0 0) [] IConstant Nothing Nothing
+msg path Remove = MsgRemove path (Time 0 0) Nothing Nothing
+msg path Clear = MsgClear path (Time 0 0) Nothing Nothing
+msg path Subscribe = MsgSubscribe path
+msg path Unsubscribe = MsgUnsubscribe path
+msg path AssignType = MsgAssignType path []
+msg path Delete = MsgDelete path
+msg path Children = MsgChildren path []
 
 assertSingleError i path response =
     let bundles = fromJust $ Map.lookup i response in do
@@ -172,15 +183,15 @@ trackerHelper = trackerHelper' mempty mempty
 
 trackerHelper' :: -- (Monad m, Ord i) =>
     (Ord i, Show i) =>
-    Owners i -> Registered i -> [(i, User, ClapiBundle)] ->
-    IO (Map.Map i [ClapiBundle])
+    Owners i -> Registered i -> [(i, User, [Message])] ->
+    IO (Map.Map i [[Message]])
 trackerHelper' owners registered as = collect <$> (runEffect $
     listServer as >>~ namespaceTracker owners registered >>~ echoMap dropDetails)
   where
     dropDetails (_, taggedMs) = join $ fmap foo taggedMs
     -- Adding in the extra Remove message simulates retreiving the current state
     -- from the deeper data layer
-    foo (Client, m@CMessage {msgMethod = Subscribe}) = [(Client, m), (Client, msg (msgPath m) Remove)]
+    foo (Client, m@MsgSubscribe {}) = [(Client, m), (Client, msg (msgPath' m) Remove)]
     foo taggedM = [taggedM]
-    collect :: (Ord i) => [[(i, ClapiBundle)]] -> Map.Map i [ClapiBundle]
+    collect :: (Ord i) => [[(i, [Message])]] -> Map.Map i [[Message]]
     collect = joinM . fmap Map.fromList
