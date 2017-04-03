@@ -12,8 +12,8 @@ import qualified Data.Map.Strict as Map
 import Util (assertFailed)
 import Path (root, up)
 import Types (
-    Time(..), ClapiValue(..), ClapiMessage(..), ClapiMethod(..), ClapiBundle,
-    fromClapiValue, toClapiValue)
+    CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
+    Interpolation(..), fromClapiValue, toClapiValue)
 import Serialisation (encode, decode)
 
 
@@ -34,18 +34,20 @@ testClapiValueConversionRoundTrip f =
 testBinarySerialisationRoundTrip =
     Right bundle @=? result where
         bundle = [message, message]
-        message = CMessage
+        message = MsgSet -- FIXME: might want to do property testing for this
             ["hello", "world"]
-            Error
+            (Time 0 0)
             nestedArgList
-            (zip [[c] | c <- ['a'..'z']] nestedArgList)
+            ILinear
+            Nothing
+            (Just "home")
         argList = [
             CBool True, CBool False, CTime (Time 4 2),
             CEnum 12, CWord32 32, CWord64 64, CInt32 (-32), CInt64 (-64),
             CFloat 15.1, CDouble 13.2, CString "Greetings Planet"]
         nestedArgList = (CList argList) : argList
 
-        result = encode bundle >>= decode :: Either String ClapiBundle
+        result = encode bundle >>= decode :: CanFail [Message]
 
 testEncodeTooLongString =
     assertFailed "Long string not detected" $ encode longStr

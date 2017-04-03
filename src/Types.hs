@@ -9,11 +9,8 @@ module Types
         fromClapiValue,
         toClapiValue,
         ClapiMethod(..),
-        ClapiMessage(..),
         Message(..),
         msgMethod',
-        ClapiBundle,
-        ClapiMessageTag,
         InterpolationType(..),
         Interpolation(..),
         interpolation
@@ -27,13 +24,6 @@ import qualified Data.Text as T
 import Path (Path, Name)
 
 type CanFail a = Either String a
-
-data ClapiMessage = CMessage {
-    msgPath :: Path,
-    msgMethod :: ClapiMethod,
-    msgArgs :: [ClapiValue],
-    msgTags :: [ClapiMessageTag]
-} deriving (Eq, Show)
 
 type Attributee = String
 type Site = String
@@ -184,10 +174,6 @@ instance Clapiable a => Clapiable [a] where
 data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete
   deriving (Eq, Show, Read, Enum, Bounded)
-
-type ClapiMessageTag = (String, ClapiValue)
-
-type ClapiBundle = [ClapiMessage]
 
 data InterpolationType = ITConstant | ITLinear | ITBezier
   deriving (Show, Eq, Enum, Bounded)

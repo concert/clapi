@@ -18,7 +18,7 @@ import Pipes.Safe (runSafeT)
 import Data.Map.Clapi (joinM)
 import Tree ((+|))
 import Path (Path)
-import Types (Time(..), Interpolation(..), ClapiBundle, Message(..), msgPath', msgMethod', ClapiMethod(..), ClapiValue(..))
+import Types (Time(..), Interpolation(..), Message(..), msgPath', msgMethod', ClapiMethod(..), ClapiValue(..))
 import Server (User(..))
 import NamespaceTracker (namespaceTracker, Ownership(..), Owners, Registered)
 

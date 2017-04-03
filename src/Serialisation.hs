@@ -28,8 +28,8 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Types(
-    CanFail, ClapiValue(..), ClapiMessage(..), Message(..), ClapiMessageTag,
-    ClapiBundle, ClapiMethod(..), Time(..), Interpolation(..)
+    CanFail, ClapiValue(..), Message(..), ClapiMethod(..), Time(..),
+    Interpolation(..)
     )
 import qualified Path
 import qualified Path.Parsing as Path
@@ -174,38 +174,15 @@ instance Serialisable [ClapiValue] where
         typeTags <- composeParsers parser parseTags
         sequence $ map cvParser typeTags
 
--- FIXME: not sure this instance flexibility is a good thing or not!
-instance Serialisable [ClapiMessageTag] where
-    builder = taggedEncode derive build where
-        derive (_, cv) = [typeTag cv]
-        build (name, cv) = builder name <<>> cvBuilder cv
-    parser = do
-        -- FIXME: this feels really... proceedural :-/
-        typeTags <- parser :: Parser T.Text
-        sequence $ map getPairParser (T.unpack typeTags) where
-            getPairParser typeTag = do
-                name <- parser :: Parser T.Text
-                value <- cvParser typeTag
-                return ((T.unpack name), value)
-
-
-instance Serialisable ClapiMessage where
-    builder m =
-        (builder . msgPath $ m) <<>>
-        (builder . msgMethod $ m) <<>>
-        (builder . msgArgs $ m) <<>>
-        (builder . msgTags $ m)
-    parser = CMessage <$> parser <*> parser <*> parser <*> parser
-
 
 encodeListN :: (Serialisable a) => [a] -> CanFail Builder
 encodeListN = taggedEncode (const (1 :: Sum Word16)) builder
 
-instance Serialisable ClapiBundle where
+instance Serialisable [Message] where
     builder = encodeListN where
     parser = do
         len <- parser :: Parser Word16
-        messages <- count (fromIntegral len) (parser :: Parser ClapiMessage)
+        messages <- count (fromIntegral len) (parser :: Parser Message)
         return messages
 
 badTag :: (MonadFail m) => String -> Char ->  m a
