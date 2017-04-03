@@ -10,6 +10,8 @@ module Types
         toClapiValue,
         ClapiMethod(..),
         ClapiMessage(..),
+        Message(..),
+        msgMethod',
         ClapiBundle,
         ClapiMessageTag,
         InterpolationType(..),
@@ -22,7 +24,7 @@ import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 
-import Path (Path)
+import Path (Path, Name)
 
 type CanFail a = Either String a
 
@@ -32,6 +34,55 @@ data ClapiMessage = CMessage {
     msgArgs :: [ClapiValue],
     msgTags :: [ClapiMessageTag]
 } deriving (Eq, Show)
+
+type Attributee = String
+type Site = String
+
+data Message =
+    MsgError {msgPath' :: Path, msgErrTxt :: T.Text}
+  | MsgSet {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgArgs' :: [ClapiValue],
+        msgInterpolation :: Interpolation,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgAdd {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgArgs' :: [ClapiValue],
+        msgInterpolation :: Interpolation,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgRemove {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgClear {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgSubscribe {msgPath' :: Path}
+  | MsgUnsubscribe {msgPath' :: Path}
+  | MsgAssignType {msgPath' :: Path, msgTypePath :: Path}
+  | MsgDelete {msgPath' :: Path}
+  | MsgChildren {msgPath' :: Path, msgChildren :: [Name]}
+  deriving (Eq, Show)
+
+msgMethod' :: Message -> ClapiMethod
+msgMethod' (MsgError {}) = Error
+msgMethod' (MsgSet {}) = Set
+msgMethod' (MsgAdd {}) = Add
+msgMethod' (MsgRemove {}) = Remove
+msgMethod' (MsgClear {}) = Clear
+msgMethod' (MsgSubscribe {}) = Subscribe
+msgMethod' (MsgUnsubscribe {}) = Unsubscribe
+msgMethod' (MsgAssignType {}) = AssignType
+msgMethod' (MsgDelete {}) = Delete
+msgMethod' (MsgChildren {}) = Children
+
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 

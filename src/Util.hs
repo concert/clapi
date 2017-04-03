@@ -1,4 +1,5 @@
 module Util (
+    tag,
     camel,
     uncamel,
     parseType,
@@ -15,6 +16,9 @@ import qualified Data.Text as T
 import qualified Data.Attoparsec.Internal.Types as I
 import qualified Data.Attoparsec.Text as APT
 import qualified Data.Attoparsec.ByteString as APBS
+
+tag :: (Functor f) => (a -> b) -> f a -> f (b, a)
+tag f = fmap (\a -> (f a, a))
 
 uncamel :: String -> String
 uncamel [] = []
