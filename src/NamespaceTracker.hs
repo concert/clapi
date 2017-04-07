@@ -111,19 +111,17 @@ tagOwnership i ms = do
       Just i' -> if i' == i then Owner else Client
 
 
-type TrackerState i m = StateT (Owners i, Registered i) m
+liftL :: (Monad m) => StateT s1 m r -> StateT (s1, s2) m r
+liftL f = StateT $ \(s1, s2) -> do
+    (a, s1') <- runStateT f s1
+    return (a, (s1', s2))
 
-liftO :: (Monad m) => StateT (Owners i) m r -> TrackerState i m r
-liftO f = StateT $ \(o, r) -> do
-    (a, o') <- runStateT f o
-    return (a, (o', r))
+liftL' f a = liftL (f a)
 
-liftO' f a = liftO (f a)
-
-liftR :: (Monad m) => StateT (Registered i) m r -> TrackerState i m r
-liftR f = StateT $ \(o, r) -> do
-    (a, r') <- runStateT f r
-    return (a, (o, r'))
+liftR :: (Monad m) => StateT s2 m r -> StateT (s1, s2) m r
+liftR f = StateT $ \(s1, s2) -> do
+    (a, s2') <- runStateT f s2
+    return (a, (s1, s2'))
 
 liftR' f a = liftR (f a)
 
@@ -150,17 +148,17 @@ namespaceTracker o r x = evalStateT (_namespaceTracker x) (o, r)
 _namespaceTracker ::
     (Monad m, Ord i) =>
     (i, User, [Message]) ->
-    TrackerState i (TrackerProxy i m) r
+    StateT (Owners i, Registered i) (TrackerProxy i m) r
 _namespaceTracker (i, u, ms) =
   do
     oms <- return ms >>=
-        liftO' (tagOwnership i) >>=
+        liftL' (tagOwnership i) >>=
         liftR' (handleDisconnectR i) >>=
-        liftO' (handleDisconnectO i)
+        liftL' (handleDisconnectO i)
     let (fwdOms, badOms) = partition (methodAllowed . fmap msgMethod') oms
     oms' <- case fwdOms of
       [] -> return mempty
-      _ -> (lift $ respond (u, fwdOms)) >>= liftO' (updateOwnerships i)
+      _ -> (lift $ respond (u, fwdOms)) >>= liftL' (updateOwnerships i)
     bundleMap <- liftR (registerSubscriptions i oms') >>= liftR' (fanOutBundle i)
     liftR (mapM handleDeletedNamespace oms')
     let bundleMap' = case badOms of
