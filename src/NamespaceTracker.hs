@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, Rank2Types #-}
 module NamespaceTracker where
 
 import Control.Monad (filterM)
@@ -8,6 +8,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 
+import Control.Lens (view, set, Lens', _1, _2)
 import Pipes (lift)
 import Pipes.Core (Proxy, request, respond)
 
@@ -110,20 +111,15 @@ tagOwnership i ms = do
       Nothing -> Unclaimed
       Just i' -> if i' == i then Owner else Client
 
+stateL :: (Monad m) => Lens' t s -> StateT s m r -> StateT t m r
+stateL l f = StateT $ \t -> let s = view l t in do
+    -- FIXME: might be nice to combine the view and set into a single update
+    (a, s') <- runStateT f s
+    return (a, set l s' t)
 
-liftL :: (Monad m) => StateT s1 m r -> StateT (s1, s2) m r
-liftL f = StateT $ \(s1, s2) -> do
-    (a, s1') <- runStateT f s1
-    return (a, (s1', s2))
+stateL' :: (Monad m) => Lens' t s -> (a -> StateT s m r) -> a -> StateT t m r
+stateL' l f a = stateL l (f a)
 
-liftL' f a = liftL (f a)
-
-liftR :: (Monad m) => StateT s2 m r -> StateT (s1, s2) m r
-liftR f = StateT $ \(s1, s2) -> do
-    (a, s2') <- runStateT f s2
-    return (a, (s1, s2'))
-
-liftR' f a = liftR (f a)
 
 
 type TrackerProxy i m =
@@ -152,15 +148,16 @@ _namespaceTracker ::
 _namespaceTracker (i, u, ms) =
   do
     oms <- return ms >>=
-        liftL' (tagOwnership i) >>=
-        liftR' (handleDisconnectR i) >>=
-        liftL' (handleDisconnectO i)
+        stateL' _1 (tagOwnership i) >>=
+        stateL' _2 (handleDisconnectR i) >>=
+        stateL' _1 (handleDisconnectO i)
     let (fwdOms, badOms) = partition (methodAllowed . fmap msgMethod') oms
     oms' <- case fwdOms of
       [] -> return mempty
-      _ -> (lift $ respond (u, fwdOms)) >>= liftL' (updateOwnerships i)
-    bundleMap <- liftR (registerSubscriptions i oms') >>= liftR' (fanOutBundle i)
-    liftR (mapM handleDeletedNamespace oms')
+      _ -> (lift $ respond (u, fwdOms)) >>= stateL' _1 (updateOwnerships i)
+    bundleMap <- stateL _2 (registerSubscriptions i oms') >>=
+        stateL' _2 (fanOutBundle i)
+    stateL _2 (mapM handleDeletedNamespace oms')
     let bundleMap' = case badOms of
           [] -> bundleMap
           _ -> Mol.prepend i (uncurry disallowedMsg <$> badOms) bundleMap
