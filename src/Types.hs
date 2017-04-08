@@ -2,7 +2,6 @@
 module Types
     (
         CanFail,
-        eitherFail,
         Time(..),
         ClapiValue(..),
         Enumerated(..),
@@ -31,9 +30,6 @@ type CanFail a = Either String a
 
 instance MonadFail (Either String) where
     fail s = Left s
-
-eitherFail :: (MonadFail m) => CanFail a -> m a
-eitherFail = either fail return
 
 type Attributee = String
 type Site = String

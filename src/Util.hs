@@ -1,4 +1,5 @@
 module Util (
+    eitherFail,
     tag,
     camel,
     uncamel,
@@ -6,16 +7,21 @@ module Util (
     composeParsers,
 ) where
 
+import Prelude hiding (fail)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Maybe (fromJust)
 import Data.ByteString (ByteString)
 import Data.List.Split (splitOn)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
+import Control.Monad.Fail (MonadFail, fail)
 
 import qualified Data.Attoparsec.Internal.Types as I
 import qualified Data.Attoparsec.Text as APT
 import qualified Data.Attoparsec.ByteString as APBS
+
+eitherFail :: (MonadFail m) => Either String a -> m a
+eitherFail = either fail return
 
 tag :: (Functor f) => (a -> b) -> f a -> f (b, a)
 tag f = fmap (\a -> (f a, a))

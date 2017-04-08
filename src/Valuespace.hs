@@ -9,11 +9,12 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import Text.Printf (printf)
 
+import Util (eitherFail)
 import qualified Path
 import qualified Path.Parsing as Path
 import Types (
-    CanFail, eitherFail, ClapiValue(..), InterpolationType(..),
-    Interpolation(..), Time(..))
+    CanFail, ClapiValue(..), InterpolationType(..),
+    Interpolation(..), Time(..), fromClapiValue)
 import Tree (
   (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
