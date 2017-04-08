@@ -31,7 +31,8 @@ import Control.Lens (
     Lens, Lens', (.~), (&), view, over, ix, at, At(..), Index(..),
     IxValue(..), Ixed(..), makeLenses)
 import Control.Monad (foldM)
-import Control.Error.Util (hush, note)
+import Control.Monad.Fail (MonadFail)
+import Control.Error.Util (hush)
 import Text.Printf (printf)
 
 import Path (Name, Path, root, isChildOfAny)
@@ -149,10 +150,10 @@ treeOrphansAndMissing tree = (orphans, missing)
     orphans = Set.difference allPaths allChildPaths'
     missing = Set.difference allChildPaths allPaths
 
-treeGetType :: NodePath -> ClapiTree a -> CanFail TypePath
-treeGetType p (ClapiTree _ tm _) = nb $ Map.lookup p tm
+treeGetType :: (MonadFail m) => NodePath -> ClapiTree a -> m TypePath
+treeGetType p (ClapiTree _ tm _) = f $ Map.lookup p tm
   where
-    nb = note $ printf "Can't find type path for %v" (toString p)
+    f = Maybe.note $ printf "Can't find type path for %v" (toString p)
 
 treeInitNode :: NodePath -> TypePath -> ClapiTree a -> ClapiTree a
 treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
@@ -232,7 +233,7 @@ treeAction :: TreeAction a -> NodePath -> Maybe Site -> Time -> ClapiTree a ->
     CanFail (ClapiTree a)
 treeAction action path maybeSite t tree =
   do
-    node <- (note $ printf "not found %s" (toString path)) $ view (at path) tree
+    node <- (Maybe.note $ printf "not found %s" (toString path)) $ view (at path) tree
     newNode <- nodeAction action maybeSite t node
     newTree <- return $ tree & (at path) .~ (Just newNode)
     return newTree
