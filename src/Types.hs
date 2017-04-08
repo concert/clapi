@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExistentialQuantification, FlexibleInstances #-}
 module Types
     (
         CanFail,
@@ -17,13 +17,18 @@ module Types
     )
 where
 
+import Prelude hiding (fail)
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
+import Control.Monad.Fail (MonadFail, fail)
 
 import Path (Path, Name)
 
 type CanFail a = Either String a
+
+instance MonadFail (Either String) where
+    fail s = Left s
 
 type Attributee = String
 type Site = String
