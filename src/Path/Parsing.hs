@@ -1,10 +1,13 @@
-module Path.Parsing (toString, pathP, nameP) where
+module Path.Parsing (toString, fromString, pathP, nameP) where
 
 import Data.Char (isLetter, isDigit)
+import qualified Data.Text as T
 import Control.Applicative ((<|>))
+import Control.Monad.Fail (MonadFail)
 
-import Data.Attoparsec.Text (Parser, char, letter, satisfy, many')
+import Data.Attoparsec.Text (Parser, char, letter, satisfy, many', parseOnly)
 
+import Util (eitherFail)
 import Path (Path, root)
 
 sepChar = '/'
@@ -27,3 +30,6 @@ pathP = many' (separatorP >> nameP) <|> (separatorP >> return root)
 toString :: Path -> String
 toString [] = [sepChar]
 toString cs = concatMap (sepChar :) cs
+
+fromString :: (MonadFail m) => String -> m Path
+fromString s = eitherFail $ parseOnly pathP (T.pack s)
