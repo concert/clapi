@@ -2,6 +2,7 @@
 module Types
     (
         CanFail,
+        eitherFail,
         Time(..),
         ClapiValue(..),
         Enumerated(..),
@@ -18,6 +19,7 @@ module Types
 where
 
 import Prelude hiding (fail)
+import Data.Either (either)
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
@@ -29,6 +31,9 @@ type CanFail a = Either String a
 
 instance MonadFail (Either String) where
     fail s = Left s
+
+eitherFail :: (MonadFail m) => CanFail a -> m a
+eitherFail = either fail return
 
 type Attributee = String
 type Site = String
