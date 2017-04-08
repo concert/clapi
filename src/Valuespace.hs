@@ -143,6 +143,9 @@ type VsTree = ClapiTree [ClapiValue]
 type Vmap = Map.Map NodePath [Validator]
 data Valuespace = Valuespace {getTree :: VsTree, getVmap :: Vmap}
 
+instance Show Valuespace where
+    show (Valuespace t _) = show t
+
 updateVs :: (VsTree -> CanFail VsTree) -> (Vmap -> CanFail Vmap) ->
     Valuespace -> CanFail Valuespace
 updateVs f g (Valuespace vsTree vmap) =
