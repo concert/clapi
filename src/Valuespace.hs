@@ -6,7 +6,7 @@ import Control.Monad.Fail (MonadFail)
 import Control.Lens ((&))
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-import Data.Text (Text, pack)
+import qualified Data.Text as T
 import Text.Printf (printf)
 
 import qualified Path
@@ -26,25 +26,25 @@ data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 data Definition =
     TupleDef {
       liberty :: Liberty,
-      doc :: Text,
+      doc :: T.Text,
       valueNames :: [Path.Name],
-      validatorDescs :: [Text],
+      validatorDescs :: [T.Text],
       validators :: [Validator],
       permittedInterpolations :: Set.Set InterpolationType}
   | StructDef {
       liberty :: Liberty,
-      doc :: Text,
+      doc :: T.Text,
       childNames :: [Path.Name],
       childTypes :: [Path.Path],
       childLiberties :: [Liberty]}
   | ArrayDef {
       liberty :: Liberty,
-      doc :: Text,
+      doc :: T.Text,
       childType :: Path.Path,
       childLiberty :: Liberty}
 
 tupleDef ::
-    (MonadFail m) => Liberty -> Text -> [Path.Name] -> [Text] ->
+    (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [T.Text] ->
     Set.Set InterpolationType -> m Definition
 tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
    let
@@ -61,7 +61,7 @@ tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
         permittedInterpolations
 
 structDef ::
-    (MonadFail m) => Liberty -> Text -> [Path.Name] -> [Path.Path] ->
+    (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [Path.Path] ->
     [Liberty] -> m Definition
 structDef liberty doc childNames childTypes childLiberties =
   let
@@ -76,13 +76,13 @@ structDef liberty doc childNames childTypes childLiberties =
     return $ StructDef liberty doc childNames childTypes childLiberties
 
 arrayDef ::
-    (MonadFail m) => Liberty -> Text -> Path.Path -> Liberty -> m Definition
+    (MonadFail m) => Liberty -> T.Text -> Path.Path -> Liberty -> m Definition
 arrayDef l d ct cl = return $ ArrayDef l d ct cl
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
-listDesc d = pack $ printf "list[%v]" d
-setDesc d = pack $ printf "set[%v]" d
+listDesc d = T.pack $ printf "list[%v]" d
+setDesc d = T.pack $ printf "set[%v]" d
 -- FIXME: would like to include and share a regex for names:
 namesDesc = "set[string[]]"
 typeDesc = "ref[/api/types/base]"
@@ -103,26 +103,26 @@ baseArrayDef = unpack $ tupleDef
 defToValues :: Definition -> [ClapiValue]
 defToValues (TupleDef l d ns vds vs is) =
   [
-    CString $ pack $ show l,
+    CString $ T.pack $ show l,
     CString d,
-    CList $ fmap (CString . pack) ns,
+    CList $ fmap (CString . T.pack) ns,
     CList $ fmap CString vds,
-    CList $ fmap (CString . pack . show) $ Set.toList is
+    CList $ fmap (CString . T.pack . show) $ Set.toList is
   ]
 defToValues (StructDef l d ns ts ls) =
   [
-    CString $ pack $ show l,
+    CString $ T.pack $ show l,
     CString $ d,
-    CList $ fmap (CString . pack) ns,
-    CList $ fmap (CString . pack . Path.toString) ts,
-    CList $ fmap (CString . pack . show) ls
+    CList $ fmap (CString . T.pack) ns,
+    CList $ fmap (CString . T.pack . Path.toString) ts,
+    CList $ fmap (CString . T.pack . show) ls
   ]
 defToValues (ArrayDef l d t cl) =
   [
-    CString $ pack $ show l,
+    CString $ T.pack $ show l,
     CString $ d,
-    CString $ pack $ Path.toString t,
-    CString $ pack $ show cl
+    CString $ T.pack $ Path.toString t,
+    CString $ T.pack $ show cl
   ]
 
 
@@ -170,7 +170,7 @@ getMetaType p (Valuespace tree _) =
       | otherwise = Left "Weird metapath!"
 
 
-initStruct :: NodePath -> TypePath -> Liberty -> Text ->
+initStruct :: NodePath -> TypePath -> Liberty -> T.Text ->
     [(Path.Name, TypePath)] -> Valuespace -> CanFail Valuespace
 initStruct np tp lib doc children =
     updateVs updateTree updateVmap
