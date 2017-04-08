@@ -21,7 +21,7 @@ import Server (User)
 
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
 type Owners i = Map.Map Name i
-type Om = (Ownership, ClapiMessage)
+type Om = (Ownership, Message)
 type Registered i = Mos.Mos i Path
 
 namespace :: Path -> Name
