@@ -14,7 +14,8 @@ import qualified Path
 import qualified Path.Parsing as Path
 import Types (
     CanFail, ClapiValue(..), InterpolationType(..),
-    Interpolation(..), Time(..), fromClapiValue)
+    Interpolation(..), Time(..), Enumerated(..), toClapiValue, fromClapiValue,
+    getEnum)
 import Tree (
   (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
@@ -114,26 +115,26 @@ baseArrayDef = unpack $ tupleDef
 defToValues :: Definition -> [ClapiValue]
 defToValues (TupleDef l d ns vds vs is) =
   [
-    CString $ T.pack $ show l,
-    CString d,
-    CList $ fmap (CString . T.pack) ns,
-    CList $ fmap CString vds,
-    CList $ fmap (CString . T.pack . show) $ Set.toList is
+    toClapiValue $ Enumerated l,
+    toClapiValue d,
+    toClapiValue $ T.pack <$> ns,
+    toClapiValue vds,
+    toClapiValue $ Enumerated <$> Set.toList is
   ]
 defToValues (StructDef l d ns ts ls) =
   [
-    CString $ T.pack $ show l,
-    CString $ d,
-    CList $ fmap (CString . T.pack) ns,
-    CList $ fmap (CString . T.pack . Path.toString) ts,
-    CList $ fmap (CString . T.pack . show) ls
+    toClapiValue $ Enumerated l,
+    toClapiValue d,
+    toClapiValue $ T.pack <$> ns,
+    toClapiValue $ T.pack . Path.toString <$> ts,
+    toClapiValue $ Enumerated <$> ls
   ]
 defToValues (ArrayDef l d t cl) =
   [
-    CString $ T.pack $ show l,
-    CString $ d,
-    CString $ T.pack $ Path.toString t,
-    CString $ T.pack $ show cl
+    toClapiValue $ Enumerated l,
+    toClapiValue d,
+    toClapiValue $ T.pack $ Path.toString t,
+    toClapiValue $ Enumerated cl
   ]
 
 
