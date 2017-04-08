@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Valuespace where
 
-import Control.Monad (liftM)
+import Control.Monad (liftM, when)
+import Control.Monad.Fail (MonadFail)
 import Control.Lens ((&))
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -11,12 +12,15 @@ import Text.Printf (printf)
 import qualified Path
 import qualified Path.Parsing as Path
 import Types (
-    CanFail, ClapiValue(..), InterpolationType(..), Interpolation(..),
-    Time(..))
+    CanFail, eitherFail, ClapiValue(..), InterpolationType(..),
+    Interpolation(..), Time(..))
 import Tree (
   (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
 import Validator (Validator, fromText, enumDesc)
+
+unpack (Right v) = v
+unpack (Left v) = error v
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 data Definition =
@@ -24,8 +28,9 @@ data Definition =
       liberty :: Liberty,
       doc :: Text,
       valueNames :: [Path.Name],
-      validators :: [Text],
-      permittedInterpolations :: [InterpolationType]}
+      validatorDescs :: [Text],
+      validators :: [Validator],
+      permittedInterpolations :: Set.Set InterpolationType}
   | StructDef {
       liberty :: Liberty,
       doc :: Text,
@@ -37,7 +42,42 @@ data Definition =
       doc :: Text,
       childType :: Path.Path,
       childLiberty :: Liberty}
-  deriving Show
+
+tupleDef ::
+    (MonadFail m) => Liberty -> Text -> [Path.Name] -> [Text] ->
+    Set.Set InterpolationType -> m Definition
+tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
+   let
+     lvn = length valueNames
+     lvd = length validatorDescs
+   in do
+     when (lvn /= lvd) (
+        fail $ printf
+        "mistmatched number of valueNames (%v) and validator descriptions (%v)"
+        lvn lvd)
+     validators <- mapM (eitherFail . fromText) validatorDescs
+     return $
+        TupleDef liberty doc valueNames validatorDescs validators
+        permittedInterpolations
+
+structDef ::
+    (MonadFail m) => Liberty -> Text -> [Path.Name] -> [Path.Path] ->
+    [Liberty] -> m Definition
+structDef liberty doc childNames childTypes childLiberties =
+  let
+    lcn = length childNames
+    lct = length childTypes
+    lcl = length childLiberties
+  in do
+    when (lcn /= lct || lcn /= lcl) (
+        fail $ printf
+        "mismatched number of child names (%v), types (%v) and liberties(%v)"
+        lcn lct lcl)
+    return $ StructDef liberty doc childNames childTypes childLiberties
+
+arrayDef ::
+    (MonadFail m) => Liberty -> Text -> Path.Path -> Liberty -> m Definition
+arrayDef l d ct cl = return $ ArrayDef l d ct cl
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
@@ -47,13 +87,13 @@ setDesc d = pack $ printf "set[%v]" d
 namesDesc = "set[string[]]"
 typeDesc = "ref[/api/types/base]"
 
-baseTupleDef = TupleDef
+baseTupleDef = unpack $ tupleDef
     Cannot "t" ["liberty", "doc", "valueNames", "validators", "interpolationTypes"]
     [libertyDesc, "string", namesDesc, "list[validator]", setDesc interpolationTypeDesc] mempty
-baseStructDef = TupleDef
+baseStructDef = unpack $ tupleDef
     Cannot "s" ["liberty", "doc", "childNames", "childTypes", "clibs"]
     [libertyDesc, "string", namesDesc, listDesc typeDesc, listDesc libertyDesc] mempty
-baseArrayDef = TupleDef
+baseArrayDef = unpack $ tupleDef
     Cannot "a" ["liberty", "doc", "childType", "clib"]
     [libertyDesc, "string", typeDesc, libertyDesc] mempty
 
@@ -61,13 +101,13 @@ baseArrayDef = TupleDef
 --   deriving (Show)
 
 defToValues :: Definition -> [ClapiValue]
-defToValues (TupleDef l d ns vs is) =
+defToValues (TupleDef l d ns vds vs is) =
   [
     CString $ pack $ show l,
     CString d,
     CList $ fmap (CString . pack) ns,
-    CList $ fmap CString vs,
-    CList $ fmap (CString . pack . show) is
+    CList $ fmap CString vds,
+    CList $ fmap (CString . pack . show) $ Set.toList is
   ]
 defToValues (StructDef l d ns ts ls) =
   [
@@ -85,12 +125,7 @@ defToValues (ArrayDef l d t cl) =
     CString $ pack $ show cl
   ]
 
-defToValidators :: Definition -> CanFail [Validator]
-defToValidators t@(TupleDef {}) = sequence $ fmap fromText $ validators t
-defToValidators _ = Right []
 
--- valuesToDef :: Values -> Definition
--- valuesToDef = undefined
 
 data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 type VsTree = ClapiTree [ClapiValue]
@@ -207,10 +242,9 @@ getBaseValuespace = unpack (
         ["root", "api", "types", "base", "self"]
     )
   where
-    unpack (Right v) = v
-    unpack (Left v) = error v
-    versionDef = TupleDef Cannot "v" ["maj", "min"] ["noope"] []
-    buildDef = TupleDef Cannot "b" ["value"] ["none here"] []
+    versionDef = unpack $ tupleDef Cannot "v" ["maj", "min"] ["word32", "int32"] mempty
+    -- FIXME: want to be able to put in a regex for a sha1: [0-9a-f]{x}
+    buildDef = unpack $ tupleDef Cannot "b" ["value"] ["string[banana]"] mempty
     addConst' cvs tp = updateVsTree (addConst cvs tp)
     treeInitNode' np tp = updateVsTree f
       where

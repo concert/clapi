@@ -16,5 +16,6 @@ tests = [
 
 testBaseValuespace = assertEqual "clean base valuespace" (mempty, mempty) $
     treeOrphansAndMissing baseVsTree
+    -- FIXME: this misses latent errors in the values because of laziness
   where
     baseVsTree = getTree getBaseValuespace

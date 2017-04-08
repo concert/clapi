@@ -186,7 +186,7 @@ data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
   deriving (Eq, Show, Read, Enum, Bounded)
 
 data InterpolationType = ITConstant | ITLinear | ITBezier
-  deriving (Show, Eq, Enum, Bounded)
+  deriving (Show, Eq, Ord, Enum, Bounded)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Show, Eq)
 
