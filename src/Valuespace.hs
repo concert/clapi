@@ -137,9 +137,6 @@ baseArrayDef = unpack $ tupleDef
     Cannot "a" ["liberty", "doc", "childType", "clib"]
     [libertyDesc, "string", typeDesc, libertyDesc] mempty
 
--- data Values = Tuple [ClapiValue] | Struct [ClapiValue] | Array [ClapiValue]
---   deriving (Show)
-
 defToValues :: Definition -> [ClapiValue]
 defToValues (TupleDef l d ns vds vs is) =
   [
@@ -176,7 +173,6 @@ valuesToDef
     vds' <- fromClapiValue vds
     is' <- Set.fromList <$> fmap getEnum <$> fromClapiValue is
     tupleDef l' d ns' vds' is'
-valuesToDef Tuple _ = fail "bad types to define tuple"
 valuesToDef
     Struct [l@(CEnum _), CString d, ns@(CList _), ts@(CList _), ls@(CList _)] =
   do
@@ -186,7 +182,6 @@ valuesToDef
     ts'' <- mapM Path.fromString ts'
     ls' <- fmap getEnum <$> fromClapiValue ls
     structDef l' d ns' ts'' ls'
-valuesToDef Struct _ = fail "bad types to define struct"
 valuesToDef
     Array [l@(CEnum _), CString d, CString t, cl@(CEnum _)] =
   do
@@ -194,7 +189,7 @@ valuesToDef
     t' <- Path.fromString $ T.unpack t
     cl' <- getEnum <$> fromClapiValue cl
     arrayDef l' d t' cl'
-valuesToDef Array _ = fail "bad types to define array"
+valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
 
 type VsTree = ClapiTree [ClapiValue]
