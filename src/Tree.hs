@@ -35,7 +35,7 @@ import Control.Monad.Fail (MonadFail)
 import Control.Error.Util (hush)
 import Text.Printf (printf)
 
-import Path (Name, Path, root, isChildOfAny)
+import Path (Name, Path, root, isChildOfAny, isChildOf)
 import Path.Parsing (toString)
 import Types (CanFail, Time, ClapiValue, Interpolation(..))
 
@@ -187,7 +187,7 @@ treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
     Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
   where
     (removedNodes, remainingNodes) = Map.partitionWithKey f nodeMap
-    f perhapsChildPath _ = isPrefixOf path perhapsChildPath
+    f perhapsChildPath _ = perhapsChildPath `isChildOf` path
     removedTypePaths = Map.mapMaybeWithKey lookupOldType removedNodes
     lookupOldType nodePath _ = Map.lookup nodePath typeMap
     newTypeMap = Map.difference typeMap removedTypePaths
