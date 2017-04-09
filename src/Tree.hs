@@ -91,16 +91,15 @@ instance At (Node a) where
 
 data ClapiTree a = ClapiTree {
     _getNodeMap :: Map.Map NodePath (Node a),
-    _getTypeMap :: Map.Map NodePath TypePath,
-    _getTypeUseageMap :: Mos.Mos TypePath NodePath
+    _getTypes :: Mos.Dependencies NodePath TypePath
     }
   deriving (Eq)
 makeLenses ''ClapiTree
 
 instance Monoid (ClapiTree a) where
-    mempty = ClapiTree mempty mempty mempty
-    mappend (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
-        ClapiTree (nm1 <> nm2) (tm1 <> tm2) (tum1 <> tum2)
+    mempty = ClapiTree mempty mempty
+    mappend (ClapiTree nm1 ts1) (ClapiTree nm2 ts2) =
+        ClapiTree (nm1 <> nm2) (ts1 <> ts2)
 
 type instance Index (ClapiTree a) = NodePath
 type instance IxValue (ClapiTree a) = Node a
@@ -113,13 +112,13 @@ instance At (ClapiTree a) where
 
 
 formatTree :: (Show a) => ClapiTree a -> String
-formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
+formatTree (ClapiTree nodeMap types) = intercalate "\n" lines
   where
     lines = mconcat $ ["---"] : (fmap toLines $ Map.toList nodeMap)
     toLines (path, node) = nodeHeader path : nodeSiteMapToLines path node
     nodeHeader path =
         printf "%s [%s]" (formatPath path)
-        (toString $ Maybe.toMonoid $ Map.lookup path typeMap)
+        (toString $ Maybe.toMonoid $ Mos.getDependency path types)
     formatPath [] = "/"
     formatPath (n:[]) = "  " ++ n
     formatPath (n:ns) = "  " ++ formatPath ns
@@ -151,62 +150,49 @@ treeOrphansAndMissing tree = (orphans, missing)
     missing = Set.difference allChildPaths allPaths
 
 treeGetType :: (MonadFail m) => NodePath -> ClapiTree a -> m TypePath
-treeGetType p (ClapiTree _ tm _) = f $ Map.lookup p tm
+treeGetType p (ClapiTree _ ts) = f $ Mos.getDependency p ts
   where
     f = Maybe.note $ printf "Can't find type path for %v" (toString p)
 
 treeInitNode :: NodePath -> TypePath -> ClapiTree a -> ClapiTree a
-treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
-    ClapiTree newNodeMap newTypeMap newTypeUsedByMap
+treeInitNode path typePath (ClapiTree nodeMap types) =
+    ClapiTree newNodeMap newTypes
   where
     newNodeMap = Map.insert path mempty nodeMap
-    newTypeMap = Map.insert path typePath typeMap
-    maybeOldTypePath = Map.lookup path typeMap
-    newTypeUsedByMap =
-        mosDelete' maybeOldTypePath path $
-        Mos.insert typePath path $
-        typeUsedByMap
-    mosDelete' Nothing _ = id
-    mosDelete' (Just k) a = Mos.delete k a
+    newTypes = Mos.setDependency path typePath types
 
 treeInitNodes :: Map.Map NodePath TypePath -> ClapiTree a -> ClapiTree a
-treeInitNodes typePathMap (ClapiTree nm tm tum) = ClapiTree newNm newTm newTum
+treeInitNodes typePathMap (ClapiTree nm types) = ClapiTree newNm newTypes
   where
     onlyNewNm = fmap (const mempty) typePathMap
     newNm = Map.union onlyNewNm nm
-    newTm = Map.union typePathMap tm
-    onlyOldTum =
-      Mos.invertMap $ Map.fromList $ catMaybes $ fmap lookup $ Map.keys typePathMap
-    lookup np = sequence (np, Map.lookup np tm)
-    newTum = Mos.union (Mos.difference tum onlyOldTum) (Mos.invertMap typePathMap)
+    newTypes = Mos.setDependencies typePathMap types
 
 
 treeDelete :: NodePath -> ClapiTree a -> CanFail (ClapiTree a)
-treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
+treeDelete path (ClapiTree nodeMap types) =
     -- FIXME: this can't fail!
-    Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
+    Right $ ClapiTree remainingNodes newTypes
   where
     (removedNodes, remainingNodes) = Map.partitionWithKey f nodeMap
     f perhapsChildPath _ = perhapsChildPath `isChildOf` path
-    removedTypePaths = Map.mapMaybeWithKey lookupOldType removedNodes
-    lookupOldType nodePath _ = Map.lookup nodePath typeMap
-    newTypeMap = Map.difference typeMap removedTypePaths
-    newUsedByMap = Mos.difference typesUsedByMap $ Mos.invertMap removedTypePaths
+    newTypes = Mos.delDependencies (Map.keys removedNodes) types
 
-treeDeleteNodes :: [NodePath] -> ClapiTree a -> CanFail (ClapiTree a)
-treeDeleteNodes nodePaths (ClapiTree nm tm tum)
-  | length removedNodes < length nodePaths =
-      Left $"could not delete paths " ++ (show missingPaths)
-  | otherwise = Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
-  where
-    (removedNodes, remainingNodes) =
-        Map.partitionWithKey (\np _ -> isChildOfAny np nodePaths) nm
-    removedTypePaths =
-        Map.mapMaybeWithKey (\np _ -> Map.lookup np tm) removedNodes
-    newTypeMap = Map.difference tm removedTypePaths
-    newUsedByMap = Mos.difference tum $ Mos.invertMap removedTypePaths
-    missingPaths =
-        Set.difference (Set.fromList nodePaths) (Map.keysSet removedNodes)
+-- -- FIXME: multiple dependency updates!
+-- treeDeleteNodes :: [NodePath] -> ClapiTree a -> CanFail (ClapiTree a)
+-- treeDeleteNodes nodePaths (ClapiTree nm tm tum)
+--   | length removedNodes < length nodePaths =
+--       Left $"could not delete paths " ++ (show missingPaths)
+--   | otherwise = Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
+--   where
+--     (removedNodes, remainingNodes) =
+--         Map.partitionWithKey (\np _ -> isChildOfAny np nodePaths) nm
+--     removedTypePaths =
+--         Map.mapMaybeWithKey (\np _ -> Map.lookup np tm) removedNodes
+--     newTypeMap = Map.difference tm removedTypePaths
+--     newUsedByMap = Mos.difference tum $ Mos.invertMap removedTypePaths
+--     missingPaths =
+--         Set.difference (Set.fromList nodePaths) (Map.keysSet removedNodes)
 
 treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
 treeSetChildren path keys tree = at path f tree
@@ -216,7 +202,7 @@ treeSetChildren path keys tree = at path f tree
 
 treeSetChildren' :: Map.Map NodePath [Name] -> ClapiTree a ->
     CanFail (ClapiTree a)
-treeSetChildren' childKeyMap tree@(ClapiTree nm _ _) =
+treeSetChildren' childKeyMap tree@(ClapiTree nm _) =
   do
     changedNodes <- sequence $ merge
         (mapMissing notFound)
@@ -303,7 +289,7 @@ data TreeDelta a = Init TypePath
 
 treeDiff :: (Eq a) => ClapiTree a -> ClapiTree a ->
     CanFail [(NodePath, TreeDelta a)]
-treeDiff (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
+treeDiff (ClapiTree nm1 types1) (ClapiTree nm2 types2) =
     minimiseDeletes . minimiseClears <$> allDeltas
   where
     flatten :: [(a, [b])] -> [(a, b)]
@@ -315,14 +301,14 @@ treeDiff (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
         (zipWithMatched inBoth) nm1 nm2
     onlyInNm1 np n1 = Right [Delete]
     onlyInNm2 np n2 =
-        ((maybeToList $ Init <$> Map.lookup np tm2) ++) <$>
+        ((maybeToList $ Init <$> Mos.getDependency np types2) ++) <$>
         nodeDiff mempty n2
     inBoth np n1 n2
       | tp1 /= tp2 = ((Maybe.toMonoid $ sequence $ [Init <$> tp2]) ++) <$> nodeDiff mempty n2
       | otherwise = nodeDiff n1 n2
       where
-        tp1 = Map.lookup np tm1
-        tp2 = Map.lookup np tm2
+        tp1 = Mos.getDependency np types1
+        tp2 = Mos.getDependency np types2
 
 
 minimiseDeletes :: [(NodePath, TreeDelta a)] -> [(NodePath, TreeDelta a)]

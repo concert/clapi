@@ -109,10 +109,10 @@ instance (Arbitrary a) => Arbitrary (ClapiTree a) where
       do
         nm <- arbitraryMap 0 4 arbitraryPath (const arbitrary)
         tm <- sequence $ fmap (const arbitraryPath) nm
-        return $ ClapiTree nm tm (Mos.invertMap tm)
+        return $ ClapiTree nm (tm, Mos.invertMap tm)
 
 slightlyDifferentTree :: (Arbitrary a) => ClapiTree a -> Gen (ClapiTree a)
-slightlyDifferentTree (ClapiTree nm tm tum) =
+slightlyDifferentTree (ClapiTree nm (tm, _)) =
   do
     nm' <- slightlyDifferentMap arbitrary slightlyDifferentNode nm
     deletedKeys <- return $ Set.toList $ Set.difference (Map.keysSet nm) (Map.keysSet nm')
@@ -124,7 +124,7 @@ slightlyDifferentTree (ClapiTree nm tm tum) =
     arbTm <- sequence $ fmap (const arbitraryPath) nm''
     arbTm' <- return $ Map.intersection deltaTm' arbTm
     tm' <- return $ Map.union arbTm' arbTm
-    return $ ClapiTree nm'' tm' (Mos.invertMap tm')
+    return $ ClapiTree nm'' (tm', Mos.invertMap tm')
 
 data TreePair a = TreePair (ClapiTree a) (ClapiTree a) deriving (Show)
 instance (Arbitrary a) => Arbitrary (TreePair a) where
@@ -132,17 +132,16 @@ instance (Arbitrary a) => Arbitrary (TreePair a) where
         t1 <- arbitrary
         t2 <- slightlyDifferentTree t1
         return $ TreePair t1 t2
-    shrink (TreePair (ClapiTree nm1 tm1 _) (ClapiTree nm2 tm2 _)) = do
+    shrink (TreePair (ClapiTree nm1 types1) (ClapiTree nm2 types2)) = do
         (np, n1) <- excludeSingleton $ Map.toList nm1
-        tp1 <- get np tm1
-        n2 <- get np nm2
-        tp2 <- get np tm2
+        tp1 <- toList $ Mos.getDependency np types1
+        n2 <- toList $ Map.lookup np nm2
+        tp2 <- toList $ Mos.getDependency np types2
         return $ TreePair (make np n1 tp1) (make np n2 tp2)
       where
         excludeSingleton (a:[]) = []
         excludeSingleton as = as
-        get k m = toList $ Map.lookup k m
-        make np n tp = ClapiTree newNm newTm newTum
+        make np n tp = ClapiTree newNm (newTm, newTum)
           where
             newNm = Map.singleton np n
             newTm = Map.singleton np tp
