@@ -33,3 +33,28 @@ union :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 union = merge preserveMissing preserveMissing (zipWithMatched f)
   where
     f k sa1 sa2 = Set.union sa1 sa2
+
+
+type Dependencies k a = (Map.Map k a, Mos a k)
+
+getDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
+getDependency k = Map.lookup k . fst
+
+getDependants :: (Ord k, Ord a) => a -> Dependencies k a -> Maybe (Set.Set k)
+getDependants a = Map.lookup a . snd
+
+setDependency :: (Ord k, Ord a) => k -> a -> Dependencies k a -> Dependencies k a
+setDependency k a (deps, revDeps) = (deps', insert a k $ revDeps' mCurA)
+  where
+    f _ newA curA = newA
+    (mCurA, deps') = Map.insertLookupWithKey f k a deps
+    revDeps' (Just curA) = delete curA k revDeps
+    revDeps' Nothing = revDeps
+
+delDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Dependencies k a
+delDependency k (deps, revDeps) = (deps', revDeps' ma)
+  where
+    f _ a = Nothing
+    (ma, deps') = Map.updateLookupWithKey f k deps
+    revDeps' (Just a) = delete a k revDeps
+    revDeps' Nothing = revDeps
