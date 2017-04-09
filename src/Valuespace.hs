@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
 module Valuespace where
 
+import Prelude hiding (fail)
 import Control.Monad (liftM, when)
-import Control.Monad.Fail (MonadFail)
+import Control.Monad.Fail (MonadFail, fail)
 import Control.Lens ((&), makeLenses, view)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -15,9 +16,8 @@ import Util (eitherFail)
 import qualified Path
 import qualified Path.Parsing as Path
 import Types (
-    CanFail, ClapiValue(..), InterpolationType(..),
-    Interpolation(..), Time(..), Enumerated(..), toClapiValue, fromClapiValue,
-    getEnum)
+    ClapiValue(..), InterpolationType(..), Interpolation(..), Time(..),
+    Enumerated(..), toClapiValue, fromClapiValue, getEnum)
 import Tree (
   (+|), ClapiTree(..), NodePath, TypePath, treeGetType, treeInitNode,
   treeInitNodes, treeSetChildren, treeAdd)
@@ -205,15 +205,17 @@ makeLenses ''Valuespace
 instance Show Valuespace where
     show = show . view getTree
 
-updateVs :: (VsTree -> CanFail VsTree) -> (Dmap -> CanFail Dmap) ->
-    Valuespace -> CanFail Valuespace
+updateVs ::
+    (MonadFail m) => (VsTree -> m VsTree) -> (Dmap -> m Dmap) ->
+    Valuespace -> m Valuespace
 updateVs f g (Valuespace vsTree xrefs vmap) =
   do
     vsTree' <- f vsTree
     vmap' <- g vmap
     return $ Valuespace vsTree' xrefs vmap'
 
-updateVsTree :: (VsTree -> CanFail VsTree) -> Valuespace -> CanFail Valuespace
+updateVsTree ::
+    (MonadFail m) => (VsTree -> m VsTree) -> Valuespace -> m Valuespace
 updateVsTree f = updateVs f return
 
 
@@ -229,7 +231,7 @@ structTypePath = ["api", "types", "base", "struct"]
 arrayTypePath :: Path.Path
 arrayTypePath = ["api", "types", "base", "array"]
 
-getMetaType :: NodePath -> Valuespace -> CanFail MetaType
+getMetaType :: (MonadFail m) => NodePath -> Valuespace -> m MetaType
 getMetaType p vs =
   do
     tp <- treeGetType p tree
@@ -238,16 +240,17 @@ getMetaType p vs =
   where
     tree = view getTree vs
     categorise mtp
-      | mtp == tupleTypePath = Right Tuple
-      | mtp == structTypePath = Right Struct
-      | mtp == arrayTypePath = Right Array
-      | otherwise = Left "Weird metapath!"
+      | mtp == tupleTypePath = return Tuple
+      | mtp == structTypePath = return Struct
+      | mtp == arrayTypePath = return Array
+      | otherwise = fail "Weird metapath!"
 
 
-initStruct :: NodePath -> TypePath -> Liberty -> T.Text ->
-    [(Path.Name, TypePath)] -> Valuespace -> CanFail Valuespace
+initStruct ::
+    (MonadFail m) => NodePath -> TypePath -> Liberty -> T.Text ->
+    [(Path.Name, TypePath)] -> Valuespace -> m Valuespace
 initStruct np tp lib doc children =
-    updateVs updateTree updateVmap
+    updateVs (eitherFail . updateTree) updateVmap
   where
     updateTree tree =
         tree &
@@ -269,8 +272,8 @@ globalSite = Nothing
 anon = Nothing
 tconst = Time 0 0
 
-addConst :: [ClapiValue] -> NodePath -> VsTree -> CanFail VsTree
-addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
+addConst :: (MonadFail m) => [ClapiValue] -> NodePath -> VsTree -> m VsTree
+addConst cvs np = eitherFail . treeAdd anon IConstant cvs np globalSite tconst
 
 getBaseValuespace :: Valuespace
 getBaseValuespace = unpack (
