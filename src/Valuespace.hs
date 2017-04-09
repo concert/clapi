@@ -74,6 +74,10 @@ instance Eq Definition where
     (ArrayDef l1 d1 t1 cl1) == (ArrayDef l2 d2 t2 cl2) =
         l1 == l2 && d1 == d2 && t1 == t2 && cl1 == cl2
 
+definitionValidators :: Definition -> [Validator]
+definitionValidators t@(TupleDef {}) = validators t
+definitionValidators _ = []
+
 tupleDef ::
     (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [T.Text] ->
     Set.Set InterpolationType -> m Definition
