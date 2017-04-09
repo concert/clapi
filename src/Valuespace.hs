@@ -3,11 +3,13 @@ module Valuespace where
 
 import Control.Monad (liftM, when)
 import Control.Monad.Fail (MonadFail)
-import Control.Lens ((&), makeLenses)
+import Control.Lens ((&), makeLenses, view)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import Text.Printf (printf)
+
+import qualified Data.Map.Mos as Mos
 
 import Util (eitherFail)
 import qualified Path
@@ -194,19 +196,22 @@ valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
 type VsTree = ClapiTree [ClapiValue]
 type Dmap = Map.Map NodePath Definition
-data Valuespace = Valuespace {_getTree :: VsTree, _getDmap :: Dmap}
+data Valuespace = Valuespace {
+    _getTree :: VsTree,
+    _xrefs :: Mos.Dependencies Path.Path Path.Path,
+    _getDmap :: Dmap}
 makeLenses ''Valuespace
 
 instance Show Valuespace where
-    show (Valuespace t _) = show t
+    show = show . view getTree
 
 updateVs :: (VsTree -> CanFail VsTree) -> (Dmap -> CanFail Dmap) ->
     Valuespace -> CanFail Valuespace
-updateVs f g (Valuespace vsTree vmap) =
+updateVs f g (Valuespace vsTree xrefs vmap) =
   do
     vsTree' <- f vsTree
     vmap' <- g vmap
-    return $ Valuespace vsTree' vmap'
+    return $ Valuespace vsTree' xrefs vmap'
 
 updateVsTree :: (VsTree -> CanFail VsTree) -> Valuespace -> CanFail Valuespace
 updateVsTree f = updateVs f return
@@ -225,12 +230,13 @@ arrayTypePath :: Path.Path
 arrayTypePath = ["api", "types", "base", "array"]
 
 getMetaType :: NodePath -> Valuespace -> CanFail MetaType
-getMetaType p (Valuespace tree _) =
+getMetaType p vs =
   do
     tp <- treeGetType p tree
     mtp <- treeGetType tp tree
     categorise mtp
   where
+    tree = view getTree vs
     categorise mtp
       | mtp == tupleTypePath = Right Tuple
       | mtp == structTypePath = Right Struct
@@ -268,7 +274,7 @@ addConst cvs np = treeAdd anon IConstant cvs np globalSite tconst
 
 getBaseValuespace :: Valuespace
 getBaseValuespace = unpack (
-    Valuespace mempty mempty &
+    Valuespace mempty mempty mempty &
     initStruct Path.root
         ["api", "types", "containers", "root"]
         Cannot "doc"
