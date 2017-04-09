@@ -35,6 +35,8 @@ unpack (Right v) = v
 unpack (Left v) = error v
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
+
+data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 data Definition =
     TupleDef {
       liberty :: Liberty,
@@ -107,6 +109,11 @@ structDef liberty doc childNames childTypes childLiberties =
 arrayDef ::
     (MonadFail m) => Liberty -> T.Text -> Path.Path -> Liberty -> m Definition
 arrayDef l d ct cl = return $ ArrayDef l d ct cl
+
+metaType :: Definition -> MetaType
+metaType (TupleDef {}) = Tuple
+metaType (StructDef {}) = Struct
+metaType (ArrayDef {}) = Array
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
@@ -186,7 +193,6 @@ valuesToDef
 valuesToDef Array _ = fail "bad types to define array"
 
 
-data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 type VsTree = ClapiTree [ClapiValue]
 type Vmap = Map.Map NodePath [Validator]
 data Valuespace = Valuespace {getTree :: VsTree, getVmap :: Vmap}
