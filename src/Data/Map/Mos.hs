@@ -51,6 +51,10 @@ setDependency k a (deps, revDeps) = (deps', insert a k $ revDeps' mCurA)
     revDeps' (Just curA) = delete curA k revDeps
     revDeps' Nothing = revDeps
 
+setDependencies ::
+    (Ord k, Ord a) => Map.Map k a -> Dependencies k a -> Dependencies k a
+setDependencies newDs ds = foldr (uncurry setDependency) ds $ Map.toList newDs
+
 delDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Dependencies k a
 delDependency k (deps, revDeps) = (deps', revDeps' ma)
   where
@@ -58,3 +62,7 @@ delDependency k (deps, revDeps) = (deps', revDeps' ma)
     (ma, deps') = Map.updateLookupWithKey f k deps
     revDeps' (Just a) = delete a k revDeps
     revDeps' Nothing = revDeps
+
+delDependencies ::
+    (Ord k, Ord a, Foldable f) => f k -> Dependencies k a -> Dependencies k a
+delDependencies ks ds = foldr delDependency ds ks
