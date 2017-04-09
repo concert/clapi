@@ -1,9 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
 module Valuespace where
 
 import Control.Monad (liftM, when)
 import Control.Monad.Fail (MonadFail)
-import Control.Lens ((&))
+import Control.Lens ((&), makeLenses)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import qualified Data.Text as T
@@ -198,13 +198,14 @@ valuesToDef Array _ = fail "bad types to define array"
 
 
 type VsTree = ClapiTree [ClapiValue]
-type Vmap = Map.Map NodePath [Validator]
-data Valuespace = Valuespace {getTree :: VsTree, getVmap :: Vmap}
+type Dmap = Map.Map NodePath Definition
+data Valuespace = Valuespace {_getTree :: VsTree, _getDmap :: Dmap}
+makeLenses ''Valuespace
 
 instance Show Valuespace where
     show (Valuespace t _) = show t
 
-updateVs :: (VsTree -> CanFail VsTree) -> (Vmap -> CanFail Vmap) ->
+updateVs :: (VsTree -> CanFail VsTree) -> (Dmap -> CanFail Dmap) ->
     Valuespace -> CanFail Valuespace
 updateVs f g (Valuespace vsTree vmap) =
   do
