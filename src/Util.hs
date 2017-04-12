@@ -3,6 +3,7 @@ module Util (
     tag,
     append, (+|),
     appendIfAbsent, (+|?),
+    zipLongest,
     camel,
     uncamel,
     parseType,
@@ -37,6 +38,12 @@ appendIfAbsent as a | a `elem` as = as
                     | otherwise = append as a
 (+|?) :: (Eq a) => [a] -> a -> [a]
 (+|?) = appendIfAbsent
+
+zipLongest :: (Monoid a, Monoid b) => [a] -> [b] -> [(a, b)]
+zipLongest [] [] = []
+zipLongest [] (b:bs) = (mempty, b) : zipLongest [] bs
+zipLongest (a:as) [] = (a, mempty) : zipLongest as []
+zipLongest (a:as) (b:bs) = (a, b) : zipLongest as bs
 
 
 uncamel :: String -> String
