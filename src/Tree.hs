@@ -35,6 +35,7 @@ import Control.Monad.Fail (MonadFail)
 import Control.Error.Util (hush)
 import Text.Printf (printf)
 
+import Util (append, (+|))
 import Path (Name, Path, root, isChildOfAny, isChildOf)
 import Path.Parsing (toString)
 import Types (CanFail, Time, ClapiValue, Interpolation(..))
@@ -69,9 +70,6 @@ instance Functor Node where
     -- Holy nested functors Batman!
     fmap f (Node keys m) = Node keys $ (fmap . fmap . fmap . fmap . fmap) f m
 
-append :: [a] -> a -> [a]
-append as a = as ++ [a]
-(+|) = append
 
 getChildPaths :: NodePath -> Node a -> [NodePath]
 getChildPaths rootPath node = childPaths childKeys

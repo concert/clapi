@@ -1,6 +1,7 @@
 module Util (
     eitherFail,
     tag,
+    append, (+|),
     camel,
     uncamel,
     parseType,
@@ -25,6 +26,11 @@ eitherFail = either fail return
 
 tag :: (Functor f) => (a -> b) -> f a -> f (b, a)
 tag f = fmap (\a -> (f a, a))
+
+append :: [a] -> a -> [a]
+append as a = as ++ [a]
+(+|) = append
+
 
 uncamel :: String -> String
 uncamel [] = []
