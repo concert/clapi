@@ -16,6 +16,7 @@ import Text.Printf (printf, PrintfArg)
 
 import qualified Data.Attoparsec.Text as Dat
 
+import Util (duplicates)
 import Path (Path, isChildOf)
 import Path.Parsing (nameP, pathP, toString)
 import Types (CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
@@ -162,12 +163,6 @@ getListValidator itemValidator = listValidator
   where
     listValidator tree (CList xs) = softValidate tree (repeat itemValidator) xs
     listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
-
-duplicates :: (Ord a) => [a] -> Set.Set a
-duplicates as = Map.keysSet $ Map.filter (>1) map
-  where
-    count a m = Map.insertWith (const (+1)) a 1 m
-    map = foldr count mempty as
 
 showJoin :: (Show a, Foldable t) => String -> t a -> String
 showJoin sep as = intercalate sep $ fmap show (toList as)

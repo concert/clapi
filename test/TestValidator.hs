@@ -15,7 +15,6 @@ import Validator (success, fromText, validatorValidator, duplicates)
 tests = [
     testCase "ref validator" testRefValidator,
     testCase "validator validator" testValidatorValidator,
-    testCase "duplicates" testDuplicates
     ]
 
 testRefValidator =
@@ -41,13 +40,3 @@ testValidatorValidator =
     validate = validatorValidator mempty
     badValue = "validator[]"
     badValue' = "validator[foo]"
-
-
-testDuplicates =
-  do
-    assertEqual "empty" mempty $ duplicates ([] :: [Char])
-    assertEqual "unique" mempty $ duplicates ['a', 'b', 'c', 'd']
-    assertEqual "duplicates" dups $ duplicates as
-  where
-    as = ['a', 'b', 'a', 'c', 'd', 'd', 'e', 'd']
-    dups = Set.fromList ['a', 'd']

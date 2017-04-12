@@ -3,6 +3,7 @@ module Util (
     tag,
     append, (+|),
     appendIfAbsent, (+|?),
+    duplicates,
     zipLongest,
     camel,
     uncamel,
@@ -16,6 +17,7 @@ import Data.Maybe (fromJust)
 import Data.ByteString (ByteString)
 import Data.List.Split (splitOn)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import Control.Monad.Fail (MonadFail, fail)
 
@@ -38,6 +40,12 @@ appendIfAbsent as a | a `elem` as = as
                     | otherwise = append as a
 (+|?) :: (Eq a) => [a] -> a -> [a]
 (+|?) = appendIfAbsent
+
+duplicates :: (Ord a) => [a] -> Set.Set a
+duplicates as = Map.keysSet $ Map.filter (>1) map
+  where
+    count a m = Map.insertWith (const (+1)) a 1 m
+    map = foldr count mempty as
 
 zipLongest :: (Monoid a, Monoid b) => [a] -> [b] -> [(a, b)]
 zipLongest [] [] = []
