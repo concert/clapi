@@ -26,3 +26,6 @@ isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
 isChildOfAny :: Path -> [Path] -> Bool
 isChildOfAny candidateChild parents =
     or $ isChildOf candidateChild <$> parents
+
+childPaths :: Path -> [Name] -> [Path]
+childPaths p ns = (p ++) . pure <$> ns
