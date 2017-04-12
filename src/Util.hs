@@ -5,6 +5,7 @@ module Util (
     appendIfAbsent, (+|?),
     duplicates,
     zipLongest,
+    partitionDifference, partitionDifferenceL,
     camel,
     uncamel,
     parseType,
@@ -52,6 +53,18 @@ zipLongest [] [] = []
 zipLongest [] (b:bs) = (mempty, b) : zipLongest [] bs
 zipLongest (a:as) [] = (a, mempty) : zipLongest as []
 zipLongest (a:as) (b:bs) = (a, b) : zipLongest as bs
+
+
+partitionDifference ::
+    (Ord a) => Set.Set a -> Set.Set a -> (Set.Set a, Set.Set a)
+partitionDifference sa sb = (Set.difference sa sb, Set.difference sb sa)
+
+partitionDifferenceL :: (Ord a) => [a] -> [a] -> ([a], [a])
+partitionDifferenceL as bs =
+  let
+    (added, removed) = partitionDifference (Set.fromList as) (Set.fromList bs)
+  in
+    (Set.toList added, Set.toList removed)
 
 
 uncamel :: String -> String
