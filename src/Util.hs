@@ -2,6 +2,7 @@ module Util (
     eitherFail,
     tag,
     append, (+|),
+    appendIfAbsent, (+|?),
     camel,
     uncamel,
     parseType,
@@ -30,6 +31,12 @@ tag f = fmap (\a -> (f a, a))
 append :: [a] -> a -> [a]
 append as a = as ++ [a]
 (+|) = append
+
+appendIfAbsent :: (Eq a) => [a] -> a -> [a]
+appendIfAbsent as a | a `elem` as = as
+                    | otherwise = append as a
+(+|?) :: (Eq a) => [a] -> a -> [a]
+(+|?) = appendIfAbsent
 
 
 uncamel :: String -> String
