@@ -16,7 +16,7 @@ import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
 import Data.Map.Clapi (joinM)
-import Tree ((+|))
+import Util ((+|))
 import Path (Path)
 import Types (Time(..), Interpolation(..), Message(..), msgPath', msgMethod', ClapiMethod(..), ClapiValue(..))
 import Server (User(..))

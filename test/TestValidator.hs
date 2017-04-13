@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestValidator where
 
-import Util (assertFailed)
+import Helpers (assertFailed)
 import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 

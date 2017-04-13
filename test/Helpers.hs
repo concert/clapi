@@ -1,4 +1,4 @@
-module Util where
+module Helpers where
 
 import Data.List (isInfixOf)
 import Data.Either.Combinators (fromLeft)

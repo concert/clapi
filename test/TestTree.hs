@@ -1,6 +1,6 @@
 module TestTree where
 
-import Util (assertFailed)
+import Helpers (assertFailed)
 import Data.Either (isRight)
 import Data.Foldable (toList)
 import Control.Monad (liftM, liftM2, replicateM)

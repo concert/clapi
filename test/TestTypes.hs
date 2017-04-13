@@ -9,7 +9,7 @@ import Data.Maybe (isNothing)
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
-import Util (assertFailed)
+import Helpers (assertFailed)
 import Path (root, up)
 import Types (
     CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
