@@ -4,7 +4,7 @@ module Util (
     append, (+|),
     appendIfAbsent, (+|?),
     duplicates,
-    zipLongest,
+    zipLongest, strictZipWith, strictZip,
     partitionDifference, partitionDifferenceL,
     camel,
     uncamel,
@@ -53,6 +53,16 @@ zipLongest [] [] = []
 zipLongest [] (b:bs) = (mempty, b) : zipLongest [] bs
 zipLongest (a:as) [] = (a, mempty) : zipLongest as []
 zipLongest (a:as) (b:bs) = (a, b) : zipLongest as bs
+
+
+strictZipWith :: (MonadFail m) => (a -> b -> c) -> [a] -> [b] -> m [c]
+strictZipWith f [] [] = return []
+strictZipWith f [] (b:bs) = fail "ran out of a's"
+strictZipWith f (a:as) [] = fail "ran out of b's"
+strictZipWith f (a:as) (b:bs) = (:) (f a b) <$> strictZipWith f as bs
+
+strictZip :: (MonadFail m) => [a] -> [b] -> m [(a, b)]
+strictZip = strictZipWith (,)
 
 
 partitionDifference ::

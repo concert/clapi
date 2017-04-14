@@ -23,16 +23,6 @@ import Tree (
   treeInitNodes, treeSetChildren, treeAdd)
 import Validator (Validator, fromText, enumDesc)
 
-
-strictZipWith :: (MonadFail m) => (a -> b -> c) -> [a] -> [b] -> m [c]
-strictZipWith f [] [] = return []
-strictZipWith f [] (b:bs) = fail "ran out of a's"
-strictZipWith f (a:as) [] = fail "ran out of b's"
-strictZipWith f (a:as) (b:bs) = (:) (f a b) <$> strictZipWith f as bs
-
-strictZip :: (MonadFail m) => [a] -> [b] -> m [(a, b)]
-strictZip = strictZipWith (,)
-
 unpack (Right v) = v
 unpack (Left v) = error v
 

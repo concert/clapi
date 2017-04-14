@@ -1,9 +1,14 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Helpers where
 
+import Control.Monad.Fail (MonadFail, fail)
 import Data.List (isInfixOf)
 import Data.Either.Combinators (fromLeft)
 import Test.HUnit (Assertion, assertBool)
 
+
+instance MonadFail (Either String) where
+    fail = Left
 
 assertFailed :: String -> Either a b -> Assertion
 assertFailed s either = assertBool (s ++ " did not fail") (didFail either)
