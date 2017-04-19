@@ -10,24 +10,24 @@ import qualified Data.Set as Set
 
 import Types (ClapiValue(..))
 import Tree (treeInitNode)
-import Validator (success, fromText, validatorValidator, duplicates)
+import Validator (success, fromText, validatorValidator)
 
 tests = [
-    testCase "ref validator" testRefValidator,
-    testCase "validator validator" testValidatorValidator,
+    -- testCase "ref validator" testRefValidator,
+    testCase "validator validator" testValidatorValidator
     ]
 
-testRefValidator =
-  do
-    assertEqual "success case" success $ result (CString "/test/good_value/")
-    assertFailed "failure case" $ result (CString "/test/bad_value")
-  where
-    tree =
-        treeInitNode ["test", "good_value"] ["test", "target_type"] $
-        treeInitNode ["test", "bad_value"] ["test", "wrong_type"]
-        mempty
-    fv = fromText "ref[/test/target_type]"
-    result cv = join (fv <*> pure tree <*> pure cv)
+-- testRefValidator =
+--   do
+--     assertEqual "success case" success $ result (CString "/test/good_value/")
+--     assertFailed "failure case" $ result (CString "/test/bad_value")
+--   where
+--     tree =
+--         treeInitNode ["test", "good_value"] ["test", "target_type"] $
+--         treeInitNode ["test", "bad_value"] ["test", "wrong_type"]
+--         mempty
+--     fv = fromText "ref[/test/target_type]"
+--     result cv = join (fv <*> pure tree <*> pure cv)
 
 
 testValidatorValidator =
@@ -37,6 +37,6 @@ testValidatorValidator =
     assertFailed "bad value" $ validate (CString badValue)
     assertEqual "success" success $ validate (CString "bool")
   where
-    validate = validatorValidator mempty
+    validate = validatorValidator undefined
     badValue = "validator[]"
     badValue' = "validator[foo]"

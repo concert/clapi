@@ -19,47 +19,47 @@ import Control.Monad (replicateM)
 import Path (Path)
 import Types (InterpolationType)
 import Valuespace (
-    getBaseValuespace, getTree, Liberty, Definition(..), metaType, tupleDef,
+    --getBaseValuespace, getTree, Liberty, Definition(..), metaType, tupleDef,
     structDef, arrayDef, defToValues, valuesToDef)
 import Tree (treeOrphansAndMissing)
 
 tests = [
-    testCase "test base valuespace" testBaseValuespace,
-    testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
+    -- testCase "test base valuespace" testBaseValuespace,
+    -- testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
-testBaseValuespace = assertEqual "clean base valuespace" (mempty, mempty) $
-    treeOrphansAndMissing baseVsTree
-    -- FIXME: this misses latent errors in the values because of laziness
-  where
-    baseVsTree = view getTree getBaseValuespace
+-- testBaseValuespace = assertEqual "clean base valuespace" (mempty, mempty) $
+--     treeOrphansAndMissing baseVsTree
+--     -- FIXME: this misses latent errors in the values because of laziness
+--   where
+--     baseVsTree = view getTree getBaseValuespace
 
 
-arbitraryPath :: Gen Path
-arbitraryPath = listOf $ listOf1 $ elements ['a'..'z']
+-- arbitraryPath :: Gen Path
+-- arbitraryPath = listOf $ listOf1 $ elements ['a'..'z']
 
-instance Arbitrary Liberty where
-    arbitrary = arbitraryBoundedEnum
+-- instance Arbitrary Liberty where
+--     arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary InterpolationType where
-    arbitrary = arbitraryBoundedEnum
+-- instance Arbitrary InterpolationType where
+--     arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary T.Text where
-    arbitrary = T.pack <$> arbitrary
+-- instance Arbitrary T.Text where
+--     arbitrary = T.pack <$> arbitrary
 
-instance Arbitrary Definition where
-    arbitrary =
-      do
-        n <- arbitrary
-        fDef <- oneof [
-            tupleDef <$> arbitrary <*> arbitrary <*> vector n <*>
-                return (replicate n "bool") <*> arbitrary,
-            structDef <$> arbitrary <*> arbitrary <*> vector n <*>
-                vectorOf n arbitraryPath <*> vector n,
-            arrayDef <$> arbitrary <*> arbitrary <*> arbitraryPath <*>
-                arbitrary]
-        either error return fDef
+-- instance Arbitrary Definition where
+--     arbitrary =
+--       do
+--         n <- arbitrary
+--         fDef <- oneof [
+--             tupleDef <$> arbitrary <*> arbitrary <*> vector n <*>
+--                 return (replicate n "bool") <*> arbitrary,
+--             structDef <$> arbitrary <*> arbitrary <*> vector n <*>
+--                 vectorOf n arbitraryPath <*> vector n,
+--             arrayDef <$> arbitrary <*> arbitrary <*> arbitraryPath <*>
+--                 arbitrary]
+--         either error return fDef
 
 
-propDefRoundTrip :: Definition -> Bool
-propDefRoundTrip d = (valuesToDef (metaType d) . defToValues) d == Just d
+-- propDefRoundTrip :: Definition -> Bool
+-- propDefRoundTrip d = (valuesToDef (metaType d) . defToValues) d == Just d

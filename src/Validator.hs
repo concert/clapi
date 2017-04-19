@@ -20,9 +20,11 @@ import Util (duplicates)
 import Path (Path, isChildOf)
 import Path.Parsing (nameP, pathP, toString)
 import Types (CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
-import Tree (ClapiTree(..), treeGetType)
 
-type Validator = ClapiTree [ClapiValue] -> ClapiValue -> CanFail ()
+type NodePath = Path
+type TypePath = Path
+
+type Validator = (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail ()
 success = Right ()
 
 maybeP :: Dat.Parser a -> Dat.Parser (Maybe a)
@@ -86,18 +88,20 @@ enumDesc :: (Enum a, Bounded a, Show a) => a -> Text.Text
 enumDesc enum = Text.toLower . Text.pack $ printf "enum[%v]" $
     intercalate "," $ fmap show [minBound..maxBound `asTypeOf` enum]
 
-validate :: ClapiTree [ClapiValue] -> [Validator] -> [ClapiValue] -> CanFail ()
-validate tree vs cvs
+-- FIXME: could use strictzip :-)
+validate ::
+    (NodePath -> CanFail TypePath) -> [Validator] -> [ClapiValue] -> CanFail ()
+validate getTypePath vs cvs
   | length vs > length cvs = Left "Insufficient values"
   | length vs < length cvs = Left "Insufficient validators"
-  | otherwise = softValidate tree vs cvs
+  | otherwise = softValidate getTypePath vs cvs
 
 -- validate where lengths of lists aren't important
-softValidate :: ClapiTree [ClapiValue] -> [Validator] -> [ClapiValue] ->
-    CanFail ()
-softValidate tree vs cvs =
+softValidate ::
+    (NodePath -> CanFail TypePath) -> [Validator] -> [ClapiValue] -> CanFail ()
+softValidate getTypePath vs cvs =
     foldl (>>) success $
-    zipWith ($) [v tree | v <- vs] cvs
+    zipWith ($) [v getTypePath | v <- vs] cvs
 
 boolValidator :: Validator
 boolValidator _ (CBool _) = success
@@ -143,10 +147,10 @@ getStringValidator (Just pattern) _ (CString t) =
 getStringValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getRefValidator :: Path -> Validator
-getRefValidator requiredTypePath tree (CString x) =
+getRefValidator requiredTypePath getTypePath (CString x) =
   do
     nodePath <- Dat.parseOnly pathP x
-    typePath <- treeGetType nodePath tree
+    typePath <- getTypePath nodePath
     if isChildOf requiredTypePath typePath
     then success
     else Left $ printf "%v is of type %v, rather than expected %v"
