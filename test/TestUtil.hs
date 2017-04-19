@@ -6,6 +6,7 @@ import Test.Framework.Providers.HUnit (testCase)
 
 import qualified Data.Set as Set
 
+import Types ()
 import Util (duplicates, zipLongest, strictZip)
 
 tests = [

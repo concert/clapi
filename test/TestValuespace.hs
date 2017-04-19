@@ -9,24 +9,40 @@ import Test.QuickCheck (
     arbitraryBoundedEnum, vector, vectorOf)
 
 import Data.Either (either)
-import Data.Maybe (isNothing)
+import Data.Maybe (fromJust, isNothing)
 import qualified Data.Text as T
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 import Control.Lens (view)
 import Control.Monad (replicateM)
 
+import Helpers (assertFailed)
+
 import Path (Path)
-import Types (InterpolationType)
+import Types (InterpolationType, ClapiValue(..))
+import Validator (validate)
 import Valuespace (
     --getBaseValuespace, getTree, Liberty, Definition(..), metaType, tupleDef,
-    structDef, arrayDef, defToValues, valuesToDef)
+    Liberty(..), tupleDef,
+    structDef, arrayDef, definitionValidators, defToValues, valuesToDef)
 import Tree (treeOrphansAndMissing)
 
 tests = [
+    testCase "tupleDef" testTupleDef
     -- testCase "test base valuespace" testBaseValuespace,
     -- testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
+
+testTupleDef =
+  do
+    assertFailed "duplicate names" $
+        tupleDef Cannot "docs" ["hi", "hi"] ["bool", "int32"] mempty
+    assertFailed "mismatched names/types" $
+        tupleDef Cannot "docs" ["a", "b"] ["bool"] mempty
+    let def = fromJust $ tupleDef Cannot "docs" ["a"] ["bool"] mempty
+    assertEqual "tuple validation" (Right ()) $
+        validate undefined (definitionValidators def) [CBool True]
+
 
 -- testBaseValuespace = assertEqual "clean base valuespace" (mempty, mempty) $
 --     treeOrphansAndMissing baseVsTree

@@ -7,10 +7,6 @@ import Data.List (isInfixOf)
 import Data.Either.Combinators (fromLeft)
 import Test.HUnit (Assertion, assertBool)
 
-
-instance MonadFail (Either String) where
-    fail = Left
-
 -- FIXME: could try to update to use MonadExcept?
 assertFailed :: String -> Either String a -> Assertion
 assertFailed s =
