@@ -5,8 +5,8 @@ import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>))
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.State (State, modify)
-import Control.Lens ((&), makeLenses, view, at, over, set, non, _Just)
-import Data.Either (isRight)
+import Control.Lens ((&), makeLenses, view, at, over, set, non, _Just, _1, _2)
+import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -208,7 +208,8 @@ data Valuespace v = Valuespace {
     _types :: Mos.Dependencies NodePath TypePath,
     _xrefs :: Mos.Dependencies NodePath NodePath,
     _defs :: DefMap,
-    _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))}
+    _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
+    }
 makeLenses ''Valuespace
 
 instance Show (Valuespace v) where
@@ -217,7 +218,7 @@ instance Show (Valuespace v) where
 instance Monoid (Valuespace v) where
     mempty = Valuespace mempty mempty mempty mempty mempty
     mappend (Valuespace a1 b1 c1 d1 e1) (Valuespace a2 b2 c2 d2 e2) =
-          Valuespace (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2) (e1 <> e2)
+        Valuespace (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2) (e1 <> e2)
 
 getType :: (MonadFail m) => NodePath -> Valuespace v -> m TypePath
 getType np = note f . Mos.getDependency np . view types
@@ -240,28 +241,43 @@ getNode np = note f . view (tree . at np)
 getChildren :: (MonadFail m) => NodePath -> Valuespace v -> m [Path.Name]
 getChildren np vs = getNode np vs >>= return . view getKeys
 
-vsValidate ::
-    (MonadFail m) => Valuespace Unvalidated -> m (Valuespace Validated)
+type MonadErrorMap a = (Map.Map NodePath String, a)
+
+fromLeft :: Either a b -> a
+fromLeft (Left a) = a
+
+fromRight :: Either a b -> b
+fromRight (Right b) = b
+
+eitherErrorMap ::
+    Map.Map NodePath (Either String a) -> MonadErrorMap (Map.Map NodePath a)
+eitherErrorMap =
+    over _1 (fmap fromLeft) .
+    over _2 (fmap fromRight) .
+    Map.partition isLeft
+
+vsValidate :: Valuespace Unvalidated -> MonadErrorMap (Valuespace Validated)
 vsValidate =
     rectifyTypes >=> validateChildren >=> validateData >=> markValid
   where
     markValid = return . set unvalidated mempty
 
 rectifyTypes ::
-    (MonadFail m) => Valuespace Unvalidated -> m (Valuespace Unvalidated)
+    Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
 rectifyTypes vs =
   do
     unvalidatedsTypes <-
-        sequence . Map.mapWithKey (\np _ -> getType np vs) .
+        eitherErrorMap . Map.mapWithKey (\np _ -> getType np vs) .
         view unvalidated $ vs
-    newDefs <- sequence . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
+    newDefs <-
+        eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
     return .
         over defs (Map.union newDefs) .
         over unvalidated (flip Map.difference newDefs) $
         vs
   where
     toMetaTypes =
-        fmap unpack . Map.filter isRight .
+        fmap fromJust . Map.filter isJust .
         fmap categoriseMetaTypePath
     toDef np mt = getNode np vs >>= validateTypeNode mt
 
@@ -278,12 +294,12 @@ validateTypeNode metaType node =
     valuesToDef metaType defCvs
 
 validateChildren ::
-    (MonadFail m) => Valuespace Unvalidated -> m (Valuespace Unvalidated)
+    Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
 validateChildren vs =
   let nodes = Map.difference (view tree vs) (view unvalidated vs) in
   do
-    nodesWithDefs <- sequence $ Map.mapWithKey pairDef nodes
-    mapM_ (uncurry validateNodeChildren) nodesWithDefs
+    nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef nodes
+    eitherErrorMap $ fmap (uncurry validateNodeChildren) nodesWithDefs
     return vs
   where
     pairDef np n = (,) n <$> getDef np vs
@@ -324,10 +340,10 @@ filterSiteMap sm keys = filterJust $
 
 
 validateData ::
-    (MonadFail m) => Valuespace Unvalidated -> m (Valuespace Unvalidated)
+    Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
 validateData vs =
   do
-    (sequence . Map.mapWithKey (vsValidatePath vs) $ view unvalidated vs)
+    (eitherErrorMap . Map.mapWithKey (vsValidatePath vs) $ view unvalidated vs)
     return vs
 
 
