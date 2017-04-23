@@ -41,6 +41,9 @@ fromLeft (Left a) = a
 fromRight :: Either a b -> b
 fromRight (Right b) = b
 
+mapFilterJust :: Map.Map k (Maybe a) -> Map.Map k a
+mapFilterJust = fmap fromJust . Map.filter isJust
+
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Eq, Show)
@@ -273,9 +276,7 @@ rectifyTypes vs =
         over unvalidated (flip Map.difference newDefs) $
         vs
   where
-    toMetaTypes =
-        fmap fromJust . Map.filter isJust .
-        fmap categoriseMetaTypePath
+    toMetaTypes = mapFilterJust . fmap categoriseMetaTypePath
     toDef np mt = getNode np vs >>= validateTypeNode mt
 
 validateTypeNode :: (MonadFail m) => MetaType -> Node -> m Definition
@@ -326,16 +327,6 @@ flattenNestedMaps mm = foldMap id $ Map.mapWithKey f mm
   where
     f k1 = Map.mapKeys ((,) k1)
 
--- This doesn't need to repack the values into a full-blown SiteMap :-)
-filterSiteMap ::
-    SiteMap a -> Set.Set (Maybe Site, Time) -> Map.Map (Maybe Site, Time) a
-filterSiteMap sm keys = filterJust $
-    unwrapTimePoint <$> Map.restrictKeys (flattenNestedMaps sm) keys
-  where
-    filterJust :: (Ord k) => Map.Map k (Maybe a) -> Map.Map k a
-    filterJust = fmap fromJust . Map.filter isJust
-
-
 validateData ::
     Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
 validateData vs =
@@ -362,6 +353,7 @@ vsValidatePath vs np mtps =
     getType' = flip getType vs
     allTps node = Map.keysSet . flattenNestedMaps $ view getSites node
 
+
 validateNodeData ::
     (MonadFail m) => (NodePath -> CanFail TypePath) -> Definition -> Node ->
     Set.Set (Maybe Site, Time) -> m ()
@@ -371,6 +363,12 @@ validateNodeData getType' def node tps =
     siteMap = filterSiteMap (view getSites node) tps
   in
     mapM_ (eitherFail . validate getType' validators) siteMap
+  where
+    -- This doesn't need to repack the values back into a full SiteMap :-)
+    filterSiteMap ::
+        SiteMap a -> Set.Set (Maybe Site, Time) -> Map.Map (Maybe Site, Time) a
+    filterSiteMap sm keys = mapFilterJust $
+        unwrapTimePoint <$> Map.restrictKeys (flattenNestedMaps sm) keys
 
 apiRoot :: Path.Path
 apiRoot = ["api"]
