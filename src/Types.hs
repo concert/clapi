@@ -13,7 +13,8 @@ module Types
         msgMethod',
         InterpolationType(..),
         Interpolation(..),
-        interpolation
+        interpolation,
+        interpolationType
     )
 where
 
@@ -191,3 +192,8 @@ interpolation ITConstant [] = Right $ IConstant
 interpolation ITLinear [] = Right $ ILinear
 interpolation ITBezier [CWord32 a, CWord32 b] = Right $ IBezier a b
 interpolation _ _ = Left "Bad interpolation args"
+
+interpolationType :: Interpolation -> InterpolationType
+interpolationType IConstant = ITConstant
+interpolationType ILinear = ITLinear
+interpolationType (IBezier _ _) = ITBezier
