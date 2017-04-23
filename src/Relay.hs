@@ -17,7 +17,7 @@ import Tree (
     ClapiTree, Attributee, -- treeAdd, treeSet, treeRemove, treeClear, treeInitNode, treeDelete, treeSetChildren, treeGetType
     )
 import Validator (Validator, validate)
-import Valuespace (VsTree, Valuespace(..), definitionValidators)
+import Valuespace (VsTree, Valuespace(..))
 import NamespaceTracker (Om, stateL, stateL')
 import Server (User)
 import Data.Maybe.Clapi (note)

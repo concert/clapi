@@ -85,10 +85,6 @@ instance Eq Definition where
     (ArrayDef l1 d1 t1 cl1) == (ArrayDef l2 d2 t2 cl2) =
         l1 == l2 && d1 == d2 && t1 == t2 && cl1 == cl2
 
-definitionValidators :: Definition -> [Validator]
-definitionValidators def@(TupleDef {}) = view validators def
-definitionValidators _ = []
-
 tupleDef ::
     (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [T.Text] ->
     Set.Set InterpolationType -> m Definition
@@ -359,10 +355,10 @@ validateNodeData ::
     Set.Set (Maybe Site, Time) -> m ()
 validateNodeData getType' def node tps =
   let
-    validators = definitionValidators def
+    vals = view validators def
     siteMap = filterSiteMap (view getSites node) tps
   in
-    mapM_ (eitherFail . validate getType' validators) siteMap
+    mapM_ (eitherFail . validate getType' vals) siteMap
   where
     -- This doesn't need to repack the values back into a full SiteMap :-)
     filterSiteMap ::
