@@ -463,6 +463,19 @@ vsClear a np s t =
 -- _initStruct ::
 
 
+childKeyMap :: [NodePath] -> Mos.Mos NodePath Path.Name
+childKeyMap nps = Mos.concat $ childKeyMapAtDepth <$> [0..maxDepth] <*> pure nps
+  where
+    maxDepth = maximum . fmap length $ nps
+
+
+childKeyMapAtDepth :: Int -> [NodePath] -> Mos.Mos NodePath Path.Name
+childKeyMapAtDepth depth nps = foldr f mempty $ splitAt depth <$> nps
+  where
+    f (initPath, []) m = m
+    f (initPath, (a:as)) m = Mos.insert initPath a m
+
+
 -- globalSite = Nothing
 -- anon = Nothing
 -- tconst = Time 0 0
