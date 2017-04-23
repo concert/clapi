@@ -35,8 +35,11 @@ import Validator (Validator, fromText, enumDesc, validate)
 
 type Node = Tree.Node [ClapiValue]
 
-unpack (Right v) = v
-unpack (Left v) = error v
+fromLeft :: Either a b -> a
+fromLeft (Left a) = a
+
+fromRight :: Either a b -> b
+fromRight (Right b) = b
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 
@@ -134,13 +137,13 @@ setDesc d = T.pack $ printf "set[%v]" d
 namesDesc = "set[string[]]"
 typeDesc = "ref[/api/types/base]"
 
-baseTupleDef = unpack $ tupleDef
+baseTupleDef = fromJust $ tupleDef
     Cannot "t" ["liberty", "doc", "valueNames", "validators", "interpolationTypes"]
     [libertyDesc, "string", namesDesc, "list[validator]", setDesc interpolationTypeDesc] mempty
-baseStructDef = unpack $ tupleDef
+baseStructDef = fromJust $ tupleDef
     Cannot "s" ["liberty", "doc", "childNames", "childTypes", "clibs"]
     [libertyDesc, "string", namesDesc, listDesc typeDesc, listDesc libertyDesc] mempty
-baseArrayDef = unpack $ tupleDef
+baseArrayDef = fromJust $ tupleDef
     Cannot "a" ["liberty", "doc", "childType", "clib"]
     [libertyDesc, "string", typeDesc, libertyDesc] mempty
 
@@ -242,12 +245,6 @@ getChildren :: (MonadFail m) => NodePath -> Valuespace v -> m [Path.Name]
 getChildren np vs = getNode np vs >>= return . view getKeys
 
 type MonadErrorMap a = (Map.Map NodePath String, a)
-
-fromLeft :: Either a b -> a
-fromLeft (Left a) = a
-
-fromRight :: Either a b -> b
-fromRight (Right b) = b
 
 eitherErrorMap ::
     Map.Map NodePath (Either String a) -> MonadErrorMap (Map.Map NodePath a)
