@@ -37,6 +37,9 @@ union = merge preserveMissing preserveMissing (zipWithMatched f)
   where
     f k sa1 sa2 = Set.union sa1 sa2
 
+concat :: (Ord k, Ord a) => [Mos k a] -> Mos k a
+concat = foldr union mempty
+
 
 type Dependencies k a = (Map.Map k a, Mos a k)
 
