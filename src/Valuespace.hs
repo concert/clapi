@@ -284,7 +284,7 @@ validateTypeNode metaType node =
         Map.lookup Nothing siteMap
     when (Map.size globalTimeSeries /= 1) $
         fail "Type nodes must only have a single time point"
-    defCvs <- unwrapTimePoint . snd . head . Map.toList $ globalTimeSeries
+    defCvs <- fmap snd . unwrapTimePoint . snd . head . Map.toList $ globalTimeSeries
     valuesToDef metaType defCvs
 
 validateChildren ::
@@ -358,11 +358,12 @@ validateNodeData getType' def node tps =
     vals = view validators def
     siteMap = filterSiteMap (view getSites node) tps
   in
-    mapM_ (eitherFail . validate getType' vals) siteMap
+    mapM_ (eitherFail . validate getType' vals . snd) siteMap
   where
     -- This doesn't need to repack the values back into a full SiteMap :-)
     filterSiteMap ::
-        SiteMap a -> Set.Set (Maybe Site, Time) -> Map.Map (Maybe Site, Time) a
+        SiteMap a -> Set.Set (Maybe Site, Time) ->
+        Map.Map (Maybe Site, Time) (Interpolation, a)
     filterSiteMap sm keys = mapFilterJust $
         unwrapTimePoint <$> Map.restrictKeys (flattenNestedMaps sm) keys
 

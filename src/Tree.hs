@@ -74,8 +74,8 @@ instance Functor Node where
     fmap f (Node keys m) = Node keys $ (fmap . fmap . fmap . fmap . fmap) f m
 
 unwrapTimePoint ::
-    (MonadFail m) => (Attributed (Maybe (TimePoint a))) -> m a
-unwrapTimePoint = note "data deleted at time point" . fmap snd . snd
+    (MonadFail m) => (Attributed (Maybe (TimePoint a))) -> m (TimePoint a)
+unwrapTimePoint = note "data deleted at time point" . snd
 
 -- nodeGet :: (MonadFail m) => Maybe Site -> Time -> Node a -> m a
 -- nodeGet site t node =
