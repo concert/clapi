@@ -25,7 +25,7 @@ import qualified Path
 import qualified Path.Parsing as Path
 import Types (
     CanFail, ClapiValue(..), InterpolationType(..), Interpolation(..), Time(..),
-    Enumerated(..), toClapiValue, fromClapiValue, getEnum)
+    Enumerated(..), toClapiValue, fromClapiValue, getEnum, interpolationType)
 import Tree (
     ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
@@ -350,15 +350,27 @@ vsValidatePath vs np mtps =
     allTps node = Map.keysSet . flattenNestedMaps $ view getSites node
 
 
+validateInterpolation ::
+    (MonadFail m) => Set.Set InterpolationType -> Interpolation -> m ()
+validateInterpolation its i | it `elem` its = return ()
+                           | otherwise = fail f
+  where
+    it = interpolationType i
+    f =  printf "forbidden interpolation type %s (allowed %s)"
+        (show it) (show its)
+
+
 validateNodeData ::
     (MonadFail m) => (NodePath -> CanFail TypePath) -> Definition -> Node ->
     Set.Set (Maybe Site, Time) -> m ()
 validateNodeData getType' def node tps =
   let
     vals = view validators def
+    its = view permittedInterpolations def
     siteMap = filterSiteMap (view getSites node) tps
-  in
+  in do
     mapM_ (eitherFail . validate getType' vals . snd) siteMap
+    mapM_ (validateInterpolation its . fst) siteMap
   where
     -- This doesn't need to repack the values back into a full SiteMap :-)
     filterSiteMap ::
