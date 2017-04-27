@@ -85,11 +85,7 @@ unwrapTimePoint = note "data deleted at time point" . snd
 --     unwrapTimePoint tp
 
 getChildPaths :: NodePath -> Node a -> [NodePath]
-getChildPaths rootPath node = childPaths childKeys
-  where
-    childKeys = view getKeys node
-    childPaths [] = []
-    childPaths (n:ns) = rootPath +| n : childPaths ns
+getChildPaths rootPath node = (rootPath +|) <$> view getKeys node
 
 type instance Index (Node a) = Maybe Site
 type instance IxValue (Node a) = TimeSeries a
