@@ -29,7 +29,7 @@ import Types (
 import Tree (
     ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
-    treeRemove, treeClear, getKeys, getSites, unwrapTimePoint)
+    treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths)
 import qualified Tree as Tree
 import Validator (Validator, fromText, enumDesc, validate)
 
@@ -435,101 +435,92 @@ vsClear a np s t =
     tree (treeClear a np s t) .
     over (unvalidated . at np . non mempty . _Just) (Set.insert (s, t))
 
--- initStruct ::
---     (MonadFail m) => NodePath -> TypePath -> Liberty -> T.Text ->
---     [(Path.Name, TypePath)] -> Valuespace -> m Valuespace
--- initStruct np tp lib doc children =
---     updateVs (eitherFail . updateTree) updateVmap
---   where
---     updateTree tree =
---         tree &
---         treeInitNode tp structTypePath &
---         treeInitNode np tp &
---         addConst (defToValues structDef) tp >>=
---         \x -> pure (treeInitNodes typePathMap x) >>=
---         treeSetChildren np childNames
---       where
---         childNames = fmap fst children
---         childTypes = fmap snd children
---         prependRoot (name, tp) = (np +| name, tp)
---         typePathMap = Map.fromList $ fmap prependRoot children
---         structDef = StructDef lib doc childNames childTypes []
---     updateVmap vmap = return undefined
 
--- _initStruct ::
+globalSite = Nothing
+anon = Nothing
+tconst = Time 0 0
+
+addConst ::
+    (MonadFail m) => NodePath -> [ClapiValue] -> Valuespace v ->
+    m (Valuespace Unvalidated)
+addConst np cvs = vsAdd anon IConstant cvs np globalSite tconst
+
+define ::
+    (MonadFail m) => NodePath -> Definition -> Valuespace v ->
+    m (Valuespace Unvalidated)
+define defPath def vs =
+    addConst defPath (defToValues def) vs >>=
+    return . vsAssignType defPath (metaTypePath . metaType $ def)
 
 
-childKeyMap :: [NodePath] -> Mos.Mos NodePath Path.Name
-childKeyMap nps = Mos.concat $ childKeyMapAtDepth <$> [0..maxDepth] <*> pure nps
+autoDefineStruct ::
+    (MonadFail m) => NodePath -> TypePath -> Valuespace v ->
+    m (Valuespace Unvalidated)
+autoDefineStruct np tp vs =
+  let node = view (tree . at np . non mempty) vs in
+  do
+    def <- wellDefinedStruct node >>= autoGenStructDef
+    define tp def vs >>= return . vsAssignType np tp
   where
-    maxDepth = maximum . fmap length $ nps
+    wellDefinedStruct n = sequence (
+      view getKeys n,
+      traverse (flip getType vs) $ getChildPaths np n)
+
+autoGenStructDef :: (MonadFail m) => ([Path.Name], [TypePath]) -> m Definition
+autoGenStructDef (childNames, childTypes) =
+    structDef Cannot "auto-generated container" childNames childTypes
+    (fmap (const Cannot) childNames)
 
 
-childKeyMapAtDepth :: Int -> [NodePath] -> Mos.Mos NodePath Path.Name
-childKeyMapAtDepth depth nps = foldr f mempty $ splitAt depth <$> nps
+assert :: (a -> Bool) -> (a -> String) -> a -> a
+assert p s a | p a = a
+           | otherwise = error $ printf "assertion failed %s" (s a)
+
+
+baseValuespace :: Valuespace Validated
+baseValuespace =
+    either error (snd . assert (null . fst) (show . fst) . vsValidate) $
+    return mempty >>=
+    define (metaTypePath Tuple) baseTupleDef >>=
+    define (metaTypePath Struct) baseStructDef >>=
+    define (metaTypePath Array) baseArrayDef >>=
+    define versionDefPath versionDef >>=
+    define buildDefPath buildDef >>=
+    return . vsAssignType versionPath versionDefPath >>=
+    addConst versionPath [CWord32 0, CInt32 (-1023)] >>=
+    return . vsAssignType buildPath buildDefPath >>=
+    addConst buildPath [CString "banana"] >>=
+
+    autoDefineStruct
+        ["api", "types", "base"]
+        ["api", "types", "containers", "base"] >>=
+    return . vsAssignType
+        ["api", "types", "containers"]
+        ["api", "types", "containers", "containers"] >>=
+    autoDefineStruct
+        ["api", "types", "self"]
+        ["api", "types", "containers", "types_self"] >>=
+    autoDefineStruct
+        ["api", "self"]
+        ["api", "types", "containers", "self"] >>=
+    autoDefineStruct
+        ["api", "types"]
+        ["api", "types", "containers", "types"] >>=
+    autoDefineStruct
+        ["api"]
+        ["api", "types", "containers", "api"] >>=
+    autoDefineStruct
+        []
+        ["api", "types", "containers", "root"] >>=
+    autoDefineStruct ["api", "types", "containers"]
+        ["api", "types", "containers", "containers"]
   where
-    f (initPath, []) m = m
-    f (initPath, (a:as)) m = Mos.insert initPath a m
+    versionPath = ["api", "self", "version"]
+    versionDefPath = ["api", "types", "self", "version"]
+    versionDef = fromJust $ tupleDef
+        Cannot "t" ["maj", "min"] ["word32", "int32"] mempty
 
-
--- globalSite = Nothing
--- anon = Nothing
--- tconst = Time 0 0
-
--- addConst :: (MonadFail m) => [ClapiValue] -> NodePath -> VsTree -> m VsTree
--- addConst cvs np = eitherFail . treeAdd anon IConstant cvs np globalSite tconst
-
--- getBaseValuespace :: Valuespace
--- getBaseValuespace = unpack (
---     Valuespace mempty mempty mempty &
---     initStruct Path.root
---         ["api", "types", "containers", "root"]
---         Cannot "doc"
---         [("api", ["api", "types", "containers", "api"])] >>=
---     initStruct ["api"]
---         ["api", "types", "containers", "api"]
---         Cannot "doc"
---         [("types", ["api", "types", "containers", "types"]),
---          ("version", ["api", "types", "self", "version"]),
---          ("build", ["api", "types", "self", "build"])
---         ] >>=
---     initStruct ["api", "types"]
---         ["api", "types", "containers", "types"]
---         Cannot "doc"
---         [("base", ["api", "types", "containers", "base"]),
---          ("self", ["api", "types", "containers", "self"]),
---          ("containers", ["api", "types", "containers", "containers"])
---         ] >>=
---     initStruct ["api", "types", "base"]
---         ["api", "types", "containers", "base"]
---         Cannot "doc"
---         [("tuple", tupleTypePath),
---          ("struct", tupleTypePath),
---          ("array", tupleTypePath)
---         ] >>=
---     addConst' (defToValues baseTupleDef) tupleTypePath >>=
---     addConst' (defToValues baseStructDef) structTypePath >>=
---     addConst' (defToValues baseArrayDef) arrayTypePath >>=
---     initStruct ["api", "types", "self"]
---         ["api", "types", "containers", "self"]
---         Cannot "doc"
---         [("version", tupleTypePath),
---          ("build", tupleTypePath)
---         ] >>=
---     addConst' (defToValues versionDef) ["api", "types", "self", "version"] >>=
---     addConst' (defToValues buildDef) ["api", "types", "self", "build"] >>=
---     treeInitNode' ["api", "types", "containers"] structTypePath >>=
---     treeSetChildren' ["api", "types", "containers"]
---         ["root", "api", "types", "base", "self"]
---     )
---   where
---     versionDef = unpack $ tupleDef Cannot "v" ["maj", "min"] ["word32", "int32"] mempty
---     -- FIXME: want to be able to put in a regex for a sha1: [0-9a-f]{x}
---     buildDef = unpack $ tupleDef Cannot "b" ["value"] ["string[banana]"] mempty
---     addConst' cvs tp = updateVsTree (addConst cvs tp)
---     treeInitNode' np tp = updateVsTree f
---       where
---         f tree = pure $ treeInitNode np tp tree
---     treeSetChildren' np children = updateVsTree f
---       where
---         f tree = treeSetChildren np children tree
+    buildPath = ["api", "self", "build"]
+    buildDefPath = ["api", "types", "self", "build"]
+    buildDef = fromJust $ tupleDef
+        Cannot "b" ["commit_hash"] ["string[banana]"] mempty
