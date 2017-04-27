@@ -123,10 +123,25 @@ arrayDef ::
     (MonadFail m) => Liberty -> T.Text -> Path.Path -> Liberty -> m Definition
 arrayDef l d ct cl = return $ ArrayDef l d ct cl
 
+apiRoot :: Path.Path
+apiRoot = ["api"]
+
 metaType :: Definition -> MetaType
 metaType (TupleDef {}) = Tuple
 metaType (StructDef {}) = Struct
 metaType (ArrayDef {}) = Array
+
+metaTypePath :: MetaType -> Path.Path
+metaTypePath Tuple = ["api", "types", "base", "tuple"]
+metaTypePath Struct = ["api", "types", "base", "struct"]
+metaTypePath Array = ["api", "types", "base", "array"]
+
+categoriseMetaTypePath :: (MonadFail m) => TypePath -> m MetaType
+categoriseMetaTypePath mtp
+    | mtp == metaTypePath Tuple = return Tuple
+    | mtp == metaTypePath Struct = return Struct
+    | mtp == metaTypePath Array = return Array
+    | otherwise = fail "Weird metapath!"
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
@@ -378,25 +393,6 @@ validateNodeData getType' def node tps =
         Map.Map (Maybe Site, Time) (Interpolation, a)
     filterSiteMap sm keys = mapFilterJust $
         unwrapTimePoint <$> Map.restrictKeys (flattenNestedMaps sm) keys
-
-apiRoot :: Path.Path
-apiRoot = ["api"]
-
-tupleTypePath :: Path.Path
-tupleTypePath = ["api", "types", "base", "tuple"]
-
-structTypePath :: Path.Path
-structTypePath = ["api", "types", "base", "struct"]
-
-arrayTypePath :: Path.Path
-arrayTypePath = ["api", "types", "base", "array"]
-
-categoriseMetaTypePath :: (MonadFail m) => TypePath -> m MetaType
-categoriseMetaTypePath mtp
-    | mtp == tupleTypePath = return Tuple
-    | mtp == structTypePath = return Struct
-    | mtp == arrayTypePath = return Array
-    | otherwise = fail "Weird metapath!"
 
 vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
 vsAssignType np tp =
