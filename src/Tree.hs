@@ -30,7 +30,7 @@ import Data.Map.Strict.Merge (
     zipWithMatched, zipWithMaybeMatched)
 import Control.Lens (
     Lens, Lens', (.~), (&), view, over, ix, at, At(..), Index(..),
-    IxValue(..), Ixed(..), makeLenses)
+    IxValue(..), Ixed(..), makeLenses, non)
 import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Error.Util (hush)
@@ -177,13 +177,16 @@ treeDeleteNode p t =
 type TreeAction m a = Maybe (Attributed (Maybe (TimePoint a))) ->
     m (Maybe (Attributed (Maybe (TimePoint a))))
 treeAction ::
-    (MonadFail m) => TreeAction m a -> NodePath -> Maybe Site -> Time ->
+    (MonadFail m, Eq a) => TreeAction m a -> NodePath -> Maybe Site -> Time ->
     ClapiTree a -> m (ClapiTree a)
 treeAction action path maybeSite t tree =
-  do
-    node <- (Maybe.note $ printf "not found %s" (toString path)) $ view (at path) tree
+  let
+    -- FIXME: not sure if this is the best way to do this:
+    tree' = treeInitNode path tree
+    node = view (at path . non mempty) tree'
+  in do
     newNode <- nodeAction action maybeSite t node
-    newTree <- return $ tree & (at path) .~ (Just newNode)
+    newTree <- return $ tree' & (at path) .~ (Just newNode)
     return newTree
 
 nodeAction ::
@@ -198,7 +201,7 @@ nodeAction action maybeSite t node =
     existingTimeSeries = view (getSites . (ix maybeSite)) node
 
 treeAdd ::
-    forall a m. (MonadFail m) => Maybe Attributee -> Interpolation -> a ->
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> Interpolation -> a ->
     NodePath -> Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeAdd att int a = treeAction add
   where
@@ -207,7 +210,7 @@ treeAdd att int a = treeAction add
     add _ = return . Just $ (att, Just (int, a))
 
 treeSet ::
-    forall a m. (MonadFail m) => Maybe Attributee -> Interpolation -> a ->
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> Interpolation -> a ->
     NodePath -> Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeSet att int a path site t = treeAction set path site t
   where
@@ -218,8 +221,8 @@ treeSet att int a path site t = treeAction set path site t
         (show t) (show site)
 
 treeRemove ::
-    forall a m. (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site ->
-    Time -> ClapiTree a -> m (ClapiTree a)
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> NodePath ->
+    Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeRemove _ path Nothing t = treeAction globalRemove path Nothing t
   where
     globalRemove :: TreeAction m a
@@ -233,8 +236,8 @@ treeRemove att path justSite t = treeAction siteRemove path justSite t
     siteRemove _ = return . Just $ (att, Nothing)
 
 treeClear ::
-    forall a m. (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site ->
-    Time -> ClapiTree a -> m (ClapiTree a)
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> NodePath ->
+    Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeClear _ path Nothing t tree = fail "no clearing without a site"
 treeClear att path justSite t tree = treeAction clear path justSite t tree
   where
