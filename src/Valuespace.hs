@@ -105,7 +105,7 @@ tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
         permittedInterpolations
 
 structDef ::
-    (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [Path.Path] ->
+    (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [TypePath] ->
     [Liberty] -> m Definition
 structDef liberty doc childNames childTypes childLiberties =
   let
@@ -120,7 +120,7 @@ structDef liberty doc childNames childTypes childLiberties =
     return $ StructDef liberty doc childNames childTypes childLiberties
 
 arrayDef ::
-    (MonadFail m) => Liberty -> T.Text -> Path.Path -> Liberty -> m Definition
+    (MonadFail m) => Liberty -> T.Text -> TypePath -> Liberty -> m Definition
 arrayDef l d ct cl = return $ ArrayDef l d ct cl
 
 apiRoot :: Path.Path
