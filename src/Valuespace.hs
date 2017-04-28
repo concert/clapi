@@ -226,7 +226,7 @@ data Valuespace v = Valuespace {
     _xrefs :: Mos.Dependencies NodePath NodePath,
     _defs :: DefMap,
     _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
-    }
+    } deriving (Eq)
 makeLenses ''Valuespace
 
 instance Show (Valuespace v) where
