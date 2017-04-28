@@ -305,7 +305,7 @@ validateTypeNode metaType node =
 validateChildren ::
     Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
 validateChildren vs =
-  let nodes = Map.difference (view tree vs) (view unvalidated vs) in
+  let nodes = Map.restrictKeys (view tree vs) (Map.keysSet $ view unvalidated vs) in
   do
     nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef nodes
     eitherErrorMap $ fmap (uncurry validateNodeChildren) nodesWithDefs
@@ -512,6 +512,9 @@ baseValuespace =
     autoDefineStruct
         []
         ["api", "types", "containers", "root"] >>=
+    return . vsAssignType
+        ["api", "types", "containers", "containers"]
+        (metaTypePath Tuple) >>=
     autoDefineStruct ["api", "types", "containers"]
         ["api", "types", "containers", "containers"]
   where

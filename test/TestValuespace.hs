@@ -8,6 +8,7 @@ import Test.QuickCheck (
     Arbitrary(..), Gen, Property, arbitrary, oneof, elements, listOf, listOf1,
     arbitraryBoundedEnum, vector, vectorOf)
 
+import Data.Coerce (coerce)
 import Data.Either (either)
 import Data.Maybe (fromJust, isNothing)
 import qualified Data.Text as T
@@ -22,14 +23,12 @@ import Path (Path)
 import Types (InterpolationType, ClapiValue(..))
 import Validator (validate)
 import Valuespace (
-    --getBaseValuespace, getTree, Liberty, Definition(..), metaType, tupleDef,
-    Definition(..), Liberty(..), tupleDef, structDef, arrayDef, metaType,
-    definitionValidators, defToValues, valuesToDef)
-import Tree (treeOrphansAndMissing)
+    Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
+    metaType, defToValues, valuesToDef, vsValidate, baseValuespace)
 
 tests = [
     testCase "tupleDef" testTupleDef,
-    -- testCase "test base valuespace" testBaseValuespace,
+    testCase "test base valuespace" testBaseValuespace,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -41,14 +40,11 @@ testTupleDef =
         tupleDef Cannot "docs" ["a", "b"] ["bool"] mempty
     let def = fromJust $ tupleDef Cannot "docs" ["a"] ["bool"] mempty
     assertEqual "tuple validation" (Right ()) $
-        validate undefined (definitionValidators def) [CBool True]
+        validate undefined (view validators def) [CBool True]
 
 
--- testBaseValuespace = assertEqual "clean base valuespace" (mempty, mempty) $
---     treeOrphansAndMissing baseVsTree
---     -- FIXME: this misses latent errors in the values because of laziness
---   where
---     baseVsTree = view getTree getBaseValuespace
+testBaseValuespace = assertEqual "correct base valuespace" mempty $
+    fst $ vsValidate $ coerce baseValuespace
 
 
 arbitraryPath :: Gen Path
