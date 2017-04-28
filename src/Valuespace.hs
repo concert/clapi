@@ -474,7 +474,7 @@ autoGenStructDef (childNames, childTypes) =
 
 assert :: (a -> Bool) -> (a -> String) -> a -> a
 assert p s a | p a = a
-           | otherwise = error $ printf "assertion failed %s" (s a)
+             | otherwise = error $ printf "assertion failed %s" (s a)
 
 
 baseValuespace :: Valuespace Validated
