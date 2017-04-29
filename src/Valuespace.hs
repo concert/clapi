@@ -407,33 +407,34 @@ vsDelete np =
     over types (Mos.delDependency np) .
     set (unvalidated . at np) Nothing
 
+taint ::
+    NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace Unvalidated
+taint np s t =
+    over (unvalidated . at np . non mempty . _Just) (Set.insert (s, t))
+
 vsAdd ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
 vsAdd a i vs np s t =
-    tree (treeAdd a i vs np s t) .
-    over (unvalidated . at np . non mempty . _Just) (Set.insert (s, t))
+    tree (treeAdd a i vs np s t) . taint np s t
 
 vsSet ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
 vsSet a i vs np s t =
-    tree (treeSet a i vs np s t) .
-    over (unvalidated . at np . non mempty . _Just) (Set.insert (s, t))
+    tree (treeSet a i vs np s t) . taint np s t
 
 vsRemove ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
     Valuespace v -> m (Valuespace Unvalidated)
 vsRemove a np s t =
-    tree (treeRemove a np s t) .
-    over (unvalidated . at np . non mempty . _Just ) (Set.insert (s, t))
+    tree (treeRemove a np s t) . taint np s t
 
 vsClear ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
     Valuespace v -> m (Valuespace Unvalidated)
 vsClear a np s t =
-    tree (treeClear a np s t) .
-    over (unvalidated . at np . non mempty . _Just) (Set.insert (s, t))
+    tree (treeClear a np s t) . taint np s t
 
 
 globalSite = Nothing
