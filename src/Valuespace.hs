@@ -410,7 +410,7 @@ vsDelete np =
 taint ::
     NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace Unvalidated
 taint np s t =
-    over (unvalidated . at np . non mempty . _Just) (Set.insert (s, t))
+    over (unvalidated . at np . non mempty . non mempty) (Set.insert (s, t))
 
 vsAdd ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
