@@ -1,6 +1,6 @@
 module Util (
     eitherFail,
-    tag,
+    tagl, tagr,
     append, (+|),
     appendIfAbsent, (+|?),
     duplicates,
@@ -29,9 +29,11 @@ import qualified Data.Attoparsec.ByteString as APBS
 eitherFail :: (MonadFail m) => Either String a -> m a
 eitherFail = either fail return
 
--- FIXME: should make (a -> b) -> a -> (b, a) and lift where appropriate
-tag :: (Functor f) => (a -> b) -> f a -> f (b, a)
-tag f = fmap (\a -> (f a, a))
+tagl :: (a -> b) -> a -> (b, a)
+tagl f a = (f a, a)
+
+tagr :: (a -> b) -> a -> (a, b)
+tagr f a = (a, f a)
 
 append :: [a] -> a -> [a]
 append as a = as ++ [a]

@@ -15,7 +15,7 @@ import Pipes.Core (Proxy, request, respond)
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 import Path (Name, Path)
-import Util (tag)
+import Util (tagl)
 import Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(CString))
 import Server (User)
 
@@ -105,7 +105,7 @@ tagOwnership ::
     (Monad m, Eq i) => i -> [Message] -> StateT (Owners i) m [Om]
 tagOwnership i ms = do
     owners <- get
-    return $ tag (getNsOwnership owners . namespace . msgPath') ms
+    return $ tagl (getNsOwnership owners . namespace . msgPath') <$> ms
   where
     getNsOwnership owners name = case Map.lookup name owners of
       Nothing -> Unclaimed
