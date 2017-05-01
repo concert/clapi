@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestValuespace where
 
-import Test.HUnit (assertEqual)
+import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck (
@@ -20,15 +20,17 @@ import Control.Monad (replicateM)
 import Helpers (assertFailed)
 
 import Path (Path)
-import Types (InterpolationType, ClapiValue(..))
+import Types (InterpolationType, Interpolation(..), ClapiValue(..))
 import Validator (validate)
 import Valuespace (
     Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
-    metaType, defToValues, valuesToDef, vsValidate, baseValuespace)
+    metaType, defToValues, valuesToDef, vsValidate, baseValuespace,
+    vsAssignType, vsSet, anon, tconst, globalSite)
 
 tests = [
     testCase "tupleDef" testTupleDef,
     testCase "test base valuespace" testBaseValuespace,
+    testCase "test child type validation" testChildTypeValidation,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -45,6 +47,15 @@ testTupleDef =
 
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
     fst $ vsValidate $ coerce baseValuespace
+
+testChildTypeValidation =
+    assertBool "did not find errors" $ not . null . fst $ vsValidate badVs
+  where
+    badVs = fromJust $
+        vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
+        globalSite tconst baseValuespace >>=
+        return . vsAssignType ["api", "self", "version"]
+            ["api", "types", "self", "build"]
 
 
 arbitraryPath :: Gen Path

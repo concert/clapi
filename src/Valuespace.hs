@@ -432,14 +432,16 @@ vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
-    set (unvalidated . at np) (Just Nothing)
+    set (unvalidated . at np) (Just Nothing) .
+    set (unvalidated . at (Path.up np)) (Just Nothing)
 
 vsDelete ::
     (MonadFail m) => NodePath -> Valuespace v -> m (Valuespace Unvalidated)
 vsDelete np =
     tree (treeDeleteNode np) .
     over types (Mos.delDependency np) .
-    set (unvalidated . at np) Nothing
+    set (unvalidated . at np) Nothing .
+    set (unvalidated . at (Path.up np)) (Just Nothing)
 
 taint ::
     NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace Unvalidated
