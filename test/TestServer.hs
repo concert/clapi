@@ -104,7 +104,7 @@ killServerHelper connector handler = withListen' $ \(lsock, laddr) ->
     v <- newEmptyMVar
     withServe lsock (\(hsock, _) -> handler v hsock) $ \a ->
      do
-        connect "localhost" (show . getPort $ laddr) $
+        connect "127.0.0.1" (show . getPort $ laddr) $
             \(csock, _) -> connector a csock
         timeLimit (takeMVar v)
         assertAsyncKilled a
@@ -129,7 +129,7 @@ testDoubleKillServerKillsHandlers = killServerHelper connector handler
 socketCloseTest handler = withServe' handler $ \port->
   do
     mbs <- timeout (seconds 0.1) $
-        connect "localhost" port
+        connect "127.0.0.1" port
             (\(csock, _) -> recv csock 4096)
     assertEqual "didn't get closed" (Just "") mbs
 
@@ -140,7 +140,7 @@ testHandlerErrorClosesSocket = socketCloseTest $ error "part of test"
 testMultipleConnections n = withServe' handler $ \port ->
   do
     res <- replicateConcurrently n $ timeout (seconds 0.1) $
-        connect "localhost" port (\(csock, _) -> recv csock 4096)
+        connect "127.0.0.1" port (\(csock, _) -> recv csock 4096)
     assertEqual "bad thread data" res $ replicate n (Just "hello")
   where
     handler (hsock, _) = send hsock "hello"
@@ -151,7 +151,7 @@ echoMap f input = request (f input) >>= echoMap f
 testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
   let
     s = socketServer cat cat lsock
-    client word = connect "localhost" (show $ getPort laddr) $ \(csock, _) ->
+    client word = connect "127.0.0.1" (show $ getPort laddr) $ \(csock, _) ->
         send csock word >> recv csock 4096
   in
     withAsync (runSafeT $ runEffect $ s >>~ echoMap pure) $ \_ ->
@@ -171,7 +171,7 @@ testSocketServerClosesGracefully =
         restore $ runSafeT $ runEffect $ s >>~ echoMap pure
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
-    timeLimit $ connect "localhost" port $ \(csock, _) -> do
+    timeLimit $ connect "127.0.0.1" port $ \(csock, _) -> do
         let chat = send csock "hello" >> recv csock 4096
         -- We have to do some initial chatting to ensure the connection has
         -- been established before we kill the server, otherwise recv can get a
@@ -180,7 +180,7 @@ testSocketServerClosesGracefully =
         kill
         -- killing once should just have stopped us listening
         chat
-        connect "localhost" port undefined
+        connect "127.0.0.1" port undefined
             `E.catch` (\(e :: E.IOException) -> return ())
         kill
         bs <- recv csock 4096
