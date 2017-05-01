@@ -308,28 +308,61 @@ validateChildren vs =
   let nodes = Map.restrictKeys (view tree vs) (Map.keysSet $ view unvalidated vs) in
   do
     nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef nodes
-    eitherErrorMap $ fmap (uncurry validateNodeChildren) nodesWithDefs
+    eitherErrorMap $ Map.mapWithKey
+        (\np (n, d) -> validateNodeChildren (getType vs) np n d) nodesWithDefs
     return vs
   where
     pairDef np n = (,) n <$> getDef np vs
 
 
-validateNodeChildren :: (MonadFail m) => Node -> Definition -> m ()
-validateNodeChildren node (TupleDef {}) = case view getKeys node of
+validateChildKeyTypes ::
+    (MonadFail m) => (NodePath -> m TypePath) -> NodePath -> Node ->
+    [TypePath] -> m ()
+validateChildKeyTypes getType' np n expectedTypes =
+  let
+    expectedKeys = view getKeys n
+    expectedTypeMap = Map.fromList $
+        zip expectedKeys (zip expectedTypes (getChildPaths np n))
+    failTypes bad = when (not . null $ bad) $ fail $
+        printf "bad child types %s" (show bad)
+  in do
+    taggedBadTypes <-
+        fmap (Map.filter (uncurry (/=))) $
+        (traverse . traverse) getType' expectedTypeMap
+    failTypes taggedBadTypes
+
+
+validateNodeChildren ::
+    (MonadFail m) => (NodePath -> m TypePath) -> NodePath -> Node ->
+    Definition -> m ()
+validateNodeChildren _ _ node (TupleDef {}) = case view getKeys node of
   [] -> return ()
   _ -> fail "tuple node has children"
-validateNodeChildren node def@(StructDef {}) =
+validateNodeChildren getType' np node def@(StructDef {}) =
   let
     expectedKeys = view childNames def
+    expectedTypes = view childTypes def
     nodeKeys = view getKeys node
     (missing, extra) = partitionDifferenceL expectedKeys nodeKeys
-  in
-  if (missing, extra) == mempty
-    then return ()
-    else fail $
-      printf "expected node keys %s, got %s" (show expectedKeys) (show nodeKeys)
-validateNodeChildren node (ArrayDef {}) =
-    mapM_ (eitherFail . parseOnly Path.nameP . T.pack) (view getKeys node)
+    failKeys = fail $
+        printf "expected node keys %s, got %s" (show expectedKeys)
+        (show nodeKeys)
+  in do
+    when ((missing, extra) /= mempty) failKeys
+    validateChildKeyTypes getType' np node expectedTypes
+validateNodeChildren getType' np node def@(ArrayDef {}) =
+  let
+    nodeKeys = view getKeys node
+    dups = duplicates nodeKeys
+    expectedType = view childType def
+    failDups = when (not . null $ dups) $ fail $
+        printf "duplicate array keys %s" (show dups)
+    failTypes bad = when (not . null $ bad) $ fail $
+        printf "bad child types %s" (show bad)
+  in do
+    mapM_ (eitherFail . parseOnly Path.nameP . T.pack) nodeKeys
+    failDups
+    validateChildKeyTypes getType' np node (repeat expectedType)
 
 
 flattenNestedMaps ::
@@ -516,7 +549,7 @@ baseValuespace =
         ["api", "types", "containers", "root"] >>=
     return . vsAssignType
         ["api", "types", "containers", "containers"]
-        (metaTypePath Tuple) >>=
+        (metaTypePath Struct) >>=
     autoDefineStruct ["api", "types", "containers"]
         ["api", "types", "containers", "containers"]
   where
