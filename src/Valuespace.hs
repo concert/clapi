@@ -320,9 +320,9 @@ validateChildKeyTypes ::
     [TypePath] -> m ()
 validateChildKeyTypes getType' np n expectedTypes =
   let
-    expectedKeys = view getKeys n
+    keys = view getKeys n
     expectedTypeMap = Map.fromList $
-        zip expectedKeys (zip expectedTypes (getChildPaths np n))
+        zip keys (zip expectedTypes (getChildPaths np n))
     failTypes bad = when (not . null $ bad) $ fail $
         printf "bad child types %s" (show bad)
   in do
