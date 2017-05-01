@@ -237,15 +237,15 @@ instance Monoid (Valuespace v) where
     mappend (Valuespace a1 b1 c1 d1 e1) (Valuespace a2 b2 c2 d2 e2) =
         Valuespace (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2) (e1 <> e2)
 
-getType :: (MonadFail m) => NodePath -> Valuespace v -> m TypePath
-getType np = note f . Mos.getDependency np . view types
+getType :: (MonadFail m) => Valuespace v -> NodePath -> m TypePath
+getType vs np = note f . Mos.getDependency np . view types $ vs
   where
     f = printf "No type path specified for %s" (show np)
 
 getDef :: (MonadFail m) => NodePath -> Valuespace v -> m Definition
 getDef np vs =
   do
-    tp <- getType np vs
+    tp <- getType vs np
     note f $ view (defs . at tp) vs
   where
     f = printf "No cached type definition for %s" (show np)
@@ -278,7 +278,7 @@ rectifyTypes ::
 rectifyTypes vs =
   do
     unvalidatedsTypes <-
-        eitherErrorMap . Map.mapWithKey (\np _ -> getType np vs) .
+        eitherErrorMap . Map.mapWithKey (\np _ -> getType vs np) .
         view unvalidated $ vs
     newDefs <-
         eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
@@ -355,13 +355,12 @@ vsValidatePath vs np mtps =
     node <- getNode np vs
     case def of
       (TupleDef {}) -> case mtps of
-        (Just tps) -> validateNodeData getType' def node tps
-        Nothing -> validateNodeData getType' def node $ allTps node
+        (Just tps) -> validateNodeData (getType vs) def node tps
+        Nothing -> validateNodeData (getType vs) def node $ allTps node
       _ -> if view getSites node == mempty
         then return ()
         else fail $ printf "data found in container node at %s" (show np)
   where
-    getType' = flip getType vs
     allTps node = Map.keysSet . flattenNestedMaps $ view getSites node
 
 
@@ -467,7 +466,7 @@ autoDefineStruct np tp vs =
   where
     wellDefinedStruct n = sequence (
       view getKeys n,
-      traverse (flip getType vs) $ getChildPaths np n)
+      traverse (getType vs) $ getChildPaths np n)
 
 autoGenStructDef :: (MonadFail m) => ([Path.Name], [TypePath]) -> m Definition
 autoGenStructDef (childNames, childTypes) =
