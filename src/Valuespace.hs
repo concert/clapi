@@ -367,12 +367,14 @@ vsValidatePath vs np mtps =
 
 validateInterpolation ::
     (MonadFail m) => Set.Set InterpolationType -> Interpolation -> m ()
-validateInterpolation its i | it `elem` its = return ()
-                           | otherwise = fail f
-  where
-    it = interpolationType i
-    f =  printf "forbidden interpolation type %s (allowed %s)"
-        (show it) (show its)
+validateInterpolation its i = return ()
+-- FIXME: temporarily disabled because of structural inadequacy in tree!
+-- validateInterpolation its i | it `elem` its = return ()
+--                             | otherwise = fail f
+--   where
+--     it = interpolationType i
+--     f =  printf "forbidden interpolation type %s (allowed %s)"
+--         (show it) (show its)
 
 
 validateNodeData ::
