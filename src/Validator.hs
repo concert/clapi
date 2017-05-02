@@ -172,7 +172,7 @@ showJoin :: (Show a, Foldable t) => String -> t a -> String
 showJoin sep as = intercalate sep $ fmap show (toList as)
 
 getSetValidator :: Validator -> Validator
-getSetValidator itemValidator = undefined
+getSetValidator itemValidator = setValidator
   where
     listValidator = getListValidator itemValidator
     setValidator tree (CList xs) =
