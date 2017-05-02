@@ -71,7 +71,7 @@ makeLenses ''Definition
 -- Grr, boilerplate because of validators not being showable, equatable:
 instance Show Definition where
     show (TupleDef l _ vns vds _ is) =
-        printf "<TupleDef %s %s %s $s>" (show l) (show vns) (show vds) (show is)
+        printf "<TupleDef %s %s %s %s>" (show l) (show vns) (show vds) (show is)
     show (StructDef l _ ns ts ls) =
         printf "<StructDef %s %s %s %s>" (show l) (show ns) (show ts) (show ls)
     show (ArrayDef l _ ct cl) =
