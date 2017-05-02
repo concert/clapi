@@ -4,6 +4,7 @@ module Validator where
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
 import Data.List (intercalate)
+import Data.Maybe (fromJust)
 import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
 import Data.Scientific (toRealFloat)
@@ -33,10 +34,9 @@ maybeP p = (Just <$> p) <|> pure Nothing
 fromText :: Text.Text -> CanFail Validator
 fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
   where
-    unwrapMaybe (Just foo) = foo -- Yuck, get rid of this!
     mainParser = do
         name <- Dat.choice $ fmap Dat.string $ Map.keys argsParserMap
-        argValidator <- unwrapMaybe $ Map.lookup name argsParserMap
+        argValidator <- fromJust $ Map.lookup name argsParserMap
         return argValidator
     bracket p = do
         Dat.char '['
