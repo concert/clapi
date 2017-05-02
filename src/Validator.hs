@@ -20,19 +20,28 @@ import qualified Data.Attoparsec.Text as Dat
 import Util (duplicates)
 import Path (Path, isChildOf)
 import Path.Parsing (nameP, pathP, toString)
-import Types (CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
+import Types (
+    CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
 
 type NodePath = Path
 type TypePath = Path
 
-type Validator = (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail ()
+data VType =
+    VBool | VTime | VEnum | VWord32 | VWord64 | VInt32 | VInt64 |
+    VFloat | VDouble | VString | VRef | VValidator | VList VType | VSet VType
+  deriving (Eq, Show, Ord)
+
+data Validator = Validator {
+    desc :: Text.Text,
+    goValidate :: (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail (),
+    vType :: VType}
 success = Right ()
 
 maybeP :: Dat.Parser a -> Dat.Parser (Maybe a)
 maybeP p = (Just <$> p) <|> pure Nothing
 
 fromText :: Text.Text -> CanFail Validator
-fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
+fromText t = Dat.parseOnly (mainParser <* Dat.endOfInput) t
   where
     mainParser = do
         name <- Dat.choice $ fmap Dat.string $ Map.keys argsParserMap
@@ -46,22 +55,22 @@ fromText = Dat.parseOnly (mainParser <* Dat.endOfInput)
     sep = Dat.char ':'
     argsParserMap :: Map.Map Text.Text (Dat.Parser Validator)
     argsParserMap = Map.fromList [
-        ("bool", optionalEmpty boolValidator),
-        ("time", optionalEmpty timeValidator),
-        ("enum", mandatoryArgs1 getEnumValidator enumP),
-        ("word32", optionalArgs2 getNumValidator word32P word32P),
-        ("word64", optionalArgs2 getNumValidator word64P word64P),
-        ("int32", optionalArgs2 getNumValidator int32P int32P),
-        ("int64", optionalArgs2 getNumValidator int64P int64P),
-        ("float", optionalArgs2 getNumValidator floatP floatP),
-        ("double", optionalArgs2 getNumValidator doubleP doubleP),
+        ("bool", optionalEmpty (boolValidator t)),
+        ("time", optionalEmpty (timeValidator t)),
+        ("enum", mandatoryArgs1 (getEnumValidator t) enumP),
+        ("word32", optionalArgs2 (getNumValidator t VWord32) word32P word32P),
+        ("word64", optionalArgs2 (getNumValidator t VWord64) word64P word64P),
+        ("int32", optionalArgs2 (getNumValidator t VInt32) int32P int32P),
+        ("int64", optionalArgs2 (getNumValidator t VInt64) int64P int64P),
+        ("float", optionalArgs2 (getNumValidator t VFloat) floatP floatP),
+        ("double", optionalArgs2 (getNumValidator t VDouble) doubleP doubleP),
         -- FIXME: avoiding square brackets won't do for regexs :-(
-        ("string", optionalArgs1 getStringValidator (Dat.many' $ Dat.notChar ']')),
-        ("ref", mandatoryArgs1 getRefValidator pathP),
-        ("validator", mandatoryEmpty validatorValidator),
-        ("list", mandatoryArgs1 getListValidator mainParser),
+        ("string", optionalArgs1 (getStringValidator t) (Dat.many' $ Dat.notChar ']')),
+        ("ref", mandatoryArgs1 (getRefValidator t) pathP),
+        ("validator", mandatoryEmpty (validatorValidator t)),
+        ("list", mandatoryArgs1 (getListValidator t) mainParser),
         -- FIXME: ulist or some other name implying uniquenss + order
-        ("set", mandatoryArgs1 getSetValidator mainParser)
+        ("set", mandatoryArgs1 (getSetValidator t) mainParser)
         ]
     nothing = pure ()
     optionalEmpty validator = bracket nothing <|> nothing >> pure validator
@@ -101,20 +110,24 @@ softValidate ::
     (NodePath -> CanFail TypePath) -> [Validator] -> [ClapiValue] -> CanFail ()
 softValidate getTypePath vs cvs =
     foldl (>>) success $
-    zipWith ($) [v getTypePath | v <- vs] cvs
+    zipWith ($) [(goValidate v) getTypePath | v <- vs] cvs
 
-boolValidator :: Validator
-boolValidator _ (CBool _) = success
-boolValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+boolValidator :: Text.Text -> Validator
+boolValidator t = Validator t doValidate VBool
+  where
+    doValidate _ (CBool _) = success
+    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
-timeValidator :: Validator
-timeValidator _ (CTime (Time _ _)) = success
-timeValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+timeValidator :: Text.Text -> Validator
+timeValidator t = Validator t doValidate VTime
+  where
+    doValidate _ (CTime (Time _ _)) = success
+    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getNumValidator :: forall a. (Clapiable a, Ord a, PrintfArg a) =>
-    Maybe a -> Maybe a -> Validator
-getNumValidator min max =
-    \_ cv -> checkType cv >>= bound min max
+    Text.Text -> VType -> Maybe a -> Maybe a -> Validator
+getNumValidator t vtype min max =
+    Validator t (\_ cv -> checkType cv >>= bound min max) vtype
   where
     -- FIXME: should say which type!
     checkType cv = note "Bad type" (fromClapiValue cv :: Maybe a)
@@ -130,52 +143,59 @@ getNumValidator min max =
       | v >= min && v <= max = success
       | otherwise = Left $ printf "%v not between %v and %v" v min max
 
-getEnumValidator :: [String] -> Validator
-getEnumValidator names _ (CEnum x)
-  | x <= max = success
-  | otherwise = Left $ printf "Enum value not <= %v" (max)
+getEnumValidator :: Text.Text -> [String] -> Validator
+getEnumValidator t names = Validator t doValidate VEnum
   where
     max = fromIntegral $ length names - 1
-getEnumValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
+    doValidate _ (CEnum x)
+      | x <= max = success
+      | otherwise = Left $ printf "Enum value not <= %v" (max)
+    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
-getStringValidator :: Maybe String -> Validator
-getStringValidator Nothing _ (CString t) = success
-getStringValidator (Just pattern) _ (CString t) =
-    note errStr ((Text.unpack t) =~~ pattern :: Maybe ())
+getStringValidator :: Text.Text -> Maybe String -> Validator
+getStringValidator desc p = Validator desc (doValidate p) VString
   where
-    errStr = printf "did not match '%s'" pattern
-getStringValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
+    errStr = printf "did not match '%s'"
+    doValidate Nothing _ (CString t) = success
+    doValidate (Just pattern) _ (CString t) =
+        note (errStr pattern) ((Text.unpack t) =~~ pattern :: Maybe ())
+    doValidate _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
-getRefValidator :: Path -> Validator
-getRefValidator requiredTypePath getTypePath (CString x) =
-  do
-    nodePath <- Dat.parseOnly pathP x
-    typePath <- getTypePath nodePath
-    if isChildOf requiredTypePath typePath
-    then success
-    else Left $ printf "%v is of type %v, rather than expected %v"
-       (toString nodePath) (toString typePath) (toString requiredTypePath)
-getRefValidator _ _ _ = Left "Bad type"  -- FIXME: should say which!
-
-validatorValidator :: Validator
-validatorValidator _ (CString x) = fromText x >> success
-validatorValidator _ _ = Left "Bad type"  -- FIXME: should say which!
-
-
-getListValidator :: Validator -> Validator
-getListValidator itemValidator = listValidator
+getRefValidator :: Text.Text -> Path -> Validator
+getRefValidator t requiredTypePath = Validator t doValidate VRef
   where
-    listValidator tree (CList xs) = softValidate tree (repeat itemValidator) xs
+    doValidate getTypePath (CString x) =
+      do
+        nodePath <- Dat.parseOnly pathP x
+        typePath <- getTypePath nodePath
+        if isChildOf requiredTypePath typePath
+        then success
+        else Left $ printf "%v is of type %v, rather than expected %v"
+          (toString nodePath) (toString typePath) (toString requiredTypePath)
+    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+
+validatorValidator :: Text.Text -> Validator
+validatorValidator t = Validator t doValidate VValidator
+  where
+    doValidate _ (CString x) = fromText x >> success
+    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+
+
+getListValidator :: Text.Text -> Validator -> Validator
+getListValidator t itemValidator = Validator t listValidator (VList $ vType itemValidator)
+  where
+    listValidator getType (CList xs) = softValidate getType (repeat itemValidator) xs
     listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
 
 showJoin :: (Show a, Foldable t) => String -> t a -> String
 showJoin sep as = intercalate sep $ fmap show (toList as)
 
-getSetValidator :: Validator -> Validator
-getSetValidator itemValidator = setValidator
+getSetValidator :: Text.Text -> Validator -> Validator
+getSetValidator t itemValidator = Validator t setValidator (VSet $ vType itemValidator)
   where
-    listValidator = getListValidator itemValidator
-    setValidator tree (CList xs) =
+    listValidator = getListValidator "" itemValidator
+    setValidator getType cv@(CList xs) =
         let dups = duplicates xs in
-        if null dups then success
+        if null dups then goValidate listValidator getType cv
         else Left $ printf "Duplicate elements %v" $ showJoin ", " dups
+    setValidator _ _ = Left "Bad type"

@@ -22,10 +22,10 @@ import Helpers (assertFailed)
 import Path (Path)
 import Types (InterpolationType, Interpolation(..), ClapiValue(..))
 import Validator (validate)
-import Valuespace (
-    Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
-    metaType, defToValues, valuesToDef, vsValidate, baseValuespace,
-    vsAssignType, vsSet, anon, tconst, globalSite)
+import Valuespace
+    -- Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
+    -- metaType, defToValues, valuesToDef, vsValidate, baseValuespace,
+    -- vsAssignType, vsSet, anon, tconst, globalSite)
 
 tests = [
     testCase "tupleDef" testTupleDef,

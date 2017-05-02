@@ -10,7 +10,7 @@ import qualified Data.Set as Set
 
 import Types (ClapiValue(..))
 import Tree (treeInitNode)
-import Validator (success, fromText, validatorValidator)
+import Validator (success, fromText, validatorValidator, goValidate)
 
 tests = [
     -- testCase "ref validator" testRefValidator,
@@ -37,6 +37,6 @@ testValidatorValidator =
     assertFailed "bad value" $ validate (CString badValue)
     assertEqual "success" success $ validate (CString "bool")
   where
-    validate = validatorValidator undefined
+    validate = goValidate (validatorValidator "desk") undefined
     badValue = "validator[]"
     badValue' = "validator[foo]"
