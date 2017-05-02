@@ -19,6 +19,7 @@ import Data.Attoparsec.Text (parseOnly)
 import qualified Data.Map.Mos as Mos
 
 import Data.Maybe.Clapi (note)
+import qualified Data.Maybe.Clapi as Maybe
 
 import Util (duplicates, eitherFail, (+|), partitionDifferenceL)
 import qualified Path
@@ -443,34 +444,42 @@ vsDelete np =
     set (unvalidated . at np) Nothing .
     set (unvalidated . at (Path.up np)) (Just Nothing)
 
-taint ::
+taintData ::
     NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace Unvalidated
-taint np s t =
+taintData np s t =
     over (unvalidated . at np . non mempty . non mempty) (Set.insert (s, t))
+
+taintDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
+taintDependants np vs =
+    over unvalidated (Maybe.update Map.union maybeTaintedMap) vs
+  where
+    maybeTaintedMap = Map.fromSet (const Nothing) <$>
+        (Mos.getDependants np $ view types vs)
 
 vsAdd ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
 vsAdd a i vs np s t =
-    tree (treeAdd a i vs np s t) . taint np s t
+    tree (treeAdd a i vs np s t) . taintData np s t . taintDependants np
+
 
 vsSet ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
 vsSet a i vs np s t =
-    tree (treeSet a i vs np s t) . taint np s t
+    tree (treeSet a i vs np s t) . taintData np s t . taintDependants np
 
 vsRemove ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
     Valuespace v -> m (Valuespace Unvalidated)
 vsRemove a np s t =
-    tree (treeRemove a np s t) . taint np s t
+    tree (treeRemove a np s t) . taintData np s t
 
 vsClear ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
     Valuespace v -> m (Valuespace Unvalidated)
 vsClear a np s t =
-    tree (treeClear a np s t) . taint np s t
+    tree (treeClear a np s t) . taintData np s t
 
 
 globalSite = Nothing

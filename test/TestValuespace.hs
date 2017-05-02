@@ -30,6 +30,7 @@ tests = [
     testCase "tupleDef" testTupleDef,
     testCase "test base valuespace" testBaseValuespace,
     testCase "test child type validation" testChildTypeValidation,
+    testCase "test type change invalidates" testTypeChangeInvalidation,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -47,6 +48,8 @@ testTupleDef =
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
     fst $ vsValidate $ coerce baseValuespace
 
+assertValidationErrors = assertBool "did not find errors" . not . null . fst . vsValidate
+
 testChildTypeValidation =
   do
     -- Set /api/self/version to have the wrong type, but perfectly valid
@@ -55,7 +58,18 @@ testChildTypeValidation =
           globalSite tconst baseValuespace >>=
         return . vsAssignType ["api", "self", "version"]
           ["api", "types", "self", "build"]
-    assertBool "did not find errors" $ not . null . fst $ vsValidate badVs
+    assertValidationErrors badVs
+
+
+testTypeChangeInvalidation =
+  do
+    -- Make sure changing /api/types/self/version goes and checks things defined
+    -- to have that type:
+    newDef <- tupleDef Cannot "for test" ["versionString"] ["string[apple]"]
+        mempty
+    badVs <- vsSet anon IConstant (defToValues newDef)
+        ["api", "types", "self", "version"] globalSite tconst baseValuespace
+    assertValidationErrors badVs
 
 
 arbitraryPath :: Gen Path
