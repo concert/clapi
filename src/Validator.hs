@@ -35,6 +35,10 @@ data Validator = Validator {
     desc :: Text.Text,
     goValidate :: (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail (),
     vType :: VType}
+instance Show Validator where
+  show = Text.unpack . desc
+instance Eq Validator where
+  v1 == v2 = desc v1 == desc v2
 success = Right ()
 
 maybeP :: Dat.Parser a -> Dat.Parser (Maybe a)

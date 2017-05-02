@@ -67,24 +67,17 @@ data Definition =
       _doc :: T.Text,
       _childType :: Path.Path,
       _childLiberty :: Liberty}
+  deriving (Show, Eq)
 makeLenses ''Definition
 
 -- Grr, boilerplate because of validators not being showable, equatable:
-instance Show Definition where
-    show (TupleDef l _ vns vds _ is) =
-        printf "<TupleDef %s %s %s %s>" (show l) (show vns) (show vds) (show is)
-    show (StructDef l _ ns ts ls) =
-        printf "<StructDef %s %s %s %s>" (show l) (show ns) (show ts) (show ls)
-    show (ArrayDef l _ ct cl) =
-        printf "<ArrayDef %s %s %s>" (show l) (show ct) (show cl)
-
-instance Eq Definition where
-    (TupleDef l1 d1 ns1 vds1 _ is1) == (TupleDef l2 d2 ns2 vds2 _ is2) =
-        l1 == l2 && d1 == d2 && ns1 == ns2 && vds1 == vds2 && is1 == is2
-    (StructDef l1 d1 ns1 ts1 ls1) == (StructDef l2 d2 ns2 ts2 ls2) =
-        l1 == l2 && d1 == d2 && ns1 == ns2 && ts1 == ts2 && ls1 == ls2
-    (ArrayDef l1 d1 t1 cl1) == (ArrayDef l2 d2 t2 cl2) =
-        l1 == l2 && d1 == d2 && t1 == t2 && cl1 == cl2
+-- instance Show Definition where
+--     show (TupleDef l _ vns vds _ is) =
+--         printf "<TupleDef %s %s %s %s>" (show l) (show vns) (show vds) (show is)
+--     show (StructDef l _ ns ts ls) =
+--         printf "<StructDef %s %s %s %s>" (show l) (show ns) (show ts) (show ls)
+--     show (ArrayDef l _ ct cl) =
+--         printf "<ArrayDef %s %s %s>" (show l) (show ct) (show cl)
 
 tupleDef ::
     (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [T.Text] ->
