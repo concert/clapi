@@ -10,7 +10,6 @@ import Test.QuickCheck (
 
 import Data.Coerce (coerce)
 import Data.Either (either)
-import Data.Maybe (fromJust, isNothing)
 import qualified Data.Text as T
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
@@ -40,7 +39,7 @@ testTupleDef =
         tupleDef Cannot "docs" ["hi", "hi"] ["bool", "int32"] mempty
     assertFailed "mismatched names/types" $
         tupleDef Cannot "docs" ["a", "b"] ["bool"] mempty
-    let def = fromJust $ tupleDef Cannot "docs" ["a"] ["bool"] mempty
+    def <- tupleDef Cannot "docs" ["a"] ["bool"] mempty
     assertEqual "tuple validation" (Right ()) $
         validate undefined (view validators def) [CBool True]
 
@@ -49,13 +48,14 @@ testBaseValuespace = assertEqual "correct base valuespace" mempty $
     fst $ vsValidate $ coerce baseValuespace
 
 testChildTypeValidation =
-    assertBool "did not find errors" $ not . null . fst $ vsValidate badVs
-  where
-    badVs = fromJust $
-        vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
-        globalSite tconst baseValuespace >>=
+  do
+    -- Set /api/self/version to have the wrong type, but perfectly valid
+    -- data for that wront type:
+    badVs <- vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
+          globalSite tconst baseValuespace >>=
         return . vsAssignType ["api", "self", "version"]
-            ["api", "types", "self", "build"]
+          ["api", "types", "self", "build"]
+    assertBool "did not find errors" $ not . null . fst $ vsValidate badVs
 
 
 arbitraryPath :: Gen Path
