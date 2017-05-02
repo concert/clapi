@@ -32,7 +32,7 @@ import Tree (
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
     treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths)
 import qualified Tree as Tree
-import Validator (Validator, fromText, enumDesc, validate)
+import Validator (Validator, fromText, enumDesc, validate, desc)
 
 type Node = Tree.Node [ClapiValue]
 
@@ -53,7 +53,6 @@ data Definition =
       _liberty :: Liberty,
       _doc :: T.Text,
       _valueNames :: [Path.Name],
-      _validatorDescs :: [T.Text],
       _validators :: [Validator],
       _permittedInterpolations :: Set.Set InterpolationType}
   | StructDef {
@@ -95,7 +94,7 @@ tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
         lvn lvd)
      validators <- mapM (eitherFail . fromText) validatorDescs
      return $
-        TupleDef liberty doc valueNames validatorDescs validators
+        TupleDef liberty doc valueNames validators
         permittedInterpolations
 
 structDef ::
@@ -156,12 +155,12 @@ baseArrayDef = fromJust $ tupleDef
     [libertyDesc, "string", typeDesc, libertyDesc] mempty
 
 defToValues :: Definition -> [ClapiValue]
-defToValues (TupleDef l d ns vds vs is) =
+defToValues (TupleDef l d ns vs is) =
   [
     toClapiValue $ Enumerated l,
     toClapiValue d,
     toClapiValue $ T.pack <$> ns,
-    toClapiValue vds,
+    toClapiValue $ desc <$> vs,
     toClapiValue $ Enumerated <$> Set.toList is
   ]
 defToValues (StructDef l d ns ts ls) =
