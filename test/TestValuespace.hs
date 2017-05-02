@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestValuespace where
 
-import Test.HUnit (assertEqual, assertBool)
+import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck (
@@ -13,6 +13,7 @@ import Data.Either (either)
 import qualified Data.Text as T
 import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Control.Lens (view)
 import Control.Monad (replicateM)
 
@@ -31,6 +32,7 @@ tests = [
     testCase "test base valuespace" testBaseValuespace,
     testCase "test child type validation" testChildTypeValidation,
     testCase "test type change invalidates" testTypeChangeInvalidation,
+    testCase "test xref validation" testXRefValidation,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -48,17 +50,19 @@ testTupleDef =
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
     fst $ vsValidate $ coerce baseValuespace
 
-assertValidationErrors = assertBool "did not find errors" . not . null . fst . vsValidate
+assertValidationErrors errPaths =
+    assertEqual "did not find errors" (Set.fromList errPaths) . Map.keysSet .
+    fst . vsValidate
 
 testChildTypeValidation =
   do
     -- Set /api/self/version to have the wrong type, but perfectly valid
-    -- data for that wront type:
+    -- data for that wrong type:
     badVs <- vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
           globalSite tconst baseValuespace >>=
         return . vsAssignType ["api", "self", "version"]
           ["api", "types", "self", "build"]
-    assertValidationErrors badVs
+    assertValidationErrors [["api", "self"]] badVs
 
 
 testTypeChangeInvalidation =
@@ -69,7 +73,33 @@ testTypeChangeInvalidation =
         mempty
     badVs <- vsSet anon IConstant (defToValues newDef)
         ["api", "types", "self", "version"] globalSite tconst baseValuespace
-    assertValidationErrors badVs
+    assertValidationErrors [["api", "self", "version"]] badVs
+
+
+testXRefValidation =
+  do
+    newCDef <- structDef Cannot "updated for test"
+        ["base", "self", "containers", "test_type", "test_value"] [
+          ["api", "types", "containers", "base"],
+          ["api", "types", "containers", "types_self"],
+          ["api", "types", "containers", "containers"],
+          (metaTypePath Tuple),
+          ["api", "types", "test_type"]]
+        [Cannot, Cannot, Cannot, Cannot, Cannot]
+    badDef <- tupleDef Cannot "for test" ["daRef"]
+        ["ref[/api/types/self/version]"] mempty
+    badVs <- vsAdd anon IConstant (defToValues badDef)
+          ["api", "types", "test_type"] globalSite tconst
+          baseValuespace >>=
+        vsSet anon IConstant (defToValues newCDef)
+          ["api", "types", "containers", "types"] globalSite tconst >>=
+        return . vsAssignType ["api", "types", "test_type"]
+          (metaTypePath Tuple) >>=
+        vsAdd anon IConstant [CString "/api/self/build"]
+          ["api", "types", "test_value"] globalSite tconst >>=
+        return . vsAssignType ["api", "types", "test_value"]
+          ["api", "types", "test_type"]
+    assertValidationErrors [["api", "types", "test_value"]] badVs
 
 
 arbitraryPath :: Gen Path
