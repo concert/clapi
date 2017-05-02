@@ -15,3 +15,7 @@ fromFoldable t
 note :: (MonadFail m) => String -> Maybe a -> m a
 note s Nothing = fail s
 note s (Just a) = return a
+
+update :: (a -> b -> b) -> Maybe a -> b -> b
+update f Nothing b = b
+update f (Just a) b = f a b
