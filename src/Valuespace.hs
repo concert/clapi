@@ -366,7 +366,7 @@ flattenNestedMaps mm = foldMap id $ Map.mapWithKey f mm
 
 validateData ::
     Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
-validateData vs = overUnvalidatedNodes (validateNodeData vs) vs
+validateData vs = overUnvalidatedNodes (validateNodeData vs) vs >> return vs
 
 -- This doesn't need to repack the values back into a full SiteMap :-)
 -- ... but that does make the abstraction leaky, which is more clear with
@@ -391,14 +391,13 @@ filterNode mtps n =
 overUnvalidatedNodes ::
     (
        NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
-       CanFail ()
-    ) -> Valuespace v -> MonadErrorMap (Valuespace v)
+       CanFail a
+    ) -> Valuespace v -> MonadErrorMap (Map.Map NodePath a)
 overUnvalidatedNodes f vs =
   do
     filtered <-
         eitherErrorMap . Map.mapWithKey getAndFilterNode $ view unvalidated vs
     eitherErrorMap . Map.mapWithKey f $ filtered
-    return vs
   where
     getAndFilterNode np mtps = getNode np vs >>= return . filterNode mtps
 
