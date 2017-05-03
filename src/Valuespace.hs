@@ -380,12 +380,19 @@ vsValidatePath vs np mtps =
     def <- getDef np vs
     node <- getNode np vs
     let tps = maybe (allTps node) id mtps
+    let sm = filterSiteMap (view getSites node) tps
     case def of
-      (TupleDef {}) -> validateNodeData (getType vs) def node tps
+      (TupleDef {}) -> validateNodeData (getType vs) def sm
       _ -> when (view getSites node /= mempty) (
         fail $ printf "data found in container node at %s" (show np))
   where
     allTps node = Map.keysSet . flattenNestedMaps $ view getSites node
+    -- This doesn't need to repack the values back into a full SiteMap :-)
+    filterSiteMap ::
+        SiteMap a -> Set.Set (Maybe Site, Time) ->
+        Map.Map (Maybe Site, Time) (Interpolation, a)
+    filterSiteMap sm keys = mapFilterJust $
+        unwrapTimePoint <$> Map.restrictKeys (flattenNestedMaps sm) keys
 
 
 validateInterpolation ::
@@ -401,23 +408,16 @@ validateInterpolation its i = return ()
 
 
 validateNodeData ::
-    (MonadFail m) => (NodePath -> CanFail TypePath) -> Definition -> Node ->
-    Set.Set (Maybe Site, Time) -> m ()
-validateNodeData getType' def node tps =
+    (MonadFail m) =>
+    (NodePath -> CanFail TypePath) -> Definition ->
+    Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) -> m ()
+validateNodeData getType' def siteMap =
   let
     vals = view validators def
     its = view permittedInterpolations def
-    siteMap = filterSiteMap (view getSites node) tps
   in do
     mapM_ (eitherFail . validate getType' vals . snd) siteMap
     mapM_ (validateInterpolation its . fst) siteMap
-  where
-    -- This doesn't need to repack the values back into a full SiteMap :-)
-    filterSiteMap ::
-        SiteMap a -> Set.Set (Maybe Site, Time) ->
-        Map.Map (Maybe Site, Time) (Interpolation, a)
-    filterSiteMap sm keys = mapFilterJust $
-        unwrapTimePoint <$> Map.restrictKeys (flattenNestedMaps sm) keys
 
 vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
 vsAssignType np tp =
