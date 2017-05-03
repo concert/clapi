@@ -3,6 +3,7 @@ module Validator where
 
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
+import Control.Monad (join)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import Data.Word (Word32, Word64)
@@ -31,14 +32,23 @@ data VType =
     VFloat | VDouble | VString | VRef | VValidator | VList VType | VSet VType
   deriving (Eq, Show, Ord)
 
+type Validate = (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail ()
+
 data Validator = Validator {
     desc :: Text.Text,
-    goValidate :: (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail (),
+    goValidate :: Validate,
+    xRefDeps :: ClapiValue -> CanFail [NodePath],
     vType :: VType}
+
 instance Show Validator where
   show = Text.unpack . desc
+
 instance Eq Validator where
   v1 == v2 = desc v1 == desc v2
+
+mkValidator :: Text.Text -> Validate -> VType -> Validator
+mkValidator t v vt = Validator t v (const $ return []) vt
+
 success = Right ()
 
 maybeP :: Dat.Parser a -> Dat.Parser (Maybe a)
@@ -117,13 +127,13 @@ softValidate getTypePath vs cvs =
     zipWith ($) [(goValidate v) getTypePath | v <- vs] cvs
 
 boolValidator :: Text.Text -> Validator
-boolValidator t = Validator t doValidate VBool
+boolValidator t = mkValidator t doValidate VBool
   where
     doValidate _ (CBool _) = success
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 timeValidator :: Text.Text -> Validator
-timeValidator t = Validator t doValidate VTime
+timeValidator t = mkValidator t doValidate VTime
   where
     doValidate _ (CTime (Time _ _)) = success
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
@@ -131,7 +141,7 @@ timeValidator t = Validator t doValidate VTime
 getNumValidator :: forall a. (Clapiable a, Ord a, PrintfArg a) =>
     Text.Text -> VType -> Maybe a -> Maybe a -> Validator
 getNumValidator t vtype min max =
-    Validator t (\_ cv -> checkType cv >>= bound min max) vtype
+    mkValidator t (\_ cv -> checkType cv >>= bound min max) vtype
   where
     -- FIXME: should say which type!
     checkType cv = note "Bad type" (fromClapiValue cv :: Maybe a)
@@ -148,7 +158,7 @@ getNumValidator t vtype min max =
       | otherwise = Left $ printf "%v not between %v and %v" v min max
 
 getEnumValidator :: Text.Text -> [String] -> Validator
-getEnumValidator t names = Validator t doValidate VEnum
+getEnumValidator t names = mkValidator t doValidate VEnum
   where
     max = fromIntegral $ length names - 1
     doValidate _ (CEnum x)
@@ -157,7 +167,7 @@ getEnumValidator t names = Validator t doValidate VEnum
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getStringValidator :: Text.Text -> Maybe String -> Validator
-getStringValidator desc p = Validator desc (doValidate p) VString
+getStringValidator desc p = mkValidator desc (doValidate p) VString
   where
     errStr = printf "did not match '%s'"
     doValidate Nothing _ (CString t) = success
@@ -166,7 +176,7 @@ getStringValidator desc p = Validator desc (doValidate p) VString
     doValidate _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getRefValidator :: Text.Text -> Path -> Validator
-getRefValidator t requiredTypePath = Validator t doValidate VRef
+getRefValidator t requiredTypePath = Validator t doValidate getXRefDeps VRef
   where
     doValidate getTypePath (CString x) =
       do
@@ -177,25 +187,33 @@ getRefValidator t requiredTypePath = Validator t doValidate VRef
         else Left $ printf "%v is of type %v, rather than expected %v"
           (toString nodePath) (toString typePath) (toString requiredTypePath)
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+    getXRefDeps (CString x) = pure <$> Dat.parseOnly pathP x
+    getXRefDeps _ = Left "Bad type"
+
 
 validatorValidator :: Text.Text -> Validator
-validatorValidator t = Validator t doValidate VValidator
+validatorValidator t = mkValidator t doValidate VValidator
   where
     doValidate _ (CString x) = fromText x >> success
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 
 getListValidator :: Text.Text -> Validator -> Validator
-getListValidator t itemValidator = Validator t listValidator (VList $ vType itemValidator)
+getListValidator t itemValidator =
+    Validator t listValidator getXRefDeps (VList $ vType itemValidator)
   where
     listValidator getType (CList xs) = softValidate getType (repeat itemValidator) xs
     listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+    getXRefDeps (CList xs) = join <$> traverse getXRefDeps xs
+    getXRefDeps _ = Left "Bad type"
 
 showJoin :: (Show a, Foldable t) => String -> t a -> String
 showJoin sep as = intercalate sep $ fmap show (toList as)
 
 getSetValidator :: Text.Text -> Validator -> Validator
-getSetValidator t itemValidator = Validator t setValidator (VSet $ vType itemValidator)
+getSetValidator t itemValidator =
+    Validator t setValidator (xRefDeps listValidator)
+    (VSet $ vType itemValidator)
   where
     listValidator = getListValidator "" itemValidator
     setValidator getType cv@(CList xs) =
