@@ -379,13 +379,11 @@ vsValidatePath vs np mtps =
   do
     def <- getDef np vs
     node <- getNode np vs
+    let tps = maybe (allTps node) id mtps
     case def of
-      (TupleDef {}) -> case mtps of
-        (Just tps) -> validateNodeData (getType vs) def node tps
-        Nothing -> validateNodeData (getType vs) def node $ allTps node
-      _ -> if view getSites node == mempty
-        then return ()
-        else fail $ printf "data found in container node at %s" (show np)
+      (TupleDef {}) -> validateNodeData (getType vs) def node tps
+      _ -> when (view getSites node /= mempty) (
+        fail $ printf "data found in container node at %s" (show np))
   where
     allTps node = Map.keysSet . flattenNestedMaps $ view getSites node
 
