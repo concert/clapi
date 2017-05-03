@@ -381,10 +381,7 @@ vsValidatePath vs np mtps =
     node <- getNode np vs
     let tps = maybe (allTps node) id mtps
     let sm = filterSiteMap (view getSites node) tps
-    case def of
-      (TupleDef {}) -> validateNodeData (getType vs) def sm
-      _ -> when (view getSites node /= mempty) (
-        fail $ printf "data found in container node at %s" (show np))
+    validateNodeData (getType vs) def sm
   where
     allTps node = Map.keysSet . flattenNestedMaps $ view getSites node
     -- This doesn't need to repack the values back into a full SiteMap :-)
@@ -411,13 +408,16 @@ validateNodeData ::
     (MonadFail m) =>
     (NodePath -> CanFail TypePath) -> Definition ->
     Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) -> m ()
-validateNodeData getType' def siteMap =
+validateNodeData getType' def@(TupleDef {}) siteMap =
   let
     vals = view validators def
     its = view permittedInterpolations def
   in do
     mapM_ (eitherFail . validate getType' vals . snd) siteMap
     mapM_ (validateInterpolation its . fst) siteMap
+validateNodeData _ _ siteMap
+  | siteMap == mempty = return ()
+  | otherwise = fail "data found in container node"
 
 vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
 vsAssignType np tp =
