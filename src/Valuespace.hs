@@ -295,9 +295,11 @@ validateTypeNode metaType node =
 validateChildren ::
     Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
 validateChildren vs =
-  let nodes = Map.restrictKeys (view tree vs) (Map.keysSet $ view unvalidated vs) in
-  do
-    nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef nodes
+  let
+    unvalidatedNodes = Map.restrictKeys (view tree vs) (Map.keysSet $
+        view unvalidated vs)
+  in do
+    nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef unvalidatedNodes
     eitherErrorMap $ Map.mapWithKey
         (\np (n, d) -> validateNodeChildren (getType vs) np n d) nodesWithDefs
     return vs
