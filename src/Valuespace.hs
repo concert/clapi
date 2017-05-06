@@ -216,7 +216,7 @@ data Unvalidated
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
-    _xrefs :: Mos.Dependencies NodePath NodePath,
+    _xrefs :: Mos.Dependencies' (NodePath, Maybe Site, Time) NodePath,
     _defs :: DefMap,
     _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
     } deriving (Eq)
@@ -275,10 +275,7 @@ rectifyTypes vs =
         view unvalidated $ vs
     newDefs <-
         eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
-    return .
-        over defs (Map.union newDefs) .
-        over unvalidated (flip Map.difference newDefs) $
-        vs
+    return . over defs (Map.union newDefs) $ vs
   where
     toMetaTypes = mapFilterJust . fmap categoriseMetaTypePath
     toDef np mt = getNode np vs >>= validateTypeNode mt
