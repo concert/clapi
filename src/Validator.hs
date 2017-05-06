@@ -181,7 +181,7 @@ getRefValidator t requiredTypePath = Validator t doValidate VRef
       do
         nodePath <- Dat.parseOnly pathP x
         typePath <- getTypePath nodePath
-        if isChildOf requiredTypePath typePath
+        if typePath `isChildOf` requiredTypePath
         then return . pure $ nodePath
         else Left $ printf "%v is of type %v, rather than expected %v"
           (toString nodePath) (toString typePath) (toString requiredTypePath)
