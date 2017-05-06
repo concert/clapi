@@ -78,3 +78,26 @@ delDependency k (deps, revDeps) = (deps', revDeps' ma)
 delDependencies ::
     (Ord k, Ord a, Foldable f) => f k -> Dependencies k a -> Dependencies k a
 delDependencies ks ds = foldr delDependency ds ks
+
+
+type Dependencies' k a = (Mos k a, Mos a k)
+
+setDependencies' ::
+    (Ord k, Ord a) => k -> [a] -> Dependencies' k a -> Dependencies' k a
+setDependencies' k [] ds = ds
+setDependencies' k as (deps, revDeps) = (deps', revDeps'')
+  where
+    f _ newAs curAs = newAs
+    (mas, deps') = Map.insertLookupWithKey f k (Set.fromList as) deps
+    revDeps' (Just as) = foldr (\a -> delete a k) revDeps as
+    revDeps' Nothing = revDeps
+    revDeps'' = foldr (\a -> insert a k) (revDeps' mas) as
+
+delDependencies' ::
+    (Ord k, Ord a) => k -> Dependencies' k a -> Dependencies' k a
+delDependencies' k (deps, revDeps) = (deps', revDeps' mas)
+  where
+    f _ a = Nothing
+    (mas, deps') = Map.updateLookupWithKey f k deps
+    revDeps' (Just as) = foldr (\a -> delete a k) revDeps as
+    revDeps# Nothing = revDeps
