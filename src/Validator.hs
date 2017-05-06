@@ -170,8 +170,8 @@ getStringValidator desc p = Validator desc (doValidate p) VString
   where
     errStr = printf "did not match '%s'"
     doValidate Nothing _ (CString t) = success
-    doValidate (Just pattern) _ (CString t) =
-        note (errStr pattern) ((Text.unpack t) =~~ pattern :: Maybe [NodePath])
+    doValidate (Just pattern) _ (CString t) = const [] <$>
+        note (errStr pattern) ((Text.unpack t) =~~ pattern :: Maybe ())
     doValidate _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getRefValidator :: Text.Text -> Path -> Validator
