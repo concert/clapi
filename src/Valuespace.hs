@@ -365,7 +365,17 @@ flattenNestedMaps mm = foldMap id $ Map.mapWithKey f mm
 
 validateData ::
     Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
-validateData vs = overUnvalidatedNodes (validateNodeData vs) vs >> return vs
+validateData vs =
+  do
+    newXRefDeps <- overUnvalidatedNodes (validateNodeData vs) vs
+    return $ over xrefs (f newXRefDeps) vs
+  where
+    munge :: (Ord k1, Ord k2, Ord k3) =>
+        Map.Map k1 (Map.Map (k2, k3) [a]) -> Map.Map (k1, k2, k3) [a]
+    munge m =
+        Map.mapKeys (\(k1, (k2, k3)) -> (k1, k2, k3)) . flattenNestedMaps $ m
+    f newXRefDeps unv =
+        Map.foldrWithKey Mos.setDependencies' unv (munge newXRefDeps)
 
 -- This doesn't need to repack the values back into a full SiteMap :-)
 -- ... but that does make the abstraction leaky, which is more clear with
@@ -416,16 +426,17 @@ validateInterpolation its i = return ()
 validateNodeData ::
     (MonadFail m) =>
     Valuespace v -> NodePath ->
-    Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) -> m ()
+    Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
+    m (Map.Map (Maybe Site, Time) [NodePath])
 validateNodeData vs np siteMap = getDef np vs >>= body
   where
     body def@(TupleDef {}) = do
-        let vals = view validators def
-        mapM_ (eitherFail . validate (getType vs) vals . snd) siteMap
         let its = view permittedInterpolations def
         mapM_ (validateInterpolation its . fst) siteMap
-    body _ | siteMap == mempty = return ()
-              | otherwise = fail "data found in container"
+        let vals = view validators def
+        mapM (eitherFail . validate (getType vs) vals . snd) siteMap
+    body _ | siteMap == mempty = return mempty
+           | otherwise = fail "data found in container"
 
 vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
 vsAssignType np tp =
