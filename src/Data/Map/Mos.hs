@@ -99,3 +99,7 @@ delDependencies' k (deps, revDeps) = (deps', revDeps' mas)
     (mas, deps') = Map.updateLookupWithKey f k deps
     revDeps' (Just as) = foldr (\a -> delete a k) revDeps as
     revDeps# Nothing = revDeps
+
+getDependants' ::
+  (Ord k, Ord a) => a -> Dependencies' k a -> Set.Set k
+getDependants' a = Maybe.toMonoid . Map.lookup a . snd
