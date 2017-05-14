@@ -113,8 +113,8 @@ validate ::
     (NodePath -> CanFail TypePath) -> [Validator] -> [ClapiValue] ->
     CanFail [NodePath]
 validate getTypePath vs cvs
-  | length vs > length cvs = Left "Insufficient values"
-  | length vs < length cvs = Left "Insufficient validators"
+  | length vs > length cvs = Left "Too few values"
+  | length vs < length cvs = Left "Too many values"
   | otherwise = softValidate getTypePath vs cvs
 
 -- validate where lengths of lists aren't important
