@@ -3,7 +3,7 @@ module Data.Map.Mos where
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
-    merge, preserveMissing, dropMissing, zipWithMatched, zipWithMaybeMatched)
+    merge, preserveMissing, dropMissing, zipWithMaybeMatched)
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
@@ -33,9 +33,7 @@ difference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
     f k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
 
 union :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
-union = merge preserveMissing preserveMissing (zipWithMatched f)
-  where
-    f k sa1 sa2 = Set.union sa1 sa2
+union = Map.unionM
 
 concat :: (Ord k, Ord a) => [Mos k a] -> Mos k a
 concat = foldr union mempty
