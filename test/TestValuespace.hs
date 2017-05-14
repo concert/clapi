@@ -43,7 +43,7 @@ testTupleDef =
     assertFailed "mismatched names/types" $
         tupleDef Cannot "docs" ["a", "b"] ["bool"] mempty
     def <- tupleDef Cannot "docs" ["a"] ["bool"] mempty
-    assertEqual "tuple validation" (Right ()) $
+    assertEqual "tuple validation" (return []) $
         validate undefined (view validators def) [CBool True]
 
 
