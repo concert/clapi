@@ -16,6 +16,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Control.Lens (view)
 import Control.Monad (replicateM)
+import Control.Monad.Fail (MonadFail)
 
 import Helpers (assertFailed)
 
@@ -32,7 +33,8 @@ tests = [
     testCase "test base valuespace" testBaseValuespace,
     testCase "test child type validation" testChildTypeValidation,
     testCase "test type change invalidates" testTypeChangeInvalidation,
-    testCase "test xref validation" testXRefValidation,
+    testCase "xref validation" testXRefValidation,
+    testCase "xref revalidation" testXRefRevalidation,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -76,7 +78,8 @@ testTypeChangeInvalidation =
     assertValidationErrors [["api", "self", "version"]] badVs
 
 
-testXRefValidation =
+vsWithXRef :: (MonadFail m) => m (Valuespace Unvalidated)
+vsWithXRef =
   do
     newCDef <- structDef Cannot "updated for test"
         ["base", "self", "containers", "test_type", "test_value"] [
@@ -86,19 +89,45 @@ testXRefValidation =
           (metaTypePath Tuple),
           ["api", "types", "test_type"]]
         [Cannot, Cannot, Cannot, Cannot, Cannot]
-    badDef <- tupleDef Cannot "for test" ["daRef"]
+    newNodeDef <- tupleDef Cannot "for test" ["daRef"]
         ["ref[/api/types/self/version]"] mempty
-    badVs <- vsAdd anon IConstant (defToValues badDef)
+    vsAdd anon IConstant (defToValues newNodeDef)
           ["api", "types", "test_type"] globalSite tconst
           baseValuespace >>=
         vsSet anon IConstant (defToValues newCDef)
           ["api", "types", "containers", "types"] globalSite tconst >>=
+        -- FIXME: should infer this from the container
         return . vsAssignType ["api", "types", "test_type"]
           (metaTypePath Tuple) >>=
-        vsAdd anon IConstant [CString "/api/self/build"]
+        vsAdd anon IConstant [CString "/api/self/version"]
           ["api", "types", "test_value"] globalSite tconst >>=
+        -- FIXME: should infer this from the container
         return . vsAssignType ["api", "types", "test_value"]
           ["api", "types", "test_type"]
+
+
+testXRefValidation =
+  do
+    -- Change the type of the instance referenced in a cross reference
+    vs <- vsWithXRef
+    assertValidationErrors [] vs
+    badVs <- vsSet anon IConstant [CString "/api/self/build"]
+        ["api", "types", "test_value"] globalSite tconst vs
+    assertValidationErrors [["api", "types", "test_value"]] badVs
+
+
+testXRefRevalidation =
+  do
+    newDef <- structDef Cannot "for test" ["build", "version"]
+        [["api", "types", "self", "build"], ["api", "types", "self", "build"]]
+        [Cannot, Cannot]
+    badVs <- vsWithXRef >>=
+        vsSet anon IConstant (defToValues newDef)
+            ["api", "types", "containers", "self"] globalSite tconst >>=
+        return . vsAssignType ["api", "self", "version"]
+            ["api", "types", "self", "build"] >>=
+        vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
+            globalSite tconst
     assertValidationErrors [["api", "types", "test_value"]] badVs
 
 

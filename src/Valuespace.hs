@@ -216,7 +216,7 @@ data Unvalidated
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
-    _xrefs :: Mos.Dependencies' (NodePath, Maybe Site, Time) NodePath,
+    _xrefs :: Mos.Dependencies' (NodePath, (Maybe Site, Time)) NodePath,
     _defs :: DefMap,
     _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
     } deriving (Eq)
@@ -370,12 +370,9 @@ validateData vs =
     newXRefDeps <- overUnvalidatedNodes (validateNodeData vs) vs
     return $ over xrefs (f newXRefDeps) vs
   where
-    munge :: (Ord k1, Ord k2, Ord k3) =>
-        Map.Map k1 (Map.Map (k2, k3) [a]) -> Map.Map (k1, k2, k3) [a]
-    munge m =
-        Map.mapKeys (\(k1, (k2, k3)) -> (k1, k2, k3)) . flattenNestedMaps $ m
     f newXRefDeps unv =
-        Map.foldrWithKey Mos.setDependencies' unv (munge newXRefDeps)
+        Map.foldrWithKey Mos.setDependencies' unv
+        (flattenNestedMaps newXRefDeps)
 
 -- This doesn't need to repack the values back into a full SiteMap :-)
 -- ... but that does make the abstraction leaky, which is more clear with
@@ -438,12 +435,21 @@ validateNodeData vs np siteMap = getDef np vs >>= body
     body _ | siteMap == mempty = return mempty
            | otherwise = fail "data found in container"
 
+-- vsUpdateXRefs :: Valuespace v -> MonadErrorMap (Valuespace Validated)
+-- vsUpdateXRefs vs =
+--     eitherErrorMap . Map.mapWithKey getXRefDeps $ unvalidatedNodes vs
+--   where
+--     getXRefDeps np n = do
+--         def <- getDef np vs
+--         traverse (validate (getType vs) (view validators def)) (toList n)
+
 vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
     set (unvalidated . at np) (Just Nothing) .
-    set (unvalidated . at (Path.up np)) (Just Nothing)
+    set (unvalidated . at (Path.up np)) (Just Nothing) .
+    taintXRefDependants np
 
 vsDelete ::
     (MonadFail m) => NodePath -> Valuespace v -> m (Valuespace Unvalidated)
@@ -458,25 +464,32 @@ taintData ::
 taintData np s t =
     over (unvalidated . at np . non mempty . non mempty) (Set.insert (s, t))
 
-taintDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
-taintDependants np vs =
+taintTypeDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
+taintTypeDependants np vs =
     over unvalidated (Maybe.update Map.union maybeTaintedMap) vs
   where
     maybeTaintedMap = Map.fromSet (const Nothing) <$>
         (Mos.getDependants np $ view types vs)
 
+taintXRefDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
+taintXRefDependants np vs = over unvalidated (Map.union taintedMap) vs
+  where
+    taintedMap =
+        fmap Just . Set.foldr (uncurry Mos.insert) mempty .
+        Mos.getDependants' np $ view xrefs vs
+
 vsAdd ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
 vsAdd a i vs np s t =
-    tree (treeAdd a i vs np s t) . taintData np s t . taintDependants np
+    tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np
 
 
 vsSet ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
 vsSet a i vs np s t =
-    tree (treeSet a i vs np s t) . taintData np s t . taintDependants np
+    tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np
 
 vsRemove ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
