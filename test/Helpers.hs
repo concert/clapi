@@ -1,15 +1,16 @@
-module Util where
+{-# LANGUAGE FlexibleInstances #-}
+module Helpers where
 
+import Control.Monad.Fail (MonadFail, fail)
+import Data.Either (either)
 import Data.List (isInfixOf)
 import Data.Either.Combinators (fromLeft)
 import Test.HUnit (Assertion, assertBool)
 
-
-assertFailed :: String -> Either a b -> Assertion
-assertFailed s either = assertBool (s ++ " did not fail") (didFail either)
-  where
-    didFail (Left _) = True
-    didFail (Right _) = False
+-- FIXME: could try to update to use MonadExcept?
+assertFailed :: String -> Either String a -> Assertion
+assertFailed s =
+     assertBool (s ++ " did not fail") . either (const True) (const False)
 
 
 assertFailedSubstr :: String -> String -> Either String b -> Assertion

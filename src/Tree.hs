@@ -18,9 +18,10 @@ module Tree
     -- )
 where
 
+import Prelude hiding (fail)
 import Data.Word (Word32, Word64)
-import Data.List (isPrefixOf, partition, intercalate)
-import Data.Maybe (maybeToList, catMaybes)
+import Data.List (isPrefixOf, partition, intercalate, inits, delete)
+import Data.Maybe (maybeToList, fromMaybe)
 import Data.Monoid ((<>))
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -29,14 +30,18 @@ import Data.Map.Strict.Merge (
     zipWithMatched, zipWithMaybeMatched)
 import Control.Lens (
     Lens, Lens', (.~), (&), view, over, ix, at, At(..), Index(..),
-    IxValue(..), Ixed(..), makeLenses)
+    IxValue(..), Ixed(..), makeLenses, non)
 import Control.Monad (foldM)
-import Control.Error.Util (hush, note)
+import Control.Monad.Fail (MonadFail, fail)
+import Control.Error.Util (hush)
 import Text.Printf (printf)
 
-import Path (Name, Path, root, isChildOfAny)
+import Util (append, (+|), (+|?), duplicates, zipLongest, partitionDifferenceL)
+import Path (
+    Name, Path, root, isChildOfAny, isChildOf, childPaths, splitBasename)
 import Path.Parsing (toString)
 import Types (CanFail, Time, ClapiValue, Interpolation(..))
+import Data.Maybe.Clapi (note)
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
@@ -68,16 +73,22 @@ instance Functor Node where
     -- Holy nested functors Batman!
     fmap f (Node keys m) = Node keys $ (fmap . fmap . fmap . fmap . fmap) f m
 
-append :: [a] -> a -> [a]
-append as a = as ++ [a]
-(+|) = append
+instance Foldable Node where
+    foldMap f (Node _ m) = (foldMap . foldMap . foldMap . foldMap . foldMap) f m
+
+unwrapTimePoint ::
+    (MonadFail m) => (Attributed (Maybe (TimePoint a))) -> m (TimePoint a)
+unwrapTimePoint = note "data deleted at time point" . snd
+
+-- nodeGet :: (MonadFail m) => Maybe Site -> Time -> Node a -> m a
+-- nodeGet site t node =
+--   do
+--     tp <- note "no data at time point" $
+--         view (getSites . at site . non mempty . at t) node
+--     unwrapTimePoint tp
 
 getChildPaths :: NodePath -> Node a -> [NodePath]
-getChildPaths rootPath node = childPaths childKeys
-  where
-    childKeys = view getKeys node
-    childPaths [] = []
-    childPaths (n:ns) = rootPath +| n : childPaths ns
+getChildPaths rootPath node = (rootPath +|) <$> view getKeys node
 
 type instance Index (Node a) = Maybe Site
 type instance IxValue (Node a) = TimeSeries a
@@ -88,37 +99,13 @@ instance Ixed (Node a) where
 instance At (Node a) where
     at site = getSites . (at site)
 
-data ClapiTree a = ClapiTree {
-    _getNodeMap :: Map.Map NodePath (Node a),
-    _getTypeMap :: Map.Map NodePath TypePath,
-    _getTypeUseageMap :: Mos.Mos TypePath NodePath
-    }
-  deriving (Eq)
-makeLenses ''ClapiTree
-
-instance Monoid (ClapiTree a) where
-    mempty = ClapiTree mempty mempty mempty
-    mappend (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
-        ClapiTree (nm1 <> nm2) (tm1 <> tm2) (tum1 <> tum2)
-
-type instance Index (ClapiTree a) = NodePath
-type instance IxValue (ClapiTree a) = Node a
-
-instance Ixed (ClapiTree a) where
-    ix path = getNodeMap . (ix path)
-
-instance At (ClapiTree a) where
-    at path = getNodeMap . (at path)
-
+type ClapiTree a = Map.Map NodePath (Node a)
 
 formatTree :: (Show a) => ClapiTree a -> String
-formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
+formatTree tree = intercalate "\n" lines
   where
-    lines = mconcat $ ["---"] : (fmap toLines $ Map.toList nodeMap)
-    toLines (path, node) = nodeHeader path : nodeSiteMapToLines path node
-    nodeHeader path =
-        printf "%s [%s]" (formatPath path)
-        (toString $ Maybe.toMonoid $ Map.lookup path typeMap)
+    lines = mconcat $ ["---"] : (fmap toLines $ Map.toList tree)
+    toLines (path, node) = formatPath path : nodeSiteMapToLines path node
     formatPath [] = "/"
     formatPath (n:[]) = "  " ++ n
     formatPath (n:ns) = "  " ++ formatPath ns
@@ -136,108 +123,78 @@ formatTree (ClapiTree nodeMap typeMap _) = intercalate "\n" lines
     showAtt Nothing = "Anon"
     showAtt (Just att) = att
 
-instance (Show a) => Show (ClapiTree a) where
-    show = formatTree
-
 treeOrphansAndMissing :: ClapiTree a -> (Set.Set NodePath, Set.Set NodePath)
 treeOrphansAndMissing tree = (orphans, missing)
   where
-    nodes = Map.toList $ view getNodeMap tree
+    nodes = Map.toList tree
     allChildPaths = Set.fromList . mconcat $ fmap (uncurry getChildPaths) nodes
     allChildPaths' = Set.insert root allChildPaths
     allPaths = Set.fromList $ fmap fst nodes
     orphans = Set.difference allPaths allChildPaths'
     missing = Set.difference allChildPaths allPaths
 
-treeGetType :: NodePath -> ClapiTree a -> CanFail TypePath
-treeGetType p (ClapiTree _ tm _) = nb $ Map.lookup p tm
+updateLookupM ::
+    (MonadFail m, Ord k, Show k) => (a -> Maybe a) -> k -> Map.Map k a ->
+    m (a, Map.Map k a)
+updateLookupM f k m = sequenceFst $ at k updateValue m
   where
-    nb = note $ printf "Can't find type path for %v" (toString p)
+    sequenceFst (ma, b) = (\a -> (a, b)) <$> ma
+    updateValue Nothing = (fail $ printf "not found %s" (show k), Nothing)
+    updateValue (Just v) = (return v, f v)
 
-treeInitNode :: NodePath -> TypePath -> ClapiTree a -> ClapiTree a
-treeInitNode path typePath (ClapiTree nodeMap typeMap typeUsedByMap) =
-    ClapiTree newNodeMap newTypeMap newTypeUsedByMap
+
+-- Sets the child keys attribute of a node in the tree and adds default empty
+-- nodes at the corresponding paths if required:
+treeSetChildren ::
+    (MonadFail m) => NodePath -> [Name] -> ClapiTree a -> m (ClapiTree a)
+treeSetChildren path keys' tree
+  | null $ duplicates keys' =
+      do
+        (node, tree') <- updateLookupM (return . (getKeys .~ keys')) path tree
+        let (addedKeys, removedKeys) = partitionDifferenceL keys' (view getKeys node)
+        let tree'' = foldl (flip treeInitNode) tree' ((path +|) <$> addedKeys)
+        foldM (flip treeDeleteNode) tree'' ((path +|) <$> removedKeys)
+  | otherwise = fail $ printf "duplicate keys %s"
+        (show . Set.toList $ duplicates keys')
+
+treeInitNode :: NodePath -> ClapiTree a -> ClapiTree a
+treeInitNode p t = foldr (\(p, ns) -> Map.alter (updateNode ns) p) t pathsAndChildNames
   where
-    newNodeMap = Map.insert path mempty nodeMap
-    newTypeMap = Map.insert path typePath typeMap
-    maybeOldTypePath = Map.lookup path typeMap
-    newTypeUsedByMap =
-        mosDelete' maybeOldTypePath path $
-        Mos.insert typePath path $
-        typeUsedByMap
-    mosDelete' Nothing _ = id
-    mosDelete' (Just k) a = Mos.delete k a
+    pathsAndChildNames = zipLongest (inits p) (pure <$> p)
+    updateNode ns Nothing = return $ Node ns mempty
+    updateNode [n] (Just node) = return $ over getKeys (+|? n) node
+    updateNode [] (Just node) = return node
 
-treeInitNodes :: Map.Map NodePath TypePath -> ClapiTree a -> ClapiTree a
-treeInitNodes typePathMap (ClapiTree nm tm tum) = ClapiTree newNm newTm newTum
+
+treeDeleteNode ::
+    forall m a. (MonadFail m) => NodePath -> ClapiTree a -> m (ClapiTree a)
+treeDeleteNode p t =
+  let
+    tree' = fromMaybe t (pruneKey t <$> splitBasename p)
+  in do
+    (node, tree'') <- updateLookupM (const Nothing) p tree'
+    foldM (flip treeDeleteNode) tree'' (childPaths p $ view getKeys node)
   where
-    onlyNewNm = fmap (const mempty) typePathMap
-    newNm = Map.union onlyNewNm nm
-    newTm = Map.union typePathMap tm
-    onlyOldTum =
-      Mos.invertMap $ Map.fromList $ catMaybes $ fmap lookup $ Map.keys typePathMap
-    lookup np = sequence (np, Map.lookup np tm)
-    newTum = Mos.union (Mos.difference tum onlyOldTum) (Mos.invertMap typePathMap)
+    pruneKey t (p, n) = Map.update (return . over getKeys (delete n)) p t
 
-
-treeDelete :: NodePath -> ClapiTree a -> CanFail (ClapiTree a)
-treeDelete path (ClapiTree nodeMap typeMap typesUsedByMap) =
-    -- FIXME: this can't fail!
-    Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
-  where
-    (removedNodes, remainingNodes) = Map.partitionWithKey f nodeMap
-    f perhapsChildPath _ = isPrefixOf path perhapsChildPath
-    removedTypePaths = Map.mapMaybeWithKey lookupOldType removedNodes
-    lookupOldType nodePath _ = Map.lookup nodePath typeMap
-    newTypeMap = Map.difference typeMap removedTypePaths
-    newUsedByMap = Mos.difference typesUsedByMap $ Mos.invertMap removedTypePaths
-
-treeDeleteNodes :: [NodePath] -> ClapiTree a -> CanFail (ClapiTree a)
-treeDeleteNodes nodePaths (ClapiTree nm tm tum)
-  | length removedNodes < length nodePaths =
-      Left $"could not delete paths " ++ (show missingPaths)
-  | otherwise = Right $ ClapiTree remainingNodes newTypeMap newUsedByMap
-  where
-    (removedNodes, remainingNodes) =
-        Map.partitionWithKey (\np _ -> isChildOfAny np nodePaths) nm
-    removedTypePaths =
-        Map.mapMaybeWithKey (\np _ -> Map.lookup np tm) removedNodes
-    newTypeMap = Map.difference tm removedTypePaths
-    newUsedByMap = Mos.difference tum $ Mos.invertMap removedTypePaths
-    missingPaths =
-        Set.difference (Set.fromList nodePaths) (Map.keysSet removedNodes)
-
-treeSetChildren :: NodePath -> [Name] -> ClapiTree a -> CanFail (ClapiTree a)
-treeSetChildren path keys tree = at path f tree
-  where
-    f Nothing = Left $ printf "not found %s" (toString path)
-    f (Just node) = Right . Just $ over getKeys (const keys) node
-
-treeSetChildren' :: Map.Map NodePath [Name] -> ClapiTree a ->
-    CanFail (ClapiTree a)
-treeSetChildren' childKeyMap tree@(ClapiTree nm _ _) =
-  do
-    changedNodes <- sequence $ merge
-        (mapMissing notFound)
-        dropMissing
-        (zipWithMatched changeChildren) childKeyMap nm
-    return $ tree & getNodeMap .~ Map.union changedNodes nm
-  where
-    notFound np _ = Left $ printf "not found %s" (toString np)
-    changeChildren _ children node = Right $ node & getKeys .~ children
-
-type TreeAction a = Maybe (Attributed (Maybe (TimePoint a))) ->
-    CanFail (Maybe (Attributed (Maybe (TimePoint a))))
-treeAction :: TreeAction a -> NodePath -> Maybe Site -> Time -> ClapiTree a ->
-    CanFail (ClapiTree a)
+type TreeAction m a = Maybe (Attributed (Maybe (TimePoint a))) ->
+    m (Maybe (Attributed (Maybe (TimePoint a))))
+treeAction ::
+    (MonadFail m, Eq a) => TreeAction m a -> NodePath -> Maybe Site -> Time ->
+    ClapiTree a -> m (ClapiTree a)
 treeAction action path maybeSite t tree =
-  do
-    node <- (note $ printf "not found %s" (toString path)) $ view (at path) tree
+  let
+    -- FIXME: not sure if this is the best way to do this:
+    tree' = treeInitNode path tree
+    node = view (at path . non mempty) tree'
+  in do
     newNode <- nodeAction action maybeSite t node
-    newTree <- return $ tree & (at path) .~ (Just newNode)
+    newTree <- return $ tree' & (at path) .~ (Just newNode)
     return newTree
 
-nodeAction :: TreeAction a -> Maybe Site -> Time -> Node a -> CanFail (Node a)
+nodeAction ::
+    (MonadFail m) => TreeAction m a -> Maybe Site -> Time -> Node a ->
+    m (Node a)
 nodeAction action maybeSite t node =
   do
     newTimeSeries <- at t action existingTimeSeries
@@ -246,46 +203,50 @@ nodeAction action maybeSite t node =
   where
     existingTimeSeries = view (getSites . (ix maybeSite)) node
 
-treeAdd :: forall a. Maybe Attributee -> Interpolation -> a -> NodePath ->
-    Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
+treeAdd ::
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> Interpolation -> a ->
+    NodePath -> Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeAdd att int a = treeAction add
   where
-    add :: TreeAction a
-    add (Just (_, Just _)) = Left "time point already present"
-    add _ = Right . Just $ (att, Just (int, a))
+    add :: TreeAction m a
+    add (Just (_, Just _)) = fail "time point already present"
+    add _ = return . Just $ (att, Just (int, a))
 
-treeSet :: forall a. Maybe Attributee -> Interpolation -> a -> NodePath ->
-    Maybe Site -> Time -> ClapiTree a -> CanFail (ClapiTree a)
+treeSet ::
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> Interpolation -> a ->
+    NodePath -> Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeSet att int a path site t = treeAction set path site t
   where
-    set :: TreeAction a
-    set (Just (_, Just _)) = Right . Just $ (att, Just (int, a))
-    set _ = Left $
+    set :: TreeAction m a
+    set (Just (_, Just _)) = return . Just $ (att, Just (int, a))
+    set _ = fail $
         printf "missing time point at which to set %s: %s %s" (show path)
         (show t) (show site)
 
-treeRemove :: forall a. Maybe Attributee -> NodePath -> Maybe Site ->
-    Time -> ClapiTree a -> CanFail (ClapiTree a)
+treeRemove ::
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> NodePath ->
+    Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
 treeRemove _ path Nothing t = treeAction globalRemove path Nothing t
   where
-    globalRemove :: TreeAction a
-    globalRemove (Just (_, Just _)) = Right Nothing
-    globalRemove _ = Left $
+    globalRemove :: TreeAction m a
+    globalRemove (Just (_, Just _)) = return Nothing
+    globalRemove _ = fail $
         printf "missing time point at which to remove %s: %s" (show path)
         (show t)
 treeRemove att path justSite t = treeAction siteRemove path justSite t
   where
-    siteRemove :: TreeAction a
-    siteRemove _ = Right . Just $ (att, Nothing)
+    siteRemove :: TreeAction m a
+    siteRemove _ = return . Just $ (att, Nothing)
 
-treeClear :: forall a. Maybe Attributee -> NodePath -> Maybe Site -> Time ->
-    ClapiTree a -> CanFail (ClapiTree a)
-treeClear _ path Nothing t tree = Left "no clearing without a site"
+treeClear ::
+    forall a m. (MonadFail m, Eq a) => Maybe Attributee -> NodePath ->
+    Maybe Site -> Time -> ClapiTree a -> m (ClapiTree a)
+treeClear _ path Nothing t tree = fail "no clearing without a site"
 treeClear att path justSite t tree = treeAction clear path justSite t tree
   where
-    clear :: TreeAction a
-    clear (Just _) = Right Nothing
-    clear _ = Left $
+    clear :: TreeAction m a
+    clear (Just _) = return Nothing
+    clear _ = fail $
         printf "missing time point at which to clear %s: %s %s" (show path)
         (show t) (show justSite)
 
@@ -300,28 +261,28 @@ data TreeDelta a = Init TypePath
   deriving (Eq, Show)
 
 
-treeDiff :: (Eq a) => ClapiTree a -> ClapiTree a ->
-    CanFail [(NodePath, TreeDelta a)]
-treeDiff (ClapiTree nm1 tm1 tum1) (ClapiTree nm2 tm2 tum2) =
-    minimiseDeletes . minimiseClears <$> allDeltas
-  where
-    flatten :: [(a, [b])] -> [(a, b)]
-    flatten = mconcat . (fmap sequence)
-    allDeltas = flatten <$> Map.toList <$> sequence failyDeltaMap
-    failyDeltaMap = merge
-        (mapMissing onlyInNm1)
-        (mapMissing onlyInNm2)
-        (zipWithMatched inBoth) nm1 nm2
-    onlyInNm1 np n1 = Right [Delete]
-    onlyInNm2 np n2 =
-        ((maybeToList $ Init <$> Map.lookup np tm2) ++) <$>
-        nodeDiff mempty n2
-    inBoth np n1 n2
-      | tp1 /= tp2 = ((Maybe.toMonoid $ sequence $ [Init <$> tp2]) ++) <$> nodeDiff mempty n2
-      | otherwise = nodeDiff n1 n2
-      where
-        tp1 = Map.lookup np tm1
-        tp2 = Map.lookup np tm2
+-- treeDiff :: (Eq a) => ClapiTree a -> ClapiTree a ->
+--     CanFail [(NodePath, TreeDelta a)]
+-- treeDiff (ClapiTree nm1 types1) (ClapiTree nm2 types2) =
+--     minimiseDeletes . minimiseClears <$> allDeltas
+--   where
+--     flatten :: [(a, [b])] -> [(a, b)]
+--     flatten = mconcat . (fmap sequence)
+--     allDeltas = flatten <$> Map.toList <$> sequence failyDeltaMap
+--     failyDeltaMap = merge
+--         (mapMissing onlyInNm1)
+--         (mapMissing onlyInNm2)
+--         (zipWithMatched inBoth) nm1 nm2
+--     onlyInNm1 np n1 = Right [Delete]
+--     onlyInNm2 np n2 =
+--         ((maybeToList $ Init <$> Mos.getDependency np types2) ++) <$>
+--         nodeDiff mempty n2
+--     inBoth np n1 n2
+--       | tp1 /= tp2 = ((Maybe.toMonoid $ sequence $ [Init <$> tp2]) ++) <$> nodeDiff mempty n2
+--       | otherwise = nodeDiff n1 n2
+--       where
+--         tp1 = Mos.getDependency np types1
+--         tp2 = Mos.getDependency np types2
 
 
 minimiseDeletes :: [(NodePath, TreeDelta a)] -> [(NodePath, TreeDelta a)]
@@ -397,15 +358,15 @@ timeSeriesDiff site ts1 ts2 = fmap snd <$> Map.toList <$> sequence failyTsDiff
       | otherwise = Nothing
 
 
-treeApply :: ClapiTree a -> [(NodePath, TreeDelta a)] -> CanFail (ClapiTree a)
-treeApply = foldM (flip f)
-  where
-    f :: (NodePath, TreeDelta a) -> ClapiTree a -> CanFail (ClapiTree a)
-    f (np, (Init tp)) = treeInitNode' np tp
-    f (np, Delete) = treeDelete np
-    f (np, (SetChildren keys)) = treeSetChildren np keys
-    f (np, (Clear t s a)) = treeClear a np s t
-    f (np, (Remove t s a)) = treeRemove a np s t
-    f (np, (Add t v i s a)) = treeAdd a i v np s t
-    f (np, (Set t v i s a)) = treeSet a i v np s t
-    treeInitNode' np tp t = return $ treeInitNode np tp t
+-- treeApply :: ClapiTree a -> [(NodePath, TreeDelta a)] -> CanFail (ClapiTree a)
+-- treeApply = foldM (flip f)
+--   where
+--     f :: (NodePath, TreeDelta a) -> ClapiTree a -> CanFail (ClapiTree a)
+--     f (np, (Init tp)) = treeInitNode' np tp
+--     f (np, Delete) = treeDelete np
+--     f (np, (SetChildren keys)) = treeSetChildren np keys
+--     f (np, (Clear t s a)) = treeClear a np s t
+--     f (np, (Remove t s a)) = treeRemove a np s t
+--     f (np, (Add t v i s a)) = treeAdd a i v np s t
+--     f (np, (Set t v i s a)) = treeSet a i v np s t
+--     treeInitNode' np tp t = return $ treeInitNode np tp t

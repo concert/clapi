@@ -21,6 +21,7 @@ library
                      , Parsing
                      , Path
                      , Path.Parsing
+                     , Relay
                      , Serialisation
                      , Server
                      , Types
@@ -39,6 +40,7 @@ library
                      , bytestring
                      , containers >= 0.5.8.1
                      , data-binary-ieee754
+                     , either
                      , errors
                      , lens
                      , network
@@ -78,6 +80,8 @@ test-suite clapi-hs-test
                      , clapi-hs
                      , either
                      , HUnit
+                     , lens
+                     , mtl
                      , network
                      , network-simple
                      , pipes
@@ -87,11 +91,13 @@ test-suite clapi-hs-test
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , text
-  other-modules:       Util
+  other-modules:       Helpers
+                     , Data.Map.TestMos
                      , TestNamespaceTracker
                      , TestServer
                      , TestTree
                      , TestTypes
+                     , TestUtil
                      , TestValidator
                      , TestValuespace
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N

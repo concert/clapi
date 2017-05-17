@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExistentialQuantification, FlexibleInstances #-}
 module Types
     (
         CanFail,
@@ -9,29 +9,77 @@ module Types
         fromClapiValue,
         toClapiValue,
         ClapiMethod(..),
-        ClapiMessage(..),
-        ClapiBundle,
-        ClapiMessageTag,
+        Message(..),
+        msgMethod',
         InterpolationType(..),
         Interpolation(..),
-        interpolation
+        interpolation,
+        interpolationType
     )
 where
 
+import Prelude hiding (fail)
+import Data.Either (either)
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 import qualified Data.Text as T
+import Control.Monad.Fail (MonadFail, fail)
 
-import Path (Path)
+import Path (Path, Name)
 
 type CanFail a = Either String a
 
-data ClapiMessage = CMessage {
-    msgPath :: Path,
-    msgMethod :: ClapiMethod,
-    msgArgs :: [ClapiValue],
-    msgTags :: [ClapiMessageTag]
-} deriving (Eq, Show)
+instance MonadFail (Either String) where
+    fail s = Left s
+
+type Attributee = String
+type Site = String
+
+data Message =
+    MsgError {msgPath' :: Path, msgErrTxt :: T.Text}
+  | MsgSet {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgArgs' :: [ClapiValue],
+        msgInterpolation :: Interpolation,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgAdd {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgArgs' :: [ClapiValue],
+        msgInterpolation :: Interpolation,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgRemove {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgClear {
+        msgPath' :: Path,
+        msgTime :: Time,
+        msgAttributee :: (Maybe Attributee),
+        msgSite :: (Maybe Site)}
+  | MsgSubscribe {msgPath' :: Path}
+  | MsgUnsubscribe {msgPath' :: Path}
+  | MsgAssignType {msgPath' :: Path, msgTypePath :: Path}
+  | MsgDelete {msgPath' :: Path}
+  | MsgChildren {msgPath' :: Path, msgChildren :: [Name]}
+  deriving (Eq, Show)
+
+msgMethod' :: Message -> ClapiMethod
+msgMethod' (MsgError {}) = Error
+msgMethod' (MsgSet {}) = Set
+msgMethod' (MsgAdd {}) = Add
+msgMethod' (MsgRemove {}) = Remove
+msgMethod' (MsgClear {}) = Clear
+msgMethod' (MsgSubscribe {}) = Subscribe
+msgMethod' (MsgUnsubscribe {}) = Unsubscribe
+msgMethod' (MsgAssignType {}) = AssignType
+msgMethod' (MsgDelete {}) = Delete
+msgMethod' (MsgChildren {}) = Children
+
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
@@ -61,85 +109,81 @@ instance (Show a) => Show (Enumerated a) where
   show (Enumerated a) = "Enumerated " ++ show a
 
 -- http://stackoverflow.com/questions/2743858/safe-and-polymorphic-toenum
-safeToEnum :: (Enum a, Bounded a) => Int -> Maybe a
+safeToEnum :: (MonadFail m, Enum a, Bounded a) => Int -> m a
 safeToEnum i =
   let
     r = toEnum i
     max = maxBound `asTypeOf` r
     min = minBound `asTypeOf` r
   in if fromEnum min <= i && i <= fromEnum max
-  then Just r
-  else Nothing
+  then return r
+  else fail "enum value out of range"
 
 class Clapiable a where
     toClapiValue :: a -> ClapiValue
-    fromClapiValue :: ClapiValue -> Maybe a
+    fromClapiValue :: (MonadFail m) => ClapiValue -> m a
 
 instance Clapiable Bool where
     toClapiValue = CBool
-    fromClapiValue (CBool x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CBool x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Time where
     toClapiValue = CTime
-    fromClapiValue (CTime x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CTime x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance (Enum a, Bounded a) => Clapiable (Enumerated a) where
     toClapiValue (Enumerated x) = CEnum $ fromIntegral $ fromEnum x
     fromClapiValue (CEnum x) = Enumerated <$> (safeToEnum $ fromIntegral x)
-    fromClapiValue _ = Nothing
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Word32 where
     toClapiValue = CWord32
-    fromClapiValue (CWord32 x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CWord32 x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Word64 where
     toClapiValue = CWord64
-    fromClapiValue (CWord64 x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CWord64 x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Int32 where
     toClapiValue = CInt32
-    fromClapiValue (CInt32 x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CInt32 x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Int64 where
     toClapiValue = CInt64
-    fromClapiValue (CInt64 x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CInt64 x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Float where
     toClapiValue = CFloat
-    fromClapiValue (CFloat x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CFloat x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Double where
     toClapiValue = CDouble
-    fromClapiValue (CDouble x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CDouble x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable T.Text where
     toClapiValue = CString
-    fromClapiValue (CString x) = Just x
-    fromClapiValue _ = Nothing
+    fromClapiValue (CString x) = return x
+    fromClapiValue _ = fail "bad type"
 
 instance Clapiable a => Clapiable [a] where
     toClapiValue = CList . (fmap toClapiValue)
     fromClapiValue (CList xs) = sequence $ fmap fromClapiValue xs
-    fromClapiValue _ = Nothing
+    fromClapiValue _ = fail "bad type"
 
 data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
     Unsubscribe | AssignType | Children | Delete
   deriving (Eq, Show, Read, Enum, Bounded)
 
-type ClapiMessageTag = (String, ClapiValue)
-
-type ClapiBundle = [ClapiMessage]
-
 data InterpolationType = ITConstant | ITLinear | ITBezier
-  deriving (Show, Eq, Enum, Bounded)
+  deriving (Show, Eq, Ord, Enum, Bounded)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Show, Eq)
 
@@ -148,3 +192,8 @@ interpolation ITConstant [] = Right $ IConstant
 interpolation ITLinear [] = Right $ ILinear
 interpolation ITBezier [CWord32 a, CWord32 b] = Right $ IBezier a b
 interpolation _ _ = Left "Bad interpolation args"
+
+interpolationType :: Interpolation -> InterpolationType
+interpolationType IConstant = ITConstant
+interpolationType ILinear = ITLinear
+interpolationType (IBezier _ _) = ITBezier
