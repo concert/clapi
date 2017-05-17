@@ -73,6 +73,9 @@ instance Functor Node where
     -- Holy nested functors Batman!
     fmap f (Node keys m) = Node keys $ (fmap . fmap . fmap . fmap . fmap) f m
 
+instance Foldable Node where
+    foldMap f (Node _ m) = (foldMap . foldMap . foldMap . foldMap . foldMap) f m
+
 unwrapTimePoint ::
     (MonadFail m) => (Attributed (Maybe (TimePoint a))) -> m (TimePoint a)
 unwrapTimePoint = note "data deleted at time point" . snd
