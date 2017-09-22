@@ -130,7 +130,7 @@ testDoubleKillServerKillsHandlers = killServerHelper connector handler
 
 socketCloseTest handler = withServe' handler $ \port->
   do
-    mbs <- timeout (seconds 0.1) $
+    mbs <- timeout (seconds 1) $
         connect "127.0.0.1" port
             (\(csock, _) -> recv csock 4096)
     assertEqual "didn't get closed" (Just "") mbs
@@ -141,7 +141,7 @@ testHandlerErrorClosesSocket = socketCloseTest $ error "part of test"
 
 testMultipleConnections n = withServe' handler $ \port ->
   do
-    res <- replicateConcurrently n $ timeout (seconds 0.1) $
+    res <- replicateConcurrently n $ timeout (seconds 1) $
         connect "127.0.0.1" port (\(csock, _) -> recv csock 4096)
     assertEqual "bad thread data" res $ replicate n (Just "hello")
   where
