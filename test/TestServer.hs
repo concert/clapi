@@ -76,15 +76,14 @@ testDoubleCatchKills = do
       (swallowExc $
         Q.writeChan i "soft" >> putMVar dieLock () >> waitAges >> return ())
       (Q.writeChan i "hard")
-      (Q.writeChan i "body" >> putMVar dieLock () >>
-        threadDelay 100000000 :: IO ())
+      (Q.writeChan i "body" >> putMVar dieLock () >> waitAges :: IO ())
     withAsync (killLoop dieLock i $ asyncThreadId a) $ \_ ->
       do
         result <- readToList o "hard" []
         assertEqual "bloop" ["body", "die", "soft", "die", "hard"] result
         assertAsyncKilled a
   where
-    waitAges = threadDelay 100000000
+    waitAges = threadDelay (seconds 100)
     readToList o stopAt l = do
       item <- Q.readChan o
       if item == stopAt
