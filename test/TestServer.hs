@@ -14,6 +14,7 @@ import Control.Concurrent.Async (
     async, withAsync, wait, cancel, asyncThreadId, mapConcurrently,
     replicateConcurrently)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Control.Monad (forever)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
@@ -22,6 +23,8 @@ import Pipes (runEffect, cat)
 import Pipes.Core (Client, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
+
+import qualified Control.Concurrent.Chan.Unagi as Q
 
 import Server (doubleCatch, swallowExc, withListen, serve', socketServer)
 
@@ -66,29 +69,29 @@ timeLimit :: IO a -> IO a
 timeLimit action = (timeout (seconds 0.1) action) >>= \r ->
     assertBool "timed out" (isJust r) >> return (fromJust r)
 
-testDoubleCatchKills =
-  do
-    body <- newEmptyMVar
-    soft <- newEmptyMVar
-    hard <- newEmptyMVar
+testDoubleCatchKills = do
+    (i, o) <- Q.newChan
+    dieLock <- newEmptyMVar
     a <- async $ doubleCatch
-        (swallowExc $ putMVar soft () >> threadDelay 500000)
-        (putMVar hard ())
-        (putMVar body () >> threadDelay 500000)
-    let die = killThread $ asyncThreadId a
-    taken body >>= assertBool "body not executed"
-    (not <$> taken body) >>= assertBool "soft handler executed early"
-    die
-    taken soft >>= assertBool "soft handler not executed"
-    (not <$> taken hard) >>= assertBool "hard handler executed early"
-    die
-    taken hard >>= assertBool "hard handler not executed"
-    assertAsyncKilled a
-  where
-    taken mvar =
+      (swallowExc $
+        Q.writeChan i "soft" >> putMVar dieLock () >> waitAges >> return ())
+      (Q.writeChan i "hard")
+      (Q.writeChan i "body" >> putMVar dieLock () >>
+        threadDelay 100000000 :: IO ())
+    withAsync (killLoop dieLock i $ asyncThreadId a) $ \_ ->
       do
-        called <- timeout (seconds 0.1) $ takeMVar mvar
-        return $ called /= Nothing
+        result <- readToList o "hard" []
+        assertEqual "bloop" ["body", "die", "soft", "die", "hard"] result
+        assertAsyncKilled a
+  where
+    waitAges = threadDelay 100000000
+    readToList o stopAt l = do
+      item <- Q.readChan o
+      if item == stopAt
+        then return . reverse $ item : l
+        else readToList o stopAt $ item : l
+    killLoop m i tId = forever $
+      takeMVar m >> Q.writeChan i "die" >> killThread tId
 
 testDoubleCatchReturn =
     doubleCatch (swallowExc undefined) undefined (return 42) >>=
