@@ -91,6 +91,7 @@ test-suite clapi-hs-test
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , text
+                     , unagi-chan
   other-modules:       Helpers
                      , Data.Map.TestMos
                      , TestNamespaceTracker
