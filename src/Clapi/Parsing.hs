@@ -1,12 +1,12 @@
-module Parsing (
+module Clapi.Parsing (
     methodToString,
     methodParser,
     ) where
 
 import Data.Attoparsec.Text (Parser)
 
-import Util (parseType, uncamel)
-import Types (ClapiMethod)
+import Clapi.Util (parseType, uncamel)
+import Clapi.Types (ClapiMethod)
 
 
 methodParser :: Parser ClapiMethod

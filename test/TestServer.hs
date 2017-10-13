@@ -26,7 +26,7 @@ import Pipes.Safe (runSafeT)
 
 import qualified Control.Concurrent.Chan.Unagi as Q
 
-import Server (doubleCatch, swallowExc, withListen, serve', socketServer)
+import Clapi.Server (doubleCatch, swallowExc, withListen, serve', socketServer)
 
 
 tests = [

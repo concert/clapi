@@ -10,11 +10,11 @@ import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
 import Helpers (assertFailed)
-import Path (root, up)
-import Types (
+import Clapi.Path (root, up)
+import Clapi.Types (
     CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
     Interpolation(..), fromClapiValue, toClapiValue)
-import Serialisation (encode, decode)
+import Clapi.Serialisation (encode, decode)
 
 
 tests = [

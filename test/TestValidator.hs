@@ -8,9 +8,9 @@ import Test.Framework.Providers.HUnit (testCase)
 import Control.Monad (join)
 import qualified Data.Set as Set
 
-import Types (ClapiValue(..))
-import Tree (treeInitNode)
-import Validator (success, fromText, validatorValidator, goValidate)
+import Clapi.Types (ClapiValue(..))
+import Clapi.Tree (treeInitNode)
+import Clapi.Validator (success, fromText, validatorValidator, goValidate)
 
 tests = [
     -- testCase "ref validator" testRefValidator,

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
-module Valuespace where
+module Clapi.Valuespace where
 
 import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>))
@@ -21,18 +21,18 @@ import qualified Data.Map.Mos as Mos
 import Data.Maybe.Clapi (note)
 import qualified Data.Maybe.Clapi as Maybe
 
-import Util (duplicates, eitherFail, (+|), partitionDifferenceL)
-import qualified Path
+import Clapi.Util (duplicates, eitherFail, (+|), partitionDifferenceL)
+import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
-import Types (
+import Clapi.Types (
     CanFail, ClapiValue(..), InterpolationType(..), Interpolation(..), Time(..),
     Enumerated(..), toClapiValue, fromClapiValue, getEnum, interpolationType)
-import Tree (
+import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
     treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths)
-import qualified Tree as Tree
-import Validator (Validator, fromText, enumDesc, validate, desc)
+import qualified Clapi.Tree as Tree
+import Clapi.Validator (Validator, fromText, enumDesc, validate, desc)
 
 type Node = Tree.Node [ClapiValue]
 

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
-module Serialisation
+module Clapi.Serialisation
     (
       encode,
       decode,
@@ -27,14 +27,14 @@ import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
-import Types(
+import Clapi.Types(
     CanFail, ClapiValue(..), Message(..), ClapiMethod(..), Time(..),
     Interpolation(..)
     )
-import qualified Path
+import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
-import Parsing (methodToString, methodParser)
-import Util (composeParsers)
+import Clapi.Parsing (methodToString, methodParser)
+import Clapi.Util (composeParsers)
 
 (<<>>) = liftM2 (<>)
 
