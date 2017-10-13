@@ -1,4 +1,4 @@
-module Path where
+module Clapi.Path where
 
 import Prelude hiding (fail)
 import Data.List (isPrefixOf)

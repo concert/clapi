@@ -10,7 +10,7 @@ import Network.Socket.ByteString (send)
 import qualified Network.Socket as NS
 import Network.Simple.TCP hiding (send)
 
-import Server
+import Clapi.Server
 
 main :: IO ()
 main =

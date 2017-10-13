@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module Lib
+module Clapi.Lib
     (
         someFunc,
     ) where

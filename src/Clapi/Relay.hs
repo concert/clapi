@@ -1,4 +1,4 @@
-module Relay where
+module Clapi.Relay where
 
 import Control.Monad.Fail (MonadFail)
 import Control.Monad.State (MonadState, StateT(..), evalStateT, runStateT, get, modify, put)
@@ -10,16 +10,16 @@ import Control.Lens (_1, _2)
 import Pipes (lift)
 import Pipes.Core (Client, request)
 
-import Util (eitherFail)
-import Types (CanFail, Message(..), ClapiMethod(..), ClapiValue)
-import Path (Path)
-import Tree (
+import Clapi.Util (eitherFail)
+import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue)
+import Clapi.Path (Path)
+import Clapi.Tree (
     ClapiTree, Attributee, -- treeAdd, treeSet, treeRemove, treeClear, treeInitNode, treeDelete, treeSetChildren, treeGetType
     )
-import Validator (Validator, validate)
-import Valuespace (VsTree, Valuespace(..))
-import NamespaceTracker (Om, stateL, stateL')
-import Server (User)
+import Clapi.Validator (Validator, validate)
+import Clapi.Valuespace (VsTree, Valuespace(..))
+import Clapi.NamespaceTracker (Om, stateL, stateL')
+import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
 
 

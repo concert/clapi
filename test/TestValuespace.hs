@@ -20,10 +20,10 @@ import Control.Monad.Fail (MonadFail)
 
 import Helpers (assertFailed)
 
-import Path (Path)
-import Types (InterpolationType, Interpolation(..), ClapiValue(..))
-import Validator (validate)
-import Valuespace
+import Clapi.Path (Path)
+import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))
+import Clapi.Validator (validate)
+import Clapi.Valuespace
     -- Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
     -- metaType, defToValues, valuesToDef, vsValidate, baseValuespace,
     -- vsAssignType, vsSet, anon, tconst, globalSite)

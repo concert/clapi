@@ -16,11 +16,11 @@ import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
 import Data.Map.Clapi (joinM)
-import Util ((+|))
-import Path (Path)
-import Types (Time(..), Interpolation(..), Message(..), msgPath', msgMethod', ClapiMethod(..), ClapiValue(..))
-import Server (User(..))
-import NamespaceTracker (namespaceTracker, Ownership(..), Owners, Registered)
+import Clapi.Util ((+|))
+import Clapi.Path (Path)
+import Clapi.Types (Time(..), Interpolation(..), Message(..), msgPath', msgMethod', ClapiMethod(..), ClapiValue(..))
+import Clapi.Server (User(..))
+import Clapi.NamespaceTracker (namespaceTracker, Ownership(..), Owners, Registered)
 
 import TestServer (echoMap)
 

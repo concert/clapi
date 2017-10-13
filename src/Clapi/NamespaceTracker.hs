@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables, Rank2Types #-}
-module NamespaceTracker where
+module Clapi.NamespaceTracker where
 
 import Control.Monad (filterM)
 import Control.Monad.State (StateT(..), evalStateT, get, modify)
@@ -14,10 +14,10 @@ import Pipes.Core (Proxy, request, respond)
 
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
-import Path (Name, Path)
-import Util (tagl)
-import Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(CString))
-import Server (User)
+import Clapi.Path (Name, Path)
+import Clapi.Util (tagl)
+import Clapi.Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(CString))
+import Clapi.Server (User)
 
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
 type Owners i = Map.Map Name i

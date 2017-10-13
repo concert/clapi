@@ -1,5 +1,5 @@
 {-# LANGUAGE ExistentialQuantification, FlexibleInstances #-}
-module Types
+module Clapi.Types
     (
         CanFail,
         Time(..),
@@ -25,7 +25,7 @@ import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 import Control.Monad.Fail (MonadFail, fail)
 
-import Path (Path, Name)
+import Clapi.Path (Path, Name)
 
 type CanFail a = Either String a
 

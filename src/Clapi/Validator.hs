@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
-module Validator where
+module Clapi.Validator where
 
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
@@ -18,10 +18,10 @@ import Text.Printf (printf, PrintfArg)
 
 import qualified Data.Attoparsec.Text as Dat
 
-import Util (duplicates)
-import Path (Path, isChildOf)
+import Clapi.Util (duplicates)
+import Clapi.Path (Path, isChildOf)
 import Path.Parsing (nameP, pathP, toString)
-import Types (
+import Clapi.Types (
     CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
 
 type NodePath = Path

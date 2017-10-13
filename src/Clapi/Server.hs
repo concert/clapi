@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Server where
+module Clapi.Server where
 
 import Control.Concurrent.Async (async, cancel, link, poll, wait, withAsync)
 import Control.Concurrent.STM (atomically)

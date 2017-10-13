@@ -1,7 +1,7 @@
 {-# LANGUAGE
     ScopedTypeVariables, TemplateHaskell, TypeFamilies
 #-}
-module Tree
+module Clapi.Tree
     -- (
     --     add, set, remove,
     --     Interpolation(..),
@@ -36,11 +36,11 @@ import Control.Monad.Fail (MonadFail, fail)
 import Control.Error.Util (hush)
 import Text.Printf (printf)
 
-import Util (append, (+|), (+|?), duplicates, zipLongest, partitionDifferenceL)
-import Path (
+import Clapi.Util (append, (+|), (+|?), duplicates, zipLongest, partitionDifferenceL)
+import Clapi.Path (
     Name, Path, root, isChildOfAny, isChildOf, childPaths, splitBasename)
 import Path.Parsing (toString)
-import Types (CanFail, Time, ClapiValue, Interpolation(..))
+import Clapi.Types (CanFail, Time, ClapiValue, Interpolation(..))
 import Data.Maybe.Clapi (note)
 
 import qualified Data.Maybe.Clapi as Maybe
