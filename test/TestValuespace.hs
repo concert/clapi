@@ -46,7 +46,7 @@ testTupleDef =
         tupleDef Cannot "docs" ["a", "b"] ["bool"] mempty
     def <- tupleDef Cannot "docs" ["a"] ["bool"] mempty
     assertEqual "tuple validation" (return []) $
-        validate undefined (view validators def) [CBool True]
+        validate undefined (view validators def) [ClBool True]
 
 
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
@@ -60,7 +60,7 @@ testChildTypeValidation =
   do
     -- Set /api/self/version to have the wrong type, but perfectly valid
     -- data for that wrong type:
-    badVs <- vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
+    badVs <- vsSet anon IConstant [ClString "banana"] ["api", "self", "version"]
           globalSite tconst baseValuespace >>=
         return . vsAssignType ["api", "self", "version"]
           ["api", "types", "self", "build"]
@@ -99,7 +99,7 @@ vsWithXRef =
         -- FIXME: should infer this from the container
         return . vsAssignType ["api", "types", "test_type"]
           (metaTypePath Tuple) >>=
-        vsAdd anon IConstant [CString "/api/self/version"]
+        vsAdd anon IConstant [ClString "/api/self/version"]
           ["api", "types", "test_value"] globalSite tconst >>=
         -- FIXME: should infer this from the container
         return . vsAssignType ["api", "types", "test_value"]
@@ -111,7 +111,7 @@ testXRefValidation =
     -- Change the type of the instance referenced in a cross reference
     vs <- vsWithXRef
     assertValidationErrors [] vs
-    badVs <- vsSet anon IConstant [CString "/api/self/build"]
+    badVs <- vsSet anon IConstant [ClString "/api/self/build"]
         ["api", "types", "test_value"] globalSite tconst vs
     assertValidationErrors [["api", "types", "test_value"]] badVs
 
@@ -126,7 +126,7 @@ testXRefRevalidation =
             ["api", "types", "containers", "self"] globalSite tconst >>=
         return . vsAssignType ["api", "self", "version"]
             ["api", "types", "self", "build"] >>=
-        vsSet anon IConstant [CString "banana"] ["api", "self", "version"]
+        vsSet anon IConstant [ClString "banana"] ["api", "self", "version"]
             globalSite tconst
     assertValidationErrors [["api", "types", "test_value"]] badVs
 

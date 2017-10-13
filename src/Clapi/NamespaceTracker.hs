@@ -16,7 +16,7 @@ import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 import Clapi.Path (Name, Path)
 import Clapi.Util (tagl)
-import Clapi.Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(CString))
+import Clapi.Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(ClString))
 import Clapi.Server (User)
 
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
