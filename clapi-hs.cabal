@@ -1,13 +1,13 @@
 name:                clapi-hs
 version:             0.1.0.0
-synopsis:            Initial project template from stack
+synopsis:            Concert API stuff
 description:         Please see README.md
-homepage:            https://github.com/githubuser/clapi-hs#readme
-license:             BSD3
+homepage:            https://github.com/concert/clapi-hs#readme
+license:             GPL3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2016 Author name here
+author:              Paul Weaver
+maintainer:          paul@concertdaw.co.uk
+copyright:           2016 Concert Audio Technologies
 category:            Web
 build-type:          Simple
 -- extra-source-files:
