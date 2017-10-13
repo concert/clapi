@@ -182,7 +182,7 @@ defToValues (ArrayDef l d t cl) =
 
 valuesToDef :: (MonadFail m) => MetaType -> [ClapiValue] -> m Definition
 valuesToDef
-    Tuple [l@(CEnum _), CString d, ns@(CList _), vds@(CList _), is@(CList _)] =
+    Tuple [l@(ClEnum _), ClString d, ns@(ClList _), vds@(ClList _), is@(ClList _)] =
   do
     -- FIXME: need to be able to unpack enums
     l' <- getEnum <$> fromClapiValue l
@@ -191,7 +191,7 @@ valuesToDef
     is' <- Set.fromList <$> fmap getEnum <$> fromClapiValue is
     tupleDef l' d ns' vds' is'
 valuesToDef
-    Struct [l@(CEnum _), CString d, ns@(CList _), ts@(CList _), ls@(CList _)] =
+    Struct [l@(ClEnum _), ClString d, ns@(ClList _), ts@(ClList _), ls@(ClList _)] =
   do
     l' <- getEnum <$> fromClapiValue l
     ns' <- fmap T.unpack <$> fromClapiValue ns
@@ -200,7 +200,7 @@ valuesToDef
     ls' <- fmap getEnum <$> fromClapiValue ls
     structDef l' d ns' ts'' ls'
 valuesToDef
-    Array [l@(CEnum _), CString d, CString t, cl@(CEnum _)] =
+    Array [l@(ClEnum _), ClString d, ClString t, cl@(ClEnum _)] =
   do
     l' <- getEnum <$> fromClapiValue l
     t' <- Path.fromString $ T.unpack t
@@ -555,9 +555,9 @@ baseValuespace =
     define versionDefPath versionDef >>=
     define buildDefPath buildDef >>=
     return . vsAssignType versionPath versionDefPath >>=
-    addConst versionPath [CWord32 0, CInt32 (-1023)] >>=
+    addConst versionPath [ClWord32 0, ClInt32 (-1023)] >>=
     return . vsAssignType buildPath buildDefPath >>=
-    addConst buildPath [CString "banana"] >>=
+    addConst buildPath [ClString "banana"] >>=
 
     autoDefineStruct
         ["api", "types", "base"]

@@ -19,8 +19,8 @@ tests = [
 
 -- testRefValidator =
 --   do
---     assertEqual "success case" success $ result (CString "/test/good_value/")
---     assertFailed "failure case" $ result (CString "/test/bad_value")
+--     assertEqual "success case" success $ result (ClString "/test/good_value/")
+--     assertFailed "failure case" $ result (ClString "/test/bad_value")
 --   where
 --     tree =
 --         treeInitNode ["test", "good_value"] ["test", "target_type"] $
@@ -34,8 +34,8 @@ testValidatorValidator =
   do
     assertFailed "bad description" $ fromText badValue
     assertFailed "bad description" $ fromText badValue'
-    assertFailed "bad value" $ validate (CString badValue)
-    assertEqual "success" success $ validate (CString "bool")
+    assertFailed "bad value" $ validate (ClString badValue)
+    assertEqual "success" success $ validate (ClString "bool")
   where
     validate = goValidate (validatorValidator "desk") undefined
     badValue = "validator[]"
