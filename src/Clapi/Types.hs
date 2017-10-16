@@ -185,7 +185,7 @@ data ClapiMethod = Error | Set | Add | Remove | Clear | Subscribe |
 data InterpolationType = ITConstant | ITLinear | ITBezier
   deriving (Show, Eq, Ord, Enum, Bounded)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 interpolation :: InterpolationType -> [ClapiValue] -> CanFail Interpolation
 interpolation ITConstant [] = Right $ IConstant
