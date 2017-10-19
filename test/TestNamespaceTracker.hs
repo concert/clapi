@@ -16,8 +16,6 @@ import qualified Data.Text as T
 import Data.Void
 import Text.Printf
 
-import Debug.Trace
-
 -- import Pipes (runEffect, liftIO)
 import Pipes.Core (Client, Server, request, respond, (>>~))
 import qualified Pipes.Prelude as PP
@@ -131,8 +129,8 @@ fakeServer ::
 fakeServer = forever $ waitThen fwd undefined
     where
     fwd (ClientConnect _ _) = return ()
-    fwd (ClientData i a) = trace ("boing " ++ show a) $ sendRev $ ServerData i a
-    fwd (ClientDisconnect i) = trace "bye" $ sendRev $ ServerDisconnect i
+    fwd (ClientData i a) = sendRev $ ServerData i a
+    fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
 
 alice = newAwu 42 "alice"
 alice' = newAwu 43 "alice"

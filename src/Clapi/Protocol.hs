@@ -14,8 +14,6 @@ import Control.Monad.Trans.Free
 import qualified Data.Sequence as S
 import Data.Void
 
-import Debug.Trace
-
 data Directed a b = Fwd a | Rev b deriving (Show, Eq)
 
 -- isFwd :: Directed a b -> Bool
@@ -79,17 +77,14 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
 
     -- Left side is waiting and we have queued values:
     go (Free (Wait f1)) a2q (b2 :< b2q) freeF2 =
-        trace "left <- q" $
         runFreeT $ comp (f1 (Rev b2)) a2q b2q (wrapFreeF freeF2)
 
     -- Right side is waiting and we have queued values:
     go freeF1 (a2 :< a2q) b2q (Free (Wait f2)) =
-        trace "q -> right" $
         runFreeT $ comp (wrapFreeF freeF1) a2q b2q (f2 (Fwd a2))
 
     -- Both sides waiting:
     go (Free (Wait f1)) a2q b2q (Free (Wait f2)) =
-        trace "both wait" $
         return $ Free (Wait wat)
       where
         wat directed = case directed of
@@ -98,33 +93,28 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
 
     -- Left sends to waiting right:
     go (Free (SendFwd a2 next)) a2q b2q (Free (Wait f2)) =
-        trace "left -> right" $
         runFreeT $ comp next a2q b2q (f2 (Fwd a2))
 
     -- Right sends to waiting left:
     go (Free (Wait f1)) a2q b2q (Free (SendRev b2 next)) =
-        trace "left <- right" $
         runFreeT $ compose (f1 (Rev b2)) next
 
     -- Simultaneously send to each other! Here we have to buffer values:
     go (Free (SendFwd a2 next1)) a2q b2q (Free (SendRev b2 next2)) =
-        trace "left -> <- right" $
         runFreeT $ comp next1 (a2q S.|> a2) (b2q S.|> b2) next2
 
 
     -- Left can just freely send out:
     go (Free (SendRev b3 next)) a2q b2q freeF2 =
-        trace "<- left" $
         runFreeT $ sendRev b3 >> comp next a2q b2q (wrapFreeF freeF2)
 
     -- Right can just freely send out:
     go freeF1 a2q b2q (Free (SendFwd a3 next)) =
-        trace "right ->"
         runFreeT $ sendFwd a3 >> comp (wrapFreeF freeF1) a2q b2q next
 
     -- Terminate:
-    go (Pure _) a2q b2q _ = trace "left done" $ return $ Pure ()
-    go _ a2q b2q (Pure _) = trace "right done" $ return $ Pure ()
+    go (Pure _) a2q b2q _ = return $ Pure ()
+    go _ a2q b2q (Pure _) = return $ Pure ()
 
 
 (<->) :: (Monad m) =>
