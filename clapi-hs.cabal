@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Clapi
+                     , Protocol
                      , NamespaceTracker
                      , Parsing
                      , Path
@@ -42,6 +43,7 @@ library
                      , data-binary-ieee754
                      , either
                      , errors
+                     , free
                      , lens
                      , network
                      , network-simple
@@ -91,8 +93,10 @@ test-suite clapi-hs-test
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , text
+                     , transformers
   other-modules:       Helpers
                      , Data.Map.TestMos
+                     , TestProtocol
                      , TestNamespaceTracker
                      , TestServer
                      , TestTree
