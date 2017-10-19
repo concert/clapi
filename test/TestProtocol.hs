@@ -10,7 +10,7 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Identity (runIdentity)
 import qualified Data.Set as Set
 
-import Protocol
+import Clapi.Protocol
 
 
 tests = [

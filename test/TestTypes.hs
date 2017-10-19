@@ -10,11 +10,11 @@ import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
 import Helpers (assertFailed)
-import Path (root, up)
-import Types (
+import Clapi.Path (root, up)
+import Clapi.Types (
     CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
     Interpolation(..), fromClapiValue, toClapiValue)
-import Serialisation (encode, decode)
+import Clapi.Serialisation (encode, decode)
 
 
 tests = [
@@ -42,10 +42,10 @@ testBinarySerialisationRoundTrip =
             Nothing
             (Just "home")
         argList = [
-            CBool True, CBool False, CTime (Time 4 2),
-            CEnum 12, CWord32 32, CWord64 64, CInt32 (-32), CInt64 (-64),
-            CFloat 15.1, CDouble 13.2, CString "Greetings Planet"]
-        nestedArgList = (CList argList) : argList
+            ClBool True, ClBool False, ClTime (Time 4 2),
+            ClEnum 12, ClWord32 32, ClWord64 64, ClInt32 (-32), ClInt64 (-64),
+            ClFloat 15.1, ClDouble 13.2, ClString "Greetings Planet"]
+        nestedArgList = (ClList argList) : argList
 
         result = encode bundle >>= decode :: CanFail [Message]
 

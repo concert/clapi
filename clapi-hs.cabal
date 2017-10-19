@@ -1,13 +1,13 @@
 name:                clapi-hs
 version:             0.1.0.0
-synopsis:            Initial project template from stack
+synopsis:            Concert API stuff
 description:         Please see README.md
-homepage:            https://github.com/githubuser/clapi-hs#readme
-license:             BSD3
+homepage:            https://github.com/concert/clapi#readme
+license:             GPL3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2016 Author name here
+author:              Paul Weaver
+maintainer:          paul@concertdaw.co.uk
+copyright:           2016 Concert Audio Technologies
 category:            Web
 build-type:          Simple
 -- extra-source-files:
@@ -18,19 +18,19 @@ library
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
-                     , Protocol
-                     , NamespaceTracker
-                     , Parsing
-                     , Path
+                     , Clapi.Protocol
+                     , Clapi.NamespaceTracker
+                     , Clapi.Parsing
+                     , Clapi.Path
                      , Path.Parsing
-                     , Relay
-                     , Serialisation
-                     , Server
-                     , Types
-                     , Tree
-                     , Validator
-                     , Valuespace
-                     , Util
+                     , Clapi.Relay
+                     , Clapi.Serialisation
+                     , Clapi.Server
+                     , Clapi.Types
+                     , Clapi.Tree
+                     , Clapi.Validator
+                     , Clapi.Valuespace
+                     , Clapi.Util
   other-modules:       Data.Maybe.Clapi
                      , Data.Map.ChainMap
   build-depends:       base >= 4.7 && < 5

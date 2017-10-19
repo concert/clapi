@@ -24,20 +24,17 @@ import qualified Pipes.Prelude as PP
 import Pipes.Safe (runSafeT)
 
 import Data.Map.Clapi (joinM)
-import Util ((+|))
-import Path (Path, root)
-import Types (
+import Clapi.Util ((+|))
+import Clapi.Path (Path, root)
+import Clapi.Types (
     Time(..), Interpolation(..), Message(..), msgPath', msgMethod',
     ClapiMethod(..), ClapiValue(..))
-import Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser)
-import qualified Protocol
-import Protocol (
+import Clapi.Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser)
+import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered)
+import qualified Clapi.Protocol as Protocol
+import Clapi.Protocol (
   Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
   send, (<->), runEffect, runProtocolIO)
-import NamespaceTracker (
-  namespaceTrackerProtocol, Ownership(..), Owners, Registered)
-
-import TestServer (echoMap)
 
 tests = [
     testCase "owner-like msg to preowned path" testMessageToPreowned,

@@ -17,10 +17,10 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 
 import qualified Data.Map.Mos as Mos
-import Path (Path(..), isChildOfAny)
-import Types (
+import Clapi.Path (Path(..), isChildOfAny)
+import Clapi.Types (
     CanFail, ClapiValue(..), Time(..), InterpolationType(..), Interpolation(..))
-import Tree (
+import Clapi.Tree (
     ClapiTree, Node(..), treeOrphansAndMissing, treeInitNode, treeDeleteNode
     -- Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
     -- treeAdd, treeSet, treeDelete, treeDiff, treeApply

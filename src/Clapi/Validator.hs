@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
-module Validator where
+module Clapi.Validator where
 
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
@@ -18,10 +18,10 @@ import Text.Printf (printf, PrintfArg)
 
 import qualified Data.Attoparsec.Text as Dat
 
-import Util (duplicates)
-import Path (Path, isChildOf)
+import Clapi.Util (duplicates)
+import Clapi.Path (Path, isChildOf)
 import Path.Parsing (nameP, pathP, toString)
-import Types (
+import Clapi.Types (
     CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
 
 type NodePath = Path
@@ -128,13 +128,13 @@ softValidate getTypePath vs cvs =
 boolValidator :: Text.Text -> Validator
 boolValidator t = Validator t doValidate VBool
   where
-    doValidate _ (CBool _) = success
+    doValidate _ (ClBool _) = success
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 timeValidator :: Text.Text -> Validator
 timeValidator t = Validator t doValidate VTime
   where
-    doValidate _ (CTime (Time _ _)) = success
+    doValidate _ (ClTime (Time _ _)) = success
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getNumValidator :: forall a. (Clapiable a, Ord a, PrintfArg a) =>
@@ -160,7 +160,7 @@ getEnumValidator :: Text.Text -> [String] -> Validator
 getEnumValidator t names = Validator t doValidate VEnum
   where
     max = fromIntegral $ length names - 1
-    doValidate _ (CEnum x)
+    doValidate _ (ClEnum x)
       | x <= max = success
       | otherwise = Left $ printf "Enum value not <= %v" (max)
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
@@ -169,15 +169,15 @@ getStringValidator :: Text.Text -> Maybe String -> Validator
 getStringValidator desc p = Validator desc (doValidate p) VString
   where
     errStr = printf "did not match '%s'"
-    doValidate Nothing _ (CString t) = success
-    doValidate (Just pattern) _ (CString t) = const [] <$>
+    doValidate Nothing _ (ClString t) = success
+    doValidate (Just pattern) _ (ClString t) = const [] <$>
         note (errStr pattern) ((Text.unpack t) =~~ pattern :: Maybe ())
     doValidate _ _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getRefValidator :: Text.Text -> Path -> Validator
 getRefValidator t requiredTypePath = Validator t doValidate VRef
   where
-    doValidate getTypePath (CString x) =
+    doValidate getTypePath (ClString x) =
       do
         nodePath <- Dat.parseOnly pathP x
         typePath <- getTypePath nodePath
@@ -191,7 +191,7 @@ getRefValidator t requiredTypePath = Validator t doValidate VRef
 validatorValidator :: Text.Text -> Validator
 validatorValidator t = Validator t doValidate VValidator
   where
-    doValidate _ (CString x) = fromText x >> success
+    doValidate _ (ClString x) = fromText x >> success
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 
@@ -199,7 +199,7 @@ getListValidator :: Text.Text -> Validator -> Validator
 getListValidator t itemValidator =
     Validator t listValidator (VList $ vType itemValidator)
   where
-    listValidator getType (CList xs) = softValidate getType (repeat itemValidator) xs
+    listValidator getType (ClList xs) = softValidate getType (repeat itemValidator) xs
     listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
 
 showJoin :: (Show a, Foldable t) => String -> t a -> String
@@ -210,7 +210,7 @@ getSetValidator t itemValidator =
     Validator t setValidator (VSet $ vType itemValidator)
   where
     listValidator = getListValidator "" itemValidator
-    setValidator getType cv@(CList xs) =
+    setValidator getType cv@(ClList xs) =
         let dups = duplicates xs in
         if null dups then goValidate listValidator getType cv
         else Left $ printf "Duplicate elements %v" $ showJoin ", " dups

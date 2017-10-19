@@ -1,0 +1,27 @@
+# Derived from https://raw.githubusercontent.com/commercialhaskell/stack/master/doc/travis-simple.yml
+sudo: false
+language: generic
+cache:
+  directories:
+    - $HOME/.stack
+addons:
+  apt:
+    packages:
+      - libgmp-dev
+before_install:
+  - mkdir -p ~/.local/bin
+  - export PATH=$HOME/.local/bin:$PATH
+  - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+install:
+  - stack --no-terminal --install-ghc test --only-dependencies
+script:
+  - stack --no-terminal test --haddock --no-haddock-deps --test-arguments --threads=1
+notifications:
+  email: false
+  irc:
+    channels:
+     - "chat.freenode.net#concertdaw"
+    on_success: change
+    on_failure: change
+    template:
+     - "%{repository_name}/%{branch} %{result}: %{build_url}"

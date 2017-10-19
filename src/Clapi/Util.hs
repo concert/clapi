@@ -1,4 +1,4 @@
-module Util (
+module Clapi.Util (
     eitherFail,
     tagl, tagr,
     append, (+|),

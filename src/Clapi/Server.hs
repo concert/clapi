@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
-module Server where
+module Clapi.Server where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (async, cancel, link, poll, wait, withAsync)
@@ -17,8 +17,8 @@ import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 
-import qualified Protocol
-import Protocol (
+import qualified Clapi.Protocol as Protocol
+import Clapi.Protocol (
   Directed(..), Protocol, sendFwd, sendRev, (<->), waitThen, runProtocolIO)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)

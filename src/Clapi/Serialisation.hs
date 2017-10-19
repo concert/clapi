@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
-module Serialisation
+module Clapi.Serialisation
     (
       encode,
       decode,
@@ -27,14 +27,14 @@ import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
-import Types(
+import Clapi.Types(
     CanFail, ClapiValue(..), Message(..), ClapiMethod(..), Time(..),
     Interpolation(..)
     )
-import qualified Path
+import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
-import Parsing (methodToString, methodParser)
-import Util (composeParsers)
+import Clapi.Parsing (methodToString, methodParser)
+import Clapi.Util (composeParsers)
 
 (<<>>) = liftM2 (<>)
 
@@ -112,49 +112,49 @@ instance Serialisable ClapiMethod where
 
 
 typeTag :: ClapiValue -> Char
-typeTag (CBool False) = 'F'
-typeTag (CBool True) = 'T'
-typeTag (CTime _) = 't'
-typeTag (CEnum _) = 'e'
-typeTag (CWord32 _) = 'u'
-typeTag (CWord64 _) = 'U'
-typeTag (CInt32 _) = 'i'
-typeTag (CInt64 _) = 'I'
-typeTag (CFloat _) = 'd'
-typeTag (CDouble _) = 'D'
-typeTag (CString _) = 's'
-typeTag (CList _) = 'l'
+typeTag (ClBool False) = 'F'
+typeTag (ClBool True) = 'T'
+typeTag (ClTime _) = 't'
+typeTag (ClEnum _) = 'e'
+typeTag (ClWord32 _) = 'u'
+typeTag (ClWord64 _) = 'U'
+typeTag (ClInt32 _) = 'i'
+typeTag (ClInt64 _) = 'I'
+typeTag (ClFloat _) = 'd'
+typeTag (ClDouble _) = 'D'
+typeTag (ClString _) = 's'
+typeTag (ClList _) = 'l'
 
 cvBuilder :: ClapiValue -> CanFail Builder
-cvBuilder (CBool _) = return mempty
-cvBuilder (CTime t) = builder t
-cvBuilder (CEnum x) = return $ fromWord8 x
-cvBuilder (CWord32 x) = return $ fromWord32be x
-cvBuilder (CWord64 x) = return $ fromWord64be x
-cvBuilder (CInt32 x) = return $ fromInt32be x
-cvBuilder (CInt64 x) = return $ fromInt64be x
-cvBuilder (CFloat x) = return $ floatBE x
-cvBuilder (CDouble x) = return $ doubleBE x
-cvBuilder (CString x) = builder x
-cvBuilder (CList vs) = builder vs
--- cvBuilder (CList cvs) = aggregate <$> mapM build cvs
+cvBuilder (ClBool _) = return mempty
+cvBuilder (ClTime t) = builder t
+cvBuilder (ClEnum x) = return $ fromWord8 x
+cvBuilder (ClWord32 x) = return $ fromWord32be x
+cvBuilder (ClWord64 x) = return $ fromWord64be x
+cvBuilder (ClInt32 x) = return $ fromInt32be x
+cvBuilder (ClInt64 x) = return $ fromInt64be x
+cvBuilder (ClFloat x) = return $ floatBE x
+cvBuilder (ClDouble x) = return $ doubleBE x
+cvBuilder (ClString x) = builder x
+cvBuilder (ClList vs) = builder vs
+-- cvBuilder (ClList cvs) = aggregate <$> mapM build cvs
 --   where
 --     build cv = sequence (fromChar $ typeTag cv, cvBuilder cv)
 --     aggregate bs = let (bs1, bs2) = unzip bs in mconcat bs1 <> mconcat bs2
 
 cvParser :: Char -> Parser ClapiValue
-cvParser 'F' = return $ CBool False
-cvParser 'T' = return $ CBool True
-cvParser 't' = CTime <$> (parser :: Parser Time)
-cvParser 'e' = CEnum <$> anyWord8
-cvParser 'u' = CWord32 <$> anyWord32be
-cvParser 'U' = CWord64 <$> anyWord64be
-cvParser 'i' = CInt32 <$> fromIntegral <$> anyWord32be
-cvParser 'I' = CInt64 <$> fromIntegral <$> anyWord64be
-cvParser 'd' = CFloat <$> wordToFloat <$> anyWord32be
-cvParser 'D' = CDouble <$> wordToDouble <$> anyWord64be
-cvParser 's' = CString <$> (parser :: Parser T.Text)
-cvParser 'l' = CList <$> (parser :: Parser [ClapiValue])
+cvParser 'F' = return $ ClBool False
+cvParser 'T' = return $ ClBool True
+cvParser 't' = ClTime <$> (parser :: Parser Time)
+cvParser 'e' = ClEnum <$> anyWord8
+cvParser 'u' = ClWord32 <$> anyWord32be
+cvParser 'U' = ClWord64 <$> anyWord64be
+cvParser 'i' = ClInt32 <$> fromIntegral <$> anyWord32be
+cvParser 'I' = ClInt64 <$> fromIntegral <$> anyWord64be
+cvParser 'd' = ClFloat <$> wordToFloat <$> anyWord32be
+cvParser 'D' = ClDouble <$> wordToDouble <$> anyWord64be
+cvParser 's' = ClString <$> (parser :: Parser T.Text)
+cvParser 'l' = ClList <$> (parser :: Parser [ClapiValue])
 
 
 taggedEncode :: (Monoid b, Serialisable b) =>

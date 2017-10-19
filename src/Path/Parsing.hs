@@ -7,8 +7,8 @@ import Control.Monad.Fail (MonadFail)
 
 import Data.Attoparsec.Text (Parser, char, letter, satisfy, many', parseOnly)
 
-import Util (eitherFail)
-import Path (Path, root)
+import Clapi.Util (eitherFail)
+import Clapi.Path (Path, root)
 
 sepChar = '/'
 

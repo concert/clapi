@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables, DeriveFunctor, ViewPatterns, PatternSynonyms
 #-}
-module Protocol where -- (
+module Clapi.Protocol where -- (
 --  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<->)
 -- ) where
 
