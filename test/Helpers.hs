@@ -3,9 +3,14 @@ module Helpers where
 
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Either (either)
-import Data.List (isInfixOf)
 import Data.Either.Combinators (fromLeft)
+import Data.List (isInfixOf)
+import Data.Maybe (isJust, fromJust)
+import System.Timeout
 import Test.HUnit (Assertion, assertBool)
+
+
+seconds = truncate . (* 1e6)
 
 -- FIXME: could try to update to use MonadExcept?
 assertFailed :: String -> Either String a -> Assertion
@@ -22,3 +27,7 @@ assertFailedSubstr msg substr e =
         "\"") $ substr `isInfixOf` actualMsg
   where
     actualMsg = fromLeft "" e
+
+timeLimit :: Double -> IO a -> IO a
+timeLimit secs action = (timeout (seconds secs) action) >>= \r ->
+    assertBool "timed out" (isJust r) >> return (fromJust r)

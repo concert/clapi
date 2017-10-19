@@ -18,7 +18,7 @@ import Clapi.Tree (
     )
 import Clapi.Validator (Validator, validate)
 import Clapi.Valuespace (VsTree, Valuespace(..))
-import Clapi.NamespaceTracker (Om, stateL, stateL')
+import Clapi.NamespaceTracker (stateL, stateL')
 import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
 

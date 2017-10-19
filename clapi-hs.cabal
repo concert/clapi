@@ -16,7 +16,9 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Data.Map.Mos
+                     , Data.Map.Mol
                      , Data.Map.Clapi
+                     , Clapi.Protocol
                      , Clapi.NamespaceTracker
                      , Clapi.Parsing
                      , Clapi.Path
@@ -30,7 +32,6 @@ library
                      , Clapi.Valuespace
                      , Clapi.Util
   other-modules:       Data.Maybe.Clapi
-                     , Data.Map.Mol
                      , Data.Map.ChainMap
   build-depends:       base >= 4.7 && < 5
                      , async
@@ -42,6 +43,7 @@ library
                      , data-binary-ieee754
                      , either
                      , errors
+                     , free
                      , lens
                      , network
                      , network-simple
@@ -55,6 +57,7 @@ library
                      , split
                      , text
                      , stm
+                     , unagi-chan
                      , utf8-string
   default-language:    Haskell2010
 
@@ -91,9 +94,11 @@ test-suite clapi-hs-test
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , text
+                     , transformers
                      , unagi-chan
   other-modules:       Helpers
                      , Data.Map.TestMos
+                     , TestProtocol
                      , TestNamespaceTracker
                      , TestServer
                      , TestTree

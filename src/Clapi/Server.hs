@@ -1,27 +1,25 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 module Clapi.Server where
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (async, cancel, link, poll, wait, withAsync)
-import Control.Concurrent.STM (atomically)
+import qualified Control.Concurrent.Chan.Unagi as Q
+import qualified Control.Concurrent.Chan.Unagi.Bounded as BQ
 import qualified Control.Exception as E
-import Control.Monad (filterM, forever, forM, when, (>=>))
+import Control.Monad (filterM, forever, (>=>))
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Data.IORef (atomicModifyIORef', IORef, newIORef, readIORef)
+import qualified Data.ByteString as B
+import Data.Function (fix)
 import qualified Data.Map as Map
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, fromJust)
+import Data.Void (Void)
 import qualified Network.Socket as NS
+import qualified Network.Socket.ByteString as NSB
 import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 
-import Pipes (await, Consumer, Pipe, runEffect, yield, (>->))
-import Pipes.Core (Client, Proxy, request, respond, Server, (>>~))
-import qualified Pipes.Prelude as PP
-import qualified Pipes.Safe as PS
-import Pipes.Concurrent (fromInput, Input, Output, spawn', toOutput, unbounded)
-import qualified Pipes.Concurrent as PC
-import Pipes.Network.TCP (fromSocket, toSocket)
-
-
-import qualified Data.ByteString as B
+import qualified Clapi.Protocol as Protocol
+import Clapi.Protocol (
+  Directed(..), Protocol, sendFwd, sendRev, (<->), waitThen, runProtocolIO)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -64,140 +62,199 @@ serve' listenSock handler = E.mask_ $ loop []
                 filterM (poll >=> return . isNothing) (a:as))
         loop as'
 
+type ClientAddr = NS.SockAddr
 
-myServe :: NS.ServiceName -> IO ()
-myServe port = withListen HostAny port (\(listenSock, _) ->
-    let s = socketServer authentication (PP.take 3) listenSock in
-    PS.runSafeT $ runEffect $
-    s >>~ subscriptionRegistrar >>~ examplePipesProxy >>~ stripper >>~ echoServer)
+data ClientEvent ident a b
+    = ClientConnect ident b
+    | ClientDisconnect ident
+    | ClientData ident a
+    deriving (Eq, Show)
+type ClientEvent' = ClientEvent ClientAddr
 
+data ServerEvent ident a
+    = ServerData ident a
+    | ServerDisconnect ident
+    deriving (Eq, Show)
+type ServerEvent' = ServerEvent ClientAddr
 
-socketServer ::
-  Pipe (NS.SockAddr, B.ByteString) a IO () ->
-  Pipe b B.ByteString IO () ->
+_serveToChan ::
+  Protocol
+      (ClientEvent' B.ByteString (Q.InChan (ServerEvent i b))) a'
+      (ServerEvent' B.ByteString) (ServerEvent i b)
+      IO () ->
   NS.Socket ->
-  Server [(NS.SockAddr, b)] a (PS.SafeT IO) ()
-socketServer inboundPipe outboundPipe listenSock = PS.mask $ \restore ->
-  do
-    connectedR <- liftIO $ newIORef mempty
-    (relayOutWrite, relayOutRead, sealOut) <- liftIO $ spawn' unbounded
-    (relayInWrite, relayInRead, sealIn) <- liftIO $ spawn' unbounded
-    as1 <- liftIO $ async $
-        serve' listenSock $ socketHandler relayInWrite connectedR
-    liftIO $ link as1
-    as2 <- liftIO $ async $
-        runEffect $ fromInput relayOutRead >-> dispatch connectedR
-    restore $ pairToServer relayOutWrite relayInRead
-      `PS.finally` (liftIO $
-         cancel as1 >> atomically sealOut >> atomically sealIn >> wait as2)
+  BQ.InChan a' ->
+  IO ()
+_serveToChan perClientProtocol listenSock inChan =
+    serve' listenSock handler
   where
-    socketHandler relayInWrite connectedR (sock, addr) = do
-        (outboundWrite, outboundRead, seal) <- spawn' unbounded
-        E.bracket_
-            (atomicUpdate connectedR $ Map.insert addr outboundWrite)
-            (atomicUpdate connectedR $ Map.delete addr)
-            -- We use withAsync here to make sure that if our outbound pipeline
-            -- terminates or is killed we will also terminate our inbound thread
-            (withAsync
-                (do
-                    runEffect $
-                        fromSocket sock 4096 >->
-                        PP.map ((,) addr) >->
-                        inboundPipe >->
-                        toOutput relayInWrite
-                    -- We seal so that if the client closes their connection we
-                    -- correctly terminate the outbound pipeline too
-                    atomically seal)
-                (const $
-                    runEffect $
-                        fromInput outboundRead >->
-                        outboundPipe >->
-                        toSocket sock))
-    dispatch ::
-        IORef (Map.Map NS.SockAddr (Output a)) ->
-        Consumer [(NS.SockAddr, a)] IO ()
-    dispatch connectedR = do
-        msgs <- await
-        connected <- liftIO $ readIORef connectedR
-        forM msgs $ \(addr, bs) ->
-            case Map.lookup addr connected of
-                Just out -> liftIO $ atomically $ PC.send out bs
-                Nothing -> return True
-        dispatch connectedR
+    handler (sock, addr) = do
+      (returnChanIn, returnChanOut) <- Q.newChan
+      runProtocolIO
+          (NSB.recv sock 4096) (BQ.writeChan inChan)
+          (NSB.sendAll sock) (Q.readChan returnChanOut)
+          (blk addr returnChanIn <-> perClientProtocol)
+    blk addr returnChanIn =
+      do
+        sendFwd $ ClientConnect addr returnChanIn
+        inner
+      where
+        inner = do
+            d <- Protocol.wait
+            case d of
+              Fwd "" -> sendFwd (ClientDisconnect addr) >> return ()
+              Fwd bs -> sendFwd (ClientData addr bs) >> inner
+              Rev (ServerData _ bs) -> sendRev bs >> inner
+              Rev (ServerDisconnect _) -> return ()
 
+neverDoAnything :: IO a
+neverDoAnything = fix id
 
-authentication ::
-    Pipe (NS.SockAddr, B.ByteString) (NS.SockAddr, User, B.ByteString) IO ()
-authentication = forever $ do
-    (addr, bs) <- await
-    yield (addr, Alice, bs)
+protocolServer ::
+  (Ord i) =>
+  NS.Socket ->
+  Protocol
+     (ClientEvent' B.ByteString (Q.InChan (ServerEvent i b)))
+     (ClientEvent i a' (Q.InChan (ServerEvent i b)))
+     (ServerEvent' B.ByteString)
+     (ServerEvent i b)
+     IO () ->
+  Protocol
+      (ClientEvent i a' ())
+      Void
+      (ServerEvent i b)
+      Void IO () ->
+  IO ()
+protocolServer listenSock perClientProtocol sharedProtocol =
+  do
+    (i, o) <- BQ.newChan 4
+    withAsync (bar o) (\as -> _serveToChan perClientProtocol listenSock i)
+  where
+    bar o = runProtocolIO
+        (BQ.readChan o) undefined
+        (uncurry Q.writeChan) neverDoAnything
+        (servBlk mempty <-> sharedProtocol)
+    servBlk connectedMap = do
+        d <- Protocol.wait
+        case d of
+          Fwd (ClientConnect addr q) ->
+             sendFwd (ClientConnect addr ()) >> servBlk (Map.insert addr q connectedMap)
+          Fwd (ClientDisconnect addr) ->
+             sendFwd (ClientDisconnect addr) >> servBlk (Map.delete addr connectedMap)
+          Fwd (ClientData addr bs) ->
+             sendFwd (ClientData addr bs) >> servBlk connectedMap
+          Rev se@(ServerDisconnect addr) ->
+             toClient se connectedMap addr >>
+             servBlk (Map.delete addr connectedMap)
+          Rev se@(ServerData addr bs) ->
+             toClient se connectedMap addr >> servBlk connectedMap
+    toClient se m a = maybe
+        (return ())
+        (\chan -> sendRev (chan, se))
+        (Map.lookup a m)
 
+demoServer = withListen HostAny "1234" $ \(lsock, _) ->
+    protocolServer lsock fakeAuth (subscriptionRegistrar <-> loggyEcho)
+
+loggyCat :: (Show a) => Protocol (ClientEvent' a x) (ClientEvent' a x) b b IO ()
+loggyCat = forever $ do
+    d <- Protocol.wait
+    liftIO $ case d of
+      Fwd (ClientConnect addr q) -> putStrLn $ "conn " ++ (show addr)
+      Fwd (ClientDisconnect addr) -> putStrLn $ "dis " ++ (show addr)
+      Fwd (ClientData addr a) -> putStrLn $ "data " ++ (show addr) ++ " " ++ (show a)
+      Rev _ -> return ()
+    Protocol.send d
+
+-- NB: Should make this an opaque type with accessors only, no constructor
+-- pattern matching:
+data AddrWithUser a u = AddrWithUser {
+    awuAddr :: a,
+    awuUser :: u
+    } deriving (Eq, Ord)
+
+instance (Show a, Show u) => Show (AddrWithUser a u) where
+    show (AddrWithUser a u) = show u ++ ":" ++ show a
+
+newAwu :: a -> u -> AddrWithUser a u
+newAwu = AddrWithUser
+
+type AddrWithUser' = AddrWithUser ClientAddr B.ByteString
+
+fakeAuth ::
+    Protocol
+        (ClientEvent' B.ByteString x)
+        (ClientEvent AddrWithUser' B.ByteString x)
+        (ServerEvent' B.ByteString)
+        (ServerEvent AddrWithUser' B.ByteString)
+        IO ()
+fakeAuth = awaitAuth Nothing
+  where
+    awaitAuth maybeQ = waitThen
+      (
+        \ce -> case ce of
+          ClientConnect addr q -> (sendRev $ ServerData addr
+              "Type a username to simulate auth, or 'die' to fail auth:\n") >>
+              awaitAuth (Just q)
+          ClientData addr "die\n" -> sendRev $
+              ServerData addr "Oh noes, you dinnae auth\n"
+          ClientData addr name ->
+            let awu = newAwu addr name in
+            do
+              sendFwd $ ClientConnect awu (fromJust maybeQ)
+              sendRev $ ServerData addr "authed!\n"
+              authed awu
+          _ -> awaitAuth maybeQ
+      )
+      (const $ awaitAuth maybeQ)
+    authed awu = forever $ Protocol.map
+        (\ce -> case ce of
+            ClientData _ bs -> ClientData awu bs
+            ClientDisconnect _ -> ClientDisconnect awu
+        )
+        (\se -> case se of
+            ServerData _ bs -> ServerData (awuAddr awu) bs
+            ServerDisconnect _ -> ServerDisconnect (awuAddr awu)
+        )
+
+loggyEcho :: (Show a) =>
+    Protocol (ClientEvent AddrWithUser' a x) Void a Void IO ()
+loggyEcho = forever $ do
+    d <- Protocol.wait
+    case d of
+      Fwd (ClientData awu a) ->
+          (liftIO . putStrLn $ (show $ awuUser awu) ++ ": bounce " ++ show a) >>
+          sendRev a
+      Fwd (ClientDisconnect awu) ->
+          liftIO $ putStrLn $ (show $ awuUser awu) ++ " disconnected"
+      Fwd _ -> return ()
 
 subscriptionRegistrar ::
-    (Monad m) =>
-    (NS.SockAddr, User, B.ByteString) ->
-    Proxy [(NS.SockAddr, B.ByteString)] (NS.SockAddr, User, B.ByteString)
-    B.ByteString (User, B.ByteString) m ()
-subscriptionRegistrar = loop mempty
+    forall i b x.
+    (Ord i, Show i) =>
+    Protocol
+        (ClientEvent i B.ByteString x)
+        (ClientEvent i B.ByteString x)
+        (ServerEvent i b) b IO ()
+subscriptionRegistrar = loop (mempty :: Map.Map i ())
   where
-    loop registered (a, u, bs) =
+    loop subscribed =
       do
-        let registered' = case bs of
-              "subscribe\n" -> Map.insert a () registered
-              "unsubscribe\n" -> Map.delete a registered
-              _ -> registered
-        bs' <- respond (u, bs)
-        req <- request $ Map.toList $ fmap (const $ bs') registered'
-        loop registered' req
-
-atomicUpdate :: IORef a -> (a -> a) -> IO ()
-atomicUpdate r f = atomicModifyIORef' r $ flip (,) () . f
-
-examplePipesProxy :: (Show a, Show b, MonadIO m) => b -> Proxy a b a b m ()
-examplePipesProxy input =
-  do
-    liftIO $ putStrLn $ "Proxy saw input " ++ (show input)
-    req <- respond input
-    liftIO $ putStrLn $ "Proxy saw response " ++ (show req)
-    nextInput <- request req
-    examplePipesProxy nextInput
-
-stripper :: (Monad m) => (User, B.ByteString) ->
-    Proxy B.ByteString (User, B.ByteString) B.ByteString B.ByteString m ()
-stripper (u, bs) =
-  do
-    bs' <- respond bs
-    next <- request $ bs'
-    stripper next
-
-echoServer :: (Monad m) => B.ByteString -> Client B.ByteString B.ByteString m ()
-echoServer input =
-  do
-    nextInput <- request input
-    echoServer nextInput
-
-
-pairToClient :: Input a -> Output b -> Client a b IO ()
-pairToClient input output = loop
-  where
-    loop = do
-      ma <- liftIO $ atomically $ PC.recv input
-      case ma of
-          Nothing -> return ()
-          Just a -> do
-              resp <- request a
-              alive <- liftIO $ atomically $ PC.send output resp
-              when alive loop
-
-
-pairToServer :: (MonadIO m) => Output a -> Input b -> Server a b m ()
-pairToServer output input = loop
-  where
-    loop = do
-        mb <- liftIO $ atomically $ PC.recv input
-        case mb of
-            Nothing -> return ()
-            Just b -> do
-                a <- respond b
-                alive <- liftIO $ atomically $ PC.send output a
-                when alive loop
+        waitThen
+          (
+            \ce -> case ce of
+              ClientData addr "subscribe\n" -> do
+                  liftIO $ putStrLn $ (show addr) ++ " subscribed"
+                  loop $ Map.insert addr () subscribed
+              ClientData addr "unsubscribe\n" -> do
+                  liftIO $ putStrLn $ (show addr) ++ " unsubscribed"
+                  loop $ Map.delete addr subscribed
+              _ -> sendFwd ce >> loop subscribed
+          )
+          (
+            \bs -> do
+              mapM_
+                (sendRev . uncurry ServerData)
+                (Map.toList $ fmap (const bs) subscribed)
+              loop subscribed
+          )

@@ -4,8 +4,10 @@ module TestServer where
 import Test.HUnit (assertEqual, assertBool)
 import Test.Framework.Providers.HUnit (testCase)
 
+import Control.Monad (forever)
 import Data.Either (isRight)
 import Data.Maybe (isJust, fromJust)
+import Data.Void
 import System.Timeout
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
@@ -19,14 +21,12 @@ import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
 
-import Pipes (runEffect, cat)
-import Pipes.Core (Client, request, respond, (>>~))
-import qualified Pipes.Prelude as PP
-import Pipes.Safe (runSafeT)
-
+import Clapi.Server (
+  ClientEvent(..), ClientEvent', ServerEvent(..), ServerEvent', doubleCatch,
+  swallowExc, withListen, serve', protocolServer)
+import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
+import Helpers (seconds, timeLimit)
 import qualified Control.Concurrent.Chan.Unagi as Q
-
-import Clapi.Server (doubleCatch, swallowExc, withListen, serve', socketServer)
 
 
 tests = [
@@ -39,11 +39,10 @@ tests = [
     testCase "handler term closes socket" testHandlerTerminationClosesSocket,
     testCase "handler error closes socket" testHandlerErrorClosesSocket,
     testCase "multiple connections" $ testMultipleConnections 42,
-    testCase "socketServer echo" testSocketServerBasicEcho,
-    testCase "socketServer graceful interrupt" testSocketServerClosesGracefully
+    testCase "protocolServer echo" testProtocolServerBasicEcho,
+    testCase "protocolServer graceful interrupt"
+        testProtocolServerClosesGracefully
     ]
-
-seconds n = truncate $ n * 1e6
 
 getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
@@ -64,10 +63,6 @@ testListenZeroGivesPort =
 assertAsyncKilled a =
     timeout (seconds 0.1) (E.try $ wait a) >>=
     assertEqual "thread wasn't killed" (Just $ Left E.ThreadKilled)
-
-timeLimit :: IO a -> IO a
-timeLimit action = (timeout (seconds 0.5) action) >>= \r ->
-    assertBool "timed out" (isJust r) >> return (fromJust r)
 
 testDoubleCatchKills = do
     (i, o) <- Q.newChan
@@ -108,7 +103,7 @@ killServerHelper connector handler = withListen' $ \(lsock, laddr) ->
      do
         connect "127.0.0.1" (show . getPort $ laddr) $
             \(csock, _) -> connector a csock
-        timeLimit (takeMVar v)
+        timeLimit 0.1 (takeMVar v)
         assertAsyncKilled a
 
 
@@ -147,16 +142,26 @@ testMultipleConnections n = withServe' handler $ \port ->
   where
     handler (hsock, _) = send hsock "hello"
 
-echoMap :: (Monad m) => (a -> b) -> a -> Client b a m r
-echoMap f input = request (f input) >>= echoMap f
+cat :: (Monad m) => Protocol a a b b m ()
+cat = forever $ waitThen sendFwd sendRev
 
-testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
+echo :: (Monad m) =>
+  Protocol
+    (ClientEvent' a ())
+    Void
+    (ServerEvent' a)
+    Void m ()
+echo = forever $ waitThen boing undefined
+  where
+    boing (ClientData addr a) = sendRev (ServerData addr a)
+    boing _ = return ()
+
+testProtocolServerBasicEcho = withListen' $ \(lsock, laddr) ->
   let
-    s = socketServer cat cat lsock
-    client word = connect "127.0.0.1" (show $ getPort laddr) $ \(csock, _) ->
-        send csock word >> recv csock 4096
+     client word = connect "127.0.0.1" (show $ getPort laddr) $ \(csock, _) ->
+       send csock word >> recv csock 4096
   in
-    withAsync (runSafeT $ runEffect $ s >>~ echoMap pure) $ \_ ->
+    withAsync (protocolServer lsock cat echo) $ \_ ->
       do
         receivedWords <- mapConcurrently client words
         assertEqual "received words" words receivedWords
@@ -164,26 +169,25 @@ testSocketServerBasicEcho = withListen' $ \(lsock, laddr) ->
     words = ["hello", "world", "llama", "train"]
 
 
-testSocketServerClosesGracefully =
+testProtocolServerClosesGracefully =
   do
     addrV <- newEmptyMVar
     a <- async $ withListen' $ \(lsock, laddr) -> E.mask $ \restore -> do
-        let s = socketServer cat cat lsock
         putMVar addrV laddr
-        restore $ runSafeT $ runEffect $ s >>~ echoMap pure
+        protocolServer lsock cat echo
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
-    timeLimit $ connect "127.0.0.1" port $ \(csock, _) -> do
+    timeLimit 0.1 $ connect "127.0.0.1" port $ \(csock, _) -> do
         let chat = send csock "hello" >> recv csock 4096
         -- We have to do some initial chatting to ensure the connection has
         -- been established before we kill the server, otherwise recv can get a
         -- "connection reset by peer":
         chat
         kill
-        -- killing once should just have stopped us listening
-        chat
+        -- killing once should just have stopped us listening, but not chatting
         connect "127.0.0.1" port undefined
             `E.catch` (\(e :: E.IOException) -> return ())
+        chat
         kill
         bs <- recv csock 4096
         assertEqual "Connection not closed cleanly" "" bs
