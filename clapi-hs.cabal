@@ -3,7 +3,7 @@ version:             0.1.0.0
 synopsis:            Concert API stuff
 description:         Please see README.md
 homepage:            https://github.com/concert/clapi#readme
-license:             GPL3
+license:             GPL-3
 license-file:        LICENSE
 author:              Paul Weaver
 maintainer:          paul@concertdaw.co.uk
