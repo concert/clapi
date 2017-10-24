@@ -14,4 +14,7 @@ serialiser = serialiser' $ parse parser
         Fail _ ctxs err -> sendRev $ fromString err
         Partial cont -> serialiser' cont
         Done unconsumed msgs -> sendFwd msgs >> fwd (parse parser) unconsumed
-    rev p msgs = either (error "encode failed") (\bs -> sendRev bs >> serialiser' p) (encode msgs)
+    rev p msgs = either
+        (const $ error "encode failed")
+        (\bs -> sendRev bs >> serialiser' p)
+        (encode msgs)
