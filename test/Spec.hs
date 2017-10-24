@@ -13,7 +13,7 @@ import qualified TestTree (tests)
 import qualified TestUtil (tests)
 import qualified TestValuespace (tests)
 import qualified TestValidator (tests)
-import qualified TestEncodingProtocol (tests)
+import qualified TestSerialisationProtocol (tests)
 
 main :: IO ()
 main = defaultMain tests
@@ -29,5 +29,5 @@ tests = mconcat [
     TestValuespace.tests,
     TestValidator.tests,
     TestTree.tests,
-    TestEncodingProtocol.tests
+    TestSerialisationProtocol.tests
     ]

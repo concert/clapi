@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module TestEncodingProtocol where
+module TestSerialisationProtocol where
 import qualified Data.ByteString as B
 import Control.Concurrent.Chan.Unagi as U
 import Control.Concurrent.MVar (newEmptyMVar, takeMVar)
@@ -8,7 +8,7 @@ import Test.Framework.Providers.HUnit (testCase)
 
 import Clapi.Types (Message(MsgError))
 import Clapi.Protocol (runProtocolIO, (<->), sendRev, sendFwd, waitThen)
-import Clapi.EncodingProtocol (serialiser)
+import Clapi.SerialisationProtocol (serialiser)
 
 tests = [
     testCase "packetised round trip" testPacketisedRoundTrip

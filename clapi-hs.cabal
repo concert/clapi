@@ -18,7 +18,7 @@ library
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
-                     , Clapi.EncodingProtocol
+                     , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
                      , Clapi.Parsing
@@ -100,7 +100,7 @@ test-suite clapi-hs-test
                      , unagi-chan
   other-modules:       Helpers
                      , Data.Map.TestMos
-                     , TestEncodingProtocol
+                     , TestSerialisationProtocol
                      , TestProtocol
                      , TestNamespaceTracker
                      , TestServer

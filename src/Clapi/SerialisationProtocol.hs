@@ -1,4 +1,4 @@
-module Clapi.EncodingProtocol (serialiser) where
+module Clapi.SerialisationProtocol (serialiser) where
 import Data.Attoparsec.ByteString (parse, Result, IResult(..))
 import Clapi.Serialisation (encode, parser)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
