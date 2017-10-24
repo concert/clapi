@@ -27,6 +27,7 @@ library
                      , Clapi.Relay
                      , Clapi.Serialisation
                      , Clapi.Server
+                     , Clapi.TextSerialisation
                      , Clapi.Types
                      , Clapi.Tree
                      , Clapi.Validator
@@ -80,6 +81,7 @@ test-suite clapi-hs-test
   main-is:             Spec.hs
   build-depends:       base
                      , bytestring
+                     , blaze-builder
                      , async
                      , containers
                      , clapi-hs
@@ -104,6 +106,7 @@ test-suite clapi-hs-test
                      , TestProtocol
                      , TestNamespaceTracker
                      , TestServer
+                     , TestTextSerialisation
                      , TestTree
                      , TestTypes
                      , TestUtil
