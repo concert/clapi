@@ -73,7 +73,7 @@ cvParser :: Char -> Parser ClapiValue
 cvParser 'B' = ((wordMatch 'T' True) <|> (wordMatch 'F' False)) <?> "ClBool"
   where
     wordMatch c v = char c >> return (ClBool v)
-cvParser 'i' = (decimal >>= return . ClInt32) <?> "ClInt32"
+cvParser 'i' = (ClInt32 <$> decimal) <?> "ClInt32"
 cvParser 's' = (ClString <$> quotedString) <?> "ClString"
 cvParser 'e' = (ClEnum <$> decimal) <?> "ClEnum"
 
