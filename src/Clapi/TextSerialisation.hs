@@ -7,7 +7,9 @@ import Control.Applicative ((<|>))
 import Blaze.ByteString.Builder (Builder)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
 
-import Data.Attoparsec.Text (Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass, parse, (<?>))
+import Data.Attoparsec.Text (
+    Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass,
+    parse, (<?>))
 
 import qualified Clapi.Serialisation as Wire
 import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
@@ -37,7 +39,8 @@ msgBuilder msg = case msg of
     ab ma = case ma of
         (Just  a) -> fss a
         Nothing -> fromString "\"\""
-    tab subs msg = spJoin $ [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
+    tab subs msg = spJoin $
+        [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
     spJoin bs = mconcat $ map (fromChar ' ' <>) bs
     vb vs = map cvBuilder vs
     ib i = case i of
@@ -74,7 +77,10 @@ charIn :: String -> String -> Parser Char
 charIn cls msg = satisfy (inClass cls) <?> msg
 
 getTupleParser :: Parser (Parser [ClapiValue])
-getTupleParser = sequence <$> many1 (charIn "Bis" "type" >>= \c -> return (char ' ' >> cvParser c))
+-- FIXME: type tag characters here must line up with above (and would be nice
+-- to be like those on the wire too)
+getTupleParser = sequence <$> many1 (
+    charIn "Bis" "type" >>= \c -> return (char ' ' >> cvParser c))
 
 timeParser :: Parser Time
 timeParser = do
@@ -91,7 +97,8 @@ attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
         s -> Just s
 
 interpolationParser :: Parser Interpolation
-interpolationParser = char ' ' >> (charIn "CL" "interpolation") >>= return . asInterpolation
+interpolationParser =
+    char ' ' >> (charIn "CL" "interpolation") >>= return . asInterpolation
   where
     asInterpolation 'C' = IConstant
     asInterpolation 'L' = ILinear
