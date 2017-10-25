@@ -172,7 +172,7 @@ testProtocolServerBasicEcho = withListen' $ \(lsock, laddr) ->
 testProtocolServerClosesGracefully =
   do
     addrV <- newEmptyMVar
-    a <- async $ withListen' $ \(lsock, laddr) -> E.mask $ \restore -> do
+    a <- async $ withListen' $ \(lsock, laddr) -> do
         putMVar addrV laddr
         protocolServer lsock cat echo
     let kill = killThread (asyncThreadId a)
