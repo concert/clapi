@@ -1,21 +1,23 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Clapi.TextSerialisation where
 import Data.Monoid
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import Control.Applicative ((<|>))
-import qualified Data.Map as Map
 
 import Blaze.ByteString.Builder (Builder)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
 
-import Data.Attoparsec.Text (Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass, parse, endOfInput)
+import Data.Attoparsec.Text (Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass, parse, (<?>))
 
 import qualified Clapi.Serialisation as Wire
-import Clapi.Types (Time(..), ClapiValue(..))
+import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
+import Clapi.Path (Path)
 
 typeTag :: ClapiValue -> Char
 typeTag (ClBool _) = 'B'
 typeTag v = Wire.typeTag v
 
+-- FIXME: replace with fromShow (Blaze Utf8)
 fss :: Show a => a -> Builder
 fss a = fromString $ show a
 
@@ -25,34 +27,54 @@ cvBuilder (ClBool False) = fromChar 'F'
 cvBuilder (ClInt32 i) = fss i
 cvBuilder (ClString s) = fss s
 
-tpBuilder :: (Time, [ClapiValue]) -> Builder
-tpBuilder ((Time s f), vs) = tb <> mconcat (map (\v -> (fromChar ' ') <> (cvBuilder v)) vs)
+msgBuilder :: Message -> Builder
+msgBuilder msg = case msg of
+    (MsgSet {}) -> valB 's' valSubs msg
+    (MsgAdd {}) -> valB 'a' valSubs msg
+    (MsgRemove {}) -> valB 'r' noSubs msg
   where
-    tb = (fss s) <> (fromChar ':') <> (fss f)
+    tb (Time s f) = (fss s) <> (fromChar ':') <> (fss f)
+    ab ma = case ma of
+        (Just  a) -> fss a
+        Nothing -> fromString "\"\""
+    tab subs msg = spJoin $ [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
+    spJoin bs = mconcat $ map (fromChar ' ' <>) bs
+    vb vs = map cvBuilder vs
+    ib i = case i of
+        IConstant -> fromChar 'C'
+        ILinear -> fromChar 'L'
+    valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
+    noSubs _ = []
+    valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
-type TimeSeries = Map.Map Time [ClapiValue]
-
-encode :: TimeSeries -> Builder
-encode ts = header <> bodyBuilder
+encode :: [Message] -> Builder
+encode msgs = header <> bodyBuilder <> fromString "\nend"
   where
     -- It is invalid for a time series to be empty, so this use of head is
     -- kinda fine, but the errors will suck:
-    header = fromString $ map typeTag $ head $ Map.elems ts
-    bodyBuilder = mconcat $ map (\tp -> fromChar '\n' <> tpBuilder tp) (Map.toList ts)
+    header = fromString $ map typeTag $ msgArgs' $ head $ msgs
+    bodyBuilder = mconcat $ map (\tp -> fromChar '\n' <> msgBuilder tp) msgs
 
 quotedString :: Parser Text
 -- FIXME: escaped quotes unsupported
-quotedString = char '"' >> takeTill (== '"')
+quotedString = do
+    char '"'
+    s <- takeTill (== '"')
+    char '"'
+    return s
 
 cvParser :: Char -> Parser ClapiValue
-cvParser 'B' = (wordMatch 'T' True) <|> (wordMatch 'F' False)
+cvParser 'B' = ((wordMatch 'T' True) <|> (wordMatch 'F' False)) <?> "ClBool"
   where
     wordMatch c v = char c >> return (ClBool v)
-cvParser 'i' = decimal >>= return . ClInt32
-cvParser 's' = ClString <$> quotedString
+cvParser 'i' = (decimal >>= return . ClInt32) <?> "ClInt32"
+cvParser 's' = (ClString <$> quotedString) <?> "ClString"
+
+charIn :: String -> String -> Parser Char
+charIn cls msg = satisfy (inClass cls) <?> msg
 
 getTupleParser :: Parser (Parser [ClapiValue])
-getTupleParser = sequence <$> many1 (satisfy (inClass "Bis") >>= \c -> return (char ' ' >> cvParser c))
+getTupleParser = sequence <$> many1 (charIn "Bis" "type" >>= \c -> return (char ' ' >> cvParser c))
 
 timeParser :: Parser Time
 timeParser = do
@@ -61,18 +83,51 @@ timeParser = do
     f <- decimal
     return $ Time s f
 
-decode :: Text -> Either String TimeSeries
-decode txt = case parse getTupleParser txt of
+attributeeParser :: Parser (Maybe String)
+attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
+  where
+    nothingEmpty t = case unpack t of
+        "" -> Nothing
+        s -> Just s
+
+interpolationParser :: Parser Interpolation
+interpolationParser = char ' ' >> (charIn "CL" "interpolation") >>= return . asInterpolation
+  where
+    asInterpolation 'C' = IConstant
+    asInterpolation 'L' = ILinear
+
+msgParser :: Path -> Parser [ClapiValue] -> Parser Message
+msgParser path valParser = do
+    m <- charIn "asr" "message method"
+    char ' '
+    getSub m
+  where
+    getSub 'a' = do
+        t <- timeParser
+        v <- valParser
+        i <- interpolationParser
+        a <- attributeeParser
+        return $ MsgAdd path t v i a Nothing
+    -- FIXME: just like above
+    getSub 's' = do
+        t <- timeParser
+        v <- valParser
+        i <- interpolationParser
+        a <- attributeeParser
+        return $ MsgSet path t v i a Nothing
+    getSub 'r' = do
+        t <- timeParser
+        a <- attributeeParser
+        return $ MsgRemove path t a Nothing
+
+decode :: Path -> Text -> Either String [Message]
+decode path txt = case parse getTupleParser txt of
     Fail _ ctxs msg -> Left msg
     Partial _ -> Left "Cannot decode empty"
     Done remaining p -> case parse (many1 $ innerParser p) remaining of
-        Fail _ _ msg -> Left msg
-        Partial _ -> Left "Unexpected EOI"
+        Fail _ ctxs msg -> Left $ (show ctxs) ++ " - " ++ msg
+        Partial _ -> Left "Unexpected EOI (we need an end marker)"
         -- FIXME: nothing should be left over?
-        Done _ tsp -> Right $ Map.fromList tsp
+        Done _ msgs -> Right msgs
   where
-    innerParser tupleParser = do
-        char '\n'
-        t <- timeParser
-        vs <- tupleParser
-        return (t, vs)
+    innerParser tupleParser = char '\n' >> msgParser path tupleParser
