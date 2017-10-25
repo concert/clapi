@@ -46,12 +46,17 @@ msgBuilder msg = case msg of
     noSubs _ = []
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
+headerBuilder :: Message -> Builder
+headerBuilder m = fromString $ fmap typeTag $ msgArgs' m
+
+-- Not sure how useful this is because how often do you know all the messages
+-- up front?
 encode :: [Message] -> Builder
 encode msgs = header <> bodyBuilder
   where
     -- It is invalid for a time series to be empty, so this use of head is
     -- kinda fine, but the errors will suck:
-    header = fromString $ fmap typeTag $ msgArgs' $ head $ msgs
+    header = headerBuilder $ head $ msgs
     bodyBuilder = mconcat $ fmap (\tp -> fromChar '\n' <> msgBuilder tp) msgs
 
 quotedString :: Parser Text
