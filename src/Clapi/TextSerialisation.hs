@@ -24,6 +24,8 @@ cvBuilder (ClBool True) = fromChar 'T'
 cvBuilder (ClBool False) = fromChar 'F'
 cvBuilder (ClInt32 i) = fromShow i
 cvBuilder (ClString s) = fromShow s
+-- I think this is the best you can do without path specific type info:
+cvBuilder (ClEnum i) = fromShow i
 
 msgBuilder :: Message -> Builder
 msgBuilder msg = case msg of
@@ -73,6 +75,7 @@ cvParser 'B' = ((wordMatch 'T' True) <|> (wordMatch 'F' False)) <?> "ClBool"
     wordMatch c v = char c >> return (ClBool v)
 cvParser 'i' = (decimal >>= return . ClInt32) <?> "ClInt32"
 cvParser 's' = (ClString <$> quotedString) <?> "ClString"
+cvParser 'e' = (ClEnum <$> decimal) <?> "ClEnum"
 
 charIn :: String -> String -> Parser Char
 charIn cls msg = satisfy (inClass cls) <?> msg
