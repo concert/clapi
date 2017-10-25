@@ -84,7 +84,7 @@ getTupleParser :: Parser (Parser [ClapiValue])
 -- FIXME: type tag characters here must line up with above (and would be nice
 -- to be like those on the wire too)
 getTupleParser = sequence <$> many1 (
-    charIn "Bis" "type" >>= \c -> return (char ' ' >> cvParser c))
+    charIn "Bise" "type" >>= \c -> return (char ' ' >> cvParser c))
 
 timeParser :: Parser Time
 timeParser = do
