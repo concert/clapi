@@ -37,8 +37,8 @@ msgBuilder msg = case msg of
         Nothing -> fromString "\"\""
     tab subs msg = spJoin $
         [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
-    spJoin bs = mconcat $ map (fromChar ' ' <>) bs
-    vb vs = map cvBuilder vs
+    spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
+    vb vs = fmap cvBuilder vs
     ib i = case i of
         IConstant -> fromChar 'C'
         ILinear -> fromChar 'L'
@@ -51,8 +51,8 @@ encode msgs = header <> bodyBuilder <> fromString "\nend"
   where
     -- It is invalid for a time series to be empty, so this use of head is
     -- kinda fine, but the errors will suck:
-    header = fromString $ map typeTag $ msgArgs' $ head $ msgs
-    bodyBuilder = mconcat $ map (\tp -> fromChar '\n' <> msgBuilder tp) msgs
+    header = fromString $ fmap typeTag $ msgArgs' $ head $ msgs
+    bodyBuilder = mconcat $ fmap (\tp -> fromChar '\n' <> msgBuilder tp) msgs
 
 quotedString :: Parser Text
 -- FIXME: escaped quotes unsupported
