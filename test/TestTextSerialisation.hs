@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestTextSerialisation (tests) where
+import Data.String (IsString)
 import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 import Blaze.ByteString.Builder (toByteString)
@@ -17,9 +18,11 @@ msgs = [
     MsgAdd path (Time 0 0) [ClBool True, ClInt32 3, ClString "marimba"] IConstant Nothing Nothing
   , MsgSet path (Time 0 0) [ClBool False, ClInt32 4, ClString "xylophone"] IConstant Nothing Nothing
   , MsgRemove path (Time 0 0) (Just "Bob") Nothing]
-encoded _ = "Bis\na 0:0 T 3 \"marimba\" C \"\"\ns 0:0 F 4 \"xylophone\" C \"\"\nr 0:0 \"Bob\"\nend"
 
-testBasicEncode = assertEqual "encode result" (encoded undefined) $
+encoded :: IsString a => a
+encoded = "Bis\na 0:0 T 3 \"marimba\" C \"\"\ns 0:0 F 4 \"xylophone\" C \"\"\nr 0:0 \"Bob\"\nend"
+
+testBasicEncode = assertEqual "encode result" encoded $
     toByteString . encode $ msgs
 
-testBasicDecode = assertEqual "decode result" (Right msgs) $ decode path (encoded undefined)
+testBasicDecode = assertEqual "decode result" (Right msgs) $ decode path encoded
