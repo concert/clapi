@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Clapi.TextSerialisation where
 import Data.Monoid
-import Data.Text (Text, unpack)
+import Data.Text (Text, unpack, empty)
 import Control.Applicative ((<|>))
 
 import Blaze.ByteString.Builder (Builder)
@@ -9,7 +9,7 @@ import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar, fromShow)
 
 import Data.Attoparsec.Text (
     Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass,
-    parse, (<?>))
+    parse, (<?>), endOfInput)
 
 import qualified Clapi.Serialisation as Wire
 import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
@@ -47,7 +47,7 @@ msgBuilder msg = case msg of
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
 encode :: [Message] -> Builder
-encode msgs = header <> bodyBuilder <> fromString "\nend"
+encode msgs = header <> bodyBuilder
   where
     -- It is invalid for a time series to be empty, so this use of head is
     -- kinda fine, but the errors will suck:
@@ -127,10 +127,11 @@ decode :: Path -> Text -> Either String [Message]
 decode path txt = case parse getTupleParser txt of
     Fail _ ctxs msg -> Left msg
     Partial _ -> Left "Cannot decode empty"
-    Done remaining p -> case parse (many1 $ innerParser p) remaining of
-        Fail _ ctxs msg -> Left $ (show ctxs) ++ " - " ++ msg
-        Partial _ -> Left "Unexpected EOI (we need an end marker)"
-        -- FIXME: nothing should be left over?
-        Done _ msgs -> Right msgs
+    Done remaining p -> handleResult $ parse ((many1 $ innerParser p) <* endOfInput) remaining
   where
     innerParser tupleParser = char '\n' >> msgParser path tupleParser
+    handleResult r = case r of
+        Fail _ ctxs msg -> Left $ (show ctxs) ++ " - " ++ msg
+        Partial cont -> handleResult $ cont empty
+        -- FIXME: nothing should be left over?
+        Done _ msgs -> Right msgs

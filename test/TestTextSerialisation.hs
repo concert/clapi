@@ -20,7 +20,7 @@ msgs = [
   , MsgRemove path (Time 0 0) (Just "Bob") Nothing]
 
 encoded :: IsString a => a
-encoded = "Bis\na 0:0 T 3 \"marimba\" C \"\"\ns 0:0 F 4 \"xylophone\" C \"\"\nr 0:0 \"Bob\"\nend"
+encoded = "Bis\na 0:0 T 3 \"marimba\" C \"\"\ns 0:0 F 4 \"xylophone\" C \"\"\nr 0:0 \"Bob\""
 
 testBasicEncode = assertEqual "encode result" encoded $
     toByteString . encode $ msgs
