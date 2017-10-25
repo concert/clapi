@@ -3,7 +3,8 @@ module Clapi.Serialisation
     (
       encode,
       decode,
-      parser
+      parser,
+      typeTag
     ) where
 
 import Data.Monoid ((<>), mconcat, Sum(..))
