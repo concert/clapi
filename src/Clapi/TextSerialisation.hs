@@ -5,7 +5,7 @@ import Data.Text (Text, unpack)
 import Control.Applicative ((<|>))
 
 import Blaze.ByteString.Builder (Builder)
-import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar)
+import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar, fromShow)
 
 import Data.Attoparsec.Text (
     Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass,
@@ -19,15 +19,11 @@ typeTag :: ClapiValue -> Char
 typeTag (ClBool _) = 'B'
 typeTag v = Wire.typeTag v
 
--- FIXME: replace with fromShow (Blaze Utf8)
-fss :: Show a => a -> Builder
-fss a = fromString $ show a
-
 cvBuilder :: ClapiValue -> Builder
 cvBuilder (ClBool True) = fromChar 'T'
 cvBuilder (ClBool False) = fromChar 'F'
-cvBuilder (ClInt32 i) = fss i
-cvBuilder (ClString s) = fss s
+cvBuilder (ClInt32 i) = fromShow i
+cvBuilder (ClString s) = fromShow s
 
 msgBuilder :: Message -> Builder
 msgBuilder msg = case msg of
@@ -35,9 +31,9 @@ msgBuilder msg = case msg of
     (MsgAdd {}) -> valB 'a' valSubs msg
     (MsgRemove {}) -> valB 'r' noSubs msg
   where
-    tb (Time s f) = (fss s) <> (fromChar ':') <> (fss f)
+    tb (Time s f) = (fromShow s) <> (fromChar ':') <> (fromShow f)
     ab ma = case ma of
-        (Just  a) -> fss a
+        (Just  a) -> fromShow a
         Nothing -> fromString "\"\""
     tab subs msg = spJoin $
         [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
