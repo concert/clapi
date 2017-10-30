@@ -17,5 +17,7 @@ main =
   do
     tid <- myThreadId
     installHandler keyboardSignal (Catch $ killThread tid) Nothing
-    withListen HostAny "1234" $ \(lsock, _) -> serve' lsock $
-        \(hsock, _) -> send hsock "hello\n" >> threadDelay 10000000
+    withListen HostAny "1234" $ \(lsock, _) -> serve'
+        lsock
+        (\(hsock, _) -> send hsock "hello\n" >> threadDelay 10000000)
+        (putStrLn "shutting down")

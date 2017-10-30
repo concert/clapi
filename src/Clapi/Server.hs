@@ -49,13 +49,13 @@ throwAfter :: IO a -> E.SomeException -> IO b
 throwAfter action e = action >> E.throwIO e
 
 
-serve' :: NS.Socket -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
-serve' listenSock handler = E.mask_ $ loop []
+serve' :: NS.Socket -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO () -> IO r
+serve' listenSock handler onShutdown = E.mask_ $ loop []
   where
     loop as =
       do
         as' <- doubleCatch
-            (throwAfter $ mapM wait as)
+            (throwAfter $ onShutdown >> mapM wait as)
             (mapM cancel as) (do
                 x@(sock, addr) <- NS.accept listenSock
                 a <- async (handler x `E.finally` NS.close sock)
@@ -82,11 +82,12 @@ _serveToChan ::
       (ClientEvent' B.ByteString (Q.InChan (ServerEvent i b))) a'
       (ServerEvent' B.ByteString) (ServerEvent i b)
       IO () ->
+  IO () ->
   NS.Socket ->
   BQ.InChan a' ->
   IO ()
-_serveToChan perClientProtocol listenSock inChan =
-    serve' listenSock handler
+_serveToChan perClientProtocol onShutdown listenSock inChan =
+    serve' listenSock handler onShutdown
   where
     handler (sock, addr) = do
       (returnChanIn, returnChanOut) <- Q.newChan
@@ -124,11 +125,12 @@ protocolServer ::
       Void
       (ServerEvent i b)
       Void IO () ->
+  IO () ->
   IO ()
-protocolServer listenSock perClientProtocol sharedProtocol =
+protocolServer listenSock perClientProtocol sharedProtocol onShutdown =
   do
     (i, o) <- BQ.newChan 4
-    withAsync (bar o) (\as -> _serveToChan perClientProtocol listenSock i)
+    withAsync (bar o) (\as -> _serveToChan perClientProtocol onShutdown listenSock i)
   where
     bar o = runProtocolIO
         (BQ.readChan o) undefined
@@ -154,7 +156,7 @@ protocolServer listenSock perClientProtocol sharedProtocol =
         (Map.lookup a m)
 
 demoServer = withListen HostAny "1234" $ \(lsock, _) ->
-    protocolServer lsock fakeAuth (subscriptionRegistrar <-> loggyEcho)
+    protocolServer lsock fakeAuth (subscriptionRegistrar <-> loggyEcho) (return ())
 
 loggyCat :: (Show a) => Protocol (ClientEvent' a x) (ClientEvent' a x) b b IO ()
 loggyCat = forever $ do

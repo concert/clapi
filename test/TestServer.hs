@@ -49,7 +49,7 @@ getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
 withListen' = withListen HostAny "0"
-withServe lsock handler = E.bracket (async $ serve' lsock handler) cancel
+withServe lsock handler = E.bracket (async $ serve' lsock handler (return ())) cancel
 withServe' handler io =
     withListen' $ \(lsock, laddr) ->
         withServe lsock handler $ \_ ->
@@ -161,7 +161,7 @@ testProtocolServerBasicEcho = withListen' $ \(lsock, laddr) ->
      client word = connect "127.0.0.1" (show $ getPort laddr) $ \(csock, _) ->
        send csock word >> recv csock 4096
   in
-    withAsync (protocolServer lsock cat echo) $ \_ ->
+    withAsync (protocolServer lsock cat echo (return ())) $ \_ ->
       do
         receivedWords <- mapConcurrently client words
         assertEqual "received words" words receivedWords
@@ -174,7 +174,7 @@ testProtocolServerClosesGracefully =
     addrV <- newEmptyMVar
     a <- async $ withListen' $ \(lsock, laddr) -> do
         putMVar addrV laddr
-        protocolServer lsock cat echo
+        protocolServer lsock cat echo (putMVar addrV laddr)
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
     timeLimit 0.1 $ connect "127.0.0.1" port $ \(csock, _) -> do
@@ -184,6 +184,7 @@ testProtocolServerClosesGracefully =
         -- "connection reset by peer":
         chat
         kill
+        takeMVar addrV
         -- killing once should just have stopped us listening, but not chatting
         connect "127.0.0.1" port undefined
             `E.catch` (\(e :: E.IOException) -> return ())
