@@ -14,14 +14,12 @@ import Pipes.Core (Client, request)
 import Clapi.Util (eitherFail)
 import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue)
 import Clapi.Path (Path)
-import Clapi.Tree (
-    ClapiTree, Attributee, -- treeAdd, treeSet, treeRemove, treeClear, treeInitNode, treeDelete, treeSetChildren, treeGetType
-    )
+import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, validate)
 import Clapi.Valuespace (
     VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
-    vsGetTree)
+    vsGetTree, VsDelta, vsDiff)
 import Clapi.NamespaceTracker (stateL, stateL')
 import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
@@ -129,6 +127,17 @@ applyMessages mvvs = applySuccessful [] mvvs
     canFailApply :: Valuespace v -> Message -> CanFail (Valuespace Unvalidated)
     canFailApply = applyMessage
 
+deltaToMsg :: VsDelta -> Message
+deltaToMsg (p, d) = case d of
+    (Left tp) -> MsgAssignType p tp
+    (Right td) -> case td of
+        Tree.Delete -> MsgDelete p
+        (Tree.SetChildren c) -> MsgChildren p c
+        (Tree.Clear t s a) -> MsgClear p t a s
+        (Tree.Remove t s a) -> MsgRemove p t a s
+        (Tree.Add t v i s a) -> MsgAdd p t v i s a
+        (Tree.Set t v i s a) -> MsgSet p t v i s a
+
 handleOwnerMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
 handleOwnerMessages vs msgs = (rmsgs, rvs)
   where
@@ -137,8 +146,10 @@ handleOwnerMessages vs msgs = (rmsgs, rvs)
     errs = Map.union aErrs vErrs
     (aErrs, vs') = applyMessages vs msgs
     (vErrs, vvs) = vsValidate vs'
+    -- FIXME: these don't cover every mentioned path
     errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
-    rmsgs = if errored then errMsgs else msgs  -- FIXME: success msgs should be derived from tree diff
+    vcMsgs = map deltaToMsg $ vsDiff vs vvs
+    rmsgs = if errored then errMsgs else vcMsgs
 
 handleUnclaimedMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
 handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs msgs else (errorAll, vs)

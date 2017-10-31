@@ -251,7 +251,7 @@ treeClear att path justSite t tree = treeAction clear path justSite t tree
         (show t) (show justSite)
 
 
-data TreeDelta a = Init TypePath
+data TreeDelta a = Init TypePath  -- FIXME: remove init
   | Delete
   | SetChildren [Name]
   | Clear Time (Maybe Site) (Maybe Attributee)
