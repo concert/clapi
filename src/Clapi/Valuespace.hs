@@ -225,6 +225,9 @@ makeLenses ''Valuespace
 unvalidate :: Valuespace v -> Valuespace Unvalidated
 unvalidate (Valuespace tr ty x d u) = Valuespace tr ty x d u
 
+vsGetTree :: Valuespace v -> VsTree
+vsGetTree = _tree
+
 instance Show (Valuespace v) where
     show = show . view tree
 

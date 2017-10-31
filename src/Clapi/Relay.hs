@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Clapi.Relay where
 
 import Control.Monad.Fail (MonadFail)
@@ -19,7 +20,8 @@ import Clapi.Tree (
 import Clapi.Validator (Validator, validate)
 import Clapi.Valuespace (
     VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
-    vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap)
+    vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
+    vsGetTree)
 import Clapi.NamespaceTracker (stateL, stateL')
 import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
@@ -137,3 +139,19 @@ handleOwnerMessages vs msgs = (rmsgs, rvs)
     (vErrs, vvs) = vsValidate vs'
     errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
     rmsgs = if errored then errMsgs else msgs  -- FIXME: success msgs should be derived from tree diff
+
+handleUnclaimedMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
+handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs msgs else (errorAll, vs)
+  where
+    isValidClaim = errorStr == ""
+    claims = filter isClaim msgs
+    isClaim m = case m of
+        (MsgAssignType p _) -> length p == 1
+        _ -> False
+    errorStr = case claims of
+        [] -> "First bundle in unclaimed toplevel path does not contain claim"
+        (m:[]) -> case Map.lookup (msgPath' m) (vsGetTree vs) of
+            Nothing -> ""
+            _ -> "Top level path already claimed"
+        _ -> "Bundle claims multiple toplevel paths"
+    errorAll = map (\m -> MsgError (msgPath' m) "Not within known toplevel path") msgs
