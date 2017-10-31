@@ -222,6 +222,9 @@ data Valuespace v = Valuespace {
     } deriving (Eq)
 makeLenses ''Valuespace
 
+unvalidate :: Valuespace v -> Valuespace Unvalidated
+unvalidate (Valuespace tr ty x d u) = Valuespace tr ty x d u
+
 instance Show (Valuespace v) where
     show = show . view tree
 

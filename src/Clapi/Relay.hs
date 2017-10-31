@@ -17,7 +17,9 @@ import Clapi.Tree (
     ClapiTree, Attributee, -- treeAdd, treeSet, treeRemove, treeClear, treeInitNode, treeDelete, treeSetChildren, treeGetType
     )
 import Clapi.Validator (Validator, validate)
-import Clapi.Valuespace (VsTree, Valuespace(..))
+import Clapi.Valuespace (
+    VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
+    vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap)
 import Clapi.NamespaceTracker (stateL, stateL')
 import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
@@ -100,3 +102,37 @@ import Data.Maybe.Clapi (note)
 -- processOms u oms =
 --   do
 --     undefined
+
+applyMessage :: (MonadFail m) => Valuespace Unvalidated -> Message -> m (Valuespace Unvalidated)
+applyMessage vs msg = case msg of
+    (MsgSet p t v i a s) -> vsSet a i v p s t vs
+    (MsgAdd p t v i a s) -> vsAdd a i v p s t vs
+    (MsgRemove p t a s) -> vsRemove a p s t vs
+    (MsgClear p t a s) -> vsClear a p s t vs
+    (MsgAssignType p tp) -> return $ vsAssignType p tp vs
+    (MsgDelete p) -> vsDelete p vs
+    (MsgChildren p c) -> undefined -- FIXME: backing implementation
+    (MsgSubscribe _) -> return vs
+    (MsgUnsubscribe _) -> return vs
+    (MsgError _ _) -> return vs
+
+applyMessages :: Valuespace v -> [Message] -> MonadErrorMap (Valuespace Unvalidated)
+applyMessages mvvs = applySuccessful [] (unvalidate mvvs)
+  where
+    applySuccessful errs vs [] = (Map.fromList errs, vs)
+    applySuccessful errs vs (m:ms) = case canFailApply vs m of
+        (Left es) -> applySuccessful ((msgPath' m, es):errs) vs ms
+        (Right vs') -> applySuccessful errs vs' ms
+    canFailApply :: Valuespace Unvalidated -> Message -> CanFail (Valuespace Unvalidated)
+    canFailApply = applyMessage
+
+handleOwnerMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
+handleOwnerMessages vs msgs = (rmsgs, rvs)
+  where
+    rvs = if errored then vs else vvs
+    errored = errs == Map.empty
+    errs = Map.union aErrs vErrs
+    (aErrs, vs') = applyMessages vs msgs
+    (vErrs, vvs) = vsValidate vs'
+    errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
+    rmsgs = if errored then errMsgs else msgs  -- FIXME: success msgs should be derived from tree diff
