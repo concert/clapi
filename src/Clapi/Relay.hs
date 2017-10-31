@@ -6,6 +6,7 @@ import Control.Monad.State (MonadState, StateT(..), evalStateT, runStateT, get, 
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import Text.Printf (printf)
+import Data.Maybe (fromJust)
 
 import Control.Lens (_1, _2)
 import Pipes (lift)
@@ -19,7 +20,7 @@ import Clapi.Validator (Validator, validate)
 import Clapi.Valuespace (
     VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
-    vsGetTree, VsDelta, vsDiff)
+    vsGetTree, VsDelta, vsDiff, getType)
 import Clapi.NamespaceTracker (stateL, stateL')
 import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
@@ -127,16 +128,19 @@ applyMessages mvvs = applySuccessful [] mvvs
     canFailApply :: Valuespace v -> Message -> CanFail (Valuespace Unvalidated)
     canFailApply = applyMessage
 
+treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> Message
+treeDeltaToMsg p td = case td of
+    Tree.Delete -> MsgDelete p
+    (Tree.SetChildren c) -> MsgChildren p c
+    (Tree.Clear t s a) -> MsgClear p t a s
+    (Tree.Remove t s a) -> MsgRemove p t a s
+    (Tree.Add t v i s a) -> MsgAdd p t v i s a
+    (Tree.Set t v i s a) -> MsgSet p t v i s a
+
 deltaToMsg :: VsDelta -> Message
 deltaToMsg (p, d) = case d of
     (Left tp) -> MsgAssignType p tp
-    (Right td) -> case td of
-        Tree.Delete -> MsgDelete p
-        (Tree.SetChildren c) -> MsgChildren p c
-        (Tree.Clear t s a) -> MsgClear p t a s
-        (Tree.Remove t s a) -> MsgRemove p t a s
-        (Tree.Add t v i s a) -> MsgAdd p t v i s a
-        (Tree.Set t v i s a) -> MsgSet p t v i s a
+    (Right td) -> treeDeltaToMsg p td
 
 handleOwnerMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
 handleOwnerMessages vs msgs = (rmsgs, rvs)
@@ -166,3 +170,18 @@ handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs ms
             _ -> "Top level path already claimed"
         _ -> "Bundle claims multiple toplevel paths"
     errorAll = map (\m -> MsgError (msgPath' m) "Not within known toplevel path") msgs
+
+handleClientMessages :: Valuespace Validated -> [Message] -> [Message]
+handleClientMessages vs msgs = rmsgs ++ subMsgs
+  where
+    subMsgs = concatMap createMsgs subPaths
+    createMsgs p = [assignMsg p] ++ nodeMsgs p
+    assignMsg p = case getType vs p of
+        (Just tp) -> MsgAssignType p tp
+    nodeMsgs p = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty $ nodeFor p
+    nodeFor p = fromJust $ Map.lookup p $ vsGetTree vs
+    subPaths = msgPath' <$> filter isSub msgs
+    isSub (MsgSubscribe _) = True
+    isSub _ = False
+    rightOrDie (Right x) = x
+    (rmsgs, _) = handleOwnerMessages vs msgs -- FIXME: this is a naff as way to get errors for bogus paths
