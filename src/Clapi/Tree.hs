@@ -261,28 +261,19 @@ data TreeDelta a = Init TypePath
   deriving (Eq, Show)
 
 
--- treeDiff :: (Eq a) => ClapiTree a -> ClapiTree a ->
---     CanFail [(NodePath, TreeDelta a)]
--- treeDiff (ClapiTree nm1 types1) (ClapiTree nm2 types2) =
---     minimiseDeletes . minimiseClears <$> allDeltas
---   where
---     flatten :: [(a, [b])] -> [(a, b)]
---     flatten = mconcat . (fmap sequence)
---     allDeltas = flatten <$> Map.toList <$> sequence failyDeltaMap
---     failyDeltaMap = merge
---         (mapMissing onlyInNm1)
---         (mapMissing onlyInNm2)
---         (zipWithMatched inBoth) nm1 nm2
---     onlyInNm1 np n1 = Right [Delete]
---     onlyInNm2 np n2 =
---         ((maybeToList $ Init <$> Mos.getDependency np types2) ++) <$>
---         nodeDiff mempty n2
---     inBoth np n1 n2
---       | tp1 /= tp2 = ((Maybe.toMonoid $ sequence $ [Init <$> tp2]) ++) <$> nodeDiff mempty n2
---       | otherwise = nodeDiff n1 n2
---       where
---         tp1 = Mos.getDependency np types1
---         tp2 = Mos.getDependency np types2
+treeDiff :: (Eq a) => ClapiTree a -> ClapiTree a -> CanFail [(NodePath, TreeDelta a)]
+treeDiff nm1 nm2 = minimiseDeletes . minimiseClears <$> allDeltas
+  where
+    flatten :: [(a, [b])] -> [(a, b)]
+    flatten = mconcat . (fmap sequence)
+    allDeltas = flatten <$> Map.toList <$> sequence failyDeltaMap
+    failyDeltaMap = merge
+        (mapMissing onlyInNm1)
+        (mapMissing onlyInNm2)
+        (zipWithMatched inBoth) nm1 nm2
+    onlyInNm1 np n1 = Right [Delete]
+    onlyInNm2 np n2 = nodeDiff mempty n2
+    inBoth np n1 n2 = nodeDiff n1 n2
 
 
 minimiseDeletes :: [(NodePath, TreeDelta a)] -> [(NodePath, TreeDelta a)]
@@ -339,7 +330,7 @@ timeSeriesDiff site ts1 ts2 = fmap snd <$> Map.toList <$> sequence failyTsDiff
         (zipWithMaybeMatched inBoth) ts1 ts2
 
     rOrC t Nothing att (Just _) = Right $ Remove t Nothing att
-    rOrC t Nothing att Nothing = Left "wat"
+    rOrC t Nothing att Nothing = Left "empty global site"
     rOrC t site att _ = Right $ Clear t site att
     onlyInTs1 t (att1, a) = rOrC t site att1 a
 
