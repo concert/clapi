@@ -142,6 +142,9 @@ deltaToMsg (p, d) = case d of
     (Left tp) -> MsgAssignType p tp
     (Right td) -> treeDeltaToMsg p td
 
+errorAll :: T.Text -> [Path] -> [Message]
+errorAll s ps = map (\p -> MsgError p s) ps
+
 handleOwnerMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
 handleOwnerMessages vs msgs = (rmsgs, rvs)
   where
@@ -156,7 +159,7 @@ handleOwnerMessages vs msgs = (rmsgs, rvs)
     rmsgs = if errored then errMsgs else vcMsgs
 
 handleUnclaimedMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
-handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs msgs else (errorAll, vs)
+handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs msgs else (allError, vs)
   where
     isValidClaim = errorStr == ""
     claims = filter isClaim msgs
@@ -169,7 +172,7 @@ handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs ms
             Nothing -> ""
             _ -> "Top level path already claimed"
         _ -> "Bundle claims multiple toplevel paths"
-    errorAll = map (\m -> MsgError (msgPath' m) "Not within known toplevel path") msgs
+    allError = errorAll errorStr $ map msgPath' msgs
 
 handleClientMessages :: Valuespace Validated -> [Message] -> [Message]
 handleClientMessages vs msgs = rmsgs ++ subMsgs
