@@ -103,7 +103,7 @@ import Data.Maybe.Clapi (note)
 --   do
 --     undefined
 
-applyMessage :: (MonadFail m) => Valuespace Unvalidated -> Message -> m (Valuespace Unvalidated)
+applyMessage :: (MonadFail m) => Valuespace v -> Message -> m (Valuespace Unvalidated)
 applyMessage vs msg = case msg of
     (MsgSet p t v i a s) -> vsSet a i v p s t vs
     (MsgAdd p t v i a s) -> vsAdd a i v p s t vs
@@ -112,18 +112,19 @@ applyMessage vs msg = case msg of
     (MsgAssignType p tp) -> return $ vsAssignType p tp vs
     (MsgDelete p) -> vsDelete p vs
     (MsgChildren p c) -> undefined -- FIXME: backing implementation
-    (MsgSubscribe _) -> return vs
-    (MsgUnsubscribe _) -> return vs
-    (MsgError _ _) -> return vs
+    (MsgSubscribe _) -> return $ unvalidate vs
+    (MsgUnsubscribe _) -> return $ unvalidate vs
+    (MsgError _ _) -> return $ unvalidate vs
 
 applyMessages :: Valuespace v -> [Message] -> MonadErrorMap (Valuespace Unvalidated)
-applyMessages mvvs = applySuccessful [] (unvalidate mvvs)
+applyMessages mvvs = applySuccessful [] mvvs
   where
-    applySuccessful errs vs [] = (Map.fromList errs, vs)
+    applySuccessful :: [(Path, String)] -> Valuespace v -> [Message] -> MonadErrorMap (Valuespace Unvalidated)
+    applySuccessful errs vs [] = (Map.fromList errs, unvalidate vs)
     applySuccessful errs vs (m:ms) = case canFailApply vs m of
         (Left es) -> applySuccessful ((msgPath' m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
-    canFailApply :: Valuespace Unvalidated -> Message -> CanFail (Valuespace Unvalidated)
+    canFailApply :: Valuespace v -> Message -> CanFail (Valuespace Unvalidated)
     canFailApply = applyMessage
 
 handleOwnerMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
