@@ -24,7 +24,10 @@ import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
 data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
 type Owners i = Map.Map Name i
-data TrackedMessage i = TrackedMessage {tmOwnership :: Ownership, tmMessage :: Message, tmSubscriber :: Maybe i} deriving (Show)
+-- This is kinda fanoutable rather than routable
+-- Also not sure about the either, should there be a strategy type instead?
+data RoutableMessage i = RoutableMessage {rmRoute :: Either i Ownership, rmMsg :: Message} deriving (Eq, Show)
+type Om = (Ownership, Message)
 type Registered i = Mos.Mos i Path
 
 -- FIXME:
@@ -54,53 +57,47 @@ disallowedMsg o m = MsgError (msgPath' m) txt
         "Method ", T.pack $ show $ msgMethod' m, " forbidden when acting as ",
         roleTxt o]
 
-toOm :: TrackedMessage i -> (Ownership, Message)
-toOm tm = (tmOwnership tm, tmMessage tm)
-
 updateOwnerships ::
-    forall m i u. (Monad m, Ord i, Ord u, Show i) => AddrWithUser i u -> [TrackedMessage i] -> StateT (Owners (AddrWithUser i u)) m ()
-updateOwnerships i = mapM_ $ handle . toOm
+    forall m i u. (Monad m, Ord i, Ord u, Show i) => AddrWithUser i u -> [RoutableMessage i] -> StateT (Owners (AddrWithUser i u)) m ()
+updateOwnerships i = mapM_ $ handle
   where
-    handle :: (Ownership, Message) -> StateT (Owners (AddrWithUser i u)) m ()
-    handle (Unclaimed, MsgAssignType path _) =
+    handle :: RoutableMessage i -> StateT (Owners (AddrWithUser i u)) m ()
+    handle (RoutableMessage (Right Owner) (MsgAssignType path _)) =
         when (isNamespace path) (modify $ \x -> Map.insert (namespace path) i x)
-    handle (ownership, MsgDelete path) =
-        when
-            (ownership /= Client && isNamespace path)
-            (modify (Map.delete $ namespace path))
+    handle (RoutableMessage (Right Owner) (MsgDelete path)) =
+        when (isNamespace path) (modify (Map.delete $ namespace path))
     handle _ = return ()
 
+-- FIXME: not filtering anything out so refactor accordingly
 registerSubscriptions ::
-    forall m i u. (Monad m, Ord i, Ord u) => AddrWithUser i u -> [TrackedMessage i] -> StateT (Registered (AddrWithUser i u)) m [TrackedMessage i]
-registerSubscriptions i tms = filterM (processMsg . toOm) tms
+    forall m i u. (Monad m, Ord i, Ord u) => AddrWithUser i u -> [RoutableMessage i] -> StateT (Registered (AddrWithUser i u)) m [RoutableMessage i]
+registerSubscriptions i rms = filterM processMsg rms
   where
-    processMsg :: (Ownership, Message) -> StateT (Registered (AddrWithUser i u)) m Bool
-    processMsg (Client, MsgSubscribe path) =
+    processMsg :: RoutableMessage i -> StateT (Registered (AddrWithUser i u)) m Bool
+    processMsg (RoutableMessage (Left _) (MsgAssignType path _)) =
         modify (Mos.insert i path) >> return True
-    processMsg (Client, MsgUnsubscribe path) =
-        modify (Mos.delete i path) >> return False
     processMsg _ = return True
 
 fanOutBundle ::
-    (Monad m, Ord i, Ord u, Show i, Show u) => AddrWithUser i u -> [TrackedMessage i] ->
+    (Monad m, Ord i, Ord u, Show i, Show u) => AddrWithUser i u -> [RoutableMessage i] ->
     StateT (Registered (AddrWithUser i u)) (NsProtocol m i u) ()
-fanOutBundle i tms = get >>=
+fanOutBundle i rms = get >>=
     mapM_ (lift . sendRev . uncurry ServerData) .
-        Map.toList . Map.filter (not . null) . Map.mapWithKey (deriveMsgs tms)
+        Map.toList . Map.filter (not . null) . Map.mapWithKey (deriveMsgs rms)
   where
-    deriveMsgs tms i' ps = tmMessage <$> filter (includeMsg i' ps) tms
-    includeMsg i' ps tm =
-        -- NOT SURE THIS IS TRUE!
+    deriveMsgs rms i' ps = rmMsg <$> filter (includeMsg i' ps) rms
+    includeMsg i' ps rm =
+        -- NOT SURE THIS IS TRUE! don't they go to the owner? isn't it owner ones that do this?
         -- Client messages should only go to their targeted client, others go to
         -- whoever's registered:
-        maybe
-            (if (tmOwnership tm) == Client then i' == i else msgPath' (tmMessage tm) `elem` ps)
+        either
             (\addr -> addr == (awuAddr i'))
-            (tmSubscriber tm)
+            (\o -> if o == Client then i' == i else msgPath' (rmMsg rm) `elem` ps)
+            (rmRoute rm)
 
 handleDeletedNamespace ::
-    (Monad m, Ord i, Ord u) => TrackedMessage i -> StateT (Registered (AddrWithUser i u)) m ()
-handleDeletedNamespace (TrackedMessage ownership (MsgDelete path) _) =
+    (Monad m, Ord i, Ord u) => RoutableMessage i -> StateT (Registered (AddrWithUser i u)) m ()
+handleDeletedNamespace (RoutableMessage ownership (MsgDelete path)) =
     when (isNamespace path) (modify (Mos.remove path))
 handleDeletedNamespace _ = return ()
 
@@ -139,9 +136,9 @@ liftedWaitThen onFwd onRev = do
 
 type NsProtocol m i u = Protocol
     (ClientEvent (AddrWithUser i u) [Message] ())
-    (ClientEvent (AddrWithUser i u) [TrackedMessage i] ())
+    (ClientEvent (AddrWithUser i u) [Om] ())
     (ServerEvent (AddrWithUser i u) [Message])
-    (ServerEvent (AddrWithUser i u) [TrackedMessage i])
+    (ServerEvent (AddrWithUser i u) [RoutableMessage i])
     m
 
 
@@ -166,26 +163,27 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         when (not $ null toReject) $ lift . sendRev $ ServerData awu toReject
         when (not $ null toFwd) $ lift . sendFwd $ ClientData awu toFwd
     fwd (ClientDisconnect awu) = do
-        tms <- handleClientDisconnect awu
-        lift . sendFwd $ ClientData awu tms
+        rms <- handleClientDisconnect awu
+        lift . sendFwd $ ClientData awu rms
         lift . sendFwd $ ClientDisconnect awu
-    rev :: (Ord i, Ord u, Monad m, Show i, Show u) => ServerEvent (AddrWithUser i u) [TrackedMessage i] -> StateT
+    rev :: (Ord i, Ord u, Monad m, Show i, Show u) => ServerEvent (AddrWithUser i u) [RoutableMessage i] -> StateT
         (Owners (AddrWithUser i u), Registered (AddrWithUser i u))
         (NsProtocol m i u)
         ()
-    rev (ServerData awu tms) = do
+    rev (ServerData awu rms) = do
         -- FIXME: is the fact that this looks like it's totally arsing up the
         -- state to do with having to do the blasted contexts thing? Try
         -- rewriting without using flippin' lenses:
-        stateFst $ updateOwnerships awu tms
+        stateFst $ updateOwnerships awu rms
         -- FIXME: use of registereSubscriptions whined and whined about needing
         -- FlexibleContexts, but I have not idea why...
         stateSnd (
-            registerSubscriptions awu tms >>=
+            registerSubscriptions awu rms >>=
             fanOutBundle awu >>
-            mapM_ handleDeletedNamespace tms)
+            mapM_ handleDeletedNamespace rms)
     -- What do we do if we told the client to go away? Obviously pass that on
     -- and drop registrations, but what about ownership?
+    -- Do they lose everything they owned?
     rev (ServerDisconnect awu) =
         lift . sendRev $ (ServerDisconnect awu)
 
@@ -193,23 +191,22 @@ handleClientData ::
     (Monad m, Ord i, Ord u, Show i, Show u) =>
     AddrWithUser i u ->
     [Message] ->
-    StateT (Owners (AddrWithUser i u)) m ([TrackedMessage i], [Message])
+    StateT (Owners (AddrWithUser i u)) m ([Om], [Message])
 handleClientData awu ms =
   do
+    -- FIXME: handle unsubscribes here?
+    -- FIXME: fanout of owner errors here?
     owners <- get
     let (goodTrackedMessages, badTrackedMessages) = partition
-            (\tm -> methodAllowed (tmOwnership tm, msgMethod' $ tmMessage tm))
-            (map (tagOwnershipAndSubscriber awu owners) ms)
-    return (goodTrackedMessages, map (\tm -> disallowedMsg (tmOwnership tm) (tmMessage tm)) badTrackedMessages)
+            (\(o, m) -> methodAllowed (o, msgMethod' m))
+            (map (tagOwnership awu owners) ms)
+    return (goodTrackedMessages, map (uncurry disallowedMsg) badTrackedMessages)
 
 
-tagOwnershipAndSubscriber :: (Ord i, Ord u) => AddrWithUser i u -> Owners (AddrWithUser i u) -> Message -> TrackedMessage i
-tagOwnershipAndSubscriber i owners msg = TrackedMessage owner msg subber
+tagOwnership :: (Ord i, Ord u) => AddrWithUser i u -> Owners (AddrWithUser i u) -> Message -> Om
+tagOwnership i owners msg = (owner msg, msg)
   where
-    subber' (MsgSubscribe _) = Just $ awuAddr i
-    subber' _ = Nothing
-    subber = subber' msg
-    owner = getNsOwnership . namespace . msgPath' $ msg
+    owner = getNsOwnership . namespace . msgPath'
     getNsOwnership name = case Map.lookup name owners of
       Nothing -> Unclaimed
       Just i' -> if i' == i then Owner else Client
@@ -218,7 +215,7 @@ tagOwnershipAndSubscriber i owners msg = TrackedMessage owner msg subber
 handleClientDisconnect ::
     (Monad m, Ord i, Ord u) =>
     AddrWithUser i u ->
-    StateT (Owners (AddrWithUser i u), Registered (AddrWithUser i u)) m [TrackedMessage i]
+    StateT (Owners (AddrWithUser i u), Registered (AddrWithUser i u)) m [Om]
 handleClientDisconnect i =
   do
     -- Drop what the client cares about:
@@ -227,4 +224,4 @@ handleClientDisconnect i =
     stateL _1 (get >>=
         return . fmap namespaceDeleteMsg . Map.keys . Map.filter (== i))
   where
-    namespaceDeleteMsg name = TrackedMessage Owner (MsgDelete [name]) Nothing
+    namespaceDeleteMsg name = (Owner, MsgDelete [name])
