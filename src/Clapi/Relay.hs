@@ -4,6 +4,7 @@ module Clapi.Relay where
 import Control.Monad.Fail (MonadFail)
 import Control.Monad.State (MonadState, StateT(..), evalStateT, runStateT, get, modify, put)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import Text.Printf (printf)
 import Data.Maybe (fromJust)
@@ -153,10 +154,10 @@ handleOwnerMessages vs msgs = (rmsgs, rvs)
     errs = Map.union aErrs vErrs
     (aErrs, vs') = applyMessages vs msgs
     (vErrs, vvs) = vsValidate vs'
-    -- FIXME: these don't cover every mentioned path
+    fillerErrPaths = Set.toList $ Set.difference (Set.fromList $ map msgPath' msgs) (Map.keysSet errs)
     errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
     vcMsgs = map deltaToMsg $ vsDiff vs vvs
-    rmsgs = if errored then errMsgs else vcMsgs
+    rmsgs = if errored then errMsgs ++ (errorAll "rejected due to other errors" fillerErrPaths) else vcMsgs
 
 handleUnclaimedMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
 handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs msgs else (allError, vs)
@@ -187,4 +188,4 @@ handleClientMessages vs msgs = rmsgs ++ subMsgs
     isSub (MsgSubscribe _) = True
     isSub _ = False
     rightOrDie (Right x) = x
-    (rmsgs, _) = handleOwnerMessages vs msgs -- FIXME: this is a naff as way to get errors for bogus paths
+    (rmsgs, _) = handleOwnerMessages vs msgs -- FIXME: this is naff as way to get errors for bogus paths
