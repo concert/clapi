@@ -23,7 +23,7 @@ import Clapi.Valuespace (
     VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
     vsGetTree, VsDelta, vsDiff, getType)
-import Clapi.NamespaceTracker (stateL, stateL', Ownership(..))
+import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..))
 import Clapi.Server (User)
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
@@ -143,10 +143,6 @@ treeDeltaToMsg p td = case td of
 deltaToMsg :: VsDelta -> Message
 deltaToMsg (p, d) = either (MsgAssignType p) (treeDeltaToMsg p) d
 
--- This is kinda fanoutable rather than routable
--- Also not sure about the either, should there be a strategy type instead?
-data RoutableMessage i = RoutableMessage {rmRoute :: Either i Ownership, rmMsg :: Message}
-
 handleMutationMessages :: Valuespace Validated -> [Message] -> ([Message], [Message], Valuespace Validated)
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
@@ -194,8 +190,6 @@ handleClientMessages respondTo msgs vs = (rmsgs, vs)
 
 handleClientMessagesS :: VsHandlerS i
 handleClientMessagesS respondTo msgs = state (handleClientMessages respondTo msgs)
-
-type Om = (Ownership, Message)
 
 handleMessages :: Valuespace Validated -> i -> [Om] -> ([RoutableMessage i], Valuespace Validated)
 handleMessages vs respondTo msgs = runState doHandle vs

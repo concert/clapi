@@ -27,8 +27,8 @@ import Clapi.Path (Path, root)
 import Clapi.Types (
     Time(..), Interpolation(..), Message(..), msgPath', msgMethod',
     ClapiMethod(..), ClapiValue(..))
-import Clapi.Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser)
-import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered)
+import Clapi.Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser, awuAddr)
+import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Om(..), RoutableMessage(..))
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
@@ -123,14 +123,18 @@ collectAllResponsesUntil i = inner mempty
       | i' == i = return bs
       | otherwise = inner bs
 
-fakeServer ::
-    (Monad m, Show a) =>
-    Protocol (ClientEvent i a x) Void (ServerEvent i a) Void m ()
-fakeServer = forever $ waitThen fwd undefined
-    where
+fakeRelay ::
+    (Monad m, Show i, Show u) =>
+    Protocol (ClientEvent (AddrWithUser i u) [Om] x) Void (ServerEvent (AddrWithUser i u) [RoutableMessage i]) Void m ()
+fakeRelay = forever $ waitThen fwd undefined
+  where
     fwd (ClientConnect _ _) = return ()
-    fwd (ClientData i a) = sendRev $ ServerData i a
+    fwd (ClientData i oms) = sendRev $ ServerData i $ map (mkRoutable i) oms
     fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
+    -- FIXME: the relay MUSTN'T come back with unclaimed, ATM types allow
+    mkRoutable _ (Unclaimed, m) = RoutableMessage (Right Owner) m
+    mkRoutable i (Client, MsgSubscribe p) = RoutableMessage (Left $ awuAddr i) (MsgAssignType p [])
+    mkRoutable _ (o, m) = RoutableMessage (Right o) m
 
 alice = newAwu 42 "alice"
 alice' = newAwu 43 "alice"
@@ -142,7 +146,7 @@ ethel = newAwu 96 "ethel"
 testMessageToPreowned =
   let
     owners = Map.singleton "" (newAwu 0 "relay itself")
-    protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeServer
+    protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice [msg root Error]
       sendFwd $ ClientDisconnect alice
@@ -155,7 +159,7 @@ testMessageToPreowned =
 
 testSubscribeUnclaimed =
   let
-    protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeServer
+    protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice [msg ["hello"] Subscribe]
       sendFwd $ ClientDisconnect alice
@@ -167,7 +171,7 @@ testSubscribeUnclaimed =
 
 testSubscribeAsOwner =
   let
-    protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeServer
+    protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice [msg ["hello"] AssignType]
       -- FIXME: single bundle too?
@@ -182,12 +186,13 @@ testSubscribeAsOwner =
 testUnsubscribeWhenNotSubscribed =
   let
     owners = Map.singleton "owned" bob
-    protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeServer
+    protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice [msg ["owned"] Unsubscribe]
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
-      lift $ assertBool "empty" (null resps)
+      lift $ assertOnlyKeysInMap [alice] resps
+      lift $ assertSingleError alice ["owned"] ["unsubscribe"] resps
   in
     runEffect protocol
 
@@ -230,7 +235,7 @@ untilDisconnect i = waitThen fwd next
         | i == i' = sendRev e
         | otherwise = sendRev e >> untilDisconnect i
 
-nstBounceProto = namespaceTrackerProtocol mempty mempty <-> fakeServer
+nstBounceProto = namespaceTrackerProtocol mempty mempty <-> fakeRelay
 
 testSubscribeAsClient =
     -- Get informed of changes by owner
@@ -248,7 +253,7 @@ testSubscribeAsClient =
     assertEqual "resps" [
         -- Because the fake server bounces everything you get subscribes
         -- instead of data here
-        ServerData bob [msg ["hello"] Subscribe],
+        ServerData bob [msg ["hello"] AssignType],
         ServerData bob [msg ["hello"] Add],
         ServerData bob [msg ["hello"] Delete],
         ServerDisconnect alice
@@ -281,7 +286,7 @@ _disconnectUnsubsBase = [
 testClientDisconnectUnsubs = do
     response <- trackerHelper _disconnectUnsubsBase
     assertEqual "alice': init msgs"
-        (Map.singleton alice' [[msg ["hello"] Subscribe]])
+        (Map.singleton alice' [[msg ["hello"] AssignType]])
         response
 
 testClientDisconnectUnsubsResubs = do
@@ -290,8 +295,8 @@ testClientDisconnectUnsubsResubs = do
         ClientData alice [msg ["hello"] Add]]
     assertEqual "alice': 2 * init msgs + add msg"
         (Map.singleton alice' [
-            [msg ["hello"] Subscribe],
-            [msg ["hello"] Subscribe],
+            [msg ["hello"] AssignType],
+            [msg ["hello"] AssignType],
             [msg ["hello"] Add],
             [msg ["hello"] Delete]]) -- End of test disconnect
         response
@@ -309,7 +314,7 @@ testOwnerDisconnectDisowns = do
         ClientData alice''' [msg ["hello"] AssignType]]
     assertOnlyKeysInMap [alice', alice''] response
     assertMapValue alice' [
-        [msg ["hello"] Subscribe], [msg ["hello"] Delete]] response
+        [msg ["hello"] AssignType], [msg ["hello"] Delete]] response
     assertSingleError alice'' ["hello"] ["forbidden"] response
   where
     alice'' = newAwu 44 "alice"
@@ -323,7 +328,7 @@ trackerHelper' :: -- (Monad m, Ord i) =>
     IO (Map.Map (AddrWithUser i u) [[Message]])
 trackerHelper' owners registered as =
     -- listServer as >>~ namespaceTracker owners registered >>~ echoMap dropDetails)
-    mapPack <$> gogo as' i (trackerProto <-> fakeServer)
+    mapPack <$> gogo as' i (trackerProto <-> fakeRelay)
   where
     trackerProto = namespaceTrackerProtocol owners registered
     i = i' $ head as
