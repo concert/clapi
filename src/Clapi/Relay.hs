@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Clapi.Relay where
 
+import Data.List (partition)
 import Control.Monad.Fail (MonadFail)
-import Control.Monad.State (MonadState, StateT(..), evalStateT, runStateT, get, modify, put)
+import Control.Monad.State (MonadState, StateT(..), evalStateT, runStateT, get, modify, put, State, state, runState)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -22,7 +23,7 @@ import Clapi.Valuespace (
     VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
     vsGetTree, VsDelta, vsDiff, getType)
-import Clapi.NamespaceTracker (stateL, stateL')
+import Clapi.NamespaceTracker (stateL, stateL', Ownership(..))
 import Clapi.Server (User)
 import Data.Maybe.Clapi (note)
 
@@ -143,40 +144,39 @@ deltaToMsg (p, d) = case d of
     (Left tp) -> MsgAssignType p tp
     (Right td) -> treeDeltaToMsg p td
 
-errorAll :: T.Text -> [Path] -> [Message]
-errorAll s ps = map (\p -> MsgError p s) ps
+-- This is kinda fanoutable rather than routable
+-- Also not sure about the either, should there be a strategy type instead?
+data RoutableMessage i = RoutableMessage {rmRoute :: Either i Ownership, rmMsg :: Message}
 
-handleOwnerMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
-handleOwnerMessages vs msgs = (rmsgs, rvs)
+handleMutationMessages :: Valuespace Validated -> [Message] -> ([Message], [Message], Valuespace Validated)
+handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
-    rvs = if errored then vs else vvs
-    errored = errs == Map.empty
     errs = Map.union aErrs vErrs
     (aErrs, vs') = applyMessages vs msgs
     (vErrs, vvs) = vsValidate vs'
-    fillerErrPaths = Set.toList $ Set.difference (Set.fromList $ map msgPath' msgs) (Map.keysSet errs)
     errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
-    vcMsgs = map deltaToMsg $ vsDiff vs vvs
-    rmsgs = if errored then errMsgs ++ (errorAll "rejected due to other errors" fillerErrPaths) else vcMsgs
+    vcMsgs = map (\d -> deltaToMsg d) $ vsDiff vs vvs
 
-handleUnclaimedMessages :: Valuespace Validated -> [Message] -> ([Message], Valuespace Validated)
-handleUnclaimedMessages vs msgs = if isValidClaim then handleOwnerMessages vs msgs else (allError, vs)
+handleOwnerMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMessage i], Valuespace Validated)
+handleOwnerMessages respondTo msgs vs = (rmsgs, rvs)
   where
-    isValidClaim = errorStr == ""
-    claims = filter isClaim msgs
-    isClaim m = case m of
-        (MsgAssignType p _) -> length p == 1
-        _ -> False
-    errorStr = case claims of
-        [] -> "First bundle in unclaimed toplevel path does not contain claim"
-        (m:[]) -> case Map.lookup (msgPath' m) (vsGetTree vs) of
-            Nothing -> ""
-            _ -> "Top level path already claimed"
-        _ -> "Bundle claims multiple toplevel paths"
-    allError = errorAll errorStr $ map msgPath' msgs
+    -- FIXME: handle owner initiated error messages
+    rvs = if errored then vs else vvs
+    errored = errMsgs /= []
+    (vcMsgs, errMsgs, vvs) = handleMutationMessages vs msgs
+    fillerErrPaths = Set.toList $ let sop ms = Set.fromList $ map msgPath' ms in Set.difference (sop msgs) (sop errMsgs)
+    fillerErrs = map (\p -> MsgError p "rejected due to other errors") fillerErrPaths
+    rmsgs = case errored of
+        True -> map (\m -> RoutableMessage (Left respondTo) m) (errMsgs ++ fillerErrs)
+        False -> map (\m -> RoutableMessage (Right Owner) m) vcMsgs
 
-handleClientMessages :: Valuespace Validated -> [Message] -> [Message]
-handleClientMessages vs msgs = rmsgs ++ subMsgs
+type VsHandlerS i = i -> [Message] -> State (Valuespace Validated) [RoutableMessage i]
+
+handleOwnerMessagesS :: VsHandlerS i
+handleOwnerMessagesS respondTo msgs = state (handleOwnerMessages respondTo msgs)
+
+handleClientMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMessage i], Valuespace Validated)
+handleClientMessages respondTo msgs vs = (rmsgs, vs)
   where
     subMsgs = concatMap createMsgs subPaths
     createMsgs p = [assignMsg p] ++ nodeMsgs p
@@ -188,4 +188,21 @@ handleClientMessages vs msgs = rmsgs ++ subMsgs
     isSub (MsgSubscribe _) = True
     isSub _ = False
     rightOrDie (Right x) = x
-    (rmsgs, _) = handleOwnerMessages vs msgs -- FIXME: this is naff as way to get errors for bogus paths
+    (vsMsgs, errMsgs, _) = handleMutationMessages vs msgs
+    rmsgs = (map response $ errMsgs ++ subMsgs) ++ (map forwarded vsMsgs)
+    forwarded = RoutableMessage (Right Client)
+    response = RoutableMessage (Left respondTo)
+
+handleClientMessagesS :: VsHandlerS i
+handleClientMessagesS respondTo msgs = state (handleClientMessages respondTo msgs)
+
+type Om = (Ownership, Message)
+
+handleMessages :: Valuespace Validated -> i -> [Om] -> ([RoutableMessage i], Valuespace Validated)
+handleMessages vs respondTo msgs = runState doHandle vs
+  where
+    (client, owner) = partition (\m -> fst m == Client) msgs
+    doHandle = do
+        oms <- handleOwnerMessagesS respondTo $ map snd owner
+        cms <- handleClientMessagesS respondTo $ map snd client
+        return $ oms ++ cms
