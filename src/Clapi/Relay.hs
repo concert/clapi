@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Text.Printf (printf)
-import Data.Maybe (fromJust)
+import Data.Void (Void)
 
 import Control.Lens (_1, _2)
 import Pipes (lift)
@@ -25,6 +25,7 @@ import Clapi.Valuespace (
     vsGetTree, VsDelta, vsDiff, getType)
 import Clapi.NamespaceTracker (stateL, stateL', Ownership(..))
 import Clapi.Server (User)
+import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
 
 
@@ -206,3 +207,11 @@ handleMessages vs respondTo msgs = runState doHandle vs
         oms <- handleOwnerMessagesS respondTo $ map snd owner
         cms <- handleClientMessagesS respondTo $ map snd client
         return $ oms ++ cms
+
+relay :: Monad m => Valuespace Validated -> Protocol (i, [Om]) Void [RoutableMessage i] Void m ()
+relay vs = waitThen fwd (const $ error "message from the void")
+  where
+    fwd (i, ms) = do
+        let (ms', vs') = handleMessages vs i ms
+        sendRev ms'
+        relay vs'
