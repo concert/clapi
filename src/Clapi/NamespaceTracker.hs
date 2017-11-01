@@ -2,7 +2,7 @@
 module Clapi.NamespaceTracker where
 
 import Control.Monad (filterM, forever, when)
-import Control.Monad.State (StateT(..), evalStateT, get, gets, modify)
+import Control.Monad.State (StateT(..), evalStateT, get, gets, modify, put)
 import Control.Monad.Trans (MonadTrans)
 import Control.Monad.Trans.Free
 import qualified Data.ByteString as B
@@ -10,6 +10,8 @@ import Data.List (partition)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import Data.Maybe (catMaybes)
+import Data.Either (partitionEithers)
 
 import Control.Lens (view, set, Lens', _1, _2)
 import Pipes (lift)
@@ -160,8 +162,10 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
     fwd (ClientConnect awu x) = lift . sendFwd $ ClientConnect awu ()
     fwd (ClientData awu ms) = do
         (toFwd, toReject) <- stateFst $ handleClientData awu ms
-        when (not $ null toReject) $ lift . sendRev $ ServerData awu toReject
-        when (not $ null toFwd) $ lift . sendFwd $ ClientData awu toFwd
+        (toFwd', unsubErrors) <- stateSnd $ handleUnsubscriptions awu toFwd
+        when (not $ null $ toReject ++ unsubErrors) $
+            lift . sendRev $ ServerData awu toReject
+        when (not $ null toFwd) $ lift . sendFwd $ ClientData awu toFwd'
     fwd (ClientDisconnect awu) = do
         rms <- handleClientDisconnect awu
         lift . sendFwd $ ClientData awu rms
@@ -186,6 +190,31 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
     -- Do they lose everything they owned?
     rev (ServerDisconnect awu) =
         lift . sendRev $ (ServerDisconnect awu)
+
+-- Theoretically the left of the returned pair from this is a different type
+-- since it should never contain an unsubscribe
+handleUnsubscriptions ::
+    (Monad m, Ord i, Ord u, Show i, Show u) =>
+    AddrWithUser i u ->
+    [Om] ->
+    StateT (Registered (AddrWithUser i u)) m ([Om], [Message])
+handleUnsubscriptions awu ms = do
+    let (otherMs, unsubs) = partitionEithers $ map (unsubPath) ms
+    merrs <- mapM handleUnsubscription unsubs
+    return (otherMs, catMaybes merrs)
+  where
+    unsubPath (_, MsgUnsubscribe p) = Right p
+    unsubPath m = Left m
+    handleUnsubscription ::
+        (Monad m) =>
+        Path ->
+        StateT (Registered (AddrWithUser i u)) m (Maybe Message)
+    handleUnsubscription p = do
+        subs <- get
+        let subs' = Mos.delete (awuAddr awu) p subs
+        put subs'
+        return $ if subs == subs' then Just $ invalidUnsub p else Nothing
+    invalidUnsub p = MsgError p "unsubscribe when not subscribed"
 
 handleClientData ::
     (Monad m, Ord i, Ord u, Show i, Show u) =>
