@@ -141,9 +141,7 @@ treeDeltaToMsg p td = case td of
     (Tree.Set t v i s a) -> MsgSet p t v i s a
 
 deltaToMsg :: VsDelta -> Message
-deltaToMsg (p, d) = case d of
-    (Left tp) -> MsgAssignType p tp
-    (Right td) -> treeDeltaToMsg p td
+deltaToMsg (p, d) = either (MsgAssignType p) (treeDeltaToMsg p) d
 
 -- This is kinda fanoutable rather than routable
 -- Also not sure about the either, should there be a strategy type instead?
