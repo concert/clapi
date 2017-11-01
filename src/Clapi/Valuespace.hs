@@ -10,6 +10,8 @@ import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import Data.Map.Strict.Merge (
+    merge, zipWithMaybeMatched, dropMissing, preserveMissing)
 import Data.Monoid ((<>))
 import qualified Data.Text as T
 import Text.Printf (printf)
@@ -30,7 +32,8 @@ import Clapi.Types (
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
-    treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths)
+    treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths,
+    TreeDelta, treeDiff)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, fromText, enumDesc, validate, desc)
 
@@ -221,6 +224,27 @@ data Valuespace v = Valuespace {
     _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
     } deriving (Eq)
 makeLenses ''Valuespace
+
+unvalidate :: Valuespace v -> Valuespace Unvalidated
+unvalidate (Valuespace tr ty x d u) = Valuespace tr ty x d u
+
+vsGetTree :: Valuespace v -> VsTree
+vsGetTree = view tree
+
+type VsDelta = (NodePath, Either TypePath (TreeDelta [ClapiValue]))
+
+vsDiff :: Valuespace v -> Valuespace w -> [VsDelta]
+vsDiff v0 v1 = (map taAsVd typeAssigns) ++ (tdAsVd nd)
+  where
+    nd = treeDiff (vsGetTree v0) (vsGetTree v1)
+    tdAsVd (Right tds) = map (\(p, td) -> (p, Right td)) tds
+    taAsVd (p, ta) = (p, Left ta)
+    typeAssigns = Map.assocs $ merge
+        (dropMissing)
+        (preserveMissing)
+        (zipWithMaybeMatched (\k t0 t1 -> if t0 == t1 then Nothing else Just t1))
+        (fst $ _types v0)
+        (fst $ _types v1)
 
 instance Show (Valuespace v) where
     show = show . view tree
