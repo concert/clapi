@@ -179,11 +179,11 @@ handleClientMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMess
 handleClientMessages respondTo msgs vs = (rmsgs, vs)
   where
     subMsgs = concatMap createMsgs subPaths
-    createMsgs p = [assignMsg p] ++ nodeMsgs p
-    assignMsg p = case getType vs p of
-        (Just tp) -> MsgAssignType p tp
-    nodeMsgs p = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty $ nodeFor p
-    nodeFor p = fromJust $ Map.lookup p $ vsGetTree vs
+    createMsgs p = case nodeInfo p of
+        (Just tp, Just n) -> [MsgAssignType p tp] ++ nodeMsgs p n
+        (Nothing, Nothing) -> [MsgError p "no such path"]
+    nodeInfo p = (getType vs p, Map.lookup p $ vsGetTree vs)
+    nodeMsgs p n = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty n
     subPaths = msgPath' <$> filter isSub msgs
     isSub (MsgSubscribe _) = True
     isSub _ = False
