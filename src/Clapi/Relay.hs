@@ -162,7 +162,7 @@ handleOwnerMessages respondTo msgs vs = (rmsgs, rvs)
   where
     -- FIXME: handle owner initiated error messages
     rvs = if errored then vs else vvs
-    errored = errMsgs /= []
+    errored = not $ null errMsgs
     (vcMsgs, errMsgs, vvs) = handleMutationMessages vs msgs
     fillerErrPaths = Set.toList $ let sop ms = Set.fromList $ map msgPath' ms in Set.difference (sop msgs) (sop errMsgs)
     fillerErrs = map (\p -> MsgError p "rejected due to other errors") fillerErrPaths
