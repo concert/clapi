@@ -163,8 +163,8 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
     fwd (ClientData awu ms) = do
         (toFwd, toReject) <- stateFst $ handleClientData awu ms
         (toFwd', unsubErrors) <- stateSnd $ handleUnsubscriptions awu toFwd
-        when (not $ null $ toReject ++ unsubErrors) $
-            lift . sendRev $ ServerData awu toReject
+        let rejections = toReject ++ unsubErrors
+        when (not $ null $ rejections) $ lift . sendRev $ ServerData awu rejections
         when (not $ null toFwd) $ lift . sendFwd $ ClientData awu toFwd'
     fwd (ClientDisconnect awu) = do
         rms <- handleClientDisconnect awu
@@ -194,7 +194,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
 -- Theoretically the left of the returned pair from this is a different type
 -- since it should never contain an unsubscribe
 handleUnsubscriptions ::
-    (Monad m, Ord i, Ord u, Show i, Show u) =>
+    forall m u i. (Monad m, Ord i, Ord u, Show i, Show u) =>
     AddrWithUser i u ->
     [Om] ->
     StateT (Registered (AddrWithUser i u)) m ([Om], [Message])
@@ -206,12 +206,12 @@ handleUnsubscriptions awu ms = do
     unsubPath (_, MsgUnsubscribe p) = Right p
     unsubPath m = Left m
     handleUnsubscription ::
-        (Monad m) =>
+        (Monad m, Ord u, Ord i) =>
         Path ->
         StateT (Registered (AddrWithUser i u)) m (Maybe Message)
     handleUnsubscription p = do
         subs <- get
-        let subs' = Mos.delete (awuAddr awu) p subs
+        let subs' = Mos.delete awu p subs
         put subs'
         return $ if subs == subs' then Just $ invalidUnsub p else Nothing
     invalidUnsub p = MsgError p "unsubscribe when not subscribed"

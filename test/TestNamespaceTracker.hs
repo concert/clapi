@@ -191,7 +191,8 @@ testUnsubscribeWhenNotSubscribed =
       sendFwd $ ClientData alice [msg ["owned"] Unsubscribe]
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
-      lift $ assertBool "empty" (null resps)
+      lift $ assertOnlyKeysInMap [alice] resps
+      lift $ assertSingleError alice ["owned"] ["unsubscribe"] resps
   in
     runEffect protocol
 
