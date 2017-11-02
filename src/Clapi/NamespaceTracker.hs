@@ -10,7 +10,7 @@ import Data.List (partition)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Either (partitionEithers)
 
 import Control.Lens (view, set, Lens', _1, _2)
@@ -24,7 +24,7 @@ import Clapi.Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(ClStrin
 import Clapi.Server (AddrWithUser, ClientAddr, ClientEvent(..), ServerEvent(..), awuAddr)
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
-data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
+data Ownership = Owner | Client deriving (Eq, Show)
 type Owners i = Map.Map Name i
 -- This is kinda fanoutable rather than routable
 -- Also not sure about the either, should there be a strategy type instead?
@@ -43,9 +43,9 @@ isNamespace :: Path -> Bool
 isNamespace (n:[]) = True
 isNamespace _ = False
 
-methodAllowed :: (Ownership, ClapiMethod) -> Bool
-methodAllowed (Client, m) = m /= Error
-methodAllowed (Unclaimed, Error) = False
+methodAllowed :: (Maybe Ownership, ClapiMethod) -> Bool
+methodAllowed (Just Client, m) = m /= Error
+methodAllowed (Nothing, Error) = False
 methodAllowed (_, Subscribe) = False
 methodAllowed (_, Unsubscribe) = False
 methodAllowed _ = True
@@ -229,16 +229,15 @@ handleClientData awu ms =
     let (goodTrackedMessages, badTrackedMessages) = partition
             (\(o, m) -> methodAllowed (o, msgMethod' m))
             (map (tagOwnership awu owners) ms)
-    return (goodTrackedMessages, map (uncurry disallowedMsg) badTrackedMessages)
+    return (map umo goodTrackedMessages, map (uncurry disallowedMsg . umo) badTrackedMessages)
+  where
+    umo (mo, m) = (fromMaybe Owner mo, m)
 
-
-tagOwnership :: (Ord i, Ord u) => AddrWithUser i u -> Owners (AddrWithUser i u) -> Message -> Om
+tagOwnership :: (Ord i, Ord u) => AddrWithUser i u -> Owners (AddrWithUser i u) -> Message -> (Maybe Ownership, Message)
 tagOwnership i owners msg = (owner msg, msg)
   where
     owner = getNsOwnership . namespace . msgPath'
-    getNsOwnership name = case Map.lookup name owners of
-      Nothing -> Unclaimed
-      Just i' -> if i' == i then Owner else Client
+    getNsOwnership name = (\i' -> if i' == i then Owner else Client) <$> Map.lookup name owners
 
 
 handleClientDisconnect ::

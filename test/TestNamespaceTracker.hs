@@ -131,8 +131,6 @@ fakeRelay = forever $ waitThen fwd undefined
     fwd (ClientConnect _ _) = return ()
     fwd (ClientData i oms) = sendRev $ ServerData i $ map (mkRoutable i) oms
     fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
-    -- FIXME: the relay MUSTN'T come back with unclaimed, ATM types allow
-    mkRoutable _ (Unclaimed, m) = RoutableMessage (Right Owner) m
     mkRoutable i (Client, MsgSubscribe p) = RoutableMessage (Left $ awuAddr i) (MsgAssignType p [])
     mkRoutable _ (o, m) = RoutableMessage (Right o) m
 
