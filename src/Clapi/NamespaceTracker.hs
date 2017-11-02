@@ -81,21 +81,26 @@ registerSubscriptions i rms = filterM processMsg rms
     processMsg _ = return True
 
 fanOutBundle ::
-    (Monad m, Ord i, Ord u, Show i, Show u) => AddrWithUser i u -> [RoutableMessage i] ->
-    StateT (Registered (AddrWithUser i u)) (NsProtocol m i u) ()
-fanOutBundle i rms = get >>=
-    mapM_ (lift . sendRev . uncurry ServerData) .
-        Map.toList . Map.filter (not . null) . Map.mapWithKey (deriveMsgs rms)
+    (Monad m, Ord i, Ord u, Show i, Show u) =>
+    [RoutableMessage i] ->
+    StateT (Owners (AddrWithUser i u), Registered (AddrWithUser i u)) (NsProtocol m i u) ()
+fanOutBundle rms = do
+    (po, ps) <- get
+    let allRecipients = Set.toList $ Set.union (ownerAwus po) (Map.keysSet ps)
+    let bundles = map (msgsFor rms po ps) allRecipients
+    let sendables = map (uncurry ServerData) $ filter (not . null . snd) $ zip allRecipients bundles
+    lift $ mapM_ sendRev sendables
   where
-    deriveMsgs rms i' ps = rmMsg <$> filter (includeMsg i' ps) rms
-    includeMsg i' ps rm =
-        -- NOT SURE THIS IS TRUE! don't they go to the owner? isn't it owner ones that do this?
-        -- Client messages should only go to their targeted client, others go to
-        -- whoever's registered:
-        either
-            (\addr -> addr == (awuAddr i'))
-            (\o -> if o == Client then i' == i else msgPath' (rmMsg rm) `elem` ps)
-            (rmRoute rm)
+    msgsFor rms po ps awu = map rmMsg $ filter (includeMsg po ps awu) rms
+    includeMsg po ps awu rm = either
+        (\addr -> addr == awuAddr awu)
+        (\o -> let p = msgPath' $ rmMsg rm in case o of
+            Owner -> isSubscriber ps awu p
+            Client -> isOwner po awu p)
+        (rmRoute rm)
+    isOwner po awu p = Map.lookup (namespace p) po == Just awu
+    isSubscriber ps awu p = p `elem` Map.findWithDefault mempty awu ps
+    ownerAwus po = Set.fromList $ Map.elems po
 
 handleDeletedNamespace ::
     (Monad m, Ord i, Ord u) => RoutableMessage i -> StateT (Registered (AddrWithUser i u)) m ()
@@ -181,10 +186,9 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         stateFst $ updateOwnerships awu rms
         -- FIXME: use of registereSubscriptions whined and whined about needing
         -- FlexibleContexts, but I have not idea why...
-        stateSnd (
-            registerSubscriptions awu rms >>=
-            fanOutBundle awu >>
-            mapM_ handleDeletedNamespace rms)
+        stateSnd $ registerSubscriptions awu rms
+        fanOutBundle rms
+        stateSnd $ mapM_ handleDeletedNamespace rms
     -- What do we do if we told the client to go away? Obviously pass that on
     -- and drop registrations, but what about ownership?
     -- Do they lose everything they owned?

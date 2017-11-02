@@ -44,7 +44,8 @@ tests = [
     testCase "claim unclaim in bunde" testClaimUnclaimInBundle,
     testCase "client disconnect unsubscribes" testClientDisconnectUnsubs,
     testCase "client disconnects resubscribes" testClientDisconnectUnsubsResubs,
-    testCase "owner disconnect disowns" testOwnerDisconnectDisowns
+    testCase "owner disconnect disowns" testOwnerDisconnectDisowns,
+    testCase "client set forwarded to owner" testClientSetForwarded
     ]
 
 assertMsgMethod :: ClapiMethod -> Message -> IO ()
@@ -317,6 +318,13 @@ testOwnerDisconnectDisowns = do
   where
     alice'' = newAwu 44 "alice"
     alice''' = newAwu 45 "alice"
+
+testClientSetForwarded = do
+    response <- trackerHelper [
+        ClientData alice [msg ["hello"] AssignType],
+        ClientData bob [msg ["hello"] Set]]
+    assertOnlyKeysInMap [alice] response
+    assertMapValue alice [[msg ["hello"] Set]] response
 
 trackerHelper = trackerHelper' mempty mempty
 
