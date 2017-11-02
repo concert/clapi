@@ -24,7 +24,7 @@ import Clapi.Valuespace (
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
     vsGetTree, VsDelta, vsDiff, getType)
 import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..))
-import Clapi.Server (User)
+import Clapi.Server (ClientEvent(..), ServerEvent(..), AddrWithUser(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
 
@@ -200,10 +200,12 @@ handleMessages vs respondTo msgs = runState doHandle vs
         cms <- handleClientMessagesS respondTo $ map snd client
         return $ oms ++ cms
 
-relay :: Monad m => Valuespace Validated -> Protocol (i, [Om]) Void [RoutableMessage i] Void m ()
+-- FIXME: try without the wrapper types here
+relay :: Monad m => Valuespace Validated -> Protocol (ClientEvent (AddrWithUser i u) [Om] ()) Void (ServerEvent (AddrWithUser i u) [RoutableMessage i]) Void m ()
 relay vs = waitThen fwd (const $ error "message from the void")
   where
-    fwd (i, ms) = do
-        let (ms', vs') = handleMessages vs i ms
-        sendRev ms'
+    fwd (ClientData awu ms) = do
+        let (ms', vs') = handleMessages vs (awuAddr awu) ms
+        sendRev $ ServerData awu ms'
         relay vs'
+    fwd _ = relay vs
