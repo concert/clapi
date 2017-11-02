@@ -18,6 +18,7 @@ library
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
+                     , Clapi.Auth
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
