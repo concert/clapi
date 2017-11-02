@@ -227,7 +227,6 @@ handleClientData ::
     StateT (Owners (AddrWithUser i u)) m ([Om], [Message])
 handleClientData awu ms =
   do
-    -- FIXME: handle unsubscribes here?
     -- FIXME: fanout of owner errors here?
     owners <- get
     let (goodTrackedMessages, badTrackedMessages) = partition
