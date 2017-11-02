@@ -2,6 +2,7 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Trans (liftIO)
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
@@ -17,6 +18,13 @@ import Clapi.Relay (relay)
 import Clapi.Protocol ((<->))
 import Clapi.Auth (noAuth)
 import Clapi.Attributor (attributor)
+
+import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
+
+shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
+shower tag = forever $ waitThen (s sendFwd) (s sendRev)
+  where
+    s act ms = liftIO (putStrLn $ tag ++ (show ms)) >> act ms
 
 main :: IO ()
 main =
