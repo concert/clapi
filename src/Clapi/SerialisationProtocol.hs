@@ -38,11 +38,11 @@ eventWrapper ::
 eventWrapper p = do
     d <- wait
     case d of
-      Fwd (ClientConnect i b) -> sendFwd $ ClientConnect i b
-      Fwd (ClientDisconnect i) -> sendFwd $ ClientDisconnect i
+      Fwd (ClientConnect i b) -> (sendFwd $ ClientConnect i b) >> eventWrapper p
+      Fwd (ClientDisconnect i) -> (sendFwd $ ClientDisconnect i) >> eventWrapper p
       Fwd (ClientData i x) -> FreeT $ runFreeT p >>= goFree i (Fwd x)
       Rev (ServerData i y) -> FreeT $ runFreeT p >>= goFree i (Rev y)
-      Rev (ServerDisconnect i) -> sendRev $ ServerDisconnect i
+      Rev (ServerDisconnect i) -> (sendRev $ ServerDisconnect i) >> eventWrapper p
   where
     goFree
       :: i
