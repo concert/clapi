@@ -7,11 +7,11 @@ import Clapi.Protocol (Protocol, sendFwd, sendRev, waitThen)
 
 noAuth :: Monad m => Protocol
     (ClientEvent i B.ByteString b)
-    (ClientEvent (AddrWithUser i Int) B.ByteString b)
+    (ClientEvent (AddrWithUser i String) B.ByteString b)
     (ServerEvent i B.ByteString)
     -- FIXME: should be:
     -- (ServerEvent i B.ByteString)
-    (ServerEvent (AddrWithUser i Int) B.ByteString)
+    (ServerEvent (AddrWithUser i String) B.ByteString)
     m ()
 noAuth = forever $ waitThen fwd rev
   where
