@@ -16,6 +16,7 @@ import Clapi.NamespaceTracker (namespaceTrackerProtocol)
 import Clapi.Relay (relay)
 import Clapi.Protocol ((<->))
 import Clapi.Auth (noAuth)
+import Clapi.Attributor (attributor)
 
 main :: IO ()
 main =
@@ -26,4 +27,4 @@ main =
         protocolServer lsock perClientProto totalProto (return ())
   where
     perClientProto = noAuth <-> serialiser
-    totalProto = namespaceTrackerProtocol mempty mempty <-> relay mempty
+    totalProto = namespaceTrackerProtocol mempty mempty <-> attributor <-> relay mempty
