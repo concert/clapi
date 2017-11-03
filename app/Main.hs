@@ -22,9 +22,9 @@ import Clapi.Attributor (attributor)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
-shower tag = forever $ waitThen (s sendFwd) (s sendRev)
+shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
   where
-    s act ms = liftIO (putStrLn $ tag ++ (show ms)) >> act ms
+    s d act ms = liftIO (putStrLn $ tag ++ d ++ (show ms)) >> act ms
 
 main :: IO ()
 main =
@@ -34,5 +34,5 @@ main =
     withListen HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
-    perClientProto = shower "in: " <-> noAuth <-> eventSerialiser
-    totalProto = shower "total: " <-> namespaceTrackerProtocol mempty mempty <-> attributor <-> relay mempty
+    perClientProto = shower "network" <-> noAuth <-> eventSerialiser
+    totalProto = shower "total" <-> namespaceTrackerProtocol mempty mempty <-> attributor <-> shower "relay" <-> relay mempty
