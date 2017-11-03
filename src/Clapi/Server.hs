@@ -78,7 +78,7 @@ data ServerEvent ident a
 type ServerEvent' = ServerEvent ClientAddr
 
 instance Show (Q.InChan a) where
-    show _ = "InChan"
+    show _ = "<InChan>"
 
 _serveToChan ::
   Protocol
