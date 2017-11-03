@@ -44,7 +44,9 @@ tests = [
     testCase "claim unclaim in bunde" testClaimUnclaimInBundle,
     testCase "client disconnect unsubscribes" testClientDisconnectUnsubs,
     testCase "client disconnects resubscribes" testClientDisconnectUnsubsResubs,
-    testCase "owner disconnect disowns" testOwnerDisconnectDisowns
+    testCase "owner disconnect disowns" testOwnerDisconnectDisowns,
+    testCase "client set forwarded to owner" testClientSetForwarded,
+    testCase "direct errors fanout" testValidationErrorReturned
     ]
 
 assertMsgMethod :: ClapiMethod -> Message -> IO ()
@@ -131,8 +133,6 @@ fakeRelay = forever $ waitThen fwd undefined
     fwd (ClientConnect _ _) = return ()
     fwd (ClientData i oms) = sendRev $ ServerData i $ map (mkRoutable i) oms
     fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
-    -- FIXME: the relay MUSTN'T come back with unclaimed, ATM types allow
-    mkRoutable _ (Unclaimed, m) = RoutableMessage (Right Owner) m
     mkRoutable i (Client, MsgSubscribe p) = RoutableMessage (Left $ awuAddr i) (MsgAssignType p [])
     mkRoutable _ (o, m) = RoutableMessage (Right o) m
 
@@ -193,6 +193,20 @@ testUnsubscribeWhenNotSubscribed =
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
       lift $ assertSingleError alice ["owned"] ["unsubscribe"] resps
+  in
+    runEffect protocol
+
+testValidationErrorReturned =
+  let
+    protocol = assertions <-> namespaceTrackerProtocol mempty mempty <-> errorSender
+    errorSender = sendRev $ ServerData alice [RoutableMessage (Left $ awuAddr alice) err]
+    err = MsgError ["bad"] "wrong"
+    assertions = do
+        d <- wait
+        case d of
+            (Rev (ServerData i ms)) -> lift $ do
+                assertEqual "recipient" i alice
+                assertEqual "errs" [err] ms
   in
     runEffect protocol
 
@@ -319,6 +333,13 @@ testOwnerDisconnectDisowns = do
   where
     alice'' = newAwu 44 "alice"
     alice''' = newAwu 45 "alice"
+
+testClientSetForwarded = do
+    response <- trackerHelper [
+        ClientData alice [msg ["hello"] AssignType],
+        ClientData bob [msg ["hello"] Set]]
+    assertOnlyKeysInMap [alice] response
+    assertMapValue alice [[msg ["hello"] Set]] response
 
 trackerHelper = trackerHelper' mempty mempty
 

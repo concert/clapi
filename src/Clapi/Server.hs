@@ -77,6 +77,9 @@ data ServerEvent ident a
     deriving (Eq, Show)
 type ServerEvent' = ServerEvent ClientAddr
 
+instance Show (Q.InChan a) where
+    show _ = "<InChan>"
+
 _serveToChan ::
   Protocol
       (ClientEvent' B.ByteString (Q.InChan (ServerEvent i b))) a'

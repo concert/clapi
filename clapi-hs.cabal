@@ -18,6 +18,8 @@ library
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
+                     , Clapi.Attributor
+                     , Clapi.Auth
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
@@ -70,6 +72,7 @@ executable clapi-hs-exe
   build-depends:       base
                      , async
                      , clapi-hs
+                     , mtl
                      , network
                      , network-simple
                      , unix

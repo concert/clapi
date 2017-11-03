@@ -177,7 +177,7 @@ testProtocolServerClosesGracefully =
         protocolServer lsock cat echo (putMVar addrV laddr)
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
-    timeLimit 0.1 $ connect "127.0.0.1" port $ \(csock, _) -> do
+    timeLimit 0.2 $ connect "127.0.0.1" port $ \(csock, _) -> do
         let chat = send csock "hello" >> recv csock 4096
         -- We have to do some initial chatting to ensure the connection has
         -- been established before we kill the server, otherwise recv can get a

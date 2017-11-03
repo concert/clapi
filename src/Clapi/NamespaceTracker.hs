@@ -10,7 +10,7 @@ import Data.List (partition)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Either (partitionEithers)
 
 import Control.Lens (view, set, Lens', _1, _2)
@@ -24,7 +24,7 @@ import Clapi.Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(ClStrin
 import Clapi.Server (AddrWithUser, ClientAddr, ClientEvent(..), ServerEvent(..), awuAddr)
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
-data Ownership = Owner | Client | Unclaimed deriving (Eq, Show)
+data Ownership = Owner | Client deriving (Eq, Show)
 type Owners i = Map.Map Name i
 -- This is kinda fanoutable rather than routable
 -- Also not sure about the either, should there be a strategy type instead?
@@ -43,9 +43,9 @@ isNamespace :: Path -> Bool
 isNamespace (n:[]) = True
 isNamespace _ = False
 
-methodAllowed :: (Ownership, ClapiMethod) -> Bool
-methodAllowed (Client, m) = m /= Error
-methodAllowed (Unclaimed, Error) = False
+methodAllowed :: (Maybe Ownership, ClapiMethod) -> Bool
+methodAllowed (Just Client, m) = m /= Error
+methodAllowed (Nothing, Error) = False
 methodAllowed (_, Subscribe) = False
 methodAllowed (_, Unsubscribe) = False
 methodAllowed _ = True
@@ -81,21 +81,27 @@ registerSubscriptions i rms = filterM processMsg rms
     processMsg _ = return True
 
 fanOutBundle ::
-    (Monad m, Ord i, Ord u, Show i, Show u) => AddrWithUser i u -> [RoutableMessage i] ->
-    StateT (Registered (AddrWithUser i u)) (NsProtocol m i u) ()
-fanOutBundle i rms = get >>=
-    mapM_ (lift . sendRev . uncurry ServerData) .
-        Map.toList . Map.filter (not . null) . Map.mapWithKey (deriveMsgs rms)
+    (Monad m, Ord i, Ord u, Show i, Show u) =>
+    AddrWithUser i u ->
+    [RoutableMessage i] ->
+    StateT (Owners (AddrWithUser i u), Registered (AddrWithUser i u)) (NsProtocol m i u) ()
+fanOutBundle awu rms = do
+    (po, ps) <- get
+    let allRecipients = Set.toList $ foldl Set.union (Set.singleton awu) [ownerAwus po, Map.keysSet ps]
+    let bundles = map (msgsFor rms po ps) allRecipients
+    let sendables = map (uncurry ServerData) $ filter (not . null . snd) $ zip allRecipients bundles
+    lift $ mapM_ sendRev sendables
   where
-    deriveMsgs rms i' ps = rmMsg <$> filter (includeMsg i' ps) rms
-    includeMsg i' ps rm =
-        -- NOT SURE THIS IS TRUE! don't they go to the owner? isn't it owner ones that do this?
-        -- Client messages should only go to their targeted client, others go to
-        -- whoever's registered:
-        either
-            (\addr -> addr == (awuAddr i'))
-            (\o -> if o == Client then i' == i else msgPath' (rmMsg rm) `elem` ps)
-            (rmRoute rm)
+    msgsFor rms po ps awu = map rmMsg $ filter (includeMsg po ps awu) rms
+    includeMsg po ps awu rm = either
+        (\addr -> addr == awuAddr awu)
+        (\o -> let p = msgPath' $ rmMsg rm in case o of
+            Owner -> isSubscriber ps awu p
+            Client -> isOwner po awu p)
+        (rmRoute rm)
+    isOwner po awu p = Map.lookup (namespace p) po == Just awu
+    isSubscriber ps awu p = p `elem` Map.findWithDefault mempty awu ps
+    ownerAwus po = Set.fromList $ Map.elems po
 
 handleDeletedNamespace ::
     (Monad m, Ord i, Ord u) => RoutableMessage i -> StateT (Registered (AddrWithUser i u)) m ()
@@ -181,10 +187,9 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         stateFst $ updateOwnerships awu rms
         -- FIXME: use of registereSubscriptions whined and whined about needing
         -- FlexibleContexts, but I have not idea why...
-        stateSnd (
-            registerSubscriptions awu rms >>=
-            fanOutBundle awu >>
-            mapM_ handleDeletedNamespace rms)
+        stateSnd $ registerSubscriptions awu rms
+        fanOutBundle awu rms
+        stateSnd $ mapM_ handleDeletedNamespace rms
     -- What do we do if we told the client to go away? Obviously pass that on
     -- and drop registrations, but what about ownership?
     -- Do they lose everything they owned?
@@ -223,22 +228,20 @@ handleClientData ::
     StateT (Owners (AddrWithUser i u)) m ([Om], [Message])
 handleClientData awu ms =
   do
-    -- FIXME: handle unsubscribes here?
     -- FIXME: fanout of owner errors here?
     owners <- get
     let (goodTrackedMessages, badTrackedMessages) = partition
             (\(o, m) -> methodAllowed (o, msgMethod' m))
             (map (tagOwnership awu owners) ms)
-    return (goodTrackedMessages, map (uncurry disallowedMsg) badTrackedMessages)
+    return (map umo goodTrackedMessages, map (uncurry disallowedMsg . umo) badTrackedMessages)
+  where
+    umo (mo, m) = (fromMaybe Owner mo, m)
 
-
-tagOwnership :: (Ord i, Ord u) => AddrWithUser i u -> Owners (AddrWithUser i u) -> Message -> Om
+tagOwnership :: (Ord i, Ord u) => AddrWithUser i u -> Owners (AddrWithUser i u) -> Message -> (Maybe Ownership, Message)
 tagOwnership i owners msg = (owner msg, msg)
   where
     owner = getNsOwnership . namespace . msgPath'
-    getNsOwnership name = case Map.lookup name owners of
-      Nothing -> Unclaimed
-      Just i' -> if i' == i then Owner else Client
+    getNsOwnership name = (\i' -> if i' == i then Owner else Client) <$> Map.lookup name owners
 
 
 handleClientDisconnect ::
