@@ -45,7 +45,8 @@ tests = [
     testCase "client disconnect unsubscribes" testClientDisconnectUnsubs,
     testCase "client disconnects resubscribes" testClientDisconnectUnsubsResubs,
     testCase "owner disconnect disowns" testOwnerDisconnectDisowns,
-    testCase "client set forwarded to owner" testClientSetForwarded
+    testCase "client set forwarded to owner" testClientSetForwarded,
+    testCase "direct errors fanout" testValidationErrorReturned
     ]
 
 assertMsgMethod :: ClapiMethod -> Message -> IO ()
@@ -192,6 +193,20 @@ testUnsubscribeWhenNotSubscribed =
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
       lift $ assertSingleError alice ["owned"] ["unsubscribe"] resps
+  in
+    runEffect protocol
+
+testValidationErrorReturned =
+  let
+    protocol = assertions <-> namespaceTrackerProtocol mempty mempty <-> errorSender
+    errorSender = sendRev $ ServerData alice [RoutableMessage (Left $ awuAddr alice) err]
+    err = MsgError ["bad"] "wrong"
+    assertions = do
+        d <- wait
+        case d of
+            (Rev (ServerData i ms)) -> lift $ do
+                assertEqual "recipient" i alice
+                assertEqual "errs" [err] ms
   in
     runEffect protocol
 
