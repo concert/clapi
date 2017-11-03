@@ -82,11 +82,12 @@ registerSubscriptions i rms = filterM processMsg rms
 
 fanOutBundle ::
     (Monad m, Ord i, Ord u, Show i, Show u) =>
+    AddrWithUser i u ->
     [RoutableMessage i] ->
     StateT (Owners (AddrWithUser i u), Registered (AddrWithUser i u)) (NsProtocol m i u) ()
-fanOutBundle rms = do
+fanOutBundle awu rms = do
     (po, ps) <- get
-    let allRecipients = Set.toList $ Set.union (ownerAwus po) (Map.keysSet ps)
+    let allRecipients = Set.toList $ foldl Set.union (Set.singleton awu) [ownerAwus po, Map.keysSet ps]
     let bundles = map (msgsFor rms po ps) allRecipients
     let sendables = map (uncurry ServerData) $ filter (not . null . snd) $ zip allRecipients bundles
     lift $ mapM_ sendRev sendables
@@ -187,7 +188,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         -- FIXME: use of registereSubscriptions whined and whined about needing
         -- FlexibleContexts, but I have not idea why...
         stateSnd $ registerSubscriptions awu rms
-        fanOutBundle rms
+        fanOutBundle awu rms
         stateSnd $ mapM_ handleDeletedNamespace rms
     -- What do we do if we told the client to go away? Obviously pass that on
     -- and drop registrations, but what about ownership?
