@@ -340,7 +340,9 @@ validateChildKeyTypes getType' np n expectedTypes =
     expectedTypeMap = Map.fromList $
         zip keys (zip expectedTypes (getChildPaths np n))
     failTypes bad = when (not . null $ bad) $ fail $
-        printf "bad child types %s" (show bad)
+        printf "bad child types for %s:%s" (show np) (concat $ map fmtBct $ Map.assocs bad)
+    fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
+    fmtBct (p, (ap, ep)) = printf " (%s: %s != %s)" (show p) (show ap) (show ep)
   in do
     taggedBadTypes <-
         fmap (Map.filter (uncurry (/=))) $
