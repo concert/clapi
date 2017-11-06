@@ -25,7 +25,7 @@ import Clapi.Valuespace (
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
     vsGetTree, VsDelta, vsDiff, getType, Liberty(Cannot))
 import Clapi.Tree (_getSites)
-import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..), isNamespace)
+import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..), maybeNamespace)
 import Clapi.Server (ClientEvent(..), ServerEvent(..), AddrWithUser(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
@@ -231,8 +231,8 @@ data NsChange =
   | NsRemove Name
 
 nsChange :: VsDelta -> Maybe NsChange
-nsChange (p, Left tp) = if isNamespace p then Just $ NsAssign (head p) tp else Nothing
-nsChange (p, Right Tree.Delete) = if isNamespace p then Just $ NsRemove (head p) else Nothing
+nsChange (p, Left tp) = maybeNamespace (flip NsAssign tp) p
+nsChange (p, Right Tree.Delete) = maybeNamespace NsRemove p
 nsChange _ = Nothing
 
 updateRootType :: [ClapiValue] -> NsChange -> [ClapiValue]
