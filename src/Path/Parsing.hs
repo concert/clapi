@@ -5,7 +5,8 @@ import qualified Data.Text as T
 import Control.Applicative ((<|>))
 import Control.Monad.Fail (MonadFail)
 
-import Data.Attoparsec.Text (Parser, char, letter, satisfy, many', parseOnly)
+import Data.Attoparsec.Text (
+    Parser, char, letter, satisfy, many1, sepBy, parseOnly)
 
 import Clapi.Util (eitherFail)
 import Clapi.Path (Path, root)
@@ -15,17 +16,14 @@ sepChar = '/'
 separatorP :: Parser Char
 separatorP = char sepChar
 
+isValidPathSegmentChar :: Char -> Bool
+isValidPathSegmentChar c = isLetter c || isDigit c || c == '_'
+
 nameP :: Parser String
-nameP = do
-    first <- firstChar
-    rest <- many' restChar
-    return (first:rest)
-    where
-        firstChar = letter
-        restChar = satisfy (\c -> isLetter c || isDigit c || c == '_')
+nameP = many1 $ satisfy isValidPathSegmentChar
 
 pathP :: Parser Path
-pathP = many' (separatorP >> nameP) <|> (separatorP >> return root)
+pathP = separatorP >> nameP `sepBy` separatorP
 
 toString :: Path -> String
 toString [] = [sepChar]

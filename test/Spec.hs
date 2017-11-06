@@ -5,6 +5,7 @@ module Main (
 import Test.Framework (defaultMain, Test)
 
 import qualified Data.Map.TestMos (tests)
+import qualified TestPath (tests)
 import qualified TestProtocol (tests)
 import qualified TestNamespaceTracker (tests)
 import qualified TestServer (tests)
@@ -23,6 +24,7 @@ tests :: [Test]
 tests = mconcat [
     TestUtil.tests,
     Data.Map.TestMos.tests,
+    TestPath.tests,
     TestProtocol.tests,
     TestNamespaceTracker.tests,
     TestServer.tests,

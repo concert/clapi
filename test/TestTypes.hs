@@ -10,7 +10,6 @@ import Data.Word (Word16)
 import qualified Data.Map.Strict as Map
 
 import Helpers (assertFailed)
-import Clapi.Path (root, up)
 import Clapi.Types (
     CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
     Interpolation(..), fromClapiValue, toClapiValue)
@@ -20,8 +19,7 @@ import Clapi.Serialisation (encode, decode)
 tests = [
     testProperty "roundtrip ClapiValue" testClapiValueConversionRoundTrip,
     testCase "roundtrip message" testBinarySerialisationRoundTrip,
-    testCase "string length" testEncodeTooLongString,
-    testCase "up" testUp
+    testCase "string length" testEncodeTooLongString
     ]
 
 
@@ -54,8 +52,3 @@ testEncodeTooLongString =
     where
       n = fromIntegral $ (maxBound :: Word16)
       longStr = replicate (n + 1) 'a'
-
-testUp =
-  do
-    assertEqual "root up failed" root $ up root
-    assertEqual "normal up failed" ["a"] $ up ["a", "b"]

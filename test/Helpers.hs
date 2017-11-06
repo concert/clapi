@@ -7,18 +7,19 @@ import Data.Either.Combinators (fromLeft)
 import Data.List (isInfixOf)
 import Data.Maybe (isJust, fromJust)
 import System.Timeout
-import Test.HUnit (Assertion, assertBool)
+import Test.HUnit (Assertion, assertBool, assertFailure)
 
 
 seconds = truncate . (* 1e6)
 
 -- FIXME: could try to update to use MonadExcept?
-assertFailed :: String -> Either String a -> Assertion
-assertFailed s =
-     assertBool (s ++ " did not fail") . either (const True) (const False)
+assertFailed :: Show a => String -> Either String a -> Assertion
+assertFailed s = either
+    (const $ return ())
+    (\x -> assertFailure $ s ++ " did not fail, instead was " ++ show x)
 
 
-assertFailedSubstr :: String -> String -> Either String b -> Assertion
+assertFailedSubstr :: Show b => String -> String -> Either String b -> Assertion
 assertFailedSubstr msg substr e =
   do
     assertFailed (msg ++ "did not fail") e
