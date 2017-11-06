@@ -166,7 +166,7 @@ handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
     (vErrs, vvs) = vsValidate vs''
     errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
     vcMsgs = dmsgs vs vvs
-    dmsgs v v' = map (\d -> deltaToMsg d) $ vsDiff v v'
+    dmsgs v v' = map deltaToMsg $ vsDiff v v'
 
 handleOwnerMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMessage i], Valuespace Validated)
 handleOwnerMessages respondTo msgs vs = (rmsgs, rvs)
