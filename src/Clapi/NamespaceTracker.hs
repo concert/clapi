@@ -43,6 +43,10 @@ isNamespace :: Path -> Bool
 isNamespace (n:[]) = True
 isNamespace _ = False
 
+maybeNamespace :: (Name -> a) -> Path -> Maybe a
+maybeNamespace f (n:[]) = Just $ f n
+maybeNamespace _ _ = Nothing
+
 methodAllowed :: (Maybe Ownership, ClapiMethod) -> Bool
 methodAllowed (Just Client, m) = m /= Error
 methodAllowed (Nothing, Error) = False

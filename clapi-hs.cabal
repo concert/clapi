@@ -72,6 +72,7 @@ executable clapi-hs-exe
   build-depends:       base
                      , async
                      , clapi-hs
+                     , containers
                      , mtl
                      , network
                      , network-simple
@@ -109,6 +110,7 @@ test-suite clapi-hs-test
                      , TestPath
                      , TestProtocol
                      , TestNamespaceTracker
+                     , TestRelay
                      , TestServer
                      , TestTextSerialisation
                      , TestTree

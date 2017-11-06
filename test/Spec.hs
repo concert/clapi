@@ -8,6 +8,7 @@ import qualified Data.Map.TestMos (tests)
 import qualified TestPath (tests)
 import qualified TestProtocol (tests)
 import qualified TestNamespaceTracker (tests)
+import qualified TestRelay (tests)
 import qualified TestServer (tests)
 import qualified TestTypes (tests)
 import qualified TestTree (tests)
@@ -26,6 +27,7 @@ tests = mconcat [
     Data.Map.TestMos.tests,
     TestPath.tests,
     TestProtocol.tests,
+    TestRelay.tests,
     TestNamespaceTracker.tests,
     TestServer.tests,
     TestTypes.tests,

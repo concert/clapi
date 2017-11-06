@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Clapi.Relay where
 
-import Data.List (partition)
+import Data.List (partition, intersperse)
 import Control.Monad.Fail (MonadFail)
 import Control.Monad.State (MonadState, StateT(..), evalStateT, runStateT, get, modify, put, State, state, runState)
 import qualified Data.Map as Map
@@ -9,25 +9,27 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import Text.Printf (printf)
 import Data.Void (Void)
+import Data.Maybe (mapMaybe)
 
 import Control.Lens (_1, _2)
 import Pipes (lift)
 import Pipes.Core (Client, request)
 
 import Clapi.Util (eitherFail)
-import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue)
-import Clapi.Path (Path)
+import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue(..), Time(..), Enumerated(..), toClapiValue)
+import Clapi.Path (Path, Name)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, validate)
 import Clapi.Valuespace (
     VsTree, Valuespace(..), vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
-    vsGetTree, VsDelta, vsDiff, getType)
-import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..))
+    vsGetTree, VsDelta, vsDiff, getType, Liberty(Cannot))
+import Clapi.Tree (_getSites)
+import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..), maybeNamespace)
 import Clapi.Server (ClientEvent(..), ServerEvent(..), AddrWithUser(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
-
+import Path.Parsing (toString)
 
 -- failyModify :: (MonadState s m) => (s -> CanFail s) -> m (Maybe String)
 -- failyModify f =
@@ -143,14 +145,29 @@ treeDeltaToMsg p td = case td of
 deltaToMsg :: VsDelta -> Message
 deltaToMsg (p, d) = either (MsgAssignType p) (treeDeltaToMsg p) d
 
+modifyRootTypePath :: Valuespace Validated -> Valuespace Unvalidated -> Valuespace Unvalidated
+modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
+  where
+    rootTypePath = moe "root has no type" $ getType vs' []
+    rootTypeNode = loe "root type path missing" rootTypePath $ vsGetTree vs'
+    (a, mtp) = loe "root type missing zero" z $ loe "root type missing global site" Nothing $ _getSites rootTypeNode
+    (i, rootType) = moe "root type deleted" mtp
+    rootType' = foldl updateRootType rootType $ mapMaybe nsChange $ vsDiff vs vs'
+    vs'' = moe "root type set failed" $ vsSet a i rootType' rootTypePath Nothing z vs'
+    z = Time 0 0
+    loe s k m = moe s $ Map.lookup k m
+    moe s m = maybe (error s) id m
+
 handleMutationMessages :: Valuespace Validated -> [Message] -> ([Message], [Message], Valuespace Validated)
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
     errs = Map.union aErrs vErrs
     (aErrs, vs') = applyMessages vs msgs
-    (vErrs, vvs) = vsValidate vs'
+    vs'' = modifyRootTypePath vs vs'
+    (vErrs, vvs) = vsValidate vs''
     errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
-    vcMsgs = map (\d -> deltaToMsg d) $ vsDiff vs vvs
+    vcMsgs = dmsgs vs vvs
+    dmsgs v v' = map deltaToMsg $ vsDiff v v'
 
 handleOwnerMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMessage i], Valuespace Validated)
 handleOwnerMessages respondTo msgs vs = (rmsgs, rvs)
@@ -209,3 +226,24 @@ relay vs = waitThen fwd (const $ error "message from the void")
         sendRev $ ServerData awu ms'
         relay vs'
     fwd _ = relay vs
+
+data NsChange =
+    NsAssign Name Path
+  | NsRemove Name
+
+nsChange :: VsDelta -> Maybe NsChange
+nsChange (p, Left tp) = maybeNamespace (flip NsAssign tp) p
+nsChange (p, Right Tree.Delete) = maybeNamespace NsRemove p
+nsChange _ = Nothing
+
+updateRootType :: [ClapiValue] -> NsChange -> [ClapiValue]
+updateRootType [lib, doc, ClList names, ClList types, ClList libs] m = lib:doc:tinfo
+  where
+    tinfo = map ClList $ case m of
+        (NsAssign n tp) -> [c n:names, cp tp:types, cannot:libs]
+        (NsRemove n) -> l3 . unzip3 $ filter (nameIsnt n) $ zip3 names types libs
+    l3 (ns, ts, ls) = [ns, ts, ls]
+    nameIsnt n (n', _, _) = n' /= c n
+    c = ClString . T.pack
+    cp = c . toString
+    cannot = toClapiValue $ Enumerated Cannot

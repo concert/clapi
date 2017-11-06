@@ -209,6 +209,7 @@ valuesToDef
     t' <- Path.fromString $ T.unpack t
     cl' <- getEnum <$> fromClapiValue cl
     arrayDef l' d t' cl'
+-- TODO: This error doesn't give you much of a hint
 valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
 
@@ -332,15 +333,16 @@ validateChildren vs =
 
 
 validateChildKeyTypes ::
-    (MonadFail m) => (NodePath -> m TypePath) -> NodePath -> Node ->
-    [TypePath] -> m ()
-validateChildKeyTypes getType' np n expectedTypes =
+    (MonadFail m) => (NodePath -> m TypePath) -> NodePath ->
+    [Path.Name] -> [TypePath] -> m ()
+validateChildKeyTypes getType' np orderedKeys expectedTypes =
   let
-    keys = view getKeys n
     expectedTypeMap = Map.fromList $
-        zip keys (zip expectedTypes (getChildPaths np n))
+        zip orderedKeys (zip expectedTypes ((np +|) <$> orderedKeys))
     failTypes bad = when (not . null $ bad) $ fail $
-        printf "bad child types %s" (show bad)
+        printf "bad child types for %s:%s" (show np) (concatMap fmtBct $ Map.assocs bad)
+    fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
+    fmtBct (p, (ap, ep)) = printf " (%s: %s != %s)" (show p) (show ap) (show ep)
   in do
     taggedBadTypes <-
         fmap (Map.filter (uncurry (/=))) $
@@ -365,7 +367,7 @@ validateNodeChildren getType' np node def@(StructDef {}) =
         (show nodeKeys)
   in do
     when ((missing, extra) /= mempty) failKeys
-    validateChildKeyTypes getType' np node expectedTypes
+    validateChildKeyTypes getType' np expectedKeys expectedTypes
 validateNodeChildren getType' np node def@(ArrayDef {}) =
   let
     nodeKeys = view getKeys node
@@ -378,7 +380,7 @@ validateNodeChildren getType' np node def@(ArrayDef {}) =
   in do
     mapM_ (eitherFail . parseOnly Path.nameP . T.pack) nodeKeys
     failDups
-    validateChildKeyTypes getType' np node (repeat expectedType)
+    validateChildKeyTypes getType' np nodeKeys (repeat expectedType)
 
 
 flattenNestedMaps ::
