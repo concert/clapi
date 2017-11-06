@@ -106,6 +106,7 @@ test-suite clapi-hs-test
   other-modules:       Helpers
                      , Data.Map.TestMos
                      , TestSerialisationProtocol
+                     , TestPath
                      , TestProtocol
                      , TestNamespaceTracker
                      , TestServer

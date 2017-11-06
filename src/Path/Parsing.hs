@@ -5,7 +5,8 @@ import qualified Data.Text as T
 import Control.Applicative ((<|>))
 import Control.Monad.Fail (MonadFail)
 
-import Data.Attoparsec.Text (Parser, char, letter, satisfy, many', parseOnly)
+import Data.Attoparsec.Text (
+    Parser, char, letter, satisfy, many', many1, parseOnly)
 
 import Clapi.Util (eitherFail)
 import Clapi.Path (Path, root)
@@ -25,7 +26,7 @@ nameP = do
         restChar = satisfy (\c -> isLetter c || isDigit c || c == '_')
 
 pathP :: Parser Path
-pathP = many' (separatorP >> nameP) <|> (separatorP >> return root)
+pathP = many1 (separatorP >> nameP) <|> (separatorP >> return root)
 
 toString :: Path -> String
 toString [] = [sepChar]
