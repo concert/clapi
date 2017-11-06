@@ -209,6 +209,7 @@ valuesToDef
     t' <- Path.fromString $ T.unpack t
     cl' <- getEnum <$> fromClapiValue cl
     arrayDef l' d t' cl'
+-- TODO: This error doesn't give you much of a hint
 valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
 
