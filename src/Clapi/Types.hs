@@ -8,6 +8,7 @@ module Clapi.Types
         Clapiable,
         fromClapiValue,
         toClapiValue,
+        Bundle(..),
         ClapiMethod(..),
         Message(..),
         msgMethod',
@@ -94,6 +95,15 @@ data DataUpdateMessage =
 instance UMsg DataUpdateMessage where
     uMsgPath = duMsgPath
 
+
+data Bundle
+  = UpdateBundle [UMsgError] [TreeUpdateMessage] [DataUpdateMessage]
+  | RequestBundle [SubMessage] [DataUpdateMessage]
+  deriving (Eq, Show)
+
+
+-- Existing message type
+
 data Message =
     MsgError {msgPath' :: Path, msgErrTxt :: T.Text}
   | MsgSet {
@@ -139,6 +149,8 @@ msgMethod' (MsgAssignType {}) = AssignType
 msgMethod' (MsgDelete {}) = Delete
 msgMethod' (MsgChildren {}) = Children
 
+
+-- Values:
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
