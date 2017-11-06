@@ -244,5 +244,5 @@ updateRootType [lib, doc, ClList names, ClList types, ClList libs] m = lib:doc:t
     l3 (ns, ts, ls) = [ns, ts, ls]
     nameIsnt n (n', _, _) = n' /= c n
     c = ClString . T.pack
-    cp p = c $ concat $ intersperse "/" p
+    cp p = c $ ("/" ++) $ concat $ intersperse "/" p
     cannot = ClEnum $ fromIntegral $ fromEnum $ Cannot
