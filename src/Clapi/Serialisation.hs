@@ -30,7 +30,7 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
-    CanFail, ClapiValue(..), Message(..), ClapiMethod(..), Time(..),
+    CanFail, ClapiValue(..), Bundle(..), Message(..), ClapiMethod(..), Time(..),
     Interpolation(..)
     )
 import qualified Clapi.Path as Path
@@ -186,6 +186,10 @@ instance Serialisable [Message] where
         len <- parser :: Parser Word16
         messages <- count (fromIntegral len) (parser :: Parser Message)
         return messages
+
+instance Serialisable Bundle where
+    builder = undefined
+    parser = undefined
 
 badTag :: (MonadFail m) => String -> Char ->  m a
 badTag n c = fail $ "Bad " ++ n ++ " type tag '" ++ (show c) ++ "'"
