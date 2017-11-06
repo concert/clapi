@@ -35,6 +35,65 @@ instance MonadFail (Either String) where
 type Attributee = String
 type Site = String
 
+class UMsg a where
+   uMsgPath :: a -> Path
+
+data UMsgError = UMsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
+
+instance UMsg UMsgError where
+    uMsgPath = errMsgPath
+
+data SubMessage =
+    UMsgSubscribe {subMsgPath :: Path}
+  | UMsgUnsubscribe {subMsgPath :: Path}
+  deriving (Eq, Show)
+
+instance UMsg SubMessage where
+    uMsgPath = subMsgPath
+
+-- Separate because not valid in RequestBundle
+data TreeUpdateMessage =
+    UMsgAssignType {tuMsgPath :: Path, tuMsgTypePath :: Path}
+  | UMsgDelete {tuMsgPath :: Path}
+  deriving (Eq, Show)
+
+instance UMsg TreeUpdateMessage where
+    uMsgPath = tuMsgPath
+
+data DataUpdateMessage =
+    UMsgAdd {
+        duMsgPath :: Path,
+        duMsgTime :: Time,
+        duMsgArgs :: [ClapiValue],
+        duMsgInterpolation :: Interpolation,
+        duMsgAttributee :: (Maybe Attributee),
+        duMsgSite :: (Maybe Site)}
+  | UMsgSet {
+        duMsgPath :: Path,
+        duMsgTime :: Time,
+        duMsgArgs :: [ClapiValue],
+        duMsgInterpolation :: Interpolation,
+        duMsgAttributee :: (Maybe Attributee),
+        duMsgSite :: (Maybe Site)}
+  | UMsgRemove {
+        duMsgPath :: Path,
+        duMsgTime :: Time,
+        duMsgAttributee :: (Maybe Attributee),
+        duMsgSite :: (Maybe Site)}
+  | UMsgClear {
+        duMsgPath :: Path,
+        duMsgTime :: Time,
+        duMsgAttributee :: (Maybe Attributee),
+        duMsgSite :: (Maybe Site)}
+  | UMsgSetChildren {
+        duMsgPath :: Path,
+        duMsgNames :: [Name],
+        duMsgAttributee :: (Maybe Attributee)}
+   deriving (Eq, Show)
+
+instance UMsg DataUpdateMessage where
+    uMsgPath = duMsgPath
+
 data Message =
     MsgError {msgPath' :: Path, msgErrTxt :: T.Text}
   | MsgSet {
