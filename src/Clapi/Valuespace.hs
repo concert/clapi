@@ -340,7 +340,7 @@ validateChildKeyTypes getType' np orderedKeys expectedTypes =
     expectedTypeMap = Map.fromList $
         zip orderedKeys (zip expectedTypes ((np +|) <$> orderedKeys))
     failTypes bad = when (not . null $ bad) $ fail $
-        printf "bad child types for %s:%s" (show np) (concat $ map fmtBct $ Map.assocs bad)
+        printf "bad child types for %s:%s" (show np) (concatMap fmtBct $ Map.assocs bad)
     fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
     fmtBct (p, (ap, ep)) = printf " (%s: %s != %s)" (show p) (show ap) (show ep)
   in do
