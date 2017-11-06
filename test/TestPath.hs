@@ -18,9 +18,18 @@ import Clapi.Serialisation (encode, decode)
 
 
 tests = [
+    testCase "roundtrip path" testPathRoundtrip,
     testCase "path fromString" testPathFromString,
     testCase "up" testUp
     ]
+
+testPathRoundtrip =
+  do
+    rt "empty path" []
+    rt "top-level path" ["foo"]
+    rt "nested path" ["foo_1", "bar_2"]
+  where
+    rt s path = assertEqual s (fromString $ toString path) (Just path)
 
 testPathFromString =
   do
