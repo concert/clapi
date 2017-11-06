@@ -16,7 +16,7 @@ import Pipes (lift)
 import Pipes.Core (Client, request)
 
 import Clapi.Util (eitherFail)
-import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue(..), Time(..))
+import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue(..), Time(..), Enumerated(..), toClapiValue)
 import Clapi.Path (Path, Name)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, validate)
@@ -29,6 +29,7 @@ import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..), maybe
 import Clapi.Server (ClientEvent(..), ServerEvent(..), AddrWithUser(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
+import Path.Parsing (toString)
 
 -- failyModify :: (MonadState s m) => (s -> CanFail s) -> m (Maybe String)
 -- failyModify f =
@@ -244,5 +245,5 @@ updateRootType [lib, doc, ClList names, ClList types, ClList libs] m = lib:doc:t
     l3 (ns, ts, ls) = [ns, ts, ls]
     nameIsnt n (n', _, _) = n' /= c n
     c = ClString . T.pack
-    cp p = c $ ("/" ++) $ concat $ intersperse "/" p
-    cannot = ClEnum $ fromIntegral $ fromEnum $ Cannot
+    cp = c . toString
+    cannot = toClapiValue $ Enumerated Cannot
