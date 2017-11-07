@@ -133,6 +133,19 @@ typeTags = typeTag <$> [(minBound :: ClapiTypeEnum) ..]
 valueTag :: ClapiValue -> Char
 valueTag = typeTag . clapiValueType
 
+typeFromTag :: (MonadFail m) => Char -> m ClapiTypeEnum
+typeFromTag 't' = return ClTTime
+typeFromTag 'e' = return ClTEnum
+typeFromTag 'u' = return ClTWord32
+typeFromTag 'U' = return ClTWord64
+typeFromTag 'i' = return ClTInt32
+typeFromTag 'I' = return ClTInt64
+typeFromTag 'd' = return ClTFloat
+typeFromTag 'D' = return ClTDouble
+typeFromTag 's' = return ClTString
+typeFromTag 'l' = return ClTList
+typeFromTag c = fail $ "Unrecognised type tag: '" ++ [c] ++ "'"
+
 cvBuilder :: ClapiValue -> CanFail Builder
 cvBuilder (ClTime t) = builder t
 cvBuilder (ClEnum x) = return $ fromWord8 x
@@ -149,18 +162,6 @@ cvBuilder (ClList vs) = builder vs
 --     build cv = sequence (fromChar $ valueTag cv, cvBuilder cv)
 --     aggregate bs = let (bs1, bs2) = unzip bs in mconcat bs1 <> mconcat bs2
 
-cvParser :: Char -> Parser ClapiValue
-cvParser 't' = ClTime <$> (parser :: Parser Time)
-cvParser 'e' = ClEnum <$> anyWord8
-cvParser 'u' = ClWord32 <$> anyWord32be
-cvParser 'U' = ClWord64 <$> anyWord64be
-cvParser 'i' = ClInt32 <$> fromIntegral <$> anyWord32be
-cvParser 'I' = ClInt64 <$> fromIntegral <$> anyWord64be
-cvParser 'd' = ClFloat <$> wordToFloat <$> anyWord32be
-cvParser 'D' = ClDouble <$> wordToDouble <$> anyWord64be
-cvParser 's' = ClString <$> (parser :: Parser T.Text)
-cvParser 'l' = ClList <$> (parser :: Parser [ClapiValue])
-
 
 taggedEncode :: (Monoid b, Serialisable b) =>
     (a -> b) -> (a -> CanFail Builder) -> [a] -> CanFail Builder
@@ -175,8 +176,20 @@ instance Serialisable [ClapiValue] where
     builder = taggedEncode derive cvBuilder where
         derive cv = [valueTag cv]
     parser = do
-        valueTags <- composeParsers parser parseTags
-        sequence $ map cvParser valueTags
+        types <- composeParsers parser parseTags >>= mapM typeFromTag
+        sequence $ map (cvParser) types
+      where
+        cvParser :: ClapiTypeEnum -> Parser ClapiValue
+        cvParser ClTTime = ClTime <$> (parser :: Parser Time)
+        cvParser ClTEnum = ClEnum <$> anyWord8
+        cvParser ClTWord32 = ClWord32 <$> anyWord32be
+        cvParser ClTWord64 = ClWord64 <$> anyWord64be
+        cvParser ClTInt32 = ClInt32 <$> fromIntegral <$> anyWord32be
+        cvParser ClTInt64 = ClInt64 <$> fromIntegral <$> anyWord64be
+        cvParser ClTFloat = ClFloat <$> wordToFloat <$> anyWord32be
+        cvParser ClTDouble = ClDouble <$> wordToDouble <$> anyWord64be
+        cvParser ClTString = ClString <$> (parser :: Parser T.Text)
+        cvParser ClTList = ClList <$> (parser :: Parser [ClapiValue])
 
 
 encodeListN :: (Serialisable a) => [a] -> CanFail Builder
