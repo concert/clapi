@@ -12,7 +12,8 @@ import Data.Attoparsec.Text (
     parse, (<?>), endOfInput)
 
 import qualified Clapi.Serialisation as Wire
-import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
+import Clapi.Types (
+    Time(..), ClapiTypeEnum(..), ClapiValue(..), Message(..), Interpolation(..))
 import Clapi.Path (Path)
 
 cvBuilder :: ClapiValue -> Builder
@@ -63,19 +64,20 @@ quotedString = do
     char '"'
     return s
 
-cvParser :: Char -> Parser ClapiValue
-cvParser 'i' = (ClInt32 <$> decimal) <?> "ClInt32"
-cvParser 's' = (ClString <$> quotedString) <?> "ClString"
-cvParser 'e' = (ClEnum <$> decimal) <?> "ClEnum"
+cvParser :: ClapiTypeEnum -> Parser ClapiValue
+cvParser ClTInt32 = (ClInt32 <$> decimal) <?> "ClInt32"
+cvParser ClTString = (ClString <$> quotedString) <?> "ClString"
+cvParser ClTEnum = (ClEnum <$> decimal) <?> "ClEnum"
 
 charIn :: String -> String -> Parser Char
 charIn cls msg = satisfy (inClass cls) <?> msg
 
 getTupleParser :: Parser (Parser [ClapiValue])
--- FIXME: type tag characters here must line up with above (and would be nice
--- to be like those on the wire too)
-getTupleParser = sequence <$> many1 (
-    charIn "Bise" "type" >>= \c -> return (char ' ' >> cvParser c))
+getTupleParser = sequence <$> many1 (charIn Wire.typeTags "type" >>= mkParser)
+  where
+    mkParser c = do
+      clType <- Wire.typeFromTag c
+      return $ char ' ' >> cvParser clType
 
 timeParser :: Parser Time
 timeParser = do

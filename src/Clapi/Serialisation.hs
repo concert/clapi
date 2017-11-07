@@ -6,6 +6,7 @@ module Clapi.Serialisation
       parser,
       typeTag,
       typeTags,
+      typeFromTag,
       valueTag
     ) where
 
