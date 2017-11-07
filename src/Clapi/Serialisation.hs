@@ -157,10 +157,6 @@ cvBuilder (ClFloat x) = return $ floatBE x
 cvBuilder (ClDouble x) = return $ doubleBE x
 cvBuilder (ClString x) = builder x
 cvBuilder (ClList vs) = builder vs
--- cvBuilder (ClList cvs) = aggregate <$> mapM build cvs
---   where
---     build cv = sequence (fromChar $ valueTag cv, cvBuilder cv)
---     aggregate bs = let (bs1, bs2) = unzip bs in mconcat bs1 <> mconcat bs2
 
 
 taggedEncode :: (Monoid b, Serialisable b) =>
