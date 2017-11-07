@@ -114,8 +114,6 @@ instance Serialisable ClapiMethod where
 
 
 typeTag :: ClapiValue -> Char
-typeTag (ClBool False) = 'F'
-typeTag (ClBool True) = 'T'
 typeTag (ClTime _) = 't'
 typeTag (ClEnum _) = 'e'
 typeTag (ClWord32 _) = 'u'
@@ -128,7 +126,6 @@ typeTag (ClString _) = 's'
 typeTag (ClList _) = 'l'
 
 cvBuilder :: ClapiValue -> CanFail Builder
-cvBuilder (ClBool _) = return mempty
 cvBuilder (ClTime t) = builder t
 cvBuilder (ClEnum x) = return $ fromWord8 x
 cvBuilder (ClWord32 x) = return $ fromWord32be x
@@ -145,8 +142,6 @@ cvBuilder (ClList vs) = builder vs
 --     aggregate bs = let (bs1, bs2) = unzip bs in mconcat bs1 <> mconcat bs2
 
 cvParser :: Char -> Parser ClapiValue
-cvParser 'F' = return $ ClBool False
-cvParser 'T' = return $ ClBool True
 cvParser 't' = ClTime <$> (parser :: Parser Time)
 cvParser 'e' = ClEnum <$> anyWord8
 cvParser 'u' = ClWord32 <$> anyWord32be

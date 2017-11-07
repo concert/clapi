@@ -154,7 +154,7 @@ msgMethod' (MsgChildren {}) = Children
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
-data ClapiValue = ClBool Bool | ClTime Time |
+data ClapiValue = ClTime Time |
     ClEnum Word8 | ClWord32 Word32 | ClWord64 Word64 |
     ClInt32 Int32 | ClInt64 Int64 |
     ClFloat Float | ClDouble Double |
@@ -163,7 +163,6 @@ data ClapiValue = ClBool Bool | ClTime Time |
 instance Show ClapiValue where
     show x = '_' : (show' x)
       where
-        show' (ClBool x) = show x
         show' (ClTime x) = show x
         show' (ClEnum x) = show x
         show' (ClWord32 x) = show x
@@ -193,11 +192,6 @@ safeToEnum i =
 class Clapiable a where
     toClapiValue :: a -> ClapiValue
     fromClapiValue :: (MonadFail m) => ClapiValue -> m a
-
-instance Clapiable Bool where
-    toClapiValue = ClBool
-    fromClapiValue (ClBool x) = return x
-    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Time where
     toClapiValue = ClTime

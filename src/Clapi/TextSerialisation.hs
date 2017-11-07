@@ -15,13 +15,7 @@ import qualified Clapi.Serialisation as Wire
 import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
 import Clapi.Path (Path)
 
-typeTag :: ClapiValue -> Char
-typeTag (ClBool _) = 'B'
-typeTag v = Wire.typeTag v
-
 cvBuilder :: ClapiValue -> Builder
-cvBuilder (ClBool True) = fromChar 'T'
-cvBuilder (ClBool False) = fromChar 'F'
 cvBuilder (ClInt32 i) = fromShow i
 cvBuilder (ClString s) = fromShow s
 -- I think this is the best you can do without path specific type info:
@@ -49,7 +43,7 @@ msgBuilder msg = case msg of
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
 headerBuilder :: Message -> Builder
-headerBuilder m = fromString $ fmap typeTag $ msgArgs' m
+headerBuilder = fromString . fmap Wire.typeTag . msgArgs'
 
 -- Not sure how useful this is because how often do you know all the messages
 -- up front?
@@ -70,9 +64,6 @@ quotedString = do
     return s
 
 cvParser :: Char -> Parser ClapiValue
-cvParser 'B' = ((wordMatch 'T' True) <|> (wordMatch 'F' False)) <?> "ClBool"
-  where
-    wordMatch c v = char c >> return (ClBool v)
 cvParser 'i' = (ClInt32 <$> decimal) <?> "ClInt32"
 cvParser 's' = (ClString <$> quotedString) <?> "ClString"
 cvParser 'e' = (ClEnum <$> decimal) <?> "ClEnum"
