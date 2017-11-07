@@ -40,7 +40,7 @@ testBinarySerialisationRoundTrip =
             Nothing
             (Just "home")
         argList = [
-            ClBool True, ClBool False, ClTime (Time 4 2),
+            ClTime (Time 4 2),
             ClEnum 12, ClWord32 32, ClWord64 64, ClInt32 (-32), ClInt64 (-64),
             ClFloat 15.1, ClDouble 13.2, ClString "Greetings Planet"]
         nestedArgList = (ClList argList) : argList

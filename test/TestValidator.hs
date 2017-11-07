@@ -35,7 +35,7 @@ testValidatorValidator =
     assertFailed "bad description" $ fromText badValue
     assertFailed "bad description" $ fromText badValue'
     assertFailed "bad value" $ validate (ClString badValue)
-    assertEqual "success" success $ validate (ClString "bool")
+    assertEqual "success" success $ validate (ClString "int32")
   where
     validate = goValidate (validatorValidator "desk") undefined
     badValue = "validator[]"
