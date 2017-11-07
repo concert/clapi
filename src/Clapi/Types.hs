@@ -2,6 +2,8 @@
 module Clapi.Types
     (
         CanFail,
+        ClapiTypeEnum(..),
+        clapiValueType,
         Time(..),
         ClapiValue(..),
         Enumerated(..),
@@ -154,6 +156,11 @@ msgMethod' (MsgChildren {}) = Children
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
+data ClapiTypeEnum
+  = ClTTime | ClTEnum | ClTWord32 | ClTWord64 | ClTInt32 | ClTInt64
+  | ClTFloat | ClTDouble | ClTString | ClTList
+  deriving (Eq, Ord, Show, Enum, Bounded)
+
 data ClapiValue = ClTime Time |
     ClEnum Word8 | ClWord32 Word32 | ClWord64 Word64 |
     ClInt32 Int32 | ClInt64 Int64 |
@@ -173,6 +180,18 @@ instance Show ClapiValue where
         show' (ClDouble x) = show x
         show' (ClString x) = show x
         show' (ClList xs) = show xs
+
+clapiValueType :: ClapiValue -> ClapiTypeEnum
+clapiValueType (ClTime _) = ClTTime
+clapiValueType (ClEnum _) = ClTEnum
+clapiValueType (ClWord32 _) = ClTWord32
+clapiValueType (ClWord64 _) = ClTWord64
+clapiValueType (ClInt32 _) = ClTInt32
+clapiValueType (ClInt64 _) = ClTInt64
+clapiValueType (ClFloat _) = ClTFloat
+clapiValueType (ClDouble _) = ClTDouble
+clapiValueType (ClString _) = ClTString
+clapiValueType (ClList _) = ClTList
 
 data Enumerated a = (Enum a, Bounded a) => Enumerated {getEnum :: a}
 instance (Show a) => Show (Enumerated a) where

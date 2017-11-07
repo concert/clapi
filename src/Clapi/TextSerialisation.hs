@@ -43,7 +43,7 @@ msgBuilder msg = case msg of
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
 headerBuilder :: Message -> Builder
-headerBuilder = fromString . fmap Wire.typeTag . msgArgs'
+headerBuilder = fromString . fmap Wire.valueTag . msgArgs'
 
 -- Not sure how useful this is because how often do you know all the messages
 -- up front?

@@ -4,7 +4,9 @@ module Clapi.Serialisation
       encode,
       decode,
       parser,
-      typeTag
+      typeTag,
+      typeTags,
+      valueTag
     ) where
 
 import Data.Monoid ((<>), mconcat, Sum(..))
@@ -30,8 +32,8 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
-    CanFail, ClapiValue(..), Bundle(..), Message(..), ClapiMethod(..), Time(..),
-    Interpolation(..)
+    CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
+    Message(..), ClapiMethod(..), Time(..), Interpolation(..)
     )
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
@@ -113,17 +115,23 @@ instance Serialisable ClapiMethod where
     parser = composeParsers parser methodParser
 
 
-typeTag :: ClapiValue -> Char
-typeTag (ClTime _) = 't'
-typeTag (ClEnum _) = 'e'
-typeTag (ClWord32 _) = 'u'
-typeTag (ClWord64 _) = 'U'
-typeTag (ClInt32 _) = 'i'
-typeTag (ClInt64 _) = 'I'
-typeTag (ClFloat _) = 'd'
-typeTag (ClDouble _) = 'D'
-typeTag (ClString _) = 's'
-typeTag (ClList _) = 'l'
+typeTag :: ClapiTypeEnum -> Char
+typeTag ClTTime = 't'
+typeTag ClTEnum = 'e'
+typeTag ClTWord32 = 'u'
+typeTag ClTWord64 = 'U'
+typeTag ClTInt32 = 'i'
+typeTag ClTInt64 = 'I'
+typeTag ClTFloat = 'd'
+typeTag ClTDouble = 'D'
+typeTag ClTString = 's'
+typeTag ClTList = 'l'
+
+typeTags :: [Char]
+typeTags = typeTag <$> [(minBound :: ClapiTypeEnum) ..]
+
+valueTag :: ClapiValue -> Char
+valueTag = typeTag . clapiValueType
 
 cvBuilder :: ClapiValue -> CanFail Builder
 cvBuilder (ClTime t) = builder t
@@ -138,7 +146,7 @@ cvBuilder (ClString x) = builder x
 cvBuilder (ClList vs) = builder vs
 -- cvBuilder (ClList cvs) = aggregate <$> mapM build cvs
 --   where
---     build cv = sequence (fromChar $ typeTag cv, cvBuilder cv)
+--     build cv = sequence (fromChar $ valueTag cv, cvBuilder cv)
 --     aggregate bs = let (bs1, bs2) = unzip bs in mconcat bs1 <> mconcat bs2
 
 cvParser :: Char -> Parser ClapiValue
@@ -160,16 +168,15 @@ taggedEncode derive build xs = derived <<>> built where
     built = foldl (<<>>) (return mempty) (map build xs)
     derived = builder $ foldl (<>) mempty (map derive xs)
 
--- FIXME: Repitition of tag chars :-(
 parseTags :: APT.Parser String
-parseTags = APT.many' $ APT.satisfy (APT.inClass "NFTteuUiIdDsl")
+parseTags = APT.many' $ APT.satisfy (APT.inClass typeTags)
 
 instance Serialisable [ClapiValue] where
     builder = taggedEncode derive cvBuilder where
-        derive cv = [typeTag cv]
+        derive cv = [valueTag cv]
     parser = do
-        typeTags <- composeParsers parser parseTags
-        sequence $ map cvParser typeTags
+        valueTags <- composeParsers parser parseTags
+        sequence $ map cvParser valueTags
 
 
 encodeListN :: (Serialisable a) => [a] -> CanFail Builder
