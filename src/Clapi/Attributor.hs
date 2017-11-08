@@ -3,8 +3,12 @@ import Control.Monad (forever)
 
 import Clapi.Server (ClientEvent(ClientData), AddrWithUser(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Types (Message(..))
+import Clapi.Types (Message(..), DataUpdateMessage(..))
 import Clapi.NamespaceTracker (Om, Ownership(Client))
+
+-- The attributee stuff needs to be lining up through everything less hokily
+attributeDataUpdateMsg :: String -> DataUpdateMessage -> DataUpdateMessage
+attributeDataUpdateMsg u m = m{duMsgAttributee = Just u}
 
 -- The attributee stuff needs to be lining up through everything less hokily
 attributeClientMsg u om = let a = Just u in case om of
@@ -14,7 +18,6 @@ attributeClientMsg u om = let a = Just u in case om of
     (Client, MsgClear p t _ s) -> (Client, MsgClear p t a s)
     m -> m
 
--- Not sure this really makes sense as a protocol, the above function could just go in the NSTracker
 attributor :: Monad m => Protocol (ClientEvent (AddrWithUser i String) [Om] ()) (ClientEvent (AddrWithUser i String) [Om] ()) a a m ()
 attributor = forever $ waitThen fwdAttributed sendRev
   where
