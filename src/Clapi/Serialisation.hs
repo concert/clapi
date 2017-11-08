@@ -187,12 +187,14 @@ instance Serialisable [ClapiValue] where
 encodeListN :: (Serialisable a) => [a] -> CanFail Builder
 encodeListN = taggedEncode (const (1 :: Sum Word16)) builder
 
+parseListN :: (Serialisable a) => Parser [a]
+parseListN = do
+    len <- parser :: Parser Word16
+    count (fromIntegral len) parser
+
 instance Serialisable [Message] where
     builder = encodeListN where
-    parser = do
-        len <- parser :: Parser Word16
-        messages <- count (fromIntegral len) (parser :: Parser Message)
-        return messages
+    parser = parseListN
 
 instance Serialisable Bundle where
     builder = undefined
