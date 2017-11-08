@@ -202,6 +202,8 @@ instance Serialisable [Message] where
 
 data TaggedData e a = TaggedData {
     tdEnumToTag :: e -> Char,
+    -- Given the way this integrates with parsers, not sure the CanFail buys us
+    -- anything:
     tdTagToEnum :: Char -> CanFail e,
     tdAllTags :: [Char],
     tdTypeToEnum :: a -> e}
