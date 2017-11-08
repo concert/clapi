@@ -97,9 +97,10 @@ data DataUpdateMessage =
 instance UMsg DataUpdateMessage where
     uMsgPath = duMsgPath
 
+type OwnerUpdateMessage = Either TreeUpdateMessage DataUpdateMessage
 
 data Bundle
-  = UpdateBundle [UMsgError] [TreeUpdateMessage] [DataUpdateMessage]
+  = UpdateBundle [UMsgError] [OwnerUpdateMessage]
   | RequestBundle [SubMessage] [DataUpdateMessage]
   deriving (Eq, Show)
 
