@@ -169,8 +169,8 @@ handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
     vcMsgs = dmsgs vs vvs
     dmsgs v v' = map deltaToMsg $ vsDiff v v'
 
-handleOwnerMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMessage i], Valuespace Validated)
-handleOwnerMessages respondTo msgs vs = (rmsgs, rvs)
+handleOwnerMessages :: [Message] -> Valuespace Validated -> ([RoutableMessage], Valuespace Validated)
+handleOwnerMessages msgs vs = (rmsgs, rvs)
   where
     -- FIXME: handle owner initiated error messages
     rvs = if errored then vs else vvs
@@ -179,16 +179,16 @@ handleOwnerMessages respondTo msgs vs = (rmsgs, rvs)
     fillerErrPaths = Set.toList $ let sop ms = Set.fromList $ map msgPath' ms in Set.difference (sop msgs) (sop errMsgs)
     fillerErrs = map (\p -> MsgError p "rejected due to other errors") fillerErrPaths
     rmsgs = case errored of
-        True -> map (\m -> RoutableMessage (Left respondTo) m) (errMsgs ++ fillerErrs)
-        False -> map (\m -> RoutableMessage (Right Owner) m) vcMsgs
+        True -> map (\m -> RoutableMessage (Nothing) m) (errMsgs ++ fillerErrs)
+        False -> map (\m -> RoutableMessage (Just Owner) m) vcMsgs
 
-type VsHandlerS i = i -> [Message] -> State (Valuespace Validated) [RoutableMessage i]
+type VsHandlerS = [Message] -> State (Valuespace Validated) [RoutableMessage]
 
-handleOwnerMessagesS :: VsHandlerS i
-handleOwnerMessagesS respondTo msgs = state (handleOwnerMessages respondTo msgs)
+handleOwnerMessagesS :: VsHandlerS
+handleOwnerMessagesS msgs = state (handleOwnerMessages msgs)
 
-handleClientMessages :: i -> [Message] -> Valuespace Validated -> ([RoutableMessage i], Valuespace Validated)
-handleClientMessages respondTo msgs vs = (rmsgs, vs)
+handleClientMessages :: [Message] -> Valuespace Validated -> ([RoutableMessage], Valuespace Validated)
+handleClientMessages msgs vs = (rmsgs, vs)
   where
     subMsgs = concatMap createMsgs subPaths
     createMsgs p = case nodeInfo p of
@@ -202,27 +202,27 @@ handleClientMessages respondTo msgs vs = (rmsgs, vs)
     rightOrDie (Right x) = x
     (vsMsgs, errMsgs, _) = handleMutationMessages vs msgs
     rmsgs = (map response $ errMsgs ++ subMsgs) ++ (map forwarded vsMsgs)
-    forwarded = RoutableMessage (Right Client)
-    response = RoutableMessage (Left respondTo)
+    forwarded = RoutableMessage (Just Client)
+    response = RoutableMessage Nothing
 
-handleClientMessagesS :: VsHandlerS i
-handleClientMessagesS respondTo msgs = state (handleClientMessages respondTo msgs)
+handleClientMessagesS :: VsHandlerS
+handleClientMessagesS msgs = state (handleClientMessages msgs)
 
-handleMessages :: Valuespace Validated -> i -> [Om] -> ([RoutableMessage i], Valuespace Validated)
-handleMessages vs respondTo msgs = runState doHandle vs
+handleMessages :: Valuespace Validated -> [Om] -> ([RoutableMessage], Valuespace Validated)
+handleMessages vs msgs = runState doHandle vs
   where
     (client, owner) = partition (\m -> fst m == Client) msgs
     doHandle = do
-        oms <- handleOwnerMessagesS respondTo $ map snd owner
-        cms <- handleClientMessagesS respondTo $ map snd client
+        oms <- handleOwnerMessagesS $ map snd owner
+        cms <- handleClientMessagesS $ map snd client
         return $ oms ++ cms
 
 -- FIXME: try without the wrapper types here
-relay :: Monad m => Valuespace Validated -> Protocol (ClientEvent (AddrWithUser i u) [Om] ()) Void (ServerEvent (AddrWithUser i u) [RoutableMessage i]) Void m ()
+relay :: Monad m => Valuespace Validated -> Protocol (ClientEvent i [Om] ()) Void (ServerEvent i [RoutableMessage]) Void m ()
 relay vs = waitThen fwd (const $ error "message from the void")
   where
     fwd (ClientData awu ms) = do
-        let (ms', vs') = handleMessages vs (awuAddr awu) ms
+        let (ms', vs') = handleMessages vs ms
         sendRev $ ServerData awu ms'
         relay vs'
     fwd _ = relay vs
