@@ -199,7 +199,7 @@ parseListN = do
     count (fromIntegral len) parser
 
 instance Serialisable [Message] where
-    builder = encodeListN where
+    builder = encodeListN
     parser = parseListN
 
 data TaggedData e a = TaggedData {
