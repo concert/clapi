@@ -13,7 +13,7 @@ import Data.Attoparsec.Text (
 
 import qualified Clapi.Serialisation as Wire
 import Clapi.Types (
-    Time(..), ClapiTypeEnum(..), ClapiValue(..), Message(..), Interpolation(..))
+    Time(..), ClapiTypeEnum(..), ClapiValue(..), Message(..), Interpolation(..), InterpolationType(..))
 import Clapi.Path (Path)
 
 cvBuilder :: ClapiValue -> Builder
@@ -21,6 +21,12 @@ cvBuilder (ClInt32 i) = fromShow i
 cvBuilder (ClString s) = fromShow s
 -- I think this is the best you can do without path specific type info:
 cvBuilder (ClEnum i) = fromShow i
+
+-- If we fail to serialise in this file, we'll have failed to persist our
+-- state, so EEK! Should we have a variant of tdTotalBuilder that can't fail?
+explodeOnFail :: Either String a -> a
+explodeOnFail (Left m) = error m
+explodeOnFail (Right v) = v
 
 msgBuilder :: Message -> Builder
 msgBuilder msg = case msg of
@@ -36,9 +42,10 @@ msgBuilder msg = case msg of
         [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
     spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
     vb vs = fmap cvBuilder vs
-    ib i = case i of
-        IConstant -> fromChar 'C'
-        ILinear -> fromChar 'L'
+    ib i = explodeOnFail $ ib' i
+    ib' = Wire.tdTotalBuilder Wire.interpolationTaggedData $ \i -> case i of
+        (IBezier a b) -> fail "not implemented"
+        _ -> return $ fromString ""
     valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
     noSubs _ = []
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
@@ -93,12 +100,21 @@ attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
         "" -> Nothing
         s -> Just s
 
+-- FIXME: copy of the one in Serialisation,hs because parser types differ
+tdTotalParser :: Wire.TaggedData e a -> (e -> Parser a) -> Parser a
+tdTotalParser td p = do
+    t <- satisfy (inClass $ Wire.tdAllTags td)
+    let te = case Wire.tdTagToEnum td t of
+            (Left m) -> error m  -- Should never get here!
+            (Right te) -> te
+    p te
+
 interpolationParser :: Parser Interpolation
-interpolationParser =
-    char ' ' >> (charIn "CL" "interpolation") >>= return . asInterpolation
+interpolationParser = char ' ' >> tdTotalParser Wire.interpolationTaggedData p
   where
-    asInterpolation 'C' = IConstant
-    asInterpolation 'L' = ILinear
+    p e = case e of
+        (ITConstant) -> return IConstant
+        (ITLinear) -> return ILinear
 
 msgParser :: Path -> Parser [ClapiValue] -> Parser Message
 msgParser path valParser = do

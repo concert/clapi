@@ -7,7 +7,10 @@ module Clapi.Serialisation
       typeTag,
       typeTags,
       typeFromTag,
-      valueTag
+      valueTag,
+      interpolationTaggedData,
+      TaggedData(..),
+      tdTotalBuilder
     ) where
 
 import Data.List (intersect)
