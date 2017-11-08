@@ -203,23 +203,21 @@ data TaggedData e a = TaggedData {
     tdEnumToTag :: e -> Char,
     tdTagToEnum :: Char -> CanFail e,
     tdAllTags :: [Char],
-    tdTypeToEnum :: a -> e,
-    tdBuilder :: a -> CanFail Builder,
-    tdParser :: e -> Parser a}
+    tdTypeToEnum :: a -> e}
 
-tdTotalParser :: TaggedData e a -> Parser a
-tdTotalParser td = do
+tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
+tdTotalParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
     let te = case tdTagToEnum td $ chr $ fromIntegral t of
             (Left m) -> error m  -- Should never get here!
             (Right te) -> te
-    tdParser td te
+    p te
 
-tdTotalBuilder :: TaggedData e a -> a -> CanFail Builder
-tdTotalBuilder td b = builder (tdEnumToTag td $ (tdTypeToEnum td) b) <<>> (tdBuilder td) b
+tdTotalBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
+tdTotalBuilder td bdr a = builder (tdEnumToTag td $ (tdTypeToEnum td) a) <<>> bdr a
 
-genTagged :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> (a -> CanFail Builder) -> (e -> Parser a) -> TaggedData e a
-genTagged toTag typeToEnum b p = TaggedData toTag fromTag allTags typeToEnum b p
+genTagged :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> TaggedData e a
+genTagged toTag typeToEnum = TaggedData toTag fromTag allTags typeToEnum
   where
     tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
     allTags = fst <$> tagMap
@@ -238,18 +236,18 @@ data SubMsgType
   = SubMsgTSub
   | SubMsgTUnsub deriving (Enum, Bounded)
 
-subMsgTaggedData = genTagged typeToTag msgToType (builder . subMsgPath) msgParser
+subMsgTaggedData = genTagged typeToTag msgToType
   where
     typeToTag (SubMsgTSub) = 'S'
     typeToTag (SubMsgTUnsub) = 'U'
     msgToType (UMsgSubscribe _) = SubMsgTSub
     msgToType (UMsgUnsubscribe _) = SubMsgTUnsub
-    msgParser (SubMsgTSub) = UMsgSubscribe <$> parser
-    msgParser (SubMsgTUnsub) = UMsgUnsubscribe <$> parser
 
 instance Serialisable SubMessage where
-    builder = tdTotalBuilder subMsgTaggedData
-    parser = tdTotalParser subMsgTaggedData
+    builder = tdTotalBuilder subMsgTaggedData $ builder . subMsgPath
+    parser = tdTotalParser subMsgTaggedData $ \e -> case e of
+        (SubMsgTSub) -> UMsgSubscribe <$> parser
+        (SubMsgTUnsub) -> UMsgUnsubscribe <$> parser
 
 data DataUpdateMsgType
   = DUMTAdd
@@ -258,7 +256,7 @@ data DataUpdateMsgType
   | DUMTClear
   | DUMTSetChildren deriving (Enum, Bounded)
 
-dumtTaggedData = genTagged typeToTag msgToType msgBuilder msgParser
+dumtTaggedData = genTagged typeToTag msgToType
   where
     typeToTag (DUMTAdd) = 'a'
     typeToTag (DUMTSet) = 's'
@@ -270,11 +268,18 @@ dumtTaggedData = genTagged typeToTag msgToType msgBuilder msgParser
     msgToType (UMsgRemove _ _ _ _) = DUMTRemove
     msgToType (UMsgClear _ _ _ _) = DUMTClear
     msgToType (UMsgSetChildren _ _ _) = DUMTSetChildren
-    msgBuilder (UMsgAdd p t v i a s) = builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
-    msgBuilder (UMsgSet p t v i a s) = builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
-    msgBuilder (UMsgRemove p t a s) = builder p <<>> builder t <<>> builder a <<>> builder s
-    msgBuilder (UMsgClear p t a s) = builder p <<>> builder t <<>> builder a <<>> builder s
-    msgBuilder (UMsgSetChildren p ns a) = builder p <<>> encodeListN ns <<>> builder a
+
+dumtParser e = case e of
+    (DUMTAdd) -> sap UMsgAdd
+    (DUMTSet) -> sap UMsgSet
+    (DUMTRemove) -> rcp UMsgRemove
+    (DUMTClear) -> rcp UMsgClear
+    (DUMTSetChildren) -> do
+        p <- parser
+        ns <- parseListN
+        a <- parser
+        return $ UMsgSetChildren p ns a
+  where
     sap mt = do
         p <- parser
         t <- parser
@@ -289,86 +294,99 @@ dumtTaggedData = genTagged typeToTag msgToType msgBuilder msgParser
         a <- parser
         s <- parser
         return $ mt p t a s
-    msgParser (DUMTAdd) = sap UMsgAdd
-    msgParser (DUMTSet) = sap UMsgSet
-    msgParser (DUMTRemove) = rcp UMsgRemove
-    msgParser (DUMTClear) = rcp UMsgClear
-    msgParser (DUMTSetChildren) = do
-        p <- parser
-        ns <- parseListN
-        a <- parser
-        return $ UMsgSetChildren p ns a
+
+dumtBuilder m = case m of
+    (UMsgAdd p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
+    (UMsgSet p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
+    (UMsgRemove p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
+    (UMsgClear p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
+    (UMsgSetChildren p ns a) -> builder p <<>> encodeListN ns <<>> builder a
 
 instance Serialisable DataUpdateMessage where
-    builder = tdTotalBuilder dumtTaggedData
-    parser = tdTotalParser dumtTaggedData
+    builder = tdTotalBuilder dumtTaggedData dumtBuilder
+    parser = tdTotalParser dumtTaggedData dumtParser
 
 data TUMT
   = TUMTAssignType
   | TUMTDelete deriving (Enum, Bounded)
 
-tumtTaggedData = genTagged typeToTag msgToType msgBuilder msgParser
+tumtTaggedData = genTagged typeToTag msgToType
   where
     typeToTag (TUMTAssignType) = 'A'
     typeToTag (TUMTDelete) = 'D'
     msgToType (UMsgAssignType _ _) = TUMTAssignType
     msgToType (UMsgDelete _) = TUMTDelete
-    msgBuilder (UMsgAssignType p tp) = builder p <<>> builder tp
-    msgBuilder (UMsgDelete p) = builder p
-    msgParser (TUMTAssignType) = do
-        p <- parser
-        tp <- parser
-        return $ UMsgAssignType p tp
-    msgParser (TUMTDelete) = UMsgDelete <$> parser
 
-eitherTagged :: TaggedData e a -> TaggedData f b -> TaggedData Char (Either a b)
+tumtBuilder :: TreeUpdateMessage -> CanFail Builder
+tumtBuilder (UMsgAssignType p tp) = builder p <<>> builder tp
+tumtBuilder (UMsgDelete p) = builder p
+
+tumtParser :: TUMT -> Parser TreeUpdateMessage
+tumtParser (TUMTAssignType) = do
+    p <- parser
+    tp <- parser
+    return $ UMsgAssignType p tp
+tumtParser (TUMTDelete) = UMsgDelete <$> parser
+
+eitherTagged :: TaggedData e a -> TaggedData f b -> TaggedData (Either e f) (Either a b)
 eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
-    [] -> TaggedData toTag fromTag allTags typeToEnum cb cp
+    [] -> TaggedData toTag fromTag allTags typeToEnum
     i -> error $ "Tags overlap: " ++ i
   where
     allTags = (tdAllTags a) ++ (tdAllTags b)
-    toTag = id
-    fromTag t = case t `elem` allTags of
-        True -> return t
-        False -> fail "Bad tag"
-    typeToEnum = either (charFor a) (charFor b)
-    charFor sub = (tdEnumToTag sub) . (tdTypeToEnum sub)
-    cb = either (tdBuilder a) (tdBuilder b)
-    cp t = if t `elem` (tdAllTags a) then Left <$> subParse a t else Right <$> subParse b t
-    subParse sub t = case tdTagToEnum sub t of
-        Left m -> error m
-        Right e -> tdParser sub e
+    isATag t = t `elem` tdAllTags a
+    toTag = either (tdEnumToTag a) (tdEnumToTag b)
+    dcf mf = case mf of
+        Left m -> error "dave had trouble with nested monads so this error doesn't propagate"
+        Right v -> v
+    fromTag t = return $ case isATag t of
+        True -> Left $ dcf $ tdTagToEnum a t
+        False -> Right $ dcf $ tdTagToEnum b t
+    typeToEnum = either (Left <$> tdTypeToEnum a) (Right <$> tdTypeToEnum b)
+
+parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
+parseEither td pa pb = tdTotalParser td subParse
+  where
+    subParse eorf = either (\e -> Left <$> pa e) (\f -> Right <$> pb f) eorf
+
+buildEither ::
+    TaggedData (Either e f) (Either a b) ->
+    (a -> CanFail Builder) ->
+    (b -> CanFail Builder) ->
+    Either a b ->
+    CanFail Builder
+buildEither td ba bb eab = (builder $ tdEnumToTag td $ tdTypeToEnum td eab) <<>> either ba bb eab
 
 oumTaggedData = eitherTagged tumtTaggedData dumtTaggedData
 
 instance Serialisable OwnerUpdateMessage where
-    builder = tdTotalBuilder oumTaggedData
-    parser = tdTotalParser oumTaggedData
+    builder = buildEither oumTaggedData tumtBuilder dumtBuilder
+    parser = parseEither oumTaggedData tumtParser dumtParser
 
 data BundleTypeEnum
   = RequestBundleType
   | UpdateBundleType deriving (Enum, Bounded)
 
-bundleTaggedData = genTagged typeToTag bundleType bundleBuilder bundleParser
+bundleTaggedData = genTagged typeToTag bundleType
   where
     typeToTag (RequestBundleType) = 'r'
     typeToTag (UpdateBundleType) = 'u'
     bundleType (RequestBundle _ _) = RequestBundleType
     bundleType (UpdateBundle _ _) = UpdateBundleType
-    bundleBuilder (RequestBundle subs dums) = encodeListN subs <<>> encodeListN dums
-    bundleBuilder (UpdateBundle errs oums) = encodeListN errs <<>> encodeListN oums
-    bundleParser (RequestBundleType) = do
-        s <- parseListN
-        u <- parseListN
-        return $ RequestBundle s u
-    bundleParser (UpdateBundleType) = do
-        e <- parseListN
-        u <- parseListN
-        return $ UpdateBundle e u
 
 instance Serialisable Bundle where
-    builder = tdTotalBuilder bundleTaggedData
-    parser = tdTotalParser bundleTaggedData
+    builder = tdTotalBuilder bundleTaggedData $ \b -> case b of
+        (RequestBundle subs dums) -> encodeListN subs <<>> encodeListN dums
+        (UpdateBundle errs oums) -> encodeListN errs <<>> encodeListN oums
+    parser = tdTotalParser bundleTaggedData $ \e -> case e of
+        (RequestBundleType) -> do
+            s <- parseListN
+            u <- parseListN
+            return $ RequestBundle s u
+        (UpdateBundleType) -> do
+            e <- parseListN
+            u <- parseListN
+            return $ UpdateBundle e u
 
 
 badTag :: (MonadFail m) => String -> Char ->  m a
