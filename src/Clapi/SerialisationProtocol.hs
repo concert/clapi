@@ -1,5 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Clapi.SerialisationProtocol (serialiser, mapProtocol, eventSerialiser) where
 
 import Control.Monad.Trans.Free
