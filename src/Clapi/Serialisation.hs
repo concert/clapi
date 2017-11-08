@@ -10,6 +10,7 @@ module Clapi.Serialisation
       valueTag
     ) where
 
+import Data.List (intersect)
 import Data.Char (chr)
 import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
@@ -36,7 +37,8 @@ import qualified Data.Attoparsec.Text as APT
 import Clapi.Types(
     CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
     Message(..), ClapiMethod(..), Time(..), Interpolation(..),
-    UMsgError(..), SubMessage(..), DataUpdateMessage(..), OwnerUpdateMessage(..))
+    UMsgError(..), SubMessage(..), DataUpdateMessage(..),
+    TreeUpdateMessage(..), OwnerUpdateMessage(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Parsing (methodToString, methodParser)
@@ -301,9 +303,47 @@ instance Serialisable DataUpdateMessage where
     builder = tdTotalBuilder dumtTaggedData
     parser = tdTotalParser dumtTaggedData
 
+data TUMT
+  = TUMTAssignType
+  | TUMTDelete deriving (Enum, Bounded)
+
+tumtTaggedData = genTagged typeToTag msgToType msgBuilder msgParser
+  where
+    typeToTag (TUMTAssignType) = 'A'
+    typeToTag (TUMTDelete) = 'D'
+    msgToType (UMsgAssignType _ _) = TUMTAssignType
+    msgToType (UMsgDelete _) = TUMTDelete
+    msgBuilder (UMsgAssignType p tp) = builder p <<>> builder tp
+    msgBuilder (UMsgDelete p) = builder p
+    msgParser (TUMTAssignType) = do
+        p <- parser
+        tp <- parser
+        return $ UMsgAssignType p tp
+    msgParser (TUMTDelete) = UMsgDelete <$> parser
+
+eitherTagged :: TaggedData e a -> TaggedData f b -> TaggedData Char (Either a b)
+eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
+    [] -> TaggedData toTag fromTag allTags typeToEnum cb cp
+    i -> error $ "Tags overlap: " ++ i
+  where
+    allTags = (tdAllTags a) ++ (tdAllTags b)
+    toTag = id
+    fromTag t = case t `elem` allTags of
+        True -> return t
+        False -> fail "Bad tag"
+    typeToEnum = either (charFor a) (charFor b)
+    charFor sub = (tdEnumToTag sub) . (tdTypeToEnum sub)
+    cb = either (tdBuilder a) (tdBuilder b)
+    cp t = if t `elem` (tdAllTags a) then Left <$> subParse a t else Right <$> subParse b t
+    subParse sub t = case tdTagToEnum sub t of
+        Left m -> error m
+        Right e -> tdParser sub e
+
+oumTaggedData = eitherTagged tumtTaggedData dumtTaggedData
+
 instance Serialisable OwnerUpdateMessage where
-    builder = undefined
-    parser = undefined
+    builder = tdTotalBuilder oumTaggedData
+    parser = tdTotalParser oumTaggedData
 
 data BundleTypeEnum
   = RequestBundleType

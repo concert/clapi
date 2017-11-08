@@ -14,6 +14,7 @@ module Clapi.Types
         UMsgError(..),
         SubMessage(..),
         DataUpdateMessage(..),
+        TreeUpdateMessage(..),
         OwnerUpdateMessage(..),
         ClapiMethod(..),
         Message(..),
