@@ -42,7 +42,8 @@ import Clapi.Types(
     CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
     Message(..), ClapiMethod(..), Time(..), Interpolation(..), InterpolationType(..), interpolationType,
     UMsgError(..), SubMessage(..), DataUpdateMessage(..),
-    TreeUpdateMessage(..), OwnerUpdateMessage(..))
+    TreeUpdateMessage(..), OwnerUpdateMessage(..),
+    RequestBundle(..), UpdateBundle(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Parsing (methodToString, methodParser)
@@ -367,6 +368,14 @@ instance Serialisable OwnerUpdateMessage where
     builder = buildEither oumTaggedData tumtBuilder dumtBuilder
     parser = parseEither oumTaggedData tumtParser dumtParser
 
+instance Serialisable RequestBundle where
+    builder (RequestBundle subs dums) = encodeListN subs <<>> encodeListN dums
+    parser = RequestBundle <$> parseListN <*> parseListN
+
+instance Serialisable UpdateBundle where
+    builder (UpdateBundle errs oums) = encodeListN errs <<>> encodeListN oums
+    parser = UpdateBundle <$> parseListN <*> parseListN
+
 data BundleTypeEnum
   = RequestBundleType
   | UpdateBundleType deriving (Enum, Bounded)
@@ -375,22 +384,14 @@ bundleTaggedData = genTagged typeToTag bundleType
   where
     typeToTag (RequestBundleType) = 'r'
     typeToTag (UpdateBundleType) = 'u'
-    bundleType (RequestBundle _ _) = RequestBundleType
-    bundleType (UpdateBundle _ _) = UpdateBundleType
+    bundleType (Left (UpdateBundle _ _)) = UpdateBundleType
+    bundleType (Right (RequestBundle _ _)) = RequestBundleType
 
 instance Serialisable Bundle where
-    builder = tdTotalBuilder bundleTaggedData $ \b -> case b of
-        (RequestBundle subs dums) -> encodeListN subs <<>> encodeListN dums
-        (UpdateBundle errs oums) -> encodeListN errs <<>> encodeListN oums
+    builder = tdTotalBuilder bundleTaggedData $ either builder builder
     parser = tdTotalParser bundleTaggedData $ \e -> case e of
-        (RequestBundleType) -> do
-            s <- parseListN
-            u <- parseListN
-            return $ RequestBundle s u
-        (UpdateBundleType) -> do
-            e <- parseListN
-            u <- parseListN
-            return $ UpdateBundle e u
+        (UpdateBundleType) -> Left <$> parser
+        (RequestBundleType) -> Right <$> parser
 
 
 badTag :: (MonadFail m) => String -> Char ->  m a

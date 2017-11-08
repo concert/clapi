@@ -10,6 +10,8 @@ module Clapi.Types
         Clapiable,
         fromClapiValue,
         toClapiValue,
+        RequestBundle(..),
+        UpdateBundle(..),
         Bundle(..),
         UMsgError(..),
         SubMessage(..),
@@ -104,10 +106,10 @@ instance UMsg DataUpdateMessage where
 
 type OwnerUpdateMessage = Either TreeUpdateMessage DataUpdateMessage
 
-data Bundle
-  = UpdateBundle [UMsgError] [OwnerUpdateMessage]
-  | RequestBundle [SubMessage] [DataUpdateMessage]
-  deriving (Eq, Show)
+data UpdateBundle = UpdateBundle {ubErrs :: [UMsgError], ubMsgs :: [OwnerUpdateMessage]} deriving (Eq, Show)
+data RequestBundle = RequestBundle {rbSubs :: [SubMessage], rbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
+
+type Bundle = Either UpdateBundle RequestBundle
 
 
 -- Existing message type
