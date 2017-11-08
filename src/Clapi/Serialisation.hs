@@ -10,6 +10,7 @@ module Clapi.Serialisation
       valueTag
     ) where
 
+import Data.Char (chr)
 import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (liftM2)
@@ -27,15 +28,15 @@ import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8With)
 
-import Data.Attoparsec.ByteString (Parser, parseOnly, count, anyWord8)
+import Data.Attoparsec.ByteString (Parser, parseOnly, count, anyWord8, satisfy, inClass)
 import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
     CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
-    Message(..), ClapiMethod(..), Time(..), Interpolation(..)
-    )
+    Message(..), ClapiMethod(..), Time(..), Interpolation(..),
+    UMsgError(..), SubMessage(..), DataUpdateMessage(..), OwnerUpdateMessage(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Parsing (methodToString, methodParser)
@@ -196,9 +197,75 @@ instance Serialisable [Message] where
     builder = encodeListN where
     parser = parseListN
 
-instance Serialisable Bundle where
+data TaggedData e a = TaggedData {
+    tdEnumToTag :: e -> Char,
+    tdTagToEnum :: Char -> CanFail e,
+    tdAllTags :: [Char],
+    tdTypeToEnum :: a -> e,
+    tdBuilder :: a -> CanFail Builder,
+    tdParser :: e -> Parser a}
+
+tdTotalParser :: TaggedData e a -> Parser a
+tdTotalParser td = do
+    t <- satisfy (inClass $ tdAllTags td)
+    let te = case tdTagToEnum td $ chr $ fromIntegral t of
+            (Left m) -> error m  -- Should never get here!
+            (Right te) -> te
+    tdParser td te
+
+tdTotalBuilder :: TaggedData e a -> a -> CanFail Builder
+tdTotalBuilder td b = builder (tdEnumToTag td $ (tdTypeToEnum td) b) <<>> (tdBuilder td) b
+
+genTagged :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> (a -> CanFail Builder) -> (e -> Parser a) -> TaggedData e a
+genTagged toTag typeToEnum b p = TaggedData toTag fromTag allTags typeToEnum b p
+  where
+    tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
+    allTags = fst <$> tagMap
+    fromTag t = case lookup t tagMap of
+        Just e -> return e
+        Nothing -> fail $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '" ++ allTags ++ "'"
+
+instance Serialisable UMsgError where
     builder = undefined
     parser = undefined
+
+instance Serialisable SubMessage where
+    builder = undefined
+    parser = undefined
+
+instance Serialisable DataUpdateMessage where
+    builder = undefined
+    parser = undefined
+
+instance Serialisable OwnerUpdateMessage where
+    builder = undefined
+    parser = undefined
+
+data BundleTypeEnum
+  = RequestBundleType
+  | UpdateBundleType deriving (Eq, Show, Ord, Enum, Bounded)
+
+bundleTaggedData = genTagged typeToTag bundleType bundleBuilder bundleParser
+  where
+    typeToTag (RequestBundleType) = 'r'
+    typeToTag (UpdateBundleType) = 'u'
+    bundleType (RequestBundle _ _) = RequestBundleType
+    bundleType (UpdateBundle _ _) = UpdateBundleType
+    bundleBuilder (RequestBundle subs dums) = encodeListN subs <<>> encodeListN dums
+    bundleBuilder (UpdateBundle errs oums) = encodeListN errs <<>> encodeListN oums
+    bundleParser (RequestBundleType) = do
+        s <- parseListN
+        u <- parseListN
+        return $ RequestBundle s u
+    bundleParser (UpdateBundleType) = do
+        e <- parseListN
+        u <- parseListN
+        return $ UpdateBundle e u
+
+instance Serialisable Bundle where
+    builder = tdTotalBuilder bundleTaggedData
+    parser = tdTotalParser bundleTaggedData
+
 
 badTag :: (MonadFail m) => String -> Char ->  m a
 badTag n c = fail $ "Bad " ++ n ++ " type tag '" ++ (show c) ++ "'"
