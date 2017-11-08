@@ -36,7 +36,7 @@ import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
     CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
-    Message(..), ClapiMethod(..), Time(..), Interpolation(..),
+    Message(..), ClapiMethod(..), Time(..), Interpolation(..), InterpolationType(..), interpolationType,
     UMsgError(..), SubMessage(..), DataUpdateMessage(..),
     TreeUpdateMessage(..), OwnerUpdateMessage(..))
 import qualified Clapi.Path as Path
@@ -430,21 +430,20 @@ instance Serialisable Message where
         parseByTag c = badTag "message" c
 
 
-buildInterpolation :: Interpolation -> Builder
-buildInterpolation IConstant = fromChar 'C'
-buildInterpolation ILinear = fromChar 'L'
-buildInterpolation (IBezier a b) = fromChar 'B' <> fromWord32be a <> fromWord32be b
-
+interpolationTaggedData = genTagged toTag interpolationType
+  where
+    toTag (ITConstant) = 'C'
+    toTag (ITLinear) = 'L'
+    toTag (ITBezier) = 'B'
 
 instance Serialisable Interpolation where
-    builder = return . buildInterpolation
-    parser = do
-        c <- parser
-        case c of
-          'C' -> return IConstant
-          'L' -> return ILinear
-          'B' -> IBezier <$> parser <*> parser
-          c -> badTag "interpolation" c
+    builder = tdTotalBuilder interpolationTaggedData $ \i -> return $ case i of
+        (IBezier a b) -> fromWord32be a <> fromWord32be b
+        _ -> fromString ""
+    parser = tdTotalParser interpolationTaggedData $ \e -> case e of
+        (ITConstant) -> return IConstant
+        (ITLinear) -> return ILinear
+        (ITBezier) -> IBezier <$> parser <*> parser
 
 
 instance (Serialisable a) => Serialisable (Maybe a) where
