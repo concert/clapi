@@ -128,24 +128,19 @@ typeTag ClTDouble = 'D'
 typeTag ClTString = 's'
 typeTag ClTList = 'l'
 
+typeMapping :: [(Char, ClapiTypeEnum)]
+typeMapping = (\cte -> (typeTag cte, cte)) <$> [minBound ..]
+
 typeTags :: [Char]
-typeTags = typeTag <$> [(minBound :: ClapiTypeEnum) ..]
+typeTags = fst <$> typeMapping
 
 valueTag :: ClapiValue -> Char
 valueTag = typeTag . clapiValueType
 
 typeFromTag :: (MonadFail m) => Char -> m ClapiTypeEnum
-typeFromTag 't' = return ClTTime
-typeFromTag 'e' = return ClTEnum
-typeFromTag 'u' = return ClTWord32
-typeFromTag 'U' = return ClTWord64
-typeFromTag 'i' = return ClTInt32
-typeFromTag 'I' = return ClTInt64
-typeFromTag 'd' = return ClTFloat
-typeFromTag 'D' = return ClTDouble
-typeFromTag 's' = return ClTString
-typeFromTag 'l' = return ClTList
-typeFromTag c = fail $ "Unrecognised type tag: '" ++ [c] ++ "'"
+typeFromTag t = case lookup t typeMapping of
+    Just e -> return e
+    Nothing -> fail $ "Unrecognised type tag: '" ++ [t] ++ "'"
 
 cvBuilder :: ClapiValue -> CanFail Builder
 cvBuilder (ClTime t) = builder t
