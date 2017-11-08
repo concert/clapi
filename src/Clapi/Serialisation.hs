@@ -226,16 +226,80 @@ genTagged toTag typeToEnum b p = TaggedData toTag fromTag allTags typeToEnum b p
         Nothing -> fail $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '" ++ allTags ++ "'"
 
 instance Serialisable UMsgError where
-    builder = undefined
-    parser = undefined
+    builder (UMsgError p s) = builder p <<>> builder s
+    parser = do
+        p <- parser
+        s <- parser
+        return $ UMsgError p s
+
+data SubMsgType
+  = SubMsgTSub
+  | SubMsgTUnsub deriving (Enum, Bounded)
+
+subMsgTaggedData = genTagged typeToTag msgToType (builder . subMsgPath) msgParser
+  where
+    typeToTag (SubMsgTSub) = 'S'
+    typeToTag (SubMsgTUnsub) = 'U'
+    msgToType (UMsgSubscribe _) = SubMsgTSub
+    msgToType (UMsgUnsubscribe _) = SubMsgTUnsub
+    msgParser (SubMsgTSub) = UMsgSubscribe <$> parser
+    msgParser (SubMsgTUnsub) = UMsgUnsubscribe <$> parser
 
 instance Serialisable SubMessage where
-    builder = undefined
-    parser = undefined
+    builder = tdTotalBuilder subMsgTaggedData
+    parser = tdTotalParser subMsgTaggedData
+
+data DataUpdateMsgType
+  = DUMTAdd
+  | DUMTSet
+  | DUMTRemove
+  | DUMTClear
+  | DUMTSetChildren deriving (Enum, Bounded)
+
+dumtTaggedData = genTagged typeToTag msgToType msgBuilder msgParser
+  where
+    typeToTag (DUMTAdd) = 'a'
+    typeToTag (DUMTSet) = 's'
+    typeToTag (DUMTRemove) = 'r'
+    typeToTag (DUMTClear) = 'c'
+    typeToTag (DUMTSetChildren) = 'C'
+    msgToType (UMsgAdd _ _ _ _ _ _) = DUMTAdd
+    msgToType (UMsgSet _ _ _ _ _ _) = DUMTSet
+    msgToType (UMsgRemove _ _ _ _) = DUMTRemove
+    msgToType (UMsgClear _ _ _ _) = DUMTClear
+    msgToType (UMsgSetChildren _ _ _) = DUMTSetChildren
+    msgBuilder (UMsgAdd p t v i a s) = builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
+    msgBuilder (UMsgSet p t v i a s) = builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
+    msgBuilder (UMsgRemove p t a s) = builder p <<>> builder t <<>> builder a <<>> builder s
+    msgBuilder (UMsgClear p t a s) = builder p <<>> builder t <<>> builder a <<>> builder s
+    msgBuilder (UMsgSetChildren p ns a) = builder p <<>> encodeListN ns <<>> builder a
+    sap mt = do
+        p <- parser
+        t <- parser
+        v <- parser
+        i <- parser
+        a <- parser
+        s <- parser
+        return $ mt p t v i a s
+    rcp mt = do
+        p <- parser
+        t <- parser
+        a <- parser
+        s <- parser
+        return $ mt p t a s
+    msgParser (DUMTAdd) = sap UMsgAdd
+    msgParser (DUMTSet) = sap UMsgSet
+    msgParser (DUMTRemove) = rcp UMsgRemove
+    msgParser (DUMTClear) = rcp UMsgClear
+    msgParser (DUMTSetChildren) = do
+        p <- parser
+        ns <- parseListN
+        a <- parser
+        return $ UMsgSetChildren p ns a
 
 instance Serialisable DataUpdateMessage where
-    builder = undefined
-    parser = undefined
+    builder = tdTotalBuilder dumtTaggedData
+    parser = tdTotalParser dumtTaggedData
 
 instance Serialisable OwnerUpdateMessage where
     builder = undefined
@@ -243,7 +307,7 @@ instance Serialisable OwnerUpdateMessage where
 
 data BundleTypeEnum
   = RequestBundleType
-  | UpdateBundleType deriving (Eq, Show, Ord, Enum, Bounded)
+  | UpdateBundleType deriving (Enum, Bounded)
 
 bundleTaggedData = genTagged typeToTag bundleType bundleBuilder bundleParser
   where
