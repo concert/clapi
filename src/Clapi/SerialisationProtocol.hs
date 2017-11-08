@@ -13,11 +13,11 @@ import Clapi.Protocol (
 import Clapi.Server (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (Message)
 
-eventSerialiser :: (Serialisable a, Monad m) => Protocol
-    (ClientEvent i ByteString b)
-    (ClientEvent i a b)
+eventSerialiser :: (Serialisable a, Serialisable b, Monad m) => Protocol
+    (ClientEvent i ByteString c)
+    (ClientEvent i a c)
     (ServerEvent i ByteString)
-    (ServerEvent i a)
+    (ServerEvent i b)
     m ()
 eventSerialiser = serialiser' $ parse parser
   where
@@ -51,7 +51,7 @@ mapProtocol toA fromA fromB toB p = FreeT $ go <$> runFreeT p
     mapDirected (Rev b) = Rev $ toB b
     wn next = mapProtocol toA fromA fromB toB next
 
-serialiser :: (Serialisable a, Monad m) => Protocol ByteString a ByteString a m ()
+serialiser :: (Serialisable a, Serialisable b, Monad m) => Protocol ByteString a ByteString b m ()
 serialiser = mapProtocol (ClientData 0) unpackClientData unpackServerData (ServerData 0) eventSerialiser
   where
     unpackClientData (ClientData _ bs) = bs
