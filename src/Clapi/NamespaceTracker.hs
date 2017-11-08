@@ -28,7 +28,7 @@ data Ownership = Owner | Client deriving (Eq, Show)
 type Owners i = Map.Map Name i
 -- This is kinda fanoutable rather than routable
 -- Also not sure about the either, should there be a strategy type instead?
-data RoutableMessage i = RoutableMessage {rmRoute :: Either i Ownership, rmMsg :: Message} deriving (Eq, Show)
+data RoutableMessage = RoutableMessage {rmRoute :: Maybe Ownership, rmMsg :: Message} deriving (Eq, Show)
 type Om = (Ownership, Message)
 type Registered i = Mos.Mos i Path
 
@@ -64,30 +64,30 @@ disallowedMsg o m = MsgError (msgPath' m) txt
         roleTxt o]
 
 updateOwnerships ::
-    forall m i u. (Monad m, Ord i, Ord u, Show i) => AddrWithUser i u -> [RoutableMessage i] -> StateT (Owners (AddrWithUser i u)) m ()
+    forall m i u. (Monad m, Ord i, Ord u, Show i) => AddrWithUser i u -> [RoutableMessage] -> StateT (Owners (AddrWithUser i u)) m ()
 updateOwnerships i = mapM_ $ handle
   where
-    handle :: RoutableMessage i -> StateT (Owners (AddrWithUser i u)) m ()
-    handle (RoutableMessage (Right Owner) (MsgAssignType path _)) =
+    handle :: RoutableMessage -> StateT (Owners (AddrWithUser i u)) m ()
+    handle (RoutableMessage (Just Owner) (MsgAssignType path _)) =
         when (isNamespace path) (modify $ \x -> Map.insert (namespace path) i x)
-    handle (RoutableMessage (Right Owner) (MsgDelete path)) =
+    handle (RoutableMessage (Just Owner) (MsgDelete path)) =
         when (isNamespace path) (modify (Map.delete $ namespace path))
     handle _ = return ()
 
 -- FIXME: not filtering anything out so refactor accordingly
 registerSubscriptions ::
-    forall m i u. (Monad m, Ord i, Ord u) => AddrWithUser i u -> [RoutableMessage i] -> StateT (Registered (AddrWithUser i u)) m [RoutableMessage i]
+    forall m i u. (Monad m, Ord i, Ord u) => AddrWithUser i u -> [RoutableMessage] -> StateT (Registered (AddrWithUser i u)) m [RoutableMessage]
 registerSubscriptions i rms = filterM processMsg rms
   where
-    processMsg :: RoutableMessage i -> StateT (Registered (AddrWithUser i u)) m Bool
-    processMsg (RoutableMessage (Left _) (MsgAssignType path _)) =
+    processMsg :: RoutableMessage -> StateT (Registered (AddrWithUser i u)) m Bool
+    processMsg (RoutableMessage Nothing (MsgAssignType path _)) =
         modify (Mos.insert i path) >> return True
     processMsg _ = return True
 
 fanOutBundle ::
     (Monad m, Ord i, Ord u, Show i, Show u) =>
     AddrWithUser i u ->
-    [RoutableMessage i] ->
+    [RoutableMessage] ->
     StateT (Owners (AddrWithUser i u), Registered (AddrWithUser i u)) (NsProtocol m i u) ()
 fanOutBundle awu rms = do
     (po, ps) <- get
@@ -96,20 +96,20 @@ fanOutBundle awu rms = do
     let sendables = map (uncurry ServerData) $ filter (not . null . snd) $ zip allRecipients bundles
     lift $ mapM_ sendRev sendables
   where
-    msgsFor rms po ps awu = map rmMsg $ filter (includeMsg po ps awu) rms
-    includeMsg po ps awu rm = either
-        (\addr -> addr == awuAddr awu)
+    msgsFor rms po ps awu' = map rmMsg $ filter (includeMsg po ps awu') rms
+    includeMsg po ps awu' rm = maybe
+        (awu == awu')
         (\o -> let p = msgPath' $ rmMsg rm in case o of
-            Owner -> isSubscriber ps awu p
-            Client -> isOwner po awu p)
+            Owner -> isSubscriber ps awu' p
+            Client -> isOwner po awu' p)
         (rmRoute rm)
-    isOwner po awu p = Map.lookup (namespace p) po == Just awu
-    isSubscriber ps awu p = p `elem` Map.findWithDefault mempty awu ps
+    isOwner po awu' p = Map.lookup (namespace p) po == Just awu'
+    isSubscriber ps awu' p = p `elem` Map.findWithDefault mempty awu' ps
     ownerAwus po = Set.fromList $ Map.elems po
 
 handleDeletedNamespace ::
-    (Monad m, Ord i, Ord u) => RoutableMessage i -> StateT (Registered (AddrWithUser i u)) m ()
-handleDeletedNamespace (RoutableMessage ownership (MsgDelete path)) =
+    (Monad m, Ord i, Ord u) => RoutableMessage -> StateT (Registered (AddrWithUser i u)) m ()
+handleDeletedNamespace (RoutableMessage _ (MsgDelete path)) =
     when (isNamespace path) (modify (Mos.remove path))
 handleDeletedNamespace _ = return ()
 
@@ -150,7 +150,7 @@ type NsProtocol m i u = Protocol
     (ClientEvent (AddrWithUser i u) [Message] ())
     (ClientEvent (AddrWithUser i u) [Om] ())
     (ServerEvent (AddrWithUser i u) [Message])
-    (ServerEvent (AddrWithUser i u) [RoutableMessage i])
+    (ServerEvent (AddrWithUser i u) [RoutableMessage])
     m
 
 
@@ -180,7 +180,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         rms <- handleClientDisconnect awu
         lift . sendFwd $ ClientData awu rms
         lift . sendFwd $ ClientDisconnect awu
-    rev :: (Ord i, Ord u, Monad m, Show i, Show u) => ServerEvent (AddrWithUser i u) [RoutableMessage i] -> StateT
+    rev :: (Ord i, Ord u, Monad m, Show i, Show u) => ServerEvent (AddrWithUser i u) [RoutableMessage] -> StateT
         (Owners (AddrWithUser i u), Registered (AddrWithUser i u))
         (NsProtocol m i u)
         ()

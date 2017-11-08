@@ -27,7 +27,7 @@ import Clapi.Path (Path, root)
 import Clapi.Types (
     Time(..), Interpolation(..), Message(..), msgPath', msgMethod',
     ClapiMethod(..), ClapiValue(..))
-import Clapi.Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser, awuAddr)
+import Clapi.Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Om(..), RoutableMessage(..))
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
@@ -127,14 +127,14 @@ collectAllResponsesUntil i = inner mempty
 
 fakeRelay ::
     (Monad m, Show i, Show u) =>
-    Protocol (ClientEvent (AddrWithUser i u) [Om] x) Void (ServerEvent (AddrWithUser i u) [RoutableMessage i]) Void m ()
+    Protocol (ClientEvent (AddrWithUser i u) [Om] x) Void (ServerEvent (AddrWithUser i u) [RoutableMessage]) Void m ()
 fakeRelay = forever $ waitThen fwd undefined
   where
     fwd (ClientConnect _ _) = return ()
     fwd (ClientData i oms) = sendRev $ ServerData i $ map (mkRoutable i) oms
     fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
-    mkRoutable i (Client, MsgSubscribe p) = RoutableMessage (Left $ awuAddr i) (MsgAssignType p [])
-    mkRoutable _ (o, m) = RoutableMessage (Right o) m
+    mkRoutable i (Client, MsgSubscribe p) = RoutableMessage Nothing (MsgAssignType p [])
+    mkRoutable _ (o, m) = RoutableMessage (Just o) m
 
 alice = newAwu 42 "alice"
 alice' = newAwu 43 "alice"
@@ -199,7 +199,7 @@ testUnsubscribeWhenNotSubscribed =
 testValidationErrorReturned =
   let
     protocol = assertions <-> namespaceTrackerProtocol mempty mempty <-> errorSender
-    errorSender = sendRev $ ServerData alice [RoutableMessage (Left $ awuAddr alice) err]
+    errorSender = sendRev $ ServerData alice [RoutableMessage Nothing err]
     err = MsgError ["bad"] "wrong"
     assertions = do
         d <- wait

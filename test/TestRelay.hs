@@ -43,6 +43,6 @@ testRootStructExtend = assertMsgsInclude expectedMsgs rMsgs
     lop ps = los $ map toString ps
     tp p = fromJust $ getType baseValuespace p
     om = map (\m -> (Owner, m))
-    (ms', vs') = handleMessages baseValuespace 0 $ om inMsgs
+    (ms', vs') = handleMessages baseValuespace $ om inMsgs
     rMsgs = map rmMsg ms'
     cannot = toClapiValue $ Enumerated Cannot
