@@ -23,11 +23,8 @@ cvBuilder (ClString s) = fromShow s
 -- I think this is the best you can do without path specific type info:
 cvBuilder (ClEnum i) = fromShow i
 
--- If we fail to serialise in this file, we'll have failed to persist our
--- state, so EEK! Should we have a variant of tdTotalBuilder that can't fail?
-explodeOnFail :: Either String a -> a
-explodeOnFail (Left m) = error m
-explodeOnFail (Right v) = v
+tdTotalBuilder :: TaggedData e a -> (a -> Builder) -> a -> Builder
+tdTotalBuilder td bdr a = fromChar (tdInstanceToTag td $ a) <> bdr a
 
 msgBuilder :: Message -> Builder
 msgBuilder msg = case msg of
@@ -43,10 +40,9 @@ msgBuilder msg = case msg of
         [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
     spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
     vb vs = fmap cvBuilder vs
-    ib i = explodeOnFail $ ib' i
-    ib' = Wire.tdTotalBuilder Wire.interpolationTaggedData $ \i -> case i of
-        (IBezier a b) -> fail "not implemented"
-        _ -> return mempty
+    ib = tdTotalBuilder Wire.interpolationTaggedData $ \i -> case i of
+        (IBezier a b) -> error "bezier text serialisation not implemented"
+        _ -> mempty
     valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
     noSubs _ = []
     valB methodChar subs msg = fromChar methodChar <> tab subs msg

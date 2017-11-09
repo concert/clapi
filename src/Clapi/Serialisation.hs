@@ -6,7 +6,6 @@ module Clapi.Serialisation
       parser,
       cvTaggedData,
       interpolationTaggedData,
-      tdTotalBuilder,
       Serialisable
     ) where
 
