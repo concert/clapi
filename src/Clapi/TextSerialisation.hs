@@ -45,7 +45,7 @@ msgBuilder msg = case msg of
     ib i = explodeOnFail $ ib' i
     ib' = Wire.tdTotalBuilder Wire.interpolationTaggedData $ \i -> case i of
         (IBezier a b) -> fail "not implemented"
-        _ -> return $ fromString ""
+        _ -> return mempty
     valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
     noSubs _ = []
     valB methodChar subs msg = fromChar methodChar <> tab subs msg

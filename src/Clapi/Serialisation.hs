@@ -442,7 +442,7 @@ interpolationTaggedData = genTagged toTag interpolationType
 instance Serialisable Interpolation where
     builder = tdTotalBuilder interpolationTaggedData $ \i -> return $ case i of
         (IBezier a b) -> fromWord32be a <> fromWord32be b
-        _ -> fromString ""
+        _ -> mempty
     parser = tdTotalParser interpolationTaggedData $ \e -> case e of
         (ITConstant) -> return IConstant
         (ITLinear) -> return ILinear
