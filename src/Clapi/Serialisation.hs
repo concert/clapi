@@ -353,7 +353,7 @@ eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
 parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
 parseEither td pa pb = tdTotalParser td subParse
   where
-    subParse eorf = either (\e -> Left <$> pa e) (\f -> Right <$> pb f) eorf
+    subParse eorf = either (fmap Left . pa) (fmap Right . pb) eorf
 
 buildEither ::
     TaggedData (Either e f) (Either a b) ->
