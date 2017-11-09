@@ -142,7 +142,7 @@ typeTags :: [Char]
 typeTags = tdAllTags cvTaggedData
 
 valueTag :: ClapiValue -> Char
-valueTag = tdEnumToTag cvTaggedData . tdTypeToEnum cvTaggedData
+valueTag = tdInstanceToTag cvTaggedData
 
 typeFromTag :: (MonadFail m) => Char -> m ClapiTypeEnum
 typeFromTag t = either fail return $ tdTagToEnum cvTaggedData t
@@ -208,6 +208,9 @@ data TaggedData e a = TaggedData {
     tdAllTags :: [Char],
     tdTypeToEnum :: a -> e}
 
+tdInstanceToTag :: TaggedData e a -> a -> Char
+tdInstanceToTag td = tdEnumToTag td . tdTypeToEnum td
+
 tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTotalParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
@@ -217,7 +220,7 @@ tdTotalParser td p = do
     p te
 
 tdTotalBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
-tdTotalBuilder td bdr a = builder (tdEnumToTag td $ (tdTypeToEnum td) a) <<>> bdr a
+tdTotalBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 genTagged :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> TaggedData e a
 genTagged toTag typeToEnum = TaggedData toTag fromTag allTags typeToEnum
@@ -358,7 +361,7 @@ buildEither ::
     (b -> CanFail Builder) ->
     Either a b ->
     CanFail Builder
-buildEither td ba bb eab = (builder $ tdEnumToTag td $ tdTypeToEnum td eab) <<>> either ba bb eab
+buildEither td ba bb eab = (builder $ tdInstanceToTag td eab) <<>> either ba bb eab
 
 oumTaggedData = eitherTagged tumtTaggedData dumtTaggedData
 
