@@ -14,7 +14,7 @@ module Clapi.Serialisation
       Serialisable
     ) where
 
-import Data.List (intersect)
+import Data.List (intersect, nub)
 import Data.Char (chr)
 import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
@@ -223,7 +223,9 @@ tdTotalBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Build
 tdTotalBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 genTagged :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> TaggedData e a
-genTagged toTag typeToEnum = TaggedData toTag fromTag allTags typeToEnum
+genTagged toTag typeToEnum = if nub allTags == allTags
+    then TaggedData toTag fromTag allTags typeToEnum
+    else error $ "duplicate tag values: " ++ allTags
   where
     tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
     allTags = fst <$> tagMap
