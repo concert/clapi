@@ -6,13 +6,10 @@ module Clapi.Serialisation
       parser,
       cvTaggedData,
       interpolationTaggedData,
-      TaggedData(..),
       tdTotalBuilder,
-      tdInstanceToTag,
       Serialisable
     ) where
 
-import Data.List (intersect, nub)
 import Data.Char (chr)
 import Data.Monoid ((<>), mconcat, Sum(..))
 import Control.Applicative ((<$>), (<*>))
@@ -46,6 +43,7 @@ import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Parsing (methodToString, methodParser)
 import Clapi.Util (composeParsers)
+import Clapi.TaggedData
 
 (<<>>) = liftM2 (<>)
 
@@ -136,7 +134,7 @@ typeTag ClTDouble = 'D'
 typeTag ClTString = 's'
 typeTag ClTList = 'l'
 
-cvTaggedData = genTagged typeTag clapiValueType
+cvTaggedData = taggedData typeTag clapiValueType
 
 cvBuilder :: ClapiValue -> CanFail Builder
 cvBuilder (ClTime t) = builder t
@@ -183,15 +181,6 @@ instance Serialisable [Message] where
     builder = encodeListN
     parser = parseListN
 
-data TaggedData e a = TaggedData {
-    tdEnumToTag :: e -> Char,
-    tdTagToEnum :: Char -> e,
-    tdAllTags :: [Char],
-    tdTypeToEnum :: a -> e}
-
-tdInstanceToTag :: TaggedData e a -> a -> Char
-tdInstanceToTag td = tdEnumToTag td . tdTypeToEnum td
-
 tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTotalParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
@@ -200,16 +189,6 @@ tdTotalParser td p = do
 
 tdTotalBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
 tdTotalBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
-
-genTagged :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> TaggedData e a
-genTagged toTag typeToEnum = if nub allTags == allTags
-    then TaggedData toTag fromTag allTags typeToEnum
-    else error $ "duplicate tag values: " ++ allTags
-  where
-    tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
-    allTags = fst <$> tagMap
-    fromTag t = maybe (err t) id $ lookup t tagMap
-    err t = error $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '" ++ allTags ++ "'"
 
 instance Serialisable UMsgError where
     builder (UMsgError p s) = builder p <<>> builder s
@@ -222,7 +201,7 @@ data SubMsgType
   = SubMsgTSub
   | SubMsgTUnsub deriving (Enum, Bounded)
 
-subMsgTaggedData = genTagged typeToTag msgToType
+subMsgTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (SubMsgTSub) = 'S'
     typeToTag (SubMsgTUnsub) = 'U'
@@ -242,7 +221,7 @@ data DataUpdateMsgType
   | DUMTClear
   | DUMTSetChildren deriving (Enum, Bounded)
 
-dumtTaggedData = genTagged typeToTag msgToType
+dumtTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (DUMTAdd) = 'a'
     typeToTag (DUMTSet) = 's'
@@ -296,7 +275,7 @@ data TUMT
   = TUMTAssignType
   | TUMTDelete deriving (Enum, Bounded)
 
-tumtTaggedData = genTagged typeToTag msgToType
+tumtTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (TUMTAssignType) = 'A'
     typeToTag (TUMTDelete) = 'D'
@@ -313,19 +292,6 @@ tumtParser (TUMTAssignType) = do
     tp <- parser
     return $ UMsgAssignType p tp
 tumtParser (TUMTDelete) = UMsgDelete <$> parser
-
-eitherTagged :: TaggedData e a -> TaggedData f b -> TaggedData (Either e f) (Either a b)
-eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
-    [] -> TaggedData toTag fromTag allTags typeToEnum
-    i -> error $ "Tags overlap: " ++ i
-  where
-    allTags = (tdAllTags a) ++ (tdAllTags b)
-    isATag t = t `elem` tdAllTags a
-    toTag = either (tdEnumToTag a) (tdEnumToTag b)
-    fromTag t = if isATag t
-        then Left $ tdTagToEnum a t
-        else Right $ tdTagToEnum b t
-    typeToEnum = either (Left <$> tdTypeToEnum a) (Right <$> tdTypeToEnum b)
 
 parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
 parseEither td pa pb = tdTotalParser td subParse
@@ -358,7 +324,7 @@ data BundleTypeEnum
   = RequestBundleType
   | UpdateBundleType deriving (Enum, Bounded)
 
-bundleTaggedData = genTagged typeToTag bundleType
+bundleTaggedData = taggedData typeToTag bundleType
   where
     typeToTag (RequestBundleType) = 'r'
     typeToTag (UpdateBundleType) = 'u'
@@ -413,7 +379,7 @@ instance Serialisable Message where
         parseByTag c = badTag "message" c
 
 
-interpolationTaggedData = genTagged toTag interpolationType
+interpolationTaggedData = taggedData toTag interpolationType
   where
     toTag (ITConstant) = 'C'
     toTag (ITLinear) = 'L'

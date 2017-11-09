@@ -29,6 +29,7 @@ library
                      , Clapi.Relay
                      , Clapi.Serialisation
                      , Clapi.Server
+                     , Clapi.TaggedData
                      , Clapi.TextSerialisation
                      , Clapi.Types
                      , Clapi.Tree

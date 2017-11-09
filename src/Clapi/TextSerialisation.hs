@@ -12,6 +12,7 @@ import Data.Attoparsec.Text (
     parse, (<?>), endOfInput)
 
 import qualified Clapi.Serialisation as Wire
+import Clapi.TaggedData (tdAllTags, tdInstanceToTag, tdTagToEnum, TaggedData)
 import Clapi.Types (
     Time(..), ClapiTypeEnum(..), ClapiValue(..), Message(..), Interpolation(..), InterpolationType(..))
 import Clapi.Path (Path)
@@ -51,7 +52,7 @@ msgBuilder msg = case msg of
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
 headerBuilder :: Message -> Builder
-headerBuilder = fromString . fmap (Wire.tdInstanceToTag Wire.cvTaggedData) . msgArgs'
+headerBuilder = fromString . fmap (tdInstanceToTag Wire.cvTaggedData) . msgArgs'
 
 -- Not sure how useful this is because how often do you know all the messages
 -- up front?
@@ -80,10 +81,10 @@ charIn :: String -> String -> Parser Char
 charIn cls msg = satisfy (inClass cls) <?> msg
 
 getTupleParser :: Parser (Parser [ClapiValue])
-getTupleParser = sequence <$> many1 (charIn (Wire.tdAllTags Wire.cvTaggedData) "type" >>= mkParser)
+getTupleParser = sequence <$> many1 (charIn (tdAllTags Wire.cvTaggedData) "type" >>= mkParser)
   where
     mkParser c = do
-      let clType = Wire.tdTagToEnum Wire.cvTaggedData c
+      let clType = tdTagToEnum Wire.cvTaggedData c
       return $ char ' ' >> cvParser clType
 
 timeParser :: Parser Time
@@ -100,11 +101,11 @@ attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
         "" -> Nothing
         s -> Just s
 
--- FIXME: copy of the one in Serialisation,hs because parser types differ
-tdTotalParser :: Wire.TaggedData e a -> (e -> Parser a) -> Parser a
+-- FIXME: copy of the one in Serialisation.hs because parser types differ
+tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTotalParser td p = do
-    t <- satisfy (inClass $ Wire.tdAllTags td)
-    let te = Wire.tdTagToEnum td t
+    t <- satisfy (inClass $ tdAllTags td)
+    let te = tdTagToEnum td t
     p te
 
 interpolationParser :: Parser Interpolation
