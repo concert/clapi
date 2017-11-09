@@ -83,7 +83,7 @@ getTupleParser :: Parser (Parser [ClapiValue])
 getTupleParser = sequence <$> many1 (charIn (Wire.tdAllTags Wire.cvTaggedData) "type" >>= mkParser)
   where
     mkParser c = do
-      let clType = explodeOnFail $ (Wire.tdTagToEnum Wire.cvTaggedData) c
+      let clType = Wire.tdTagToEnum Wire.cvTaggedData c
       return $ char ' ' >> cvParser clType
 
 timeParser :: Parser Time
@@ -104,9 +104,7 @@ attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
 tdTotalParser :: Wire.TaggedData e a -> (e -> Parser a) -> Parser a
 tdTotalParser td p = do
     t <- satisfy (inClass $ Wire.tdAllTags td)
-    let te = case Wire.tdTagToEnum td t of
-            (Left m) -> error m  -- Should never get here!
-            (Right te) -> te
+    let te = Wire.tdTagToEnum td t
     p te
 
 interpolationParser :: Parser Interpolation

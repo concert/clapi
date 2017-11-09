@@ -185,9 +185,7 @@ instance Serialisable [Message] where
 
 data TaggedData e a = TaggedData {
     tdEnumToTag :: e -> Char,
-    -- Given the way this integrates with parsers, not sure the CanFail buys us
-    -- anything:
-    tdTagToEnum :: Char -> CanFail e,
+    tdTagToEnum :: Char -> e,
     tdAllTags :: [Char],
     tdTypeToEnum :: a -> e}
 
@@ -197,9 +195,7 @@ tdInstanceToTag td = tdEnumToTag td . tdTypeToEnum td
 tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTotalParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
-    let te = case tdTagToEnum td $ chr $ fromIntegral t of
-            (Left m) -> error m  -- Should never get here!
-            (Right te) -> te
+    let te = tdTagToEnum td $ chr $ fromIntegral t
     p te
 
 tdTotalBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
@@ -212,9 +208,8 @@ genTagged toTag typeToEnum = if nub allTags == allTags
   where
     tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
     allTags = fst <$> tagMap
-    fromTag t = case lookup t tagMap of
-        Just e -> return e
-        Nothing -> fail $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '" ++ allTags ++ "'"
+    fromTag t = maybe (err t) id $ lookup t tagMap
+    err t = error $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '" ++ allTags ++ "'"
 
 instance Serialisable UMsgError where
     builder (UMsgError p s) = builder p <<>> builder s
@@ -327,12 +322,9 @@ eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
     allTags = (tdAllTags a) ++ (tdAllTags b)
     isATag t = t `elem` tdAllTags a
     toTag = either (tdEnumToTag a) (tdEnumToTag b)
-    dcf mf = case mf of
-        Left m -> error "dave had trouble with nested monads so this error doesn't propagate"
-        Right v -> v
-    fromTag t = return $ case isATag t of
-        True -> Left $ dcf $ tdTagToEnum a t
-        False -> Right $ dcf $ tdTagToEnum b t
+    fromTag t = if isATag t
+        then Left $ tdTagToEnum a t
+        else Right $ tdTagToEnum b t
     typeToEnum = either (Left <$> tdTypeToEnum a) (Right <$> tdTypeToEnum b)
 
 parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
