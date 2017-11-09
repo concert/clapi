@@ -51,7 +51,7 @@ msgBuilder msg = case msg of
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
 headerBuilder :: Message -> Builder
-headerBuilder = fromString . fmap Wire.valueTag . msgArgs'
+headerBuilder = fromString . fmap (Wire.tdInstanceToTag Wire.cvTaggedData) . msgArgs'
 
 -- Not sure how useful this is because how often do you know all the messages
 -- up front?
@@ -80,10 +80,10 @@ charIn :: String -> String -> Parser Char
 charIn cls msg = satisfy (inClass cls) <?> msg
 
 getTupleParser :: Parser (Parser [ClapiValue])
-getTupleParser = sequence <$> many1 (charIn Wire.typeTags "type" >>= mkParser)
+getTupleParser = sequence <$> many1 (charIn (Wire.tdAllTags Wire.cvTaggedData) "type" >>= mkParser)
   where
     mkParser c = do
-      clType <- Wire.typeFromTag c
+      let clType = explodeOnFail $ (Wire.tdTagToEnum Wire.cvTaggedData) c
       return $ char ' ' >> cvParser clType
 
 timeParser :: Parser Time

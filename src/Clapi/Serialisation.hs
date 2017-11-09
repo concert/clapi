@@ -4,13 +4,11 @@ module Clapi.Serialisation
       encode,
       decode,
       parser,
-      typeTag,
-      typeTags,
-      typeFromTag,
-      valueTag,
+      cvTaggedData,
       interpolationTaggedData,
       TaggedData(..),
       tdTotalBuilder,
+      tdInstanceToTag,
       Serialisable
     ) where
 
@@ -139,15 +137,6 @@ typeTag ClTString = 's'
 typeTag ClTList = 'l'
 
 cvTaggedData = genTagged typeTag clapiValueType
-
-typeTags :: [Char]
-typeTags = tdAllTags cvTaggedData
-
-valueTag :: ClapiValue -> Char
-valueTag = tdInstanceToTag cvTaggedData
-
-typeFromTag :: (MonadFail m) => Char -> m ClapiTypeEnum
-typeFromTag t = either fail return $ tdTagToEnum cvTaggedData t
 
 cvBuilder :: ClapiValue -> CanFail Builder
 cvBuilder (ClTime t) = builder t
