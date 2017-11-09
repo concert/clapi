@@ -150,21 +150,9 @@ cvBuilder (ClDouble x) = return $ doubleBE x
 cvBuilder (ClString x) = builder x
 cvBuilder (ClList vs) = builder vs
 
-taggedEncode :: (Monoid b, Serialisable b) =>
-    (a -> b) -> (a -> CanFail Builder) -> [a] -> CanFail Builder
-taggedEncode derive build xs = derived <<>> built where
-    built = foldl (<<>>) (return mempty) (map build xs)
-    derived = builder $ foldl (<>) mempty (map derive xs)
-
-parseTags :: APT.Parser String
-parseTags = APT.many' $ APT.satisfy (APT.inClass typeTags)
-
-instance Serialisable [ClapiValue] where
-    builder = taggedEncode derive cvBuilder where
-        derive cv = [valueTag cv]
-    parser = do
-        types <- composeParsers parser parseTags >>= mapM typeFromTag
-        sequence $ map (cvParser) types
+instance Serialisable ClapiValue where
+    builder = tdTotalBuilder cvTaggedData cvBuilder
+    parser = tdTotalParser cvTaggedData cvParser
       where
         cvParser :: ClapiTypeEnum -> Parser ClapiValue
         cvParser ClTTime = ClTime <$> (parser :: Parser Time)
@@ -180,12 +168,16 @@ instance Serialisable [ClapiValue] where
 
 
 encodeListN :: (Serialisable a) => [a] -> CanFail Builder
-encodeListN = taggedEncode (const (1 :: Sum Word16)) builder
+encodeListN items = (lenBuilder $ length items) <<>> (foldl (<<>>) (return mempty) (map builder items))
 
 parseListN :: (Serialisable a) => Parser [a]
 parseListN = do
     len <- parser :: Parser Word16
     count (fromIntegral len) parser
+
+instance Serialisable [ClapiValue] where
+    builder = encodeListN
+    parser = parseListN
 
 instance Serialisable [Message] where
     builder = encodeListN
