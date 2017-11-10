@@ -248,7 +248,7 @@ instance Serialisable DataUpdateMessage where
     builder = tdTaggedBuilder dumtTaggedData dumtBuilder
     parser = tdTaggedParser dumtTaggedData dumtParser
 
-data TUMT
+data TreeUpdateMsgType
   = TUMTAssignType
   | TUMTDelete deriving (Enum, Bounded)
 
@@ -263,7 +263,7 @@ tumtBuilder :: TreeUpdateMessage -> CanFail Builder
 tumtBuilder (UMsgAssignType p tp) = builder p <<>> builder tp
 tumtBuilder (UMsgDelete p) = builder p
 
-tumtParser :: TUMT -> Parser TreeUpdateMessage
+tumtParser :: TreeUpdateMsgType -> Parser TreeUpdateMessage
 tumtParser (TUMTAssignType) = UMsgAssignType <$> parser <*> parser
 tumtParser (TUMTDelete) = UMsgDelete <$> parser
 
