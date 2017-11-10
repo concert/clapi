@@ -41,12 +41,12 @@ tests = [
 testTupleDef =
   do
     assertFailed "duplicate names" $
-        tupleDef Cannot "docs" ["hi", "hi"] ["bool", "int32"] mempty
+        tupleDef Cannot "docs" ["hi", "hi"] ["string", "int32"] mempty
     assertFailed "mismatched names/types" $
-        tupleDef Cannot "docs" ["a", "b"] ["bool"] mempty
-    def <- tupleDef Cannot "docs" ["a"] ["bool"] mempty
+        tupleDef Cannot "docs" ["a", "b"] ["int32"] mempty
+    def <- tupleDef Cannot "docs" ["a"] ["int32"] mempty
     assertEqual "tuple validation" (return []) $
-        validate undefined (view validators def) [ClBool True]
+        validate undefined (view validators def) [ClInt32 42]
 
 
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
@@ -154,7 +154,7 @@ instance Arbitrary Definition where
         fDef <- oneof [
             tupleDef <$> arbitrary <*> arbitrary <*>
                 (pure $ take n $ infiniteStrings 4) <*>
-                pure (replicate n "bool") <*> arbitrary,
+                pure (replicate n "int32") <*> arbitrary,
             structDef <$> arbitrary <*> arbitrary <*> vector n <*>
                 vectorOf n arbitraryPath <*> vector n,
             arrayDef <$> arbitrary <*> arbitrary <*> arbitraryPath <*>

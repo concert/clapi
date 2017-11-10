@@ -2,12 +2,22 @@
 module Clapi.Types
     (
         CanFail,
+        ClapiTypeEnum(..),
+        clapiValueType,
         Time(..),
         ClapiValue(..),
         Enumerated(..),
         Clapiable,
         fromClapiValue,
         toClapiValue,
+        RequestBundle(..),
+        UpdateBundle(..),
+        Bundle(..),
+        UMsgError(..),
+        SubMessage(..),
+        DataUpdateMessage(..),
+        TreeUpdateMessage(..),
+        OwnerUpdateMessage(..),
         ClapiMethod(..),
         Message(..),
         msgMethod',
@@ -34,6 +44,80 @@ instance MonadFail (Either String) where
 
 type Attributee = String
 type Site = String
+
+class UMsg a where
+   uMsgPath :: a -> Path
+
+data UMsgError = UMsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
+
+instance UMsg UMsgError where
+    uMsgPath = errMsgPath
+
+data SubMessage =
+    UMsgSubscribe {subMsgPath :: Path}
+  | UMsgUnsubscribe {subMsgPath :: Path}
+  deriving (Eq, Show)
+
+instance UMsg SubMessage where
+    uMsgPath = subMsgPath
+
+-- Separate because not valid in RequestBundle
+data TreeUpdateMessage =
+    UMsgAssignType {tuMsgPath :: Path, tuMsgTypePath :: Path}
+  | UMsgDelete {tuMsgPath :: Path}
+  deriving (Eq, Show)
+
+instance UMsg TreeUpdateMessage where
+    uMsgPath = tuMsgPath
+
+data DataUpdateMessage =
+    UMsgAdd
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgArgs :: [ClapiValue]
+      , duMsgInterpolation :: Interpolation
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgSet
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgArgs :: [ClapiValue]
+      , duMsgInterpolation :: Interpolation
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgRemove
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgClear
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgSetChildren
+      { duMsgPath :: Path
+      , duMsgNames :: [Name]
+      , duMsgAttributee :: (Maybe Attributee)
+      }
+   deriving (Eq, Show)
+
+instance UMsg DataUpdateMessage where
+    uMsgPath = duMsgPath
+
+type OwnerUpdateMessage = Either TreeUpdateMessage DataUpdateMessage
+
+data UpdateBundle = UpdateBundle {ubErrs :: [UMsgError], ubMsgs :: [OwnerUpdateMessage]} deriving (Eq, Show)
+data RequestBundle = RequestBundle {rbSubs :: [SubMessage], rbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
+
+type Bundle = Either UpdateBundle RequestBundle
+
+
+-- Existing message type
 
 data Message =
     MsgError {msgPath' :: Path, msgErrTxt :: T.Text}
@@ -81,9 +165,16 @@ msgMethod' (MsgDelete {}) = Delete
 msgMethod' (MsgChildren {}) = Children
 
 
+-- Values:
+
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
-data ClapiValue = ClBool Bool | ClTime Time |
+data ClapiTypeEnum
+  = ClTTime | ClTEnum | ClTWord32 | ClTWord64 | ClTInt32 | ClTInt64
+  | ClTFloat | ClTDouble | ClTString | ClTList
+  deriving (Eq, Ord, Show, Enum, Bounded)
+
+data ClapiValue = ClTime Time |
     ClEnum Word8 | ClWord32 Word32 | ClWord64 Word64 |
     ClInt32 Int32 | ClInt64 Int64 |
     ClFloat Float | ClDouble Double |
@@ -92,7 +183,6 @@ data ClapiValue = ClBool Bool | ClTime Time |
 instance Show ClapiValue where
     show x = '_' : (show' x)
       where
-        show' (ClBool x) = show x
         show' (ClTime x) = show x
         show' (ClEnum x) = show x
         show' (ClWord32 x) = show x
@@ -103,6 +193,18 @@ instance Show ClapiValue where
         show' (ClDouble x) = show x
         show' (ClString x) = show x
         show' (ClList xs) = show xs
+
+clapiValueType :: ClapiValue -> ClapiTypeEnum
+clapiValueType (ClTime _) = ClTTime
+clapiValueType (ClEnum _) = ClTEnum
+clapiValueType (ClWord32 _) = ClTWord32
+clapiValueType (ClWord64 _) = ClTWord64
+clapiValueType (ClInt32 _) = ClTInt32
+clapiValueType (ClInt64 _) = ClTInt64
+clapiValueType (ClFloat _) = ClTFloat
+clapiValueType (ClDouble _) = ClTDouble
+clapiValueType (ClString _) = ClTString
+clapiValueType (ClList _) = ClTList
 
 data Enumerated a = (Enum a, Bounded a) => Enumerated {getEnum :: a}
 instance (Show a) => Show (Enumerated a) where
@@ -122,11 +224,6 @@ safeToEnum i =
 class Clapiable a where
     toClapiValue :: a -> ClapiValue
     fromClapiValue :: (MonadFail m) => ClapiValue -> m a
-
-instance Clapiable Bool where
-    toClapiValue = ClBool
-    fromClapiValue (ClBool x) = return x
-    fromClapiValue _ = fail "bad type"
 
 instance Clapiable Time where
     toClapiValue = ClTime

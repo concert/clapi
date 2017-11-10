@@ -15,12 +15,12 @@ tests = [
 
 path = ["te", "st"]
 msgs = [
-    MsgAdd path (Time 0 0) [ClBool True, ClEnum 0, ClInt32 3, ClString "marimba"] IConstant Nothing Nothing
-  , MsgSet path (Time 0 0) [ClBool False, ClEnum 0, ClInt32 4, ClString "xylophone"] IConstant Nothing Nothing
+    MsgAdd path (Time 0 0) [ClEnum 0, ClInt32 3, ClString "marimba"] IConstant Nothing Nothing
+  , MsgSet path (Time 0 0) [ClEnum 0, ClInt32 4, ClString "xylophone"] IConstant Nothing Nothing
   , MsgRemove path (Time 0 0) (Just "Bob") Nothing]
 
 encoded :: IsString a => a
-encoded = "Beis\na 0:0 T 0 3 \"marimba\" C \"\"\ns 0:0 F 0 4 \"xylophone\" C \"\"\nr 0:0 \"Bob\""
+encoded = "eis\na 0:0 0 3 \"marimba\" C \"\"\ns 0:0 0 4 \"xylophone\" C \"\"\nr 0:0 \"Bob\""
 
 testBasicEncode = assertEqual "encode result" encoded $
     toByteString . encode $ msgs

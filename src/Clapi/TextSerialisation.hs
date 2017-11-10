@@ -12,20 +12,19 @@ import Data.Attoparsec.Text (
     parse, (<?>), endOfInput)
 
 import qualified Clapi.Serialisation as Wire
-import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
+import Clapi.TaggedData (tdAllTags, tdInstanceToTag, tdTagToEnum, TaggedData)
+import Clapi.Types (
+    Time(..), ClapiTypeEnum(..), ClapiValue(..), Message(..), Interpolation(..), InterpolationType(..))
 import Clapi.Path (Path)
 
-typeTag :: ClapiValue -> Char
-typeTag (ClBool _) = 'B'
-typeTag v = Wire.typeTag v
-
 cvBuilder :: ClapiValue -> Builder
-cvBuilder (ClBool True) = fromChar 'T'
-cvBuilder (ClBool False) = fromChar 'F'
 cvBuilder (ClInt32 i) = fromShow i
 cvBuilder (ClString s) = fromShow s
 -- I think this is the best you can do without path specific type info:
 cvBuilder (ClEnum i) = fromShow i
+
+tdTaggedBuilder :: TaggedData e a -> (a -> Builder) -> a -> Builder
+tdTaggedBuilder td bdr a = fromChar (tdInstanceToTag td $ a) <> bdr a
 
 msgBuilder :: Message -> Builder
 msgBuilder msg = case msg of
@@ -41,15 +40,15 @@ msgBuilder msg = case msg of
         [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
     spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
     vb vs = fmap cvBuilder vs
-    ib i = case i of
-        IConstant -> fromChar 'C'
-        ILinear -> fromChar 'L'
+    ib = tdTaggedBuilder Wire.interpolationTaggedData $ \i -> case i of
+        (IBezier a b) -> error "bezier text serialisation not implemented"
+        _ -> mempty
     valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
     noSubs _ = []
     valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
 headerBuilder :: Message -> Builder
-headerBuilder m = fromString $ fmap typeTag $ msgArgs' m
+headerBuilder = fromString . fmap (tdInstanceToTag Wire.cvTaggedData) . msgArgs'
 
 -- Not sure how useful this is because how often do you know all the messages
 -- up front?
@@ -69,22 +68,20 @@ quotedString = do
     char '"'
     return s
 
-cvParser :: Char -> Parser ClapiValue
-cvParser 'B' = ((wordMatch 'T' True) <|> (wordMatch 'F' False)) <?> "ClBool"
-  where
-    wordMatch c v = char c >> return (ClBool v)
-cvParser 'i' = (ClInt32 <$> decimal) <?> "ClInt32"
-cvParser 's' = (ClString <$> quotedString) <?> "ClString"
-cvParser 'e' = (ClEnum <$> decimal) <?> "ClEnum"
+cvParser :: ClapiTypeEnum -> Parser ClapiValue
+cvParser ClTInt32 = (ClInt32 <$> decimal) <?> "ClInt32"
+cvParser ClTString = (ClString <$> quotedString) <?> "ClString"
+cvParser ClTEnum = (ClEnum <$> decimal) <?> "ClEnum"
 
 charIn :: String -> String -> Parser Char
 charIn cls msg = satisfy (inClass cls) <?> msg
 
 getTupleParser :: Parser (Parser [ClapiValue])
--- FIXME: type tag characters here must line up with above (and would be nice
--- to be like those on the wire too)
-getTupleParser = sequence <$> many1 (
-    charIn "Bise" "type" >>= \c -> return (char ' ' >> cvParser c))
+getTupleParser = sequence <$> many1 (charIn (tdAllTags Wire.cvTaggedData) "type" >>= mkParser)
+  where
+    mkParser c = do
+      let clType = tdTagToEnum Wire.cvTaggedData c
+      return $ char ' ' >> cvParser clType
 
 timeParser :: Parser Time
 timeParser = do
@@ -100,12 +97,19 @@ attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
         "" -> Nothing
         s -> Just s
 
+-- FIXME: copy of the one in Serialisation.hs because parser types differ
+tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
+tdTaggedParser td p = do
+    t <- satisfy (inClass $ tdAllTags td)
+    let te = tdTagToEnum td t
+    p te
+
 interpolationParser :: Parser Interpolation
-interpolationParser =
-    char ' ' >> (charIn "CL" "interpolation") >>= return . asInterpolation
+interpolationParser = char ' ' >> tdTaggedParser Wire.interpolationTaggedData p
   where
-    asInterpolation 'C' = IConstant
-    asInterpolation 'L' = ILinear
+    p e = case e of
+        (ITConstant) -> return IConstant
+        (ITLinear) -> return ILinear
 
 msgParser :: Path -> Parser [ClapiValue] -> Parser Message
 msgParser path valParser = do

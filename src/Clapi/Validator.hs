@@ -66,7 +66,6 @@ fromText t = Dat.parseOnly (mainParser <* Dat.endOfInput) t
     sep = Dat.char ':'
     argsParserMap :: Map.Map Text.Text (Dat.Parser Validator)
     argsParserMap = Map.fromList [
-        ("bool", optionalEmpty (boolValidator t)),
         ("time", optionalEmpty (timeValidator t)),
         ("enum", mandatoryArgs1 (getEnumValidator t) enumP),
         ("word32", optionalArgs2 (getNumValidator t VWord32) word32P word32P),
@@ -124,12 +123,6 @@ softValidate ::
 softValidate getTypePath vs cvs =
     fmap mconcat . sequence $
     zipWith ($) [(goValidate v) getTypePath | v <- vs] cvs
-
-boolValidator :: Text.Text -> Validator
-boolValidator t = Validator t doValidate VBool
-  where
-    doValidate _ (ClBool _) = success
-    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 timeValidator :: Text.Text -> Validator
 timeValidator t = Validator t doValidate VTime
