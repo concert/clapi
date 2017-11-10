@@ -71,34 +71,39 @@ instance UMsg TreeUpdateMessage where
     uMsgPath = tuMsgPath
 
 data DataUpdateMessage =
-    UMsgAdd {
-        duMsgPath :: Path,
-        duMsgTime :: Time,
-        duMsgArgs :: [ClapiValue],
-        duMsgInterpolation :: Interpolation,
-        duMsgAttributee :: (Maybe Attributee),
-        duMsgSite :: (Maybe Site)}
-  | UMsgSet {
-        duMsgPath :: Path,
-        duMsgTime :: Time,
-        duMsgArgs :: [ClapiValue],
-        duMsgInterpolation :: Interpolation,
-        duMsgAttributee :: (Maybe Attributee),
-        duMsgSite :: (Maybe Site)}
-  | UMsgRemove {
-        duMsgPath :: Path,
-        duMsgTime :: Time,
-        duMsgAttributee :: (Maybe Attributee),
-        duMsgSite :: (Maybe Site)}
-  | UMsgClear {
-        duMsgPath :: Path,
-        duMsgTime :: Time,
-        duMsgAttributee :: (Maybe Attributee),
-        duMsgSite :: (Maybe Site)}
-  | UMsgSetChildren {
-        duMsgPath :: Path,
-        duMsgNames :: [Name],
-        duMsgAttributee :: (Maybe Attributee)}
+    UMsgAdd
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgArgs :: [ClapiValue]
+      , duMsgInterpolation :: Interpolation
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgSet
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgArgs :: [ClapiValue]
+      , duMsgInterpolation :: Interpolation
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgRemove
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgClear
+      { duMsgPath :: Path
+      , duMsgTime :: Time
+      , duMsgAttributee :: (Maybe Attributee)
+      , duMsgSite :: (Maybe Site)
+      }
+  | UMsgSetChildren
+      { duMsgPath :: Path
+      , duMsgNames :: [Name]
+      , duMsgAttributee :: (Maybe Attributee)
+      }
    deriving (Eq, Show)
 
 instance UMsg DataUpdateMessage where
