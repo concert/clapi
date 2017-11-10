@@ -23,8 +23,8 @@ cvBuilder (ClString s) = fromShow s
 -- I think this is the best you can do without path specific type info:
 cvBuilder (ClEnum i) = fromShow i
 
-tdTotalBuilder :: TaggedData e a -> (a -> Builder) -> a -> Builder
-tdTotalBuilder td bdr a = fromChar (tdInstanceToTag td $ a) <> bdr a
+tdTaggedBuilder :: TaggedData e a -> (a -> Builder) -> a -> Builder
+tdTaggedBuilder td bdr a = fromChar (tdInstanceToTag td $ a) <> bdr a
 
 msgBuilder :: Message -> Builder
 msgBuilder msg = case msg of
@@ -40,7 +40,7 @@ msgBuilder msg = case msg of
         [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
     spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
     vb vs = fmap cvBuilder vs
-    ib = tdTotalBuilder Wire.interpolationTaggedData $ \i -> case i of
+    ib = tdTaggedBuilder Wire.interpolationTaggedData $ \i -> case i of
         (IBezier a b) -> error "bezier text serialisation not implemented"
         _ -> mempty
     valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
@@ -98,14 +98,14 @@ attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
         s -> Just s
 
 -- FIXME: copy of the one in Serialisation.hs because parser types differ
-tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
-tdTotalParser td p = do
+tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
+tdTaggedParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
     let te = tdTagToEnum td t
     p te
 
 interpolationParser :: Parser Interpolation
-interpolationParser = char ' ' >> tdTotalParser Wire.interpolationTaggedData p
+interpolationParser = char ' ' >> tdTaggedParser Wire.interpolationTaggedData p
   where
     p e = case e of
         (ITConstant) -> return IConstant

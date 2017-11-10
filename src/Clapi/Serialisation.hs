@@ -148,8 +148,8 @@ cvBuilder (ClString x) = builder x
 cvBuilder (ClList vs) = builder vs
 
 instance Serialisable ClapiValue where
-    builder = tdTotalBuilder cvTaggedData cvBuilder
-    parser = tdTotalParser cvTaggedData cvParser
+    builder = tdTaggedBuilder cvTaggedData cvBuilder
+    parser = tdTaggedParser cvTaggedData cvParser
       where
         cvParser :: ClapiTypeEnum -> Parser ClapiValue
         cvParser ClTTime = ClTime <$> (parser :: Parser Time)
@@ -180,14 +180,14 @@ instance Serialisable [Message] where
     builder = encodeListN
     parser = parseListN
 
-tdTotalParser :: TaggedData e a -> (e -> Parser a) -> Parser a
-tdTotalParser td p = do
+tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
+tdTaggedParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
     let te = tdTagToEnum td $ chr $ fromIntegral t
     p te
 
-tdTotalBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
-tdTotalBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
+tdTaggedBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
+tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 instance Serialisable UMsgError where
     builder (UMsgError p s) = builder p <<>> builder s
@@ -208,8 +208,8 @@ subMsgTaggedData = taggedData typeToTag msgToType
     msgToType (UMsgUnsubscribe _) = SubMsgTUnsub
 
 instance Serialisable SubMessage where
-    builder = tdTotalBuilder subMsgTaggedData $ builder . subMsgPath
-    parser = tdTotalParser subMsgTaggedData $ \e -> case e of
+    builder = tdTaggedBuilder subMsgTaggedData $ builder . subMsgPath
+    parser = tdTaggedParser subMsgTaggedData $ \e -> case e of
         (SubMsgTSub) -> UMsgSubscribe <$> parser
         (SubMsgTUnsub) -> UMsgUnsubscribe <$> parser
 
@@ -267,8 +267,8 @@ dumtBuilder m = case m of
     (UMsgSetChildren p ns a) -> builder p <<>> encodeListN ns <<>> builder a
 
 instance Serialisable DataUpdateMessage where
-    builder = tdTotalBuilder dumtTaggedData dumtBuilder
-    parser = tdTotalParser dumtTaggedData dumtParser
+    builder = tdTaggedBuilder dumtTaggedData dumtBuilder
+    parser = tdTaggedParser dumtTaggedData dumtParser
 
 data TUMT
   = TUMTAssignType
@@ -293,7 +293,7 @@ tumtParser (TUMTAssignType) = do
 tumtParser (TUMTDelete) = UMsgDelete <$> parser
 
 parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
-parseEither td pa pb = tdTotalParser td subParse
+parseEither td pa pb = tdTaggedParser td subParse
   where
     subParse eorf = either (fmap Left . pa) (fmap Right . pb) eorf
 
@@ -331,8 +331,8 @@ bundleTaggedData = taggedData typeToTag bundleType
     bundleType (Right (RequestBundle _ _)) = RequestBundleType
 
 instance Serialisable Bundle where
-    builder = tdTotalBuilder bundleTaggedData $ either builder builder
-    parser = tdTotalParser bundleTaggedData $ \e -> case e of
+    builder = tdTaggedBuilder bundleTaggedData $ either builder builder
+    parser = tdTaggedParser bundleTaggedData $ \e -> case e of
         (UpdateBundleType) -> Left <$> parser
         (RequestBundleType) -> Right <$> parser
 
@@ -385,10 +385,10 @@ interpolationTaggedData = taggedData toTag interpolationType
     toTag (ITBezier) = 'B'
 
 instance Serialisable Interpolation where
-    builder = tdTotalBuilder interpolationTaggedData $ \i -> return $ case i of
+    builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
         (IBezier a b) -> fromWord32be a <> fromWord32be b
         _ -> mempty
-    parser = tdTotalParser interpolationTaggedData $ \e -> case e of
+    parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
         (ITConstant) -> return IConstant
         (ITLinear) -> return ILinear
         (ITBezier) -> IBezier <$> parser <*> parser
