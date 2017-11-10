@@ -108,9 +108,7 @@ instance Serialisable Char where
 
 instance Serialisable Time where
     builder (Time x y) = return (fromWord64be x <> fromWord32be y)
-    parser = foo <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
-      where
-        foo x y = Time x y
+    parser = Time <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
 
 instance Serialisable Path.Path where
     builder = builder . Path.toString
@@ -183,18 +181,14 @@ instance Serialisable [Message] where
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTaggedParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
-    let te = tdTagToEnum td $ chr $ fromIntegral t
-    p te
+    p $ tdTagToEnum td $ chr $ fromIntegral t
 
 tdTaggedBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 instance Serialisable UMsgError where
     builder (UMsgError p s) = builder p <<>> builder s
-    parser = do
-        p <- parser
-        s <- parser
-        return $ UMsgError p s
+    parser = UMsgError <$> parser <*> parser
 
 data SubMsgType
   = SubMsgTSub
@@ -238,26 +232,10 @@ dumtParser e = case e of
     (DUMTSet) -> sap UMsgSet
     (DUMTRemove) -> rcp UMsgRemove
     (DUMTClear) -> rcp UMsgClear
-    (DUMTSetChildren) -> do
-        p <- parser
-        ns <- parseListN
-        a <- parser
-        return $ UMsgSetChildren p ns a
+    (DUMTSetChildren) -> UMsgSetChildren <$> parser <*> parseListN <*> parser
   where
-    sap mt = do
-        p <- parser
-        t <- parser
-        v <- parser
-        i <- parser
-        a <- parser
-        s <- parser
-        return $ mt p t v i a s
-    rcp mt = do
-        p <- parser
-        t <- parser
-        a <- parser
-        s <- parser
-        return $ mt p t a s
+    sap mt = mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
+    rcp mt = mt <$> parser <*> parser <*> parser <*> parser
 
 dumtBuilder m = case m of
     (UMsgAdd p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
@@ -286,16 +264,11 @@ tumtBuilder (UMsgAssignType p tp) = builder p <<>> builder tp
 tumtBuilder (UMsgDelete p) = builder p
 
 tumtParser :: TUMT -> Parser TreeUpdateMessage
-tumtParser (TUMTAssignType) = do
-    p <- parser
-    tp <- parser
-    return $ UMsgAssignType p tp
+tumtParser (TUMTAssignType) = UMsgAssignType <$> parser <*> parser
 tumtParser (TUMTDelete) = UMsgDelete <$> parser
 
 parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
-parseEither td pa pb = tdTaggedParser td subParse
-  where
-    subParse eorf = either (fmap Left . pa) (fmap Right . pb) eorf
+parseEither td pa pb = tdTaggedParser td $ either (fmap Left . pa) (fmap Right . pb)
 
 buildEither ::
     TaggedData (Either e f) (Either a b) ->
