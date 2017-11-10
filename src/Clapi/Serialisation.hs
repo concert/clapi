@@ -102,6 +102,10 @@ instance Serialisable T.Text where
     builder = prefixLength . fromText
     parser = decodeLengthPrefixedBytes decodeUtf8With'
 
+instance Serialisable [T.Text] where
+    builder = encodeListN
+    parser = parseListN
+
 instance Serialisable Char where
     builder = return . fromChar
     parser = T.head . decodeUtf8With' <$> APBS.take 1
@@ -111,8 +115,8 @@ instance Serialisable Time where
     parser = Time <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
 
 instance Serialisable Path.Path where
-    builder = builder . Path.toString
-    parser = composeParsers parser Path.pathP
+    builder = builder . Path.toText
+    parser = parser >>= Path.fromString
 
 instance Serialisable ClapiMethod where
     builder = builder . methodToString

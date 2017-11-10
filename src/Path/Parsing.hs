@@ -1,4 +1,4 @@
-module Path.Parsing (toString, fromString, pathP, nameP) where
+module Path.Parsing (toString, toText, fromString, pathP, nameP) where
 
 import Data.Char (isLetter, isDigit)
 import qualified Data.Text as T
@@ -9,9 +9,10 @@ import Data.Attoparsec.Text (
     Parser, char, letter, satisfy, many1, sepBy, parseOnly)
 
 import Clapi.Util (eitherFail)
-import Clapi.Path (Path, root)
+import Clapi.Path (Name, Path(..), root)
 
 sepChar = '/'
+sepText = T.singleton sepChar
 
 separatorP :: Parser Char
 separatorP = char sepChar
@@ -19,15 +20,18 @@ separatorP = char sepChar
 isValidPathSegmentChar :: Char -> Bool
 isValidPathSegmentChar c = isLetter c || isDigit c || c == '_'
 
-nameP :: Parser String
-nameP = many1 $ satisfy isValidPathSegmentChar
+nameP :: Parser Name
+nameP = fmap T.pack $ many1 $ satisfy isValidPathSegmentChar
 
 pathP :: Parser Path
-pathP = separatorP >> nameP `sepBy` separatorP
+pathP = fmap Path $ separatorP >> nameP `sepBy` separatorP
+
+toText :: Path -> T.Text
+toText (Path []) = sepText
+toText (Path cs) = T.append sepText $ T.intercalate sepText cs
 
 toString :: Path -> String
-toString [] = [sepChar]
-toString cs = concatMap (sepChar :) cs
+toString p = T.unpack $ toText p
 
 fromString :: (MonadFail m) => String -> m Path
 fromString s = eitherFail $ parseOnly pathP (T.pack s)

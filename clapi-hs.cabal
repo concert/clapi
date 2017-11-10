@@ -25,6 +25,7 @@ library
                      , Clapi.NamespaceTracker
                      , Clapi.Parsing
                      , Clapi.Path
+                     , Clapi.PathQ
                      , Path.Parsing
                      , Clapi.Relay
                      , Clapi.Serialisation
@@ -60,6 +61,7 @@ library
                      , regex-pcre
                      , scientific
                      , split
+                     , template-haskell
                      , text
                      , stm
                      , unagi-chan

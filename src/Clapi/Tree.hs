@@ -19,8 +19,9 @@ module Clapi.Tree
 where
 
 import Prelude hiding (fail)
+import qualified Data.Text as T
 import Data.Word (Word32, Word64)
-import Data.List (isPrefixOf, partition, intercalate, inits, delete)
+import Data.List (partition, intercalate, inits, delete)
 import Data.Maybe (maybeToList, fromMaybe)
 import Data.Monoid ((<>))
 import qualified Data.Map.Strict as Map
@@ -36,9 +37,10 @@ import Control.Monad.Fail (MonadFail, fail)
 import Control.Error.Util (hush)
 import Text.Printf (printf)
 
-import Clapi.Util (append, (+|), (+|?), duplicates, zipLongest, partitionDifferenceL)
+import Clapi.Util (duplicates, partitionDifferenceL, (+|?))
 import Clapi.Path (
-    Name, Path, root, isChildOfAny, isChildOf, childPaths, splitBasename)
+    Name, Path(..), root, isChildOfAny, isChildOf, childPaths, splitBasename,
+    pathsAndChildNames, (+|), isParentOf)
 import Path.Parsing (toString)
 import Clapi.Types (CanFail, Time, ClapiValue, Interpolation(..))
 import Data.Maybe.Clapi (note)
@@ -106,15 +108,15 @@ formatTree tree = intercalate "\n" lines
   where
     lines = mconcat $ ["---"] : (fmap toLines $ Map.toList tree)
     toLines (path, node) = formatPath path : nodeSiteMapToLines path node
-    formatPath [] = "/"
-    formatPath (n:[]) = "  " ++ n
-    formatPath (n:ns) = "  " ++ formatPath ns
-    pad path lines = let padding = replicate ((length path + 1) * 2) ' ' in
+    formatPath (Path []) = "/"
+    formatPath (Path (n:[])) = "  " ++ T.unpack n
+    formatPath (Path (n:ns)) = "  " ++ formatPath (Path ns)
+    pad (Path names) lines = let padding = replicate ((length names + 1) * 2) ' ' in
         fmap (padding ++) lines
     nodeSiteMapToLines path node =
         pad path $ mconcat $ fmap siteToLines $ Map.toList $ view getSites node
-    siteToLines (Nothing, ts) = "global:" : (pad [] $ tsToLines ts)
-    siteToLines (Just site, ts) = (site ++ ":") : (pad [] $ tsToLines ts)
+    siteToLines (Nothing, ts) = "global:" : (pad root $ tsToLines ts)
+    siteToLines (Just site, ts) = (site ++ ":") : (pad root $ tsToLines ts)
     tsToLines ts = fmap attpToLine $ Map.toList ts
     attpToLine (t, (att, Nothing)) =
         printf "%s: deleted (%s)" (show t) (showAtt att)
@@ -158,12 +160,11 @@ treeSetChildren path keys' tree
         (show . Set.toList $ duplicates keys')
 
 treeInitNode :: NodePath -> ClapiTree a -> ClapiTree a
-treeInitNode p t = foldr (\(p, ns) -> Map.alter (updateNode ns) p) t pathsAndChildNames
+treeInitNode p t = foldr (\(p, mn) -> Map.alter (updateNode mn) p) t (pathsAndChildNames p)
   where
-    pathsAndChildNames = zipLongest (inits p) (pure <$> p)
-    updateNode ns Nothing = return $ Node ns mempty
-    updateNode [n] (Just node) = return $ over getKeys (+|? n) node
-    updateNode [] (Just node) = return node
+    updateNode mn Nothing = return $ Node (maybeToList mn) mempty
+    updateNode (Just n) (Just node) = return $ over getKeys (+|? n) node
+    updateNode Nothing (Just node) = return node
 
 
 treeDeleteNode ::
@@ -282,10 +283,11 @@ minimiseDeletes allDeltas = minimalDeletes ++ others
     isDelete Delete = True
     isDelete _ = False
     (deletes, others) = partition (isDelete . snd) allDeltas
-    minimalDeletes = snd $ foldl f ([[minBound..]], mempty) deletes
-    f (state, acc) (path, Delete)
-      | state `isPrefixOf` path = (state, acc)
-      | otherwise = (path, (path, Delete) : acc)
+    minimalDeletes = snd $ foldl f (Nothing, mempty) deletes
+    f (Nothing, acc) (path, Delete) = (Just path, (path, Delete) : acc)
+    f ((Just state), acc) (path, Delete)
+      | state `isParentOf` path = (Just state, acc)
+      | otherwise = (Just path, (path, Delete) : acc)
 
 minimiseClears :: [(NodePath, TreeDelta a)] -> [(NodePath, TreeDelta a)]
 minimiseClears allDeltas = inits ++ minimalClears ++ others

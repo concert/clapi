@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module TestValuespace where
 
 import Test.HUnit (assertEqual)
@@ -20,7 +20,8 @@ import Control.Monad.Fail (MonadFail)
 
 import Helpers (assertFailed)
 
-import Clapi.Path (Path)
+import Clapi.Path (Path(..))
+import Clapi.PathQ
 import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))
 import Clapi.Validator (validate)
 import Clapi.Valuespace
@@ -60,11 +61,11 @@ testChildTypeValidation =
   do
     -- Set /api/self/version to have the wrong type, but perfectly valid
     -- data for that wrong type:
-    badVs <- vsSet anon IConstant [ClString "banana"] ["api", "self", "version"]
+    badVs <- vsSet anon IConstant [ClString "banana"] [pathq|/api/self/version|]
           globalSite tconst baseValuespace >>=
-        return . vsAssignType ["api", "self", "version"]
-          ["api", "types", "self", "build"]
-    assertValidationErrors [["api", "self"]] badVs
+        return . vsAssignType [pathq|/api/self/version|]
+            [pathq|/api/types/self/build|]
+    assertValidationErrors [[pathq|/api/self|]] badVs
 
 
 testTypeChangeInvalidation =
@@ -74,8 +75,8 @@ testTypeChangeInvalidation =
     newDef <- tupleDef Cannot "for test" ["versionString"] ["string[apple]"]
         mempty
     badVs <- vsSet anon IConstant (defToValues newDef)
-        ["api", "types", "self", "version"] globalSite tconst baseValuespace
-    assertValidationErrors [["api", "self", "version"]] badVs
+        [pathq|/api/types/self/version|] globalSite tconst baseValuespace
+    assertValidationErrors [[pathq|/api/self/version|]] badVs
 
 
 vsWithXRef :: (MonadFail m) => m (Valuespace Unvalidated)
@@ -83,27 +84,27 @@ vsWithXRef =
   do
     newCDef <- structDef Cannot "updated for test"
         ["base", "self", "containers", "test_type", "test_value"] [
-          ["api", "types", "containers", "base"],
-          ["api", "types", "containers", "types_self"],
-          ["api", "types", "containers", "containers"],
+          [pathq|/api/types/containers/base|],
+          [pathq|/api/types/containers/types_self|],
+          [pathq|/api/types/containers/containers|],
           (metaTypePath Tuple),
-          ["api", "types", "test_type"]]
+          [pathq|/api/types/test_type|]]
         [Cannot, Cannot, Cannot, Cannot, Cannot]
     newNodeDef <- tupleDef Cannot "for test" ["daRef"]
         ["ref[/api/types/self/version]"] mempty
     vsAdd anon IConstant (defToValues newNodeDef)
-          ["api", "types", "test_type"] globalSite tconst
+          [pathq|/api/types/test_type|] globalSite tconst
           baseValuespace >>=
         vsSet anon IConstant (defToValues newCDef)
-          ["api", "types", "containers", "types"] globalSite tconst >>=
+          [pathq|/api/types/containers/types|] globalSite tconst >>=
         -- FIXME: should infer this from the container
-        return . vsAssignType ["api", "types", "test_type"]
+        return . vsAssignType [pathq|/api/types/test_type|]
           (metaTypePath Tuple) >>=
         vsAdd anon IConstant [ClString "/api/self/version"]
-          ["api", "types", "test_value"] globalSite tconst >>=
+          [pathq|/api/types/test_value|] globalSite tconst >>=
         -- FIXME: should infer this from the container
-        return . vsAssignType ["api", "types", "test_value"]
-          ["api", "types", "test_type"]
+        return . vsAssignType [pathq|/api/types/test_value|]
+          [pathq|/api/types/test_type|]
 
 
 testXRefValidation =
@@ -112,27 +113,27 @@ testXRefValidation =
     vs <- vsWithXRef
     assertValidationErrors [] vs
     badVs <- vsSet anon IConstant [ClString "/api/self/build"]
-        ["api", "types", "test_value"] globalSite tconst vs
-    assertValidationErrors [["api", "types", "test_value"]] badVs
+        [pathq|/api/types/test_value|] globalSite tconst vs
+    assertValidationErrors [[pathq|/api/types/test_value|]] badVs
 
 
 testXRefRevalidation =
   do
     newDef <- structDef Cannot "for test" ["build", "version"]
-        [["api", "types", "self", "build"], ["api", "types", "self", "build"]]
+        [[pathq|/api/types/self/build|], [pathq|/api/types/self/build|]]
         [Cannot, Cannot]
     badVs <- vsWithXRef >>=
         vsSet anon IConstant (defToValues newDef)
-            ["api", "types", "containers", "self"] globalSite tconst >>=
-        return . vsAssignType ["api", "self", "version"]
-            ["api", "types", "self", "build"] >>=
-        vsSet anon IConstant [ClString "banana"] ["api", "self", "version"]
+            [pathq|/api/types/containers/self|] globalSite tconst >>=
+        return . vsAssignType [pathq|/api/self/version|]
+            [pathq|/api/types/self/build|] >>=
+        vsSet anon IConstant [ClString "banana"] [pathq|/api/self/version|]
             globalSite tconst
-    assertValidationErrors [["api", "types", "test_value"]] badVs
+    assertValidationErrors [[pathq|/api/types/test_value|]] badVs
 
 
 arbitraryPath :: Gen Path
-arbitraryPath = listOf $ listOf1 $ elements ['a'..'z']
+arbitraryPath = fmap Path $ listOf $ fmap T.pack $ listOf1 $ elements ['a'..'z']
 
 instance Arbitrary Liberty where
     arbitrary = arbitraryBoundedEnum
@@ -153,7 +154,7 @@ instance Arbitrary Definition where
         n <- arbitrary
         fDef <- oneof [
             tupleDef <$> arbitrary <*> arbitrary <*>
-                (pure $ take n $ infiniteStrings 4) <*>
+                (pure $ take n $ T.pack <$> infiniteStrings 4) <*>
                 pure (replicate n "int32") <*> arbitrary,
             structDef <$> arbitrary <*> arbitrary <*> vector n <*>
                 vectorOf n arbitraryPath <*> vector n,

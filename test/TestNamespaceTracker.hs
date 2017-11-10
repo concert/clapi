@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, QuasiQuotes #-}
 module TestNamespaceTracker where
 
 import Test.HUnit (assertEqual, assertBool, assertFailure)
@@ -24,6 +24,7 @@ import Pipes.Safe (runSafeT)
 import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
 import Clapi.Path (Path, root)
+import Clapi.PathQ
 import Clapi.Types (
     Time(..), Interpolation(..), Message(..), msgPath', msgMethod',
     ClapiMethod(..), ClapiValue(..))
@@ -94,7 +95,7 @@ msg path Remove = MsgRemove path (Time 0 0) Nothing Nothing
 msg path Clear = MsgClear path (Time 0 0) Nothing Nothing
 msg path Subscribe = MsgSubscribe path
 msg path Unsubscribe = MsgUnsubscribe path
-msg path AssignType = MsgAssignType path []
+msg path AssignType = MsgAssignType path root
 msg path Delete = MsgDelete path
 msg path Children = MsgChildren path []
 
@@ -133,7 +134,7 @@ fakeRelay = forever $ waitThen fwd undefined
     fwd (ClientConnect _ _) = return ()
     fwd (ClientData i oms) = sendRev $ ServerData i $ map (mkRoutable i) oms
     fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
-    mkRoutable i (Client, MsgSubscribe p) = RoutableMessage Nothing (MsgAssignType p [])
+    mkRoutable i (Client, MsgSubscribe p) = RoutableMessage Nothing (MsgAssignType p root)
     mkRoutable _ (o, m) = RoutableMessage (Just o) m
 
 alice = newAwu 42 "alice"
@@ -142,6 +143,8 @@ bob = newAwu 121 "bob"
 charlie = newAwu 7 "charlie"
 dave = newAwu 14 "dave"
 ethel = newAwu 96 "ethel"
+
+helloP = [pathq|/hello|]
 
 testMessageToPreowned =
   let
@@ -161,11 +164,11 @@ testSubscribeUnclaimed =
   let
     protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeRelay
     forTest = do
-      sendFwd $ ClientData alice [msg ["hello"] Subscribe]
+      sendFwd $ ClientData alice [msg helloP Subscribe]
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice ["hello"] ["forbidden", "owner"] resps
+      lift $ assertSingleError alice helloP ["forbidden", "owner"] resps
   in
     runEffect protocol
 
@@ -173,26 +176,27 @@ testSubscribeAsOwner =
   let
     protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeRelay
     forTest = do
-      sendFwd $ ClientData alice [msg ["hello"] AssignType]
+      sendFwd $ ClientData alice [msg helloP AssignType]
       -- FIXME: single bundle too?
-      sendFwd $ ClientData alice [msg ["hello"] Subscribe]
+      sendFwd $ ClientData alice [msg helloP Subscribe]
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice ["hello"] ["forbidden", "owner"] resps
+      lift $ assertSingleError alice helloP ["forbidden", "owner"] resps
   in
     runEffect protocol
 
 testUnsubscribeWhenNotSubscribed =
   let
+    ownedP = [pathq|/owned|]
     owners = Map.singleton "owned" bob
     protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
     forTest = do
-      sendFwd $ ClientData alice [msg ["owned"] Unsubscribe]
+      sendFwd $ ClientData alice [msg ownedP Unsubscribe]
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice ["owned"] ["unsubscribe"] resps
+      lift $ assertSingleError alice ownedP ["unsubscribe"] resps
   in
     runEffect protocol
 
@@ -200,7 +204,7 @@ testValidationErrorReturned =
   let
     protocol = assertions <-> namespaceTrackerProtocol mempty mempty <-> errorSender
     errorSender = sendRev $ ServerData alice [RoutableMessage Nothing err]
-    err = MsgError ["bad"] "wrong"
+    err = MsgError [pathq|/bad|] "wrong"
     assertions = do
         d <- wait
         case d of
@@ -257,9 +261,9 @@ testSubscribeAsClient =
     -- Can Unsubscribe
   let
     events = [
-        ClientData alice [msg ["hello"] AssignType],
-        ClientData bob [msg ["hello"] Subscribe],
-        ClientData alice [msg ["hello"] Add],
+        ClientData alice [msg helloP AssignType],
+        ClientData bob [msg helloP Subscribe],
+        ClientData alice [msg helloP Add],
         ClientDisconnect alice
       ]
   in do
@@ -267,79 +271,79 @@ testSubscribeAsClient =
     assertEqual "resps" [
         -- Because the fake server bounces everything you get subscribes
         -- instead of data here
-        ServerData bob [msg ["hello"] AssignType],
-        ServerData bob [msg ["hello"] Add],
-        ServerData bob [msg ["hello"] Delete],
+        ServerData bob [msg helloP AssignType],
+        ServerData bob [msg helloP Add],
+        ServerData bob [msg helloP Delete],
         ServerDisconnect alice
         ] resps
 
 testSecondOwnerForbidden = do
     response <- trackerHelper [
-        ClientData alice [msg ["hello"] AssignType],
+        ClientData alice [msg helloP AssignType],
         -- FIXME: Error is the only method a client is not allowed to
         -- send. However, our check for an error message doesn't check who sent
         -- it!
-        ClientData alice' [msg ["hello"] Error]]
+        ClientData alice' [msg helloP Error]]
     assertEqual "single recipient" 1 $ Map.size response
-    assertSingleError alice' ["hello"] ["forbidden", "client"] response
+    assertSingleError alice' helloP ["forbidden", "client"] response
 
 testClaimUnclaimInBundle = do
     response <- trackerHelper [
-        ClientData alice [msg ["hello"] AssignType, msg ["hello"] Delete],
-        ClientData alice' [msg ["hello"] Subscribe]]
-    assertSingleError alice' ["hello"] ["forbidden", "owner"] response
+        ClientData alice [msg helloP AssignType, msg helloP Delete],
+        ClientData alice' [msg helloP Subscribe]]
+    assertSingleError alice' helloP ["forbidden", "owner"] response
 
 _disconnectUnsubsBase = [
-    ClientData alice [msg ["hello"] AssignType],
-    ClientData alice' [msg ["hello"] Subscribe],
+    ClientData alice [msg helloP AssignType],
+    ClientData alice' [msg helloP Subscribe],
     ClientDisconnect alice',
     -- Should miss this message:
-    ClientData alice [msg ["hello"] Set]
+    ClientData alice [msg helloP Set]
     ]
 
 testClientDisconnectUnsubs = do
     response <- trackerHelper _disconnectUnsubsBase
     assertEqual "alice': init msgs"
-        (Map.singleton alice' [[msg ["hello"] AssignType]])
+        (Map.singleton alice' [[msg helloP AssignType]])
         response
 
 testClientDisconnectUnsubsResubs = do
     response <- trackerHelper $ _disconnectUnsubsBase ++ [
-        ClientData alice' [msg ["hello"] Subscribe],
-        ClientData alice [msg ["hello"] Add]]
+        ClientData alice' [msg helloP Subscribe],
+        ClientData alice [msg helloP Add]]
     assertEqual "alice': 2 * init msgs + add msg"
         (Map.singleton alice' [
-            [msg ["hello"] AssignType],
-            [msg ["hello"] AssignType],
-            [msg ["hello"] Add],
-            [msg ["hello"] Delete]]) -- End of test disconnect
+            [msg helloP AssignType],
+            [msg helloP AssignType],
+            [msg helloP Add],
+            [msg helloP Delete]]) -- End of test disconnect
         response
 
 testOwnerDisconnectDisowns = do
     -- and unregisters clients
     response <- trackerHelper [
-        ClientData alice' [msg ["fudge"] AssignType], -- Need something to disconnect at end
-        ClientData alice [msg ["hello"] AssignType],
-        ClientData alice' [msg ["hello"] Subscribe],
+        ClientData alice' [msg [pathq|/fudge|] AssignType], -- Need something to disconnect at end
+        ClientData alice [msg helloP AssignType],
+        ClientData alice' [msg helloP Subscribe],
         ClientDisconnect alice,
         -- No owner => unclaimed => Subscribe disallowed:
-        ClientData alice'' [msg ["hello"] Subscribe],
+        ClientData alice'' [msg helloP Subscribe],
         -- No subscriber => no AssignType msg:
-        ClientData alice''' [msg ["hello"] AssignType]]
+        ClientData alice''' [msg helloP AssignType]]
     assertOnlyKeysInMap [alice', alice''] response
     assertMapValue alice' [
-        [msg ["hello"] AssignType], [msg ["hello"] Delete]] response
-    assertSingleError alice'' ["hello"] ["forbidden"] response
+        [msg helloP AssignType], [msg helloP Delete]] response
+    assertSingleError alice'' helloP ["forbidden"] response
   where
     alice'' = newAwu 44 "alice"
     alice''' = newAwu 45 "alice"
 
 testClientSetForwarded = do
     response <- trackerHelper [
-        ClientData alice [msg ["hello"] AssignType],
-        ClientData bob [msg ["hello"] Set]]
+        ClientData alice [msg helloP AssignType],
+        ClientData bob [msg helloP Set]]
     assertOnlyKeysInMap [alice] response
-    assertMapValue alice [[msg ["hello"] Set]] response
+    assertMapValue alice [[msg helloP Set]] response
 
 trackerHelper = trackerHelper' mempty mempty
 
