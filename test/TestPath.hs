@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module TestPath where
 
 import Test.HUnit ((@=?), assertEqual)
@@ -11,6 +11,7 @@ import qualified Data.Map.Strict as Map
 
 import Helpers (assertFailed)
 import Clapi.Path (Path(..), root, up)
+import Clapi.PathQ (pathq)
 import Path.Parsing (toString, fromString)
 import Clapi.Types (
     CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
@@ -21,7 +22,8 @@ import Clapi.Serialisation (encode, decode)
 tests = [
     testCase "roundtrip path" testPathRoundtrip,
     testCase "path fromString" testPathFromString,
-    testCase "up" testUp
+    testCase "up" testUp,
+    testCase "pathQ" testPathQ
     ]
 
 testPathRoundtrip =
@@ -46,3 +48,7 @@ testUp =
   do
     assertEqual "root up failed" root $ up root
     assertEqual "normal up failed" (Path ["a"]) $ up $ Path ["a", "b"]
+
+testPathQ =
+  do
+    assertEqual "pathq" (Path ["oi", "mate"]) $ [pathq|/oi/mate|]
