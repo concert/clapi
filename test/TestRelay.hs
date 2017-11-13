@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module TestRelay where
 import Data.List (intersperse, (\\))
 import Data.Maybe (fromJust)
@@ -6,7 +6,9 @@ import qualified Data.Text as T
 import Test.Framework.Providers.HUnit (testCase)
 import Test.HUnit (assertEqual)
 
-import Path.Parsing (toString)
+import Path.Parsing (toText)
+import Clapi.Path (root)
+import Clapi.PathQ
 import Clapi.Types (Message(..), Interpolation(IConstant), Time(..), ClapiValue(..), Enumerated(..), toClapiValue)
 import Clapi.Valuespace (getType, baseValuespace, Liberty(..))
 import Clapi.Relay (handleMessages)
@@ -26,21 +28,21 @@ assertMsgsInclude a b = assertEqual ("missing items in " ++ (show $ NicerShow b)
 testRootStructExtend = assertMsgsInclude expectedMsgs rMsgs
   where
     inMsgs = [
-        MsgAssignType ["foo", "type"] ["api", "types", "base", "struct"],
+        MsgAssignType [pathq|/foo/type|] [pathq|/api/types/base/struct|],
         MsgAdd
-            ["foo", "type"]
+            [pathq|/foo/type|]
             z
             [cannot, s "atypical", los ["type"], los ["/api/types/base/struct/"], ClList [cannot]]
             IConstant
             Nothing
             Nothing,
-        MsgAssignType ["foo"] ["foo", "type"]]
-    expectedMsgs = inMsgs ++ [MsgSet (tp []) z extendedV IConstant Nothing Nothing]
+        MsgAssignType [pathq|/foo|] [pathq|/foo/type|]]
+    expectedMsgs = inMsgs ++ [MsgSet (tp root) z extendedV IConstant Nothing Nothing]
     z = Time 0 0
-    extendedV = [cannot, s "auto-generated container", los ["foo", "api"], lop [["foo", "type"], tp ["api"]], ClList [cannot, cannot]]
-    s = ClString . T.pack
+    extendedV = [cannot, s "auto-generated container", los ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], ClList [cannot, cannot]]
+    s = ClString
     los = ClList . (map s)
-    lop ps = los $ map toString ps
+    lop ps = los $ map toText ps
     tp p = fromJust $ getType baseValuespace p
     om = map (\m -> (Owner, m))
     (ms', vs') = handleMessages baseValuespace $ om inMsgs

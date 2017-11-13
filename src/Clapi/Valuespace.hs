@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
@@ -23,7 +23,8 @@ import qualified Data.Map.Mos as Mos
 import Data.Maybe.Clapi (note)
 import qualified Data.Maybe.Clapi as Maybe
 
-import Clapi.Util (duplicates, eitherFail, (+|), partitionDifferenceL)
+import Clapi.Util (duplicates, eitherFail, partitionDifferenceL)
+import Clapi.Path ((+|))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Types (
@@ -36,6 +37,7 @@ import Clapi.Tree (
     TreeDelta, treeDiff)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, fromText, enumDesc, validate, desc)
+import Clapi.PathQ
 
 type Node = Tree.Node [ClapiValue]
 
@@ -120,7 +122,7 @@ arrayDef ::
 arrayDef l d ct cl = return $ ArrayDef l d ct cl
 
 apiRoot :: Path.Path
-apiRoot = ["api"]
+apiRoot = [pathq|/api|]
 
 metaType :: Definition -> MetaType
 metaType (TupleDef {}) = Tuple
@@ -128,9 +130,9 @@ metaType (StructDef {}) = Struct
 metaType (ArrayDef {}) = Array
 
 metaTypePath :: MetaType -> Path.Path
-metaTypePath Tuple = ["api", "types", "base", "tuple"]
-metaTypePath Struct = ["api", "types", "base", "struct"]
-metaTypePath Array = ["api", "types", "base", "array"]
+metaTypePath Tuple = [pathq|/api/types/base/tuple|]
+metaTypePath Struct = [pathq|/api/types/base/struct|]
+metaTypePath Array = [pathq|/api/types/base/array|]
 
 categoriseMetaTypePath :: (MonadFail m) => TypePath -> m MetaType
 categoriseMetaTypePath mtp
@@ -162,7 +164,7 @@ defToValues (TupleDef l d ns vs is) =
   [
     toClapiValue $ Enumerated l,
     toClapiValue d,
-    toClapiValue $ T.pack <$> ns,
+    toClapiValue $ ns,
     toClapiValue $ desc <$> vs,
     toClapiValue $ Enumerated <$> Set.toList is
   ]
@@ -170,7 +172,7 @@ defToValues (StructDef l d ns ts ls) =
   [
     toClapiValue $ Enumerated l,
     toClapiValue d,
-    toClapiValue $ T.pack <$> ns,
+    toClapiValue $ ns,
     toClapiValue $ T.pack . Path.toString <$> ts,
     toClapiValue $ Enumerated <$> ls
   ]
@@ -189,7 +191,7 @@ valuesToDef
   do
     -- FIXME: need to be able to unpack enums
     l' <- getEnum <$> fromClapiValue l
-    ns' <- fmap T.unpack <$> fromClapiValue ns
+    ns' <- fromClapiValue ns
     vds' <- fromClapiValue vds
     is' <- Set.fromList <$> fmap getEnum <$> fromClapiValue is
     tupleDef l' d ns' vds' is'
@@ -197,7 +199,7 @@ valuesToDef
     Struct [l@(ClEnum _), ClString d, ns@(ClList _), ts@(ClList _), ls@(ClList _)] =
   do
     l' <- getEnum <$> fromClapiValue l
-    ns' <- fmap T.unpack <$> fromClapiValue ns
+    ns' <- fromClapiValue ns
     ts' <- fmap T.unpack <$> fromClapiValue ts
     ts'' <- mapM Path.fromString ts'
     ls' <- fmap getEnum <$> fromClapiValue ls
@@ -368,17 +370,16 @@ validateNodeChildren getType' np node def@(StructDef {}) =
   in do
     when ((missing, extra) /= mempty) failKeys
     validateChildKeyTypes getType' np expectedKeys expectedTypes
-validateNodeChildren getType' np node def@(ArrayDef {}) =
+validateNodeChildren getType' np node (ArrayDef liberty _doc expectedType childLiberty) =
   let
     nodeKeys = view getKeys node
     dups = duplicates nodeKeys
-    expectedType = view childType def
     failDups = when (not . null $ dups) $ fail $
         printf "duplicate array keys %s" (show dups)
     failTypes bad = when (not . null $ bad) $ fail $
         printf "bad child types %s" (show bad)
   in do
-    mapM_ (eitherFail . parseOnly Path.nameP . T.pack) nodeKeys
+    mapM_ (eitherFail . parseOnly Path.nameP) nodeKeys
     failDups
     validateChildKeyTypes getType' np nodeKeys (repeat expectedType)
 
@@ -586,38 +587,40 @@ baseValuespace =
     addConst buildPath [ClString "banana"] >>=
 
     autoDefineStruct
-        ["api", "types", "base"]
-        ["api", "types", "containers", "base"] >>=
+        [pathq|/api/types/base|]
+        [pathq|/api/types/containers/base|] >>=
     return . vsAssignType
-        ["api", "types", "containers"]
-        ["api", "types", "containers", "containers"] >>=
+        [pathq|/api/types/containers|]
+        [pathq|/api/types/containers/containers|] >>=
     autoDefineStruct
-        ["api", "types", "self"]
-        ["api", "types", "containers", "types_self"] >>=
+        [pathq|/api/types/self|]
+        [pathq|/api/types/containers/types_self|] >>=
     autoDefineStruct
-        ["api", "self"]
-        ["api", "types", "containers", "self"] >>=
+        [pathq|/api/self|]
+        [pathq|/api/types/containers/self|] >>=
     autoDefineStruct
-        ["api", "types"]
-        ["api", "types", "containers", "types"] >>=
+        [pathq|/api/types|]
+        [pathq|/api/types/containers/types|] >>=
     autoDefineStruct
-        ["api"]
-        ["api", "types", "containers", "api"] >>=
+        [pathq|/api|]
+        [pathq|/api/types/containers/api|] >>=
     autoDefineStruct
-        []
-        ["api", "types", "containers", "root"] >>=
+        Path.root
+        [pathq|/api/types/containers/root|] >>=
     return . vsAssignType
-        ["api", "types", "containers", "containers"]
+        [pathq|/api/types/containers/containers|]
         (metaTypePath Struct) >>=
-    autoDefineStruct ["api", "types", "containers"]
-        ["api", "types", "containers", "containers"]
+    autoDefineStruct
+        [pathq|/api/types/containers|]
+        [pathq|/api/types/containers/containers|]
   where
-    versionPath = ["api", "self", "version"]
-    versionDefPath = ["api", "types", "self", "version"]
+    versionPath = [pathq|/api/self/version|]
+    versionDefPath = [pathq|/api/types/self/version|]
     versionDef = fromJust $ tupleDef
         Cannot "t" ["maj", "min"] ["word32", "int32"] mempty
 
-    buildPath = ["api", "self", "build"]
-    buildDefPath = ["api", "types", "self", "build"]
+    -- See if making path an isString that errors gives us friendly compile time failures
+    buildPath = [pathq|/api/self/build|]
+    buildDefPath = [pathq|/api/types/self/build|]
     buildDef = fromJust $ tupleDef
         Cannot "b" ["commit_hash"] ["string[banana]"] mempty

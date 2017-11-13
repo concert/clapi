@@ -19,7 +19,7 @@ import Pipes.Core (Proxy, request, respond)
 
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
-import Clapi.Path (Name, Path)
+import Clapi.Path (Name, Path(..))
 import Clapi.Types (Message(..), msgMethod', ClapiMethod(..), ClapiValue(ClString))
 import Clapi.Server (AddrWithUser, ClientAddr, ClientEvent(..), ServerEvent(..), awuAddr)
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
@@ -36,15 +36,15 @@ type Registered i = Mos.Mos i Path
 type User = B.ByteString
 
 namespace :: Path -> Name
-namespace [] = ""
-namespace (n:ns) = n
+namespace (Path []) = ""
+namespace (Path (n:ns)) = n
 
 isNamespace :: Path -> Bool
-isNamespace (n:[]) = True
+isNamespace (Path (n:[])) = True
 isNamespace _ = False
 
 maybeNamespace :: (Name -> a) -> Path -> Maybe a
-maybeNamespace f (n:[]) = Just $ f n
+maybeNamespace f (Path (n:[])) = Just $ f n
 maybeNamespace _ _ = Nothing
 
 methodAllowed :: (Maybe Ownership, ClapiMethod) -> Bool
@@ -260,4 +260,4 @@ handleClientDisconnect i =
     stateL _1 (get >>=
         return . fmap namespaceDeleteMsg . Map.keys . Map.filter (== i))
   where
-    namespaceDeleteMsg name = (Owner, MsgDelete [name])
+    namespaceDeleteMsg name = (Owner, MsgDelete $ Path [name])

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module TestTextSerialisation (tests) where
 import Data.String (IsString)
 import Test.HUnit (assertEqual)
@@ -7,13 +7,14 @@ import Blaze.ByteString.Builder (toByteString)
 
 import Clapi.Types (Time(..), ClapiValue(..), Message(..), Interpolation(..))
 import Clapi.TextSerialisation (encode, decode)
+import Clapi.PathQ
 
 tests = [
    testCase "basic text encode" testBasicEncode,
    testCase "basic text decode" testBasicDecode
    ]
 
-path = ["te", "st"]
+path = [pathq|/te/st|]
 msgs = [
     MsgAdd path (Time 0 0) [ClEnum 0, ClInt32 3, ClString "marimba"] IConstant Nothing Nothing
   , MsgSet path (Time 0 0) [ClEnum 0, ClInt32 4, ClString "xylophone"] IConstant Nothing Nothing

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module TestTypes where
 
 import Test.HUnit ((@=?), assertEqual)
@@ -14,6 +14,7 @@ import Clapi.Types (
     CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
     Interpolation(..), fromClapiValue, toClapiValue)
 import Clapi.Serialisation (encode, decode)
+import Clapi.PathQ
 
 
 tests = [
@@ -33,7 +34,7 @@ testBinarySerialisationRoundTrip =
     Right bundle @=? result where
         bundle = [message, message]
         message = MsgSet -- FIXME: might want to do property testing for this
-            ["hello", "world"]
+            [pathq|/hello/world|]
             (Time 0 0)
             nestedArgList
             ILinear

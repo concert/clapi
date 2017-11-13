@@ -9,6 +9,7 @@ import Test.Framework.Providers.HUnit (testCase)
 import Clapi.Types (Message(MsgError))
 import Clapi.Protocol (runProtocolIO, (<->), sendRev, sendFwd, waitThen)
 import Clapi.SerialisationProtocol (serialiser)
+import Clapi.Path (root)
 
 tests = [
     testCase "packetised round trip" testPacketisedRoundTrip
@@ -21,7 +22,7 @@ testPacketisedRoundTrip = do
     runProtocolIO (U.readChan bo) (U.writeChan mi) (chunkyWrite bi) (takeMVar mv) (serialiser <-> stopProto)
     U.readChan mo >>= assertEqual "round tripped" msgs
   where
-    msgs = [MsgError [] "part of test"]
+    msgs = [MsgError root "part of test"]
     chunkyWrite bi c = do
         let (c0, c1) = B.splitAt (B.length c `div` 2) c
         U.writeChan bi c0

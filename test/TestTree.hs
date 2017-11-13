@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module TestTree where
 
 import Helpers (assertFailed)
@@ -17,7 +18,8 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 
 import qualified Data.Map.Mos as Mos
-import Clapi.Path (Path(..), isChildOfAny)
+import Clapi.Path (Path(..), isChildOfAny, root)
+import Clapi.PathQ
 import Clapi.Types (
     CanFail, ClapiValue(..), Time(..), InterpolationType(..), Interpolation(..))
 import Clapi.Tree (
@@ -37,15 +39,15 @@ assertContiguous =
     assertEqual "orphans/missing" (mempty, mempty) . treeOrphansAndMissing
 
 t0 = mempty :: ClapiTree ()
-t1 = treeInitNode ["a", "b", "c"] t0
-t2 = treeInitNode ["a", "d", "e"] t1
-t3 = treeInitNode ["a", "d"] t2
+t1 = treeInitNode [pathq|/a/b/c|] t0
+t2 = treeInitNode [pathq|/a/d/e|] t1
+t3 = treeInitNode [pathq|/a/d|] t2
 
 expectedT1 = Map.fromList [
-      ([], Node ["a"] mempty),
-      (["a"], Node ["b"] mempty),
-      (["a", "b"], Node ["c"] mempty),
-      (["a", "b", "c"], Node [] mempty)] :: ClapiTree ()
+      (root, Node ["a"] mempty),
+      ([pathq|/a|], Node ["b"] mempty),
+      ([pathq|/a/b|], Node ["c"] mempty),
+      ([pathq|/a/b/c|], Node [] mempty)] :: ClapiTree ()
 
 testInitNode =
    do
@@ -56,17 +58,17 @@ testInitNode =
     assertEqual "after two inits" expectedT3 t3
   where
     expectedT3 = Map.fromList [
-      ([], Node ["a"] mempty),
-      (["a"], Node ["b", "d"] mempty),
-      (["a", "b"], Node ["c"] mempty),
-      (["a", "b", "c"], Node [] mempty),
-      (["a", "d"], Node ["e"] mempty),
-      (["a", "d", "e"], Node [] mempty)] :: ClapiTree ()
+      (root, Node ["a"] mempty),
+      ([pathq|/a|], Node ["b", "d"] mempty),
+      ([pathq|/a/b|], Node ["c"] mempty),
+      ([pathq|/a/b/c|], Node [] mempty),
+      ([pathq|/a/d|], Node ["e"] mempty),
+      ([pathq|/a/d/e|], Node [] mempty)] :: ClapiTree ()
 
 
 testDeleteNode =
   do
-    t4 <- treeDeleteNode ["a", "d"] t3
+    t4 <- treeDeleteNode [pathq|/a/d|] t3
     assertEqual "after delete" t1 t4
 
 

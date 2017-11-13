@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
 module Clapi.Validator where
 
+import qualified Data.Text as T
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
 import Control.Monad (join)
@@ -94,7 +95,7 @@ fromText t = Dat.parseOnly (mainParser <* Dat.endOfInput) t
       where
         g = f <$> (maybeP argAP) <*> (maybeP $ sep >> argBP)
     mandatoryArgs1 f p = f <$> bracket p
-    enumP = Dat.sepBy nameP (Dat.char ',')
+    enumP = Dat.sepBy (T.unpack <$> nameP) (Dat.char ',')
     word32P = Dat.decimal :: Dat.Parser Word32
     word64P = Dat.decimal :: Dat.Parser Word64
     int32P = Dat.signed Dat.decimal :: Dat.Parser Int32
