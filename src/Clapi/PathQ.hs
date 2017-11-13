@@ -1,17 +1,25 @@
-{-# LANGUAGE QuasiQuotes, TemplateHaskell #-}
-module Clapi.PathQ (pathq) where
-import Language.Haskell.TH.Quote
-import Language.Haskell.TH
-import Data.Maybe (fromJust)
+{-# LANGUAGE
+    QuasiQuotes
+  , TemplateHaskell
+  , StandaloneDeriving
+  , DeriveLift
+#-}
 
+module Clapi.PathQ (pathq) where
+
+import Control.Monad ((>=>))
+import Instances.TH.Lift ()
+import Language.Haskell.TH.Lift (Lift, lift)
+import Language.Haskell.TH.Quote (QuasiQuoter(..))
+
+import Clapi.Path (Path(..))
 import Path.Parsing (fromString)
 
-qe :: String -> Q Exp
-qe ps = fromString ps >>= const [| fromJust $ fromString ps |]
+deriving instance Lift Path
 
 pathq :: QuasiQuoter
 pathq = QuasiQuoter {
-    quoteExp = qe,
+    quoteExp = fromString >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}

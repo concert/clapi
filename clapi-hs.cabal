@@ -62,6 +62,8 @@ library
                      , scientific
                      , split
                      , template-haskell
+                     , th-lift
+                     , th-lift-instances
                      , text
                      , stm
                      , unagi-chan
