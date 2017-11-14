@@ -192,11 +192,10 @@ handleOwnerMessages msgs vs = (rmsgs, rvs)
 handleOwnerMessagesS :: [OwnerUpdateMessage] -> State (Valuespace Validated) (Either [UMsgError] [OwnerUpdateMessage])
 handleOwnerMessagesS msgs = state (handleOwnerMessages msgs)
 
--- Technically this only takes (and returns for vsMsgs) DataUpdateMessages but
--- we lost the specificity
+-- Technically this returns [DataUpdateMessage] for vsMsgs
 handleClientMessages ::
     [Path] ->
-    [OwnerUpdateMessage] ->
+    [DataUpdateMessage] ->
     Valuespace Validated ->
     (([UMsgError], [OwnerUpdateMessage], [OwnerUpdateMessage]), Valuespace Validated)
 handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), vs)
@@ -207,24 +206,25 @@ handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), 
     nodeInfo p = (getType vs p, Map.lookup p $ vsGetTree vs)
     nodeMsgs p n = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty n
     rightOrDie (Right x) = x
-    (vsMsgs, vsErrs, _) = handleMutationMessages vs updates
+    (vsMsgs, vsErrs, _) = handleMutationMessages vs (map Right updates)
 
 handleClientMessagesS ::
     [Path] ->
-    [OwnerUpdateMessage] ->
+    [DataUpdateMessage] ->
     State (Valuespace Validated) ([UMsgError], [OwnerUpdateMessage], [OwnerUpdateMessage])
 handleClientMessagesS paths msgs = state (handleClientMessages paths msgs)
 
 handleMessages :: Valuespace Validated -> Request -> (Response, Valuespace Validated)
-handleMessages vs (Request mGetPaths updates) = runState doHandle vs
+handleMessages vs (ClientRequest getPaths updates) = runState hc vs
   where
-    doHandle = maybe ho hc mGetPaths
+    hc = do
+        (errs, gets, vmsgs) <- handleClientMessagesS getPaths updates
+        return $ Response gets errs vmsgs
+handleMessages vs (OwnerRequest updates) = runState ho vs
+  where
     ho = do
         e <- handleOwnerMessagesS updates
         return $ either (\errs -> Response [] errs []) (\ups -> Response [] [] ups) e
-    hc getPaths = do
-        (errs, gets, vmsgs) <- handleClientMessagesS getPaths updates
-        return $ Response gets errs vmsgs
 
 relay :: Monad m => Valuespace Validated -> Protocol (i, Request) Void (i, Response) Void m ()
 relay vs = waitThen fwd (const $ error "message from the void")

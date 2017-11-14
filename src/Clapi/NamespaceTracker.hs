@@ -31,20 +31,15 @@ type Registered i = Mos.Mos i Path
 -- FIXME:
 type User = B.ByteString
 
--- Maybe the data types would be clearer/more precise as:
--- data Request
---   = ClientRequest [Path] [DataUpdateMessage]
---   | OwnerRequest [OwnerUpdateMessage]
+data Request
+  = ClientRequest [Path] [DataUpdateMessage]
+  | OwnerRequest [OwnerUpdateMessage] deriving (Eq, Show)
 
 -- data Response
 --   = ClientResponse [OwnerUpdateMessage] [UMsgError] [DataUpdateMessage]
 --   | BadOwnerResponse [UMsgError]
 --   | GoodOwnerResponse [OwnerUpdateMessage]
 
-data Request = Request
-  { reqGet :: Maybe [Path]
-  , reqUpdate :: [OwnerUpdateMessage]
-  } deriving (Eq, Show)
 data Response = Response
   { respGet :: [OwnerUpdateMessage]
   , respErrs :: [UMsgError]
@@ -195,7 +190,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         badOumPaths <- stateFst $ hasOwnership i Client oums
         if not $ null $ badErrPaths ++ badOumPaths
             then sendErrorBundle i "Path already has another owner" $ allPaths b
-            else lift $ sendFwd ((i, Just errs), Request Nothing oums)
+            else lift $ sendFwd ((i, Just errs), OwnerRequest oums)
     fwd (ClientData i (Right (RequestBundle subs dums))) = do
         badSubPaths <- stateFst $ hasOwnership i Owner subs
         badDumPaths <- stateFst $ hasOwnership i Owner dums
@@ -206,11 +201,11 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
                 kick i
             else do
                 getPaths <- stateSnd $ handleUnsubscriptions i subs
-                lift $ sendFwd ((i, Nothing), Request (Just getPaths) $ map Right dums)
+                lift $ sendFwd ((i, Nothing), ClientRequest getPaths dums)
     fwd (ClientDisconnect i) = do
         tums <- handleClientDisconnect i
         lift $ sendRev $ ServerDisconnect i
-        lift $ sendFwd ((i, Just []), Request Nothing $ map Left tums)
+        lift $ sendFwd ((i, Just []), OwnerRequest $ map Left tums)
     rev ((i, ownErrs), Response gets valErrs updates) = do
         -- FIXME: Should never have ownErrs and gets
         if null ownErrs

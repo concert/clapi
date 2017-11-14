@@ -128,9 +128,8 @@ fakeRelay ::
     Protocol ((c, Request)) Void ((c, Response)) Void m ()
 fakeRelay = forever $ waitThen fwd undefined
   where
-    fwd (ctx, Request mGets updates) = sendRev (ctx, Response (getResps mGets) [] updates)
-    getResps Nothing = []
-    getResps (Just ps) = Left . flip UMsgAssignType helloP <$> ps
+    fwd (ctx, ClientRequest gets updates) = sendRev (ctx, Response (Left . flip UMsgAssignType helloP <$> gets) [] (map Right updates))
+    fwd (ctx, OwnerRequest updates) = sendRev (ctx, Response [] [] updates)
 
 alice = "alice"
 bob = "bob"
