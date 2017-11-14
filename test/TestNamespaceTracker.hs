@@ -133,7 +133,6 @@ fakeRelay = forever $ waitThen fwd undefined
     getResps (Just ps) = Left . flip UMsgAssignType helloP <$> ps
 
 alice = "alice"
-alice' = "alice'"
 bob = "bob"
 
 helloP = [pathq|/hello|]
@@ -253,36 +252,36 @@ testSubscribeAsClient =
 testSecondOwnerForbidden = do
     response <- trackerHelper [
         ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
-        ClientData alice' $ Left $ UpdateBundle [UMsgError helloP ""] []]
+        ClientData bob $ Left $ UpdateBundle [UMsgError helloP ""] []]
     assertEqual "single recipient" 1 $ Map.size response
-    assertSingleError alice' helloP ["Path", "another"] response
+    assertSingleError bob helloP ["Path", "another"] response
 
 testClaimUnclaimInBundle = do
     response <- trackerHelper [
         ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root, Left $ UMsgDelete helloP],
-        ClientData alice' $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root]]
+        ClientData bob $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root]]
     assertEqual "all good" mempty response
 
 _disconnectUnsubsBase = [
     ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
-    ClientData alice' $ Right $ RequestBundle [UMsgSubscribe helloP] [],
-    ClientDisconnect alice',
+    ClientData bob $ Right $ RequestBundle [UMsgSubscribe helloP] [],
+    ClientDisconnect bob,
     -- Should miss this message:
     ClientData alice $ Left $ UpdateBundle [] [Right $ dum helloP Set]
     ]
 
 testClientDisconnectUnsubs = do
     response <- trackerHelper _disconnectUnsubsBase
-    assertEqual "alice': init msgs"
-        (Map.singleton alice' $ [UpdateBundle [] [Left $ UMsgAssignType helloP helloP]])
+    assertEqual "bob: init msgs"
+        (Map.singleton bob $ [UpdateBundle [] [Left $ UMsgAssignType helloP helloP]])
         response
 
 testClientDisconnectUnsubsResubs = do
     response <- trackerHelper $ _disconnectUnsubsBase ++ [
-        ClientData alice' $ Right $ RequestBundle [UMsgSubscribe helloP] [],
+        ClientData bob $ Right $ RequestBundle [UMsgSubscribe helloP] [],
         ClientData alice $ Left $ UpdateBundle [] [Right $ dum helloP Add]]
-    assertEqual "alice': 2 * init msgs + add msg"
-        (Map.singleton alice' $ [
+    assertEqual "bob: 2 * init msgs + add msg"
+        (Map.singleton bob $ [
             UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
             UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
             UpdateBundle [] [Right $ dum helloP Add]])
@@ -291,21 +290,18 @@ testClientDisconnectUnsubsResubs = do
 testOwnerDisconnectDisowns = do
     -- and unregisters clients
     response <- trackerHelper [
-        ClientData alice' $ Left $ UpdateBundle [] [Left $ UMsgAssignType [pathq|/fudge|] root], -- Need something to disconnect at end
+        ClientData bob $ Left $ UpdateBundle [] [Left $ UMsgAssignType [pathq|/fudge|] root], -- Need something to disconnect at end
         ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
-        ClientData alice' $ Right $ RequestBundle [UMsgSubscribe helloP] [],
+        ClientData bob $ Right $ RequestBundle [UMsgSubscribe helloP] [],
         ClientDisconnect alice,
         -- No subscriber => no AssignType msg:
-        ClientData alice''' $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+        ClientData "dave" $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
         -- New subscriber:
-        ClientData alice'' $ Right $ RequestBundle [UMsgSubscribe helloP] []]
-    assertOnlyKeysInMap [alice', alice''] response
-    assertMapValue alice' [
+        ClientData "charlie" $ Right $ RequestBundle [UMsgSubscribe helloP] []]
+    assertOnlyKeysInMap [bob, "charlie"] response
+    assertMapValue bob [
         UpdateBundle [] [Left $ UMsgAssignType helloP helloP], UpdateBundle [] [Left $ UMsgDelete helloP]] response
-    assertMapValue alice'' [UpdateBundle [] [Left $ UMsgAssignType helloP helloP]] response
-  where
-    alice'' =  "alice''"
-    alice''' = "alice'''"
+    assertMapValue "charlie" [UpdateBundle [] [Left $ UMsgAssignType helloP helloP]] response
 
 testClientSetForwarded = do
     response <- trackerHelper [
