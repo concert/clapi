@@ -75,13 +75,13 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
         FreeF (ProtocolF a2 a3 b2 b1) () (Protocol a2 a3 b2 b1 m ()) ->
         m (FreeF (ProtocolF a1 a3 b3 b1) () (Protocol a1 a3 b3 b1 m ()))
 
-    -- Left side is waiting and we have queued values:
-    go (Free (Wait f1)) a2q (b2 :< b2q) freeF2 =
-        runFreeT $ comp (f1 (Rev b2)) a2q b2q (wrapFreeF freeF2)
-
     -- Right side is waiting and we have queued values:
     go freeF1 (a2 :< a2q) b2q (Free (Wait f2)) =
         runFreeT $ comp (wrapFreeF freeF1) a2q b2q (f2 (Fwd a2))
+
+    -- Left side is waiting and we have queued values:
+    go (Free (Wait f1)) a2q (b2 :< b2q) freeF2 =
+        runFreeT $ comp (f1 (Rev b2)) a2q b2q (wrapFreeF freeF2)
 
     -- Both sides waiting:
     go (Free (Wait f1)) a2q b2q (Free (Wait f2)) =
@@ -91,13 +91,13 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
           Fwd a1 -> comp (f1 (Fwd a1)) a2q b2q (wait >>= f2)
           Rev b1 -> comp (wait >>= f1) a2q b2q (f2 (Rev b1))
 
-    -- Left sends to waiting right:
-    go (Free (SendFwd a2 next)) a2q b2q (Free (Wait f2)) =
-        runFreeT $ comp next a2q b2q (f2 (Fwd a2))
-
     -- Right sends to waiting left:
     go (Free (Wait f1)) a2q b2q (Free (SendRev b2 next)) =
         runFreeT $ compose (f1 (Rev b2)) next
+
+    -- Left sends to waiting right:
+    go (Free (SendFwd a2 next)) a2q b2q (Free (Wait f2)) =
+        runFreeT $ comp next a2q b2q (f2 (Fwd a2))
 
     -- Simultaneously send to each other! Here we have to buffer values:
     go (Free (SendFwd a2 next1)) a2q b2q (Free (SendRev b2 next2)) =
@@ -117,6 +117,7 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
     go _ a2q b2q (Pure _) = return $ Pure ()
 
 
+-- FIXME: this is the reverse biased combinator so should be <<->
 (<->) :: (Monad m) =>
     Protocol a1 a2 b3 b2 m () -> Protocol a2 a3 b2 b1 m () -> Protocol a1 a3 b3 b1 m ()
 (<->) = compose
