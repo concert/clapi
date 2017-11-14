@@ -7,7 +7,7 @@ import Test.HUnit (assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 
 import Clapi.Types (Message(MsgError))
-import Clapi.Protocol (runProtocolIO, (<->), sendRev, sendFwd, waitThen)
+import Clapi.Protocol (runProtocolIO, (<<->), sendRev, sendFwd, waitThen)
 import Clapi.SerialisationProtocol (serialiser)
 import Clapi.Path (root)
 
@@ -19,7 +19,7 @@ testPacketisedRoundTrip = do
     (bi, bo) <- U.newChan
     (mi, mo) <- U.newChan
     mv <- newEmptyMVar
-    runProtocolIO (U.readChan bo) (U.writeChan mi) (chunkyWrite bi) (takeMVar mv) (serialiser <-> stopProto)
+    runProtocolIO (U.readChan bo) (U.writeChan mi) (chunkyWrite bi) (takeMVar mv) (serialiser <<-> stopProto)
     U.readChan mo >>= assertEqual "round tripped" msgs
   where
     msgs = [MsgError root "part of test"]

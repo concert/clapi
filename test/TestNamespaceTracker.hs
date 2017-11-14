@@ -34,7 +34,7 @@ import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, 
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
-  send, (<->), runEffect, runProtocolIO)
+  send, (<<->), runEffect, runProtocolIO)
 
 tests = [
     testCase "owner-like msg to preowned path" testMessageToPreowned,
@@ -141,7 +141,7 @@ helloP = [pathq|/hello|]
 testMessageToPreowned =
   let
     owners = Map.singleton "hello" "relay itself"
-    protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
+    protocol = forTest <<-> namespaceTrackerProtocol owners mempty <<-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root]
       sendFwd $ ClientDisconnect alice
@@ -158,7 +158,7 @@ testSubscribeAsOwner =
     -- if we get them all together it doesn't get rejected. We could work
     -- around by having pre-confirmation allocations, but that feels weird.
     aliceOwns = Map.singleton "hello" "alice"
-    protocol = forTest <-> namespaceTrackerProtocol aliceOwns mempty <-> fakeRelay
+    protocol = forTest <<-> namespaceTrackerProtocol aliceOwns mempty <<-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice $ Right $ RequestBundle [UMsgSubscribe helloP] []
       resps <- collectAllResponsesUntil alice
@@ -171,7 +171,7 @@ testUnsubscribeWhenNotSubscribed =
   let
     ownedP = [pathq|/owned|]
     owners = Map.singleton "owned" bob
-    protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
+    protocol = forTest <<-> namespaceTrackerProtocol owners mempty <<-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice $ Right $ RequestBundle [UMsgUnsubscribe ownedP] []
       sendFwd $ ClientDisconnect alice
@@ -182,7 +182,7 @@ testUnsubscribeWhenNotSubscribed =
 
 testValidationErrorReturned =
   let
-    protocol = assertions <-> namespaceTrackerProtocol mempty mempty <-> errorSender
+    protocol = assertions <<-> namespaceTrackerProtocol mempty mempty <<-> errorSender
     errorSender = sendRev $ ((alice, Nothing), Response [] [err] [])
     err = UMsgError [pathq|/bad|] "wrong"
     assertions = do
@@ -210,7 +210,7 @@ gogo as i p =
     runProtocolIO
         (U.readChan toProtoOut) (error "bad times")
         (U.writeChan fromProtoIn) neverDoAnything
-        (untilDisconnect i <-> p)
+        (untilDisconnect i <<-> p)
     longHand i fromProtoOut
 
 
@@ -233,7 +233,7 @@ untilDisconnect i = waitThen fwd next
         | i == i' = sendRev e
         | otherwise = sendRev e >> untilDisconnect i
 
-nstBounceProto = namespaceTrackerProtocol mempty mempty <-> fakeRelay
+nstBounceProto = namespaceTrackerProtocol mempty mempty <<-> fakeRelay
 
 testSubscribeAsClient =
     -- Get informed of changes by owner
@@ -325,7 +325,7 @@ trackerHelper' ::
     Owners i -> Registered i -> [ClientEvent i Bundle ()] ->
     IO (Map.Map i [UpdateBundle])
 trackerHelper' owners registered as =
-    mapPack <$> gogo as' i (trackerProto <-> fakeRelay)
+    mapPack <$> gogo as' i (trackerProto <<-> fakeRelay)
   where
     trackerProto = namespaceTrackerProtocol owners registered
     i = i' $ head as

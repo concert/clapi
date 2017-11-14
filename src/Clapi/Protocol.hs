@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables, DeriveFunctor, ViewPatterns, PatternSynonyms
 #-}
 module Clapi.Protocol where -- (
---  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<->)
+--  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<<->)
 -- ) where
 
 import Control.Applicative
@@ -50,13 +50,13 @@ sendFwd a' = liftF $ SendFwd a' ()
 sendRev :: (Monad m) => b' -> Protocol a a' b' b m ()
 sendRev b' = liftF $ SendRev b' ()
 
-compose ::
+composeRevBiased ::
     forall a1 a2 a3 b1 b2 b3 m.
     (Monad m) =>
     Protocol a1 a2 b3 b2 m () ->
     Protocol a2 a3 b2 b1 m () ->
     Protocol a1 a3 b3 b1 m ()
-compose proto1 proto2 = comp proto1 mempty mempty proto2
+composeRevBiased proto1 proto2 = comp proto1 mempty mempty proto2
   where
     comp proto1 a2q b2q proto2 = FreeT $ do
         freeF1 <- runFreeT proto1
@@ -93,7 +93,7 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
 
     -- Right sends to waiting left:
     go (Free (Wait f1)) a2q b2q (Free (SendRev b2 next)) =
-        runFreeT $ compose (f1 (Rev b2)) next
+        runFreeT $ composeRevBiased (f1 (Rev b2)) next
 
     -- Left sends to waiting right:
     go (Free (SendFwd a2 next)) a2q b2q (Free (Wait f2)) =
@@ -117,10 +117,9 @@ compose proto1 proto2 = comp proto1 mempty mempty proto2
     go _ a2q b2q (Pure _) = return $ Pure ()
 
 
--- FIXME: this is the reverse biased combinator so should be <<->
-(<->) :: (Monad m) =>
+(<<->) :: (Monad m) =>
     Protocol a1 a2 b3 b2 m () -> Protocol a2 a3 b2 b1 m () -> Protocol a1 a3 b3 b1 m ()
-(<->) = compose
+(<<->) = composeRevBiased
 
 
 send :: (Monad m) => Directed a' b' -> Protocol a a' b' b m ()

@@ -15,7 +15,7 @@ import Clapi.Server (protocolServer, withListen, AddrWithUser(awuAddr))
 import Clapi.SerialisationProtocol (eventSerialiser)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
-import Clapi.Protocol ((<->))
+import Clapi.Protocol ((<<->))
 import Clapi.Auth (noAuth)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
@@ -39,5 +39,5 @@ main =
     withListen HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
-    perClientProto = shower "network" <-> noAuth <-> eventSerialiser awuAddr <-> attributor
-    totalProto = shower "total" <-> namespaceTrackerProtocol apiClaimed mempty <-> shower "relay" <-> relay baseValuespace
+    perClientProto = shower "network" <<-> noAuth <<-> eventSerialiser awuAddr <<-> attributor
+    totalProto = shower "total" <<-> namespaceTrackerProtocol apiClaimed mempty <<-> shower "relay" <<-> relay baseValuespace
