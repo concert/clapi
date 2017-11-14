@@ -47,5 +47,5 @@ testRootStructExtend = assertMsgsInclude expectedMsgs updates
     los = ClList . (map s)
     lop ps = los $ map toText ps
     tp p = fromJust $ getType baseValuespace p
-    (Response gets errs updates, vs') = handleMessages baseValuespace $ OwnerRequest inMsgs
+    (GoodOwnerResponse updates, vs') = handleMessages baseValuespace $ OwnerRequest inMsgs
     cannot = toClapiValue $ Enumerated Cannot

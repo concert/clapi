@@ -128,8 +128,8 @@ fakeRelay ::
     Protocol ((c, Request)) Void ((c, Response)) Void m ()
 fakeRelay = forever $ waitThen fwd undefined
   where
-    fwd (ctx, ClientRequest gets updates) = sendRev (ctx, Response (Left . flip UMsgAssignType helloP <$> gets) [] (map Right updates))
-    fwd (ctx, OwnerRequest updates) = sendRev (ctx, Response [] [] updates)
+    fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip UMsgAssignType helloP <$> gets) [] updates)
+    fwd (ctx, OwnerRequest updates) = sendRev (ctx, GoodOwnerResponse updates)
 
 alice = "alice"
 bob = "bob"
@@ -177,7 +177,7 @@ testUnsubscribeWhenNotSubscribed =
 testValidationErrorReturned =
   let
     protocol = assertions <<-> namespaceTrackerProtocol mempty mempty <<-> errorSender
-    errorSender = sendRev $ ((alice, Nothing), Response [] [err] [])
+    errorSender = sendRev $ ((alice, Nothing), BadOwnerResponse [err])
     err = UMsgError [pathq|/bad|] "wrong"
     assertions = do
         d <- wait

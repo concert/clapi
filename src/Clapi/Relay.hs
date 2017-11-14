@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import Text.Printf (printf)
 import Data.Void (Void)
 import Data.Maybe (mapMaybe)
-import Data.Either (partitionEithers)
+import Data.Either (partitionEithers, rights)
 
 import Control.Lens (_1, _2)
 import Pipes (lift)
@@ -219,12 +219,12 @@ handleMessages vs (ClientRequest getPaths updates) = runState hc vs
   where
     hc = do
         (errs, gets, vmsgs) <- handleClientMessagesS getPaths updates
-        return $ Response gets errs vmsgs
+        return $ ClientResponse gets errs (rights vmsgs)  -- FIXME: rights is a fudge
 handleMessages vs (OwnerRequest updates) = runState ho vs
   where
     ho = do
         e <- handleOwnerMessagesS updates
-        return $ either (\errs -> Response [] errs []) (\ups -> Response [] [] ups) e
+        return $ either BadOwnerResponse GoodOwnerResponse e
 
 relay :: Monad m => Valuespace Validated -> Protocol (i, Request) Void (i, Response) Void m ()
 relay vs = waitThen fwd (const $ error "message from the void")

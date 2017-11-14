@@ -10,7 +10,7 @@ import Data.List (partition)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Either (lefts)
 
 import Control.Lens (view, set, Lens', _1, _2)
@@ -35,16 +35,10 @@ data Request
   = ClientRequest [Path] [DataUpdateMessage]
   | OwnerRequest [OwnerUpdateMessage] deriving (Eq, Show)
 
--- data Response
---   = ClientResponse [OwnerUpdateMessage] [UMsgError] [DataUpdateMessage]
---   | BadOwnerResponse [UMsgError]
---   | GoodOwnerResponse [OwnerUpdateMessage]
-
-data Response = Response
-  { respGet :: [OwnerUpdateMessage]
-  , respErrs :: [UMsgError]
-  , respUpdate :: [OwnerUpdateMessage]
-  } deriving (Eq, Show)
+data Response
+  = ClientResponse [OwnerUpdateMessage] [UMsgError] [DataUpdateMessage]
+  | BadOwnerResponse [UMsgError]
+  | GoodOwnerResponse [OwnerUpdateMessage] deriving (Eq, Show)
 
 namespace :: Path -> Name
 namespace (Path []) = ""
@@ -73,37 +67,6 @@ registerSubscription ::
 registerSubscription i m = case m of
     (Left (UMsgAssignType path _)) -> modify (Mos.insert i path)
     _ -> return mempty
-
-fanOutBundle ::
-    (Monad m, Ord i, Show i) =>
-    i ->
-    Maybe [UMsgError] ->
-    [OwnerUpdateMessage] ->
-    [UMsgError] ->
-    [OwnerUpdateMessage] ->
-    StateT (Owners i, Registered i) (NsProtocol m i) ()
-fanOutBundle i mOwnerErrs gets valErrs updates = do
-    (po, ps) <- get
-    let allRecipients = Set.toList $ foldl Set.union (Set.singleton i) [owners po, Map.keysSet ps]
-    let bundles = map (bundleFor po ps) allRecipients
-    let sendables = map (uncurry ServerData) $ filter (nonEmptyBundle . snd) $ zip allRecipients bundles
-    lift $ mapM_ sendRev sendables
-  where
-    bundleFor po ps i' = UpdateBundle
-        (unicast valErrs i' ++ broadcastErrs ps i')
-        (unicast gets i' ++ updatesFor po ps i')
-    unicast ms i' = if i == i' then ms else []
-    broadcastSubs :: (Ord i, UMsg msg) => Registered i -> [msg] -> i -> [msg]
-    broadcastSubs ps ms i' = filter (isSubscriber ps i') ms
-    isSubscriber :: (Ord i, UMsg msg) => Registered i -> i -> msg -> Bool
-    isSubscriber ps i' m = uMsgPath m `elem` Map.findWithDefault mempty i' ps
-    broadcastErrs ps = maybe (const []) (\oes -> broadcastSubs ps oes) mOwnerErrs
-    updatesFor po ps i' = if null mOwnerErrs
-        then filter (isOwner po i' . uMsgPath) updates
-        else broadcastSubs ps updates i'
-    isOwner po i' p = Map.lookup (namespace p) po == Just i'
-    nonEmptyBundle (UpdateBundle errs oums) = (not $ null errs) || (not $ null oums)
-    owners po = Set.fromList $ Map.elems po
 
 handleDeletedNamespace ::
     (Monad m, Ord i) => OwnerUpdateMessage -> StateT (Registered i) m ()
@@ -206,13 +169,46 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         tums <- handleClientDisconnect i
         lift $ sendRev $ ServerDisconnect i
         lift $ sendFwd ((i, Just []), OwnerRequest $ map Left tums)
-    rev ((i, ownErrs), Response gets valErrs updates) = do
-        -- FIXME: Should never have ownErrs and gets
-        if null ownErrs
-            then stateSnd $ mapM_ (registerSubscription i) gets
-            else stateFst $ updateOwnerships i $ lefts updates
-        fanOutBundle i ownErrs gets valErrs updates
+    rev ((i, ownErrs), ClientResponse gets valErrs updates) = do
+        stateSnd $ mapM_ (registerSubscription i) gets
+        stateFst $ sendToOwners updates
+        if (null valErrs) && (null gets)
+            then return mempty
+            else lift $ sendRev $ ServerData i $ UpdateBundle valErrs gets
+      where
+        sendToOwners ::
+            (Monad m, Ord i) =>
+            [DataUpdateMessage] ->
+            StateT (Owners i) (NsProtocol m i) ()
+        sendToOwners updates = do
+            po <- get
+            lift $ mapM_ sendRev $ sendables po
+          where
+            sendables po = (\(i, dums) -> ServerData i $ UpdateBundle [] $ map Right dums) <$> Map.toList (sendableMap po)
+            sendableMap po = foldl (appendUpdate po) mempty updates
+            appendUpdate po sm u = Map.insertWith (++) (Map.findWithDefault (error "No owner!") (namespace $ uMsgPath u) po) [u] sm
+    rev ((i, ownErrs), BadOwnerResponse errs) = do
+        lift $ sendRev $ ServerData i $ UpdateBundle errs []
+    rev ((i, ownErrs), GoodOwnerResponse updates) = do
+        stateFst $ updateOwnerships i $ lefts updates
+        stateSnd $ sendToSubs (fromJust ownErrs) updates  -- ownErrors should never be Nothing here
         stateSnd $ mapM_ handleDeletedNamespace updates
+      where
+        sendToSubs ::
+            (Monad m, Ord i) =>
+            [UMsgError] ->
+            [OwnerUpdateMessage] ->
+            StateT (Registered i) (NsProtocol m i) ()
+        sendToSubs errs oms = do
+            ps <- get
+            lift $ mapM_ sendRev $ filter nonEmptySendable $ getSendables ps
+          where
+            getSendables ps = map (\(i, paths) -> ServerData i $ filteredByPath paths) $ Map.toList ps
+            filteredByPath paths = UpdateBundle (filter (inPaths paths) errs) (filter (inPaths paths) oms)
+            inPaths :: UMsg msg => Set.Set Path -> msg -> Bool
+            inPaths paths = flip elem paths . uMsgPath
+            nonEmptySendable (ServerData _ (UpdateBundle [] [])) = False
+            nonEmptySendable _ = True
 
 handleUnsubscriptions ::
     forall m i. (Monad m, Ord i, Show i) =>
