@@ -14,7 +14,7 @@ import Data.Attoparsec.Text (
 import qualified Clapi.Serialisation as Wire
 import Clapi.TaggedData (tdAllTags, tdInstanceToTag, tdTagToEnum, TaggedData)
 import Clapi.Types (
-    Time(..), ClapiTypeEnum(..), ClapiValue(..), Message(..), Interpolation(..), InterpolationType(..))
+    Time(..), ClapiTypeEnum(..), ClapiValue(..), DataUpdateMessage(..), Interpolation(..), InterpolationType(..))
 import Clapi.Path (Path)
 
 cvBuilder :: ClapiValue -> Builder
@@ -26,33 +26,33 @@ cvBuilder (ClEnum i) = fromShow i
 tdTaggedBuilder :: TaggedData e a -> (a -> Builder) -> a -> Builder
 tdTaggedBuilder td bdr a = fromChar (tdInstanceToTag td $ a) <> bdr a
 
-msgBuilder :: Message -> Builder
-msgBuilder msg = case msg of
-    (MsgSet {}) -> valB 's' valSubs msg
-    (MsgAdd {}) -> valB 'a' valSubs msg
-    (MsgRemove {}) -> valB 'r' noSubs msg
+msgBuilder :: DataUpdateMessage -> Builder
+msgBuilder = tdTaggedBuilder Wire.dumtTaggedData dumBuilder
   where
+    dumBuilder msg = case msg of
+        (UMsgSet {}) -> tab valSubs msg
+        (UMsgAdd {}) -> tab valSubs msg
+        (UMsgRemove {}) -> tab noSubs msg
     tb (Time s f) = (fromShow s) <> (fromChar ':') <> (fromShow f)
     ab ma = case ma of
         (Just  a) -> fromShow a
         Nothing -> fromString "\"\""
     tab subs msg = spJoin $
-        [tb $ msgTime msg] ++ (subs msg) ++ [ab $ msgAttributee msg]
+        [tb $ duMsgTime msg] ++ (subs msg) ++ [ab $ duMsgAttributee msg]
     spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
     vb vs = fmap cvBuilder vs
     ib = tdTaggedBuilder Wire.interpolationTaggedData $ \i -> case i of
         (IBezier a b) -> error "bezier text serialisation not implemented"
         _ -> mempty
-    valSubs msg = (vb $ msgArgs' msg) ++ [ib $ msgInterpolation msg]
+    valSubs msg = (vb $ duMsgArgs msg) ++ [ib $ duMsgInterpolation msg]
     noSubs _ = []
-    valB methodChar subs msg = fromChar methodChar <> tab subs msg
 
-headerBuilder :: Message -> Builder
-headerBuilder = fromString . fmap (tdInstanceToTag Wire.cvTaggedData) . msgArgs'
+headerBuilder :: DataUpdateMessage -> Builder
+headerBuilder = fromString . fmap (tdInstanceToTag Wire.cvTaggedData) . duMsgArgs
 
 -- Not sure how useful this is because how often do you know all the messages
 -- up front?
-encode :: [Message] -> Builder
+encode :: [DataUpdateMessage] -> Builder
 encode msgs = header <> bodyBuilder
   where
     -- It is invalid for a time series to be empty, so this use of head is
@@ -111,31 +111,27 @@ interpolationParser = char ' ' >> tdTaggedParser Wire.interpolationTaggedData p
         (ITConstant) -> return IConstant
         (ITLinear) -> return ILinear
 
-msgParser :: Path -> Parser [ClapiValue] -> Parser Message
-msgParser path valParser = do
-    m <- charIn "asr" "message method"
-    char ' '
-    getSub m
-  where
-    getSub 'a' = do
+msgParser :: Path -> Parser [ClapiValue] -> Parser DataUpdateMessage
+msgParser path valParser = tdTaggedParser Wire.dumtTaggedData $ \e -> char ' ' >> case e of
+    (Wire.DUMTAdd) -> do
         t <- timeParser
         v <- valParser
         i <- interpolationParser
         a <- attributeeParser
-        return $ MsgAdd path t v i a Nothing
+        return $ UMsgAdd path t v i a Nothing
     -- FIXME: just like above
-    getSub 's' = do
+    (Wire.DUMTSet) -> do
         t <- timeParser
         v <- valParser
         i <- interpolationParser
         a <- attributeeParser
-        return $ MsgSet path t v i a Nothing
-    getSub 'r' = do
+        return $ UMsgSet path t v i a Nothing
+    (Wire.DUMTRemove) -> do
         t <- timeParser
         a <- attributeeParser
-        return $ MsgRemove path t a Nothing
+        return $ UMsgRemove path t a Nothing
 
-decode :: Path -> Text -> Either String [Message]
+decode :: Path -> Text -> Either String [DataUpdateMessage]
 decode path txt = case parse getTupleParser txt of
     Fail _ ctxs msg -> Left msg
     Partial _ -> Left "Cannot decode empty"

@@ -5,6 +5,8 @@ module Clapi.Serialisation
       decode,
       parser,
       cvTaggedData,
+      DataUpdateMsgType(..),
+      dumtTaggedData,
       interpolationTaggedData,
       Serialisable
     ) where
