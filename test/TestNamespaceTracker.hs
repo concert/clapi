@@ -147,7 +147,7 @@ testMessageToPreowned =
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice helloP ["Client", "update"] resps
+      lift $ assertSingleError alice helloP ["Path", "another"] resps
   in
     runEffect protocol
 
@@ -159,7 +159,7 @@ testSubscribeAsOwner =
       sendFwd $ ClientData alice $ Right $ RequestBundle [UMsgSubscribe helloP] []
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice helloP ["Client", "own"] resps
+      lift $ assertSingleError alice helloP ["Request", "own"] resps
   in
     runEffect protocol
 
@@ -255,7 +255,7 @@ testSecondOwnerForbidden = do
         ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
         ClientData alice' $ Left $ UpdateBundle [UMsgError helloP ""] []]
     assertEqual "single recipient" 1 $ Map.size response
-    assertSingleError alice' helloP ["update", "Client"] response
+    assertSingleError alice' helloP ["Path", "another"] response
 
 testClaimUnclaimInBundle = do
     response <- trackerHelper [

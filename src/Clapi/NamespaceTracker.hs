@@ -194,7 +194,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         badErrPaths <- stateFst $ hasOwnership i Client errs
         badOumPaths <- stateFst $ hasOwnership i Client oums
         if not $ null $ badErrPaths ++ badOumPaths
-            then sendErrorBundle i "Client role message in update bundle" $ allPaths b
+            then sendErrorBundle i "Path already has another owner" $ allPaths b
             else lift $ sendFwd ((i, Just errs), Request Nothing oums)
     fwd (ClientData i (Right (RequestBundle subs dums))) = do
         badSubPaths <- stateFst $ hasOwnership i Owner subs
@@ -202,7 +202,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         let allBadPaths = badSubPaths ++ badDumPaths
         if not $ null allBadPaths
             then do
-                sendErrorBundle i "Client role taken for own path" $ allBadPaths
+                sendErrorBundle i "Request bundle contains paths you own" $ allBadPaths
                 kick i
             else do
                 getPaths <- stateSnd $ handleUnsubscriptions i subs
