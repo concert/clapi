@@ -74,7 +74,7 @@ updateOwnerships i = mapM_ $ handle
         when (isNamespace path) (modify (Map.delete $ namespace path))
 
 registerSubscription ::
-    forall m i. (Monad m, Ord i) => i -> OwnerUpdateMessage -> StateT (Registered i) m ()
+    (Monad m, Ord i) => i -> OwnerUpdateMessage -> StateT (Registered i) m ()
 registerSubscription i m = case m of
     (Left (UMsgAssignType path _)) -> modify (Mos.insert i path)
     _ -> return mempty
@@ -198,7 +198,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         badSubPaths <- stateFst $ hasOwnership i Owner subs
         badDumPaths <- stateFst $ hasOwnership i Owner dums
         let allBadPaths = badSubPaths ++ badDumPaths
-        if not $ null $ allBadPaths
+        if not $ null allBadPaths
             then do
                 sendErrorBundle i "Client role taken for own path" $ allBadPaths
                 kick i

@@ -153,10 +153,6 @@ testMessageToPreowned =
 
 testSubscribeAsOwner =
   let
-    -- Because the protocol is forward biased at the moment, we haven't dealt
-    -- with the relay's response to the last bundle when the next one hits, so
-    -- if we get them all together it doesn't get rejected. We could work
-    -- around by having pre-confirmation allocations, but that feels weird.
     aliceOwns = Map.singleton "hello" "alice"
     protocol = forTest <<-> namespaceTrackerProtocol aliceOwns mempty <<-> fakeRelay
     forTest = do
