@@ -18,6 +18,7 @@ module Clapi.Types
         DataUpdateMessage(..),
         TreeUpdateMessage(..),
         OwnerUpdateMessage(..),
+        UMsg(..),
         ClapiMethod(..),
         Message(..),
         msgMethod',
@@ -115,6 +116,9 @@ data UpdateBundle = UpdateBundle {ubErrs :: [UMsgError], ubMsgs :: [OwnerUpdateM
 data RequestBundle = RequestBundle {rbSubs :: [SubMessage], rbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
 
 type Bundle = Either UpdateBundle RequestBundle
+
+instance (UMsg a, UMsg b) => UMsg (Either a b) where
+    uMsgPath = either uMsgPath uMsgPath
 
 
 -- Existing message type

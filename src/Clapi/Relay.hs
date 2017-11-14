@@ -10,13 +10,17 @@ import qualified Data.Text as T
 import Text.Printf (printf)
 import Data.Void (Void)
 import Data.Maybe (mapMaybe)
+import Data.Either (partitionEithers)
 
 import Control.Lens (_1, _2)
 import Pipes (lift)
 import Pipes.Core (Client, request)
 
 import Clapi.Util (eitherFail)
-import Clapi.Types (CanFail, Message(..), ClapiMethod(..), ClapiValue(..), Time(..), Enumerated(..), toClapiValue)
+import Clapi.Types (
+    CanFail, OwnerUpdateMessage(..), TreeUpdateMessage(..),
+    DataUpdateMessage(..), UMsgError(..), UMsg(..), ClapiValue(..), Time(..),
+    Enumerated(..), toClapiValue)
 import Clapi.Path (Path, Name, root)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, validate)
@@ -25,7 +29,7 @@ import Clapi.Valuespace (
     vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
     vsGetTree, VsDelta, vsDiff, getType, Liberty(Cannot))
 import Clapi.Tree (_getSites)
-import Clapi.NamespaceTracker (Ownership(..), RoutableMessage(..), Om(..), maybeNamespace)
+import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Server (ClientEvent(..), ServerEvent(..), AddrWithUser(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Data.Maybe.Clapi (note)
@@ -109,41 +113,38 @@ import Path.Parsing (toText)
 --   do
 --     undefined
 
-applyMessage :: (MonadFail m) => Valuespace v -> Message -> m (Valuespace Unvalidated)
+applyMessage :: (MonadFail m) => Valuespace v -> OwnerUpdateMessage -> m (Valuespace Unvalidated)
 applyMessage vs msg = case msg of
-    (MsgSet p t v i a s) -> vsSet a i v p s t vs
-    (MsgAdd p t v i a s) -> vsAdd a i v p s t vs
-    (MsgRemove p t a s) -> vsRemove a p s t vs
-    (MsgClear p t a s) -> vsClear a p s t vs
-    (MsgAssignType p tp) -> return $ vsAssignType p tp vs
-    (MsgDelete p) -> vsDelete p vs
-    (MsgChildren p c) -> undefined -- FIXME: backing implementation
-    (MsgSubscribe _) -> return $ unvalidate vs
-    (MsgUnsubscribe _) -> return $ unvalidate vs
-    (MsgError _ _) -> return $ unvalidate vs
+    (Right (UMsgSet p t v i a s)) -> vsSet a i v p s t vs
+    (Right (UMsgAdd p t v i a s)) -> vsAdd a i v p s t vs
+    (Right (UMsgRemove p t a s)) -> vsRemove a p s t vs
+    (Right (UMsgClear p t a s)) -> vsClear a p s t vs
+    (Right (UMsgSetChildren p c a)) -> undefined -- FIXME: backing implementation
+    (Left (UMsgAssignType p tp)) -> return $ vsAssignType p tp vs
+    (Left (UMsgDelete p)) -> vsDelete p vs
 
-applyMessages :: Valuespace v -> [Message] -> MonadErrorMap (Valuespace Unvalidated)
+applyMessages :: Valuespace v -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
 applyMessages mvvs = applySuccessful [] mvvs
   where
-    applySuccessful :: [(Path, String)] -> Valuespace v -> [Message] -> MonadErrorMap (Valuespace Unvalidated)
+    applySuccessful :: [(Path, String)] -> Valuespace v -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
     applySuccessful errs vs [] = (Map.fromList errs, unvalidate vs)
     applySuccessful errs vs (m:ms) = case canFailApply vs m of
-        (Left es) -> applySuccessful ((msgPath' m, es):errs) vs ms
+        (Left es) -> applySuccessful ((uMsgPath m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
-    canFailApply :: Valuespace v -> Message -> CanFail (Valuespace Unvalidated)
+    canFailApply :: Valuespace v -> OwnerUpdateMessage -> CanFail (Valuespace Unvalidated)
     canFailApply = applyMessage
 
-treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> Message
+treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> OwnerUpdateMessage
 treeDeltaToMsg p td = case td of
-    Tree.Delete -> MsgDelete p
-    (Tree.SetChildren c) -> MsgChildren p c
-    (Tree.Clear t s a) -> MsgClear p t a s
-    (Tree.Remove t s a) -> MsgRemove p t a s
-    (Tree.Add t v i s a) -> MsgAdd p t v i s a
-    (Tree.Set t v i s a) -> MsgSet p t v i s a
+    Tree.Delete -> Left $ UMsgDelete p
+    (Tree.SetChildren c) -> Right $ UMsgSetChildren p c Nothing -- FIXME: attribution!
+    (Tree.Clear t s a) -> Right $ UMsgClear p t a s
+    (Tree.Remove t s a) -> Right $ UMsgRemove p t a s
+    (Tree.Add t v i s a) -> Right $ UMsgAdd p t v i s a
+    (Tree.Set t v i s a) -> Right $ UMsgSet p t v i s a
 
-deltaToMsg :: VsDelta -> Message
-deltaToMsg (p, d) = either (MsgAssignType p) (treeDeltaToMsg p) d
+deltaToMsg :: VsDelta -> OwnerUpdateMessage
+deltaToMsg (p, d) = either (Left . UMsgAssignType p) (treeDeltaToMsg p) d
 
 modifyRootTypePath :: Valuespace Validated -> Valuespace Unvalidated -> Valuespace Unvalidated
 modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
@@ -158,74 +159,80 @@ modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
     loe s k m = moe s $ Map.lookup k m
     moe s m = maybe (error s) id m
 
-handleMutationMessages :: Valuespace Validated -> [Message] -> ([Message], [Message], Valuespace Validated)
+handleMutationMessages ::
+    Valuespace Validated ->
+    [OwnerUpdateMessage] ->
+    ([OwnerUpdateMessage], [UMsgError], Valuespace Validated)
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
     errs = Map.union aErrs vErrs
     (aErrs, vs') = applyMessages vs msgs
     vs'' = modifyRootTypePath vs vs'
     (vErrs, vvs) = vsValidate vs''
-    errMsgs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
+    errMsgs = map (\(p, es) -> UMsgError p (T.pack es)) (Map.assocs errs)
     vcMsgs = dmsgs vs vvs
     dmsgs v v' = map deltaToMsg $ vsDiff v v'
 
-handleOwnerMessages :: [Message] -> Valuespace Validated -> ([RoutableMessage], Valuespace Validated)
+handleOwnerMessages ::
+    [OwnerUpdateMessage] ->
+    Valuespace Validated ->
+    (Either [UMsgError] [OwnerUpdateMessage], Valuespace Validated)
 handleOwnerMessages msgs vs = (rmsgs, rvs)
   where
     -- FIXME: handle owner initiated error messages
     rvs = if errored then vs else vvs
     errored = not $ null errMsgs
     (vcMsgs, errMsgs, vvs) = handleMutationMessages vs msgs
-    fillerErrPaths = Set.toList $ let sop ms = Set.fromList $ map msgPath' ms in Set.difference (sop msgs) (sop errMsgs)
-    fillerErrs = map (\p -> MsgError p "rejected due to other errors") fillerErrPaths
+    fillerErrPaths = Set.toList $ let sop ms = Set.fromList $ map uMsgPath ms in Set.difference (sop msgs) (sop errMsgs)
+    fillerErrs = map (flip UMsgError "rejected due to other errors") fillerErrPaths
     rmsgs = case errored of
-        True -> map (\m -> RoutableMessage (Nothing) m) (errMsgs ++ fillerErrs)
-        False -> map (\m -> RoutableMessage (Just Owner) m) vcMsgs
+        True -> Left $ errMsgs ++ fillerErrs
+        False -> Right $ vcMsgs
 
-type VsHandlerS = [Message] -> State (Valuespace Validated) [RoutableMessage]
-
-handleOwnerMessagesS :: VsHandlerS
+handleOwnerMessagesS :: [OwnerUpdateMessage] -> State (Valuespace Validated) (Either [UMsgError] [OwnerUpdateMessage])
 handleOwnerMessagesS msgs = state (handleOwnerMessages msgs)
 
-handleClientMessages :: [Message] -> Valuespace Validated -> ([RoutableMessage], Valuespace Validated)
-handleClientMessages msgs vs = (rmsgs, vs)
+-- Technically this only takes (and returns for vsMsgs) DataUpdateMessages but
+-- we lost the specificity
+handleClientMessages ::
+    [Path] ->
+    [OwnerUpdateMessage] ->
+    Valuespace Validated ->
+    (([UMsgError], [OwnerUpdateMessage], [OwnerUpdateMessage]), Valuespace Validated)
+handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), vs)
   where
-    subMsgs = concatMap createMsgs subPaths
-    createMsgs p = case nodeInfo p of
-        (Just tp, Just n) -> [MsgAssignType p tp] ++ nodeMsgs p n
-        (Nothing, Nothing) -> [MsgError p "no such path"]
+    (subErrs, getMs) = fmap concat $ partitionEithers $ map handleGet $ zip (map nodeInfo getPaths) getPaths
+    handleGet ((Nothing, Nothing), p) = Left $ UMsgError p "Not found"
+    handleGet ((Just tp, Just n), p) = Right $ (Left $ UMsgAssignType p tp) : nodeMsgs p n
     nodeInfo p = (getType vs p, Map.lookup p $ vsGetTree vs)
     nodeMsgs p n = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty n
-    subPaths = msgPath' <$> filter isSub msgs
-    isSub (MsgSubscribe _) = True
-    isSub _ = False
     rightOrDie (Right x) = x
-    (vsMsgs, errMsgs, _) = handleMutationMessages vs msgs
-    rmsgs = (map response $ errMsgs ++ subMsgs) ++ (map forwarded vsMsgs)
-    forwarded = RoutableMessage (Just Client)
-    response = RoutableMessage Nothing
+    (vsMsgs, vsErrs, _) = handleMutationMessages vs updates
 
-handleClientMessagesS :: VsHandlerS
-handleClientMessagesS msgs = state (handleClientMessages msgs)
+handleClientMessagesS ::
+    [Path] ->
+    [OwnerUpdateMessage] ->
+    State (Valuespace Validated) ([UMsgError], [OwnerUpdateMessage], [OwnerUpdateMessage])
+handleClientMessagesS paths msgs = state (handleClientMessages paths msgs)
 
-handleMessages :: Valuespace Validated -> [Om] -> ([RoutableMessage], Valuespace Validated)
-handleMessages vs msgs = runState doHandle vs
+handleMessages :: Valuespace Validated -> Request -> (Response, Valuespace Validated)
+handleMessages vs (Request mGetPaths updates) = runState doHandle vs
   where
-    (client, owner) = partition (\m -> fst m == Client) msgs
-    doHandle = do
-        oms <- handleOwnerMessagesS $ map snd owner
-        cms <- handleClientMessagesS $ map snd client
-        return $ oms ++ cms
+    doHandle = maybe ho hc mGetPaths
+    ho = do
+        e <- handleOwnerMessagesS updates
+        return $ either (\errs -> Response [] errs []) (\ups -> Response [] [] ups) e
+    hc getPaths = do
+        (errs, gets, vmsgs) <- handleClientMessagesS getPaths updates
+        return $ Response gets errs vmsgs
 
--- FIXME: try without the wrapper types here
-relay :: Monad m => Valuespace Validated -> Protocol (ClientEvent i [Om] ()) Void (ServerEvent i [RoutableMessage]) Void m ()
+relay :: Monad m => Valuespace Validated -> Protocol (i, Request) Void (i, Response) Void m ()
 relay vs = waitThen fwd (const $ error "message from the void")
   where
-    fwd (ClientData awu ms) = do
-        let (ms', vs') = handleMessages vs ms
-        sendRev $ ServerData awu ms'
+    fwd (i, req) = do
+        let (resp, vs') = handleMessages vs req
+        sendRev (i, resp)
         relay vs'
-    fwd _ = relay vs
 
 data NsChange =
     NsAssign Name Path

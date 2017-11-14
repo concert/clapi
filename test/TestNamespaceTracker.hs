@@ -26,10 +26,11 @@ import Clapi.Util ((+|))
 import Clapi.Path (Path, root)
 import Clapi.PathQ
 import Clapi.Types (
-    Time(..), Interpolation(..), Message(..), msgPath', msgMethod',
-    ClapiMethod(..), ClapiValue(..))
-import Clapi.Server (newAwu, ClientEvent(..), ServerEvent(..), neverDoAnything, AddrWithUser)
-import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Om(..), RoutableMessage(..))
+    Time(..), Interpolation(..), DataUpdateMessage(..), TreeUpdateMessage(..),
+    UMsgError(..), OwnerUpdateMessage(..), UMsg(..), ClapiValue(..),
+    UpdateBundle(..), RequestBundle(..), Bundle(..), SubMessage(..))
+import Clapi.Server (ClientEvent(..), ServerEvent(..), neverDoAnything)
+import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Request(..), Response(..))
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
@@ -37,12 +38,11 @@ import Clapi.Protocol (
 
 tests = [
     testCase "owner-like msg to preowned path" testMessageToPreowned,
-    testCase "subscribe to unclaimed" testSubscribeUnclaimed,
     testCase "subscribe as owner" testSubscribeAsOwner,
     testCase "unsubscribe unsubscribed" testUnsubscribeWhenNotSubscribed,
     testCase "subscribe as client" testSubscribeAsClient,
     testCase "second owner forbidden" testSecondOwnerForbidden,
-    testCase "claim unclaim in bunde" testClaimUnclaimInBundle,
+    testCase "claim unclaim in bundle" testClaimUnclaimInBundle,
     testCase "client disconnect unsubscribes" testClientDisconnectUnsubs,
     testCase "client disconnects resubscribes" testClientDisconnectUnsubsResubs,
     testCase "owner disconnect disowns" testOwnerDisconnectDisowns,
@@ -50,25 +50,18 @@ tests = [
     testCase "direct errors fanout" testValidationErrorReturned
     ]
 
-assertMsgMethod :: ClapiMethod -> Message -> IO ()
-assertMsgMethod meth msg = assertEqual errMsg meth $ msgMethod' msg
-  where
-    errMsg = "Message is not of type " ++ show meth
-
-assertErrorMsg :: [T.Text] -> Message -> IO ()
+assertErrorMsg :: [T.Text] -> UMsgError -> IO ()
 assertErrorMsg substrs msg =
   do
-    assertMsgMethod Error msg
     mapM_ (\s -> assertBool (stringErr s) (s `T.isInfixOf` string)) substrs
   where
     stringErr s =
         printf "Error %s message did not contain %s" (show string) (show s)
-    getString (MsgError _ str) = str
+    getString (UMsgError _ str) = str
     string = getString msg
 
-assertMsgPath :: Path -> Message -> IO ()
-assertMsgPath path msg = assertEqual "message path" path $ msgPath' msg
-
+assertMsgPath :: UMsg msg => Path -> msg -> IO ()
+assertMsgPath path msg = assertEqual "message path" path $ uMsgPath msg
 
 assertOnlyKeysInMap :: (Ord k, Show k) => [k] -> Map.Map k a -> IO ()
 assertOnlyKeysInMap expected m =
@@ -87,24 +80,28 @@ assertMapValue k a m =
     assertMapKey k m >>=
     assertEqual ("Map[" ++ show k ++ "]") a
 
-msg :: Path -> ClapiMethod -> Message
-msg path Error = MsgError path ""
-msg path Set = MsgSet path (Time 0 0) [] IConstant Nothing Nothing
-msg path Add = MsgAdd path (Time 0 0) [] IConstant Nothing Nothing
-msg path Remove = MsgRemove path (Time 0 0) Nothing Nothing
-msg path Clear = MsgClear path (Time 0 0) Nothing Nothing
-msg path Subscribe = MsgSubscribe path
-msg path Unsubscribe = MsgUnsubscribe path
-msg path AssignType = MsgAssignType path root
-msg path Delete = MsgDelete path
-msg path Children = MsgChildren path []
+data DataUpdateMethod
+  = Set
+  | Add
+  | Remove
+  | Clear
+  | Children
+
+dum :: Path -> DataUpdateMethod -> DataUpdateMessage
+dum path Set = UMsgSet path (Time 0 0) [] IConstant Nothing Nothing
+dum path Add = UMsgAdd path (Time 0 0) [] IConstant Nothing Nothing
+dum path Remove = UMsgRemove path (Time 0 0) Nothing Nothing
+dum path Clear = UMsgClear path (Time 0 0) Nothing Nothing
+dum path Children = UMsgSetChildren path [] Nothing
 
 assertSingleError i path errStrings response =
-    let bundles = (fromJust $ Map.lookup i response) :: [[Message]] in do
+    let bundles = (fromJust $ Map.lookup i response) :: [UpdateBundle] in do
     assertEqual "single bundle" 1 $ length bundles
-    mapM_ (assertEqual "single msg" 1 . length) bundles
-    mapM_ (mapM_ $ assertErrorMsg errStrings) bundles
-    mapM_ (mapM_ $ assertMsgPath path) bundles
+    let (UpdateBundle errs updates) = head bundles
+    assertEqual "No updates" [] updates
+    assertEqual "single error" 1 $ length errs
+    mapM_ (assertErrorMsg errStrings) errs
+    mapM_ (assertMsgPath path) errs
 
 
 waitN :: (Monad m) => Int -> Protocol a a' b' b m [Directed a b]
@@ -127,62 +124,46 @@ collectAllResponsesUntil i = inner mempty
       | otherwise = inner bs
 
 fakeRelay ::
-    (Monad m, Show i, Show u) =>
-    Protocol (ClientEvent (AddrWithUser i u) [Om] x) Void (ServerEvent (AddrWithUser i u) [RoutableMessage]) Void m ()
+    (Monad m, Show c) =>
+    Protocol ((c, Request)) Void ((c, Response)) Void m ()
 fakeRelay = forever $ waitThen fwd undefined
   where
-    fwd (ClientConnect _ _) = return ()
-    fwd (ClientData i oms) = sendRev $ ServerData i $ map (mkRoutable i) oms
-    fwd (ClientDisconnect i) = sendRev $ ServerDisconnect i
-    mkRoutable i (Client, MsgSubscribe p) = RoutableMessage Nothing (MsgAssignType p root)
-    mkRoutable _ (o, m) = RoutableMessage (Just o) m
+    fwd (ctx, Request mGets updates) = sendRev (ctx, Response (getResps mGets) [] updates)
+    getResps Nothing = []
+    getResps (Just ps) = Left . flip UMsgAssignType helloP <$> ps
 
-alice = newAwu 42 "alice"
-alice' = newAwu 43 "alice"
-bob = newAwu 121 "bob"
-charlie = newAwu 7 "charlie"
-dave = newAwu 14 "dave"
-ethel = newAwu 96 "ethel"
+alice = "alice"
+alice' = "alice'"
+bob = "bob"
 
 helloP = [pathq|/hello|]
 
 testMessageToPreowned =
   let
-    owners = Map.singleton "" (newAwu 0 "relay itself")
+    owners = Map.singleton "hello" "relay itself"
     protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
     forTest = do
-      sendFwd $ ClientData alice [msg root Error]
+      sendFwd $ ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root]
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice root ["forbidden", "client"] resps
-  in
-    runEffect protocol
-
-
-testSubscribeUnclaimed =
-  let
-    protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeRelay
-    forTest = do
-      sendFwd $ ClientData alice [msg helloP Subscribe]
-      sendFwd $ ClientDisconnect alice
-      resps <- collectAllResponsesUntil alice
-      lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice helloP ["forbidden", "owner"] resps
+      lift $ assertSingleError alice helloP ["Client", "update"] resps
   in
     runEffect protocol
 
 testSubscribeAsOwner =
   let
-    protocol = forTest <-> namespaceTrackerProtocol mempty mempty <-> fakeRelay
+    -- Because the protocol is forward biased at the moment, we haven't dealt
+    -- with the relay's response to the last bundle when the next one hits, so
+    -- if we get them all together it doesn't get rejected. We could work
+    -- around by having pre-confirmation allocations, but that feels weird.
+    aliceOwns = Map.singleton "hello" "alice"
+    protocol = forTest <-> namespaceTrackerProtocol aliceOwns mempty <-> fakeRelay
     forTest = do
-      sendFwd $ ClientData alice [msg helloP AssignType]
-      -- FIXME: single bundle too?
-      sendFwd $ ClientData alice [msg helloP Subscribe]
-      sendFwd $ ClientDisconnect alice
+      sendFwd $ ClientData alice $ Right $ RequestBundle [UMsgSubscribe helloP] []
       resps <- collectAllResponsesUntil alice
       lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice helloP ["forbidden", "owner"] resps
+      lift $ assertSingleError alice helloP ["Client", "own"] resps
   in
     runEffect protocol
 
@@ -192,36 +173,35 @@ testUnsubscribeWhenNotSubscribed =
     owners = Map.singleton "owned" bob
     protocol = forTest <-> namespaceTrackerProtocol owners mempty <-> fakeRelay
     forTest = do
-      sendFwd $ ClientData alice [msg ownedP Unsubscribe]
+      sendFwd $ ClientData alice $ Right $ RequestBundle [UMsgUnsubscribe ownedP] []
       sendFwd $ ClientDisconnect alice
       resps <- collectAllResponsesUntil alice
-      lift $ assertOnlyKeysInMap [alice] resps
-      lift $ assertSingleError alice ownedP ["unsubscribe"] resps
+      lift $ assertEqual "idempotent" mempty resps
   in
     runEffect protocol
 
 testValidationErrorReturned =
   let
     protocol = assertions <-> namespaceTrackerProtocol mempty mempty <-> errorSender
-    errorSender = sendRev $ ServerData alice [RoutableMessage Nothing err]
-    err = MsgError [pathq|/bad|] "wrong"
+    errorSender = sendRev $ ((alice, Nothing), Response [] [err] [])
+    err = UMsgError [pathq|/bad|] "wrong"
     assertions = do
         d <- wait
         case d of
             (Rev (ServerData i ms)) -> lift $ do
                 assertEqual "recipient" i alice
-                assertEqual "errs" [err] ms
+                assertEqual "errs" (UpdateBundle [err] []) ms
   in
     runEffect protocol
 
 gogo ::
     (Eq i) =>
-    [ClientEvent i a b] ->
+    [ClientEvent i a x] ->
     i ->
     Protocol
-        (ClientEvent i a b) Void
-        (ServerEvent i a) Void IO () ->
-    IO [ServerEvent i a]
+        (ClientEvent i a x) Void
+        (ServerEvent i b) Void IO () ->
+    IO [ServerEvent i b]
 gogo as i p =
   do
     (toProtoIn, toProtoOut) <- U.newChan
@@ -261,108 +241,100 @@ testSubscribeAsClient =
     -- Can Unsubscribe
   let
     events = [
-        ClientData alice [msg helloP AssignType],
-        ClientData bob [msg helloP Subscribe],
-        ClientData alice [msg helloP Add],
+        ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+        ClientData bob $ Right $ RequestBundle [UMsgSubscribe helloP] [],
+        ClientData alice $ Left $ UpdateBundle [] [Right $ dum helloP Add],
         ClientDisconnect alice
       ]
   in do
     resps <- gogo events alice nstBounceProto
     assertEqual "resps" [
-        -- Because the fake server bounces everything you get subscribes
-        -- instead of data here
-        ServerData bob [msg helloP AssignType],
-        ServerData bob [msg helloP Add],
-        ServerData bob [msg helloP Delete],
+        ServerData bob $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
+        ServerData bob $ UpdateBundle [] [Right $ dum helloP Add],
         ServerDisconnect alice
         ] resps
 
 testSecondOwnerForbidden = do
     response <- trackerHelper [
-        ClientData alice [msg helloP AssignType],
-        -- FIXME: Error is the only method a client is not allowed to
-        -- send. However, our check for an error message doesn't check who sent
-        -- it!
-        ClientData alice' [msg helloP Error]]
+        ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+        ClientData alice' $ Left $ UpdateBundle [UMsgError helloP ""] []]
     assertEqual "single recipient" 1 $ Map.size response
-    assertSingleError alice' helloP ["forbidden", "client"] response
+    assertSingleError alice' helloP ["update", "Client"] response
 
 testClaimUnclaimInBundle = do
     response <- trackerHelper [
-        ClientData alice [msg helloP AssignType, msg helloP Delete],
-        ClientData alice' [msg helloP Subscribe]]
-    assertSingleError alice' helloP ["forbidden", "owner"] response
+        ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root, Left $ UMsgDelete helloP],
+        ClientData alice' $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root]]
+    assertEqual "all good" mempty response
 
 _disconnectUnsubsBase = [
-    ClientData alice [msg helloP AssignType],
-    ClientData alice' [msg helloP Subscribe],
+    ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+    ClientData alice' $ Right $ RequestBundle [UMsgSubscribe helloP] [],
     ClientDisconnect alice',
     -- Should miss this message:
-    ClientData alice [msg helloP Set]
+    ClientData alice $ Left $ UpdateBundle [] [Right $ dum helloP Set]
     ]
 
 testClientDisconnectUnsubs = do
     response <- trackerHelper _disconnectUnsubsBase
     assertEqual "alice': init msgs"
-        (Map.singleton alice' [[msg helloP AssignType]])
+        (Map.singleton alice' $ [UpdateBundle [] [Left $ UMsgAssignType helloP helloP]])
         response
 
 testClientDisconnectUnsubsResubs = do
     response <- trackerHelper $ _disconnectUnsubsBase ++ [
-        ClientData alice' [msg helloP Subscribe],
-        ClientData alice [msg helloP Add]]
+        ClientData alice' $ Right $ RequestBundle [UMsgSubscribe helloP] [],
+        ClientData alice $ Left $ UpdateBundle [] [Right $ dum helloP Add]]
     assertEqual "alice': 2 * init msgs + add msg"
-        (Map.singleton alice' [
-            [msg helloP AssignType],
-            [msg helloP AssignType],
-            [msg helloP Add],
-            [msg helloP Delete]]) -- End of test disconnect
+        (Map.singleton alice' $ [
+            UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
+            UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
+            UpdateBundle [] [Right $ dum helloP Add]])
         response
 
 testOwnerDisconnectDisowns = do
     -- and unregisters clients
     response <- trackerHelper [
-        ClientData alice' [msg [pathq|/fudge|] AssignType], -- Need something to disconnect at end
-        ClientData alice [msg helloP AssignType],
-        ClientData alice' [msg helloP Subscribe],
+        ClientData alice' $ Left $ UpdateBundle [] [Left $ UMsgAssignType [pathq|/fudge|] root], -- Need something to disconnect at end
+        ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+        ClientData alice' $ Right $ RequestBundle [UMsgSubscribe helloP] [],
         ClientDisconnect alice,
-        -- No owner => unclaimed => Subscribe disallowed:
-        ClientData alice'' [msg helloP Subscribe],
         -- No subscriber => no AssignType msg:
-        ClientData alice''' [msg helloP AssignType]]
+        ClientData alice''' $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+        -- New subscriber:
+        ClientData alice'' $ Right $ RequestBundle [UMsgSubscribe helloP] []]
     assertOnlyKeysInMap [alice', alice''] response
     assertMapValue alice' [
-        [msg helloP AssignType], [msg helloP Delete]] response
-    assertSingleError alice'' helloP ["forbidden"] response
+        UpdateBundle [] [Left $ UMsgAssignType helloP helloP], UpdateBundle [] [Left $ UMsgDelete helloP]] response
+    assertMapValue alice'' [UpdateBundle [] [Left $ UMsgAssignType helloP helloP]] response
   where
-    alice'' = newAwu 44 "alice"
-    alice''' = newAwu 45 "alice"
+    alice'' =  "alice''"
+    alice''' = "alice'''"
 
 testClientSetForwarded = do
     response <- trackerHelper [
-        ClientData alice [msg helloP AssignType],
-        ClientData bob [msg helloP Set]]
+        ClientData alice $ Left $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
+        ClientData bob $ Right $ RequestBundle [] [dum helloP Set]]
     assertOnlyKeysInMap [alice] response
-    assertMapValue alice [[msg helloP Set]] response
+    assertMapValue alice [UpdateBundle [] [Right $ dum helloP Set]] response
 
 trackerHelper = trackerHelper' mempty mempty
 
-trackerHelper' :: -- (Monad m, Ord i) =>
-    forall i u.  (Ord i, Show i, Ord u, Show u) =>
-    Owners (AddrWithUser i u) -> Registered (AddrWithUser i u) -> [ClientEvent (AddrWithUser i u) [Message] ()] ->
-    IO (Map.Map (AddrWithUser i u) [[Message]])
+trackerHelper' ::
+    forall i.  (Ord i, Show i) =>
+    Owners i -> Registered i -> [ClientEvent i Bundle ()] ->
+    IO (Map.Map i [UpdateBundle])
 trackerHelper' owners registered as =
-    -- listServer as >>~ namespaceTracker owners registered >>~ echoMap dropDetails)
     mapPack <$> gogo as' i (trackerProto <-> fakeRelay)
   where
     trackerProto = namespaceTrackerProtocol owners registered
     i = i' $ head as
-    i' :: ClientEvent (AddrWithUser i u) [Message] () -> AddrWithUser i u
+    i' :: ClientEvent i Bundle () -> i
     i' (ClientData i _) = i
     i' (ClientConnect i _) = i
-    as' :: [ClientEvent (AddrWithUser i u) [Message] ()]
+    as' :: [ClientEvent i Bundle ()]
     as' = as ++ [ClientDisconnect i]
-    mapPack :: [ServerEvent (AddrWithUser i u) [Message]] -> Map.Map (AddrWithUser i u) [[Message]]
+    mapPack :: [ServerEvent i UpdateBundle] -> Map.Map i [UpdateBundle]
     mapPack [] = Map.empty
     mapPack ((ServerDisconnect e):es) = mapPack es
     mapPack ((ServerData i a):es) = Map.insertWith (++) i [a] (mapPack es)
