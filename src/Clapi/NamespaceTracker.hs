@@ -99,7 +99,9 @@ fanOutBundle i mOwnerErrs gets valErrs updates = do
         (unicast gets i' ++ updatesFor po ps i')
     unicast ms i' = if i == i' then ms else []
     broadcastSubs :: (Ord i, UMsg msg) => Registered i -> [msg] -> i -> [msg]
-    broadcastSubs ps ms i' = filter (\m -> uMsgPath m `elem` Map.findWithDefault mempty i' ps) ms
+    broadcastSubs ps ms i' = filter (isSubscriber ps i') ms
+    isSubscriber :: (Ord i, UMsg msg) => Registered i -> i -> msg -> Bool
+    isSubscriber ps i' m = uMsgPath m `elem` Map.findWithDefault mempty i' ps
     broadcastErrs ps = maybe (const []) (\oes -> broadcastSubs ps oes) mOwnerErrs
     updatesFor po ps i' = if null mOwnerErrs
         then filter (isOwner po i' . uMsgPath) updates
