@@ -9,7 +9,6 @@ import Clapi.Serialisation (encode, parser, Serialisable)
 import Clapi.Protocol (
     Protocol, wait, waitThen, sendFwd, sendRev, ProtocolF(..), Directed(..))
 import Clapi.Server (ClientEvent(..), ServerEvent(..))
-import Clapi.Types (Message)
 
 eventSerialiser :: (Serialisable a, Serialisable b, Monad m) => Protocol
     (ClientEvent i ByteString c)
