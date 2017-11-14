@@ -11,9 +11,8 @@ noAuth :: Monad m => Protocol
     (ServerEvent i B.ByteString)
     (ServerEvent i B.ByteString)
     m ()
-noAuth = forever $ waitThen fwd rev
+noAuth = forever $ waitThen fwd sendRev
   where
     fwd (ClientConnect i b) = sendFwd $ ClientConnect (AddrWithUser i "someone") b
     fwd (ClientDisconnect i) = sendFwd $ ClientDisconnect (AddrWithUser i "someone")
     fwd (ClientData i d) = sendFwd $ ClientData (AddrWithUser i "someone") d
-    rev m = sendRev m
