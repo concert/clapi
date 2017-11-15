@@ -35,11 +35,11 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
-    CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
-    Time(..), Interpolation(..), InterpolationType(..), interpolationType,
-    UMsgError(..), SubMessage(..), DataUpdateMessage(..),
-    TreeUpdateMessage(..), OwnerUpdateMessage(..), RequestBundle(..),
-    UpdateBundle(..))
+    CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType,
+    ToRelayBundle(..), FromRelayBundle(..), Time(..), Interpolation(..),
+    InterpolationType(..), interpolationType, UMsgError(..), SubMessage(..),
+    DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
+    RequestBundle(..), UpdateBundle(..), OwnerRequestBundle(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Util (composeParsers)
@@ -288,22 +288,47 @@ instance Serialisable UpdateBundle where
     builder (UpdateBundle errs oums) = encodeListN errs <<>> encodeListN oums
     parser = UpdateBundle <$> parseListN <*> parseListN
 
-data BundleTypeEnum
-  = RequestBundleType
-  | UpdateBundleType deriving (Enum, Bounded)
+instance Serialisable OwnerRequestBundle where
+    builder (OwnerRequestBundle errs dums) = encodeListN errs <<>> encodeListN dums
+    parser = OwnerRequestBundle <$> parseListN <*> parseListN
 
-bundleTaggedData = taggedData typeToTag bundleType
+data ToRelayBundleTypeEnum
+  = RequestToRelayBundleType
+  | UpdateToRelayBundleType deriving (Enum, Bounded)
+
+trbTaggedData = taggedData typeToTag bundleType
   where
-    typeToTag (RequestBundleType) = 'r'
-    typeToTag (UpdateBundleType) = 'u'
-    bundleType (Left (UpdateBundle _ _)) = UpdateBundleType
-    bundleType (Right (RequestBundle _ _)) = RequestBundleType
+    typeToTag (RequestToRelayBundleType) = 'r'
+    typeToTag (UpdateToRelayBundleType) = 'u'
+    bundleType (TRBOwner _) = UpdateToRelayBundleType
+    bundleType (TRBClient _) = RequestToRelayBundleType
 
-instance Serialisable Bundle where
-    builder = tdTaggedBuilder bundleTaggedData $ either builder builder
-    parser = tdTaggedParser bundleTaggedData $ \e -> case e of
-        (UpdateBundleType) -> Left <$> parser
-        (RequestBundleType) -> Right <$> parser
+instance Serialisable ToRelayBundle where
+    builder = tdTaggedBuilder trbTaggedData $ \b -> case b of
+        (TRBClient rb) -> builder rb
+        (TRBOwner ub) -> builder ub
+    parser = tdTaggedParser trbTaggedData $ \e -> case e of
+        (UpdateToRelayBundleType) -> TRBOwner <$> parser
+        (RequestToRelayBundleType) -> TRBClient <$> parser
+
+data FromRelayBundleTypeEnum
+  = RequestFromRelayBundleType
+  | UpdateFromRelayBundleType deriving (Enum, Bounded)
+
+frbTaggedData = taggedData typeToTag bundleType
+  where
+    typeToTag (RequestFromRelayBundleType) = 'R'
+    typeToTag (UpdateFromRelayBundleType) = 'U'
+    bundleType (FRBOwner _) = RequestFromRelayBundleType
+    bundleType (FRBClient _) = UpdateFromRelayBundleType
+
+instance Serialisable FromRelayBundle where
+    builder = tdTaggedBuilder frbTaggedData $ \b -> case b of
+        (FRBClient rb) -> builder rb
+        (FRBOwner ub) -> builder ub
+    parser = tdTaggedParser frbTaggedData $ \e -> case e of
+        (UpdateFromRelayBundleType) -> FRBClient <$> parser
+        (RequestFromRelayBundleType) -> FRBOwner <$> parser
 
 
 badTag :: (MonadFail m) => String -> Char ->  m a

@@ -12,7 +12,9 @@ module Clapi.Types
         toClapiValue,
         RequestBundle(..),
         UpdateBundle(..),
-        Bundle(..),
+        OwnerRequestBundle(..),
+        ToRelayBundle(..),
+        FromRelayBundle(..),
         UMsgError(..),
         SubMessage(..),
         DataUpdateMessage(..),
@@ -109,13 +111,15 @@ instance UMsg DataUpdateMessage where
 
 type OwnerUpdateMessage = Either TreeUpdateMessage DataUpdateMessage
 
-data UpdateBundle = UpdateBundle {ubErrs :: [UMsgError], ubMsgs :: [OwnerUpdateMessage]} deriving (Eq, Show)
-data RequestBundle = RequestBundle {rbSubs :: [SubMessage], rbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
-
-type Bundle = Either UpdateBundle RequestBundle
-
 instance (UMsg a, UMsg b) => UMsg (Either a b) where
     uMsgPath = either uMsgPath uMsgPath
+
+data UpdateBundle = UpdateBundle {ubErrs :: [UMsgError], ubMsgs :: [OwnerUpdateMessage]} deriving (Eq, Show)
+data RequestBundle = RequestBundle {rbSubs :: [SubMessage], rbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
+data OwnerRequestBundle = OwnerRequestBundle {orbErrs :: [UMsgError], orbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
+
+data ToRelayBundle = TRBClient RequestBundle | TRBOwner UpdateBundle deriving (Eq, Show)
+data FromRelayBundle = FRBClient UpdateBundle | FRBOwner OwnerRequestBundle deriving (Eq, Show)
 
 -- Values:
 
