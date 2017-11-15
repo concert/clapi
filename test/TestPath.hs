@@ -13,9 +13,6 @@ import Helpers (assertFailed)
 import Clapi.Path (Path(..), root, up)
 import Clapi.PathQ (pathq)
 import Path.Parsing (toString, fromString)
-import Clapi.Types (
-    CanFail, Message(..), Time(..), ClapiValue(..), ClapiMethod(..),
-    Interpolation(..), fromClapiValue, toClapiValue)
 import Clapi.Serialisation (encode, decode)
 
 
