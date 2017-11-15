@@ -36,13 +36,12 @@ import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
     CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
-    Message(..), ClapiMethod(..), Time(..), Interpolation(..), InterpolationType(..), interpolationType,
+    Time(..), Interpolation(..), InterpolationType(..), interpolationType,
     UMsgError(..), SubMessage(..), DataUpdateMessage(..),
-    TreeUpdateMessage(..), OwnerUpdateMessage(..),
-    RequestBundle(..), UpdateBundle(..))
+    TreeUpdateMessage(..), OwnerUpdateMessage(..), RequestBundle(..),
+    UpdateBundle(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
-import Clapi.Parsing (methodToString, methodParser)
 import Clapi.Util (composeParsers)
 import Clapi.TaggedData
 
@@ -120,11 +119,6 @@ instance Serialisable Path.Path where
     builder = builder . Path.toText
     parser = parser >>= Path.fromString
 
-instance Serialisable ClapiMethod where
-    builder = builder . methodToString
-    parser = composeParsers parser methodParser
-
-
 typeTag :: ClapiTypeEnum -> Char
 typeTag ClTTime = 't'
 typeTag ClTEnum = 'e'
@@ -177,10 +171,6 @@ parseListN = do
     count (fromIntegral len) parser
 
 instance Serialisable [ClapiValue] where
-    builder = encodeListN
-    parser = parseListN
-
-instance Serialisable [Message] where
     builder = encodeListN
     parser = parseListN
 
@@ -318,43 +308,6 @@ instance Serialisable Bundle where
 
 badTag :: (MonadFail m) => String -> Char ->  m a
 badTag n c = fail $ "Bad " ++ n ++ " type tag '" ++ (show c) ++ "'"
-
-
-instance Serialisable Message where
-    builder (MsgError p m) = builder 'E' <<>> builder p <<>> builder m
-    builder (MsgSet p time cvs i ma ms) =
-        builder 's' <<>> builder p <<>> builder time <<>> builder cvs <<>>
-        builder i <<>> builder ma <<>> builder ms
-    builder (MsgAdd p time cvs i ma ms) =
-        builder 'a' <<>> builder p <<>> builder time <<>> builder cvs <<>>
-        builder i <<>> builder ma <<>> builder ms
-    builder (MsgRemove p time ma ms) =
-        builder 'r' <<>> builder p <<>> builder time
-    builder (MsgClear p time ma ms) =
-        builder 'c' <<>> builder p <<>> builder time
-    builder (MsgSubscribe p) = builder 'S' <<>> builder p
-    builder (MsgUnsubscribe p) = builder 'U' <<>> builder p
-    builder (MsgAssignType np tp) = builder 'T' <<>> builder np <<>> builder tp
-    builder (MsgDelete p) = builder 'D' <<>> builder p
-    builder (MsgChildren p ns) = builder 'C' <<>> builder p <<>> encodeListN ns
-
-    parser = parser >>= parseByTag
-      where
-        parseByTag 'E' = MsgError <$> parser <*> parser
-        parseByTag 's' =
-            MsgSet <$> parser <*> parser <*> parser <*> parser <*> parser <*>
-            parser
-        parseByTag 'a' =
-            MsgAdd <$> parser <*> parser <*> parser <*> parser <*> parser <*>
-            parser
-        parseByTag 'r' = MsgRemove <$> parser <*> parser <*> parser <*> parser
-        parseByTag 'c' = MsgClear <$> parser <*> parser <*> parser <*> parser
-        parseByTag 'S' = MsgSubscribe <$> parser
-        parseByTag 'U' = MsgUnsubscribe <$> parser
-        parseByTag 'T' = MsgAssignType <$> parser <*> parser
-        parseByTag 'D' = MsgDelete <$> parser
-        parseByTag 'C' = MsgChildren <$> parser <*> parser
-        parseByTag c = badTag "message" c
 
 
 interpolationTaggedData = taggedData toTag interpolationType

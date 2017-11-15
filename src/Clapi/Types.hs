@@ -19,9 +19,6 @@ module Clapi.Types
         TreeUpdateMessage(..),
         OwnerUpdateMessage(..),
         UMsg(..),
-        ClapiMethod(..),
-        Message(..),
-        msgMethod',
         InterpolationType(..),
         Interpolation(..),
         interpolation,
@@ -119,55 +116,6 @@ type Bundle = Either UpdateBundle RequestBundle
 
 instance (UMsg a, UMsg b) => UMsg (Either a b) where
     uMsgPath = either uMsgPath uMsgPath
-
-
--- Existing message type
-
-data Message =
-    MsgError {msgPath' :: Path, msgErrTxt :: T.Text}
-  | MsgSet {
-        msgPath' :: Path,
-        msgTime :: Time,
-        msgArgs' :: [ClapiValue],
-        msgInterpolation :: Interpolation,
-        msgAttributee :: (Maybe Attributee),
-        msgSite :: (Maybe Site)}
-  | MsgAdd {
-        msgPath' :: Path,
-        msgTime :: Time,
-        msgArgs' :: [ClapiValue],
-        msgInterpolation :: Interpolation,
-        msgAttributee :: (Maybe Attributee),
-        msgSite :: (Maybe Site)}
-  | MsgRemove {
-        msgPath' :: Path,
-        msgTime :: Time,
-        msgAttributee :: (Maybe Attributee),
-        msgSite :: (Maybe Site)}
-  | MsgClear {
-        msgPath' :: Path,
-        msgTime :: Time,
-        msgAttributee :: (Maybe Attributee),
-        msgSite :: (Maybe Site)}
-  | MsgSubscribe {msgPath' :: Path}
-  | MsgUnsubscribe {msgPath' :: Path}
-  | MsgAssignType {msgPath' :: Path, msgTypePath :: Path}
-  | MsgDelete {msgPath' :: Path}
-  | MsgChildren {msgPath' :: Path, msgChildren :: [Name]}
-  deriving (Eq, Show)
-
-msgMethod' :: Message -> ClapiMethod
-msgMethod' (MsgError {}) = Error
-msgMethod' (MsgSet {}) = Set
-msgMethod' (MsgAdd {}) = Add
-msgMethod' (MsgRemove {}) = Remove
-msgMethod' (MsgClear {}) = Clear
-msgMethod' (MsgSubscribe {}) = Subscribe
-msgMethod' (MsgUnsubscribe {}) = Unsubscribe
-msgMethod' (MsgAssignType {}) = AssignType
-msgMethod' (MsgDelete {}) = Delete
-msgMethod' (MsgChildren {}) = Children
-
 
 -- Values:
 
