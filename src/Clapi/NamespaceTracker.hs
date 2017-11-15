@@ -3,7 +3,7 @@ module Clapi.NamespaceTracker where
 
 import Control.Monad (filterM, forever, when)
 import Control.Monad.State (StateT(..), evalStateT, get, gets, modify, put)
-import Control.Monad.Trans (MonadTrans)
+import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.Trans.Free
 import qualified Data.ByteString as B
 import Data.List (partition)
@@ -14,8 +14,6 @@ import Data.Maybe (catMaybes, fromJust)
 import Data.Either (lefts)
 
 import Control.Lens (view, set, Lens', _1, _2)
-import Pipes (lift)
-import Pipes.Core (Proxy, request, respond)
 
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol

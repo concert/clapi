@@ -16,11 +16,6 @@ import qualified Data.Text as T
 import Data.Void
 import Text.Printf
 
--- import Pipes (runEffect, liftIO)
-import Pipes.Core (Client, Server, request, respond, (>>~))
-import qualified Pipes.Prelude as PP
-import Pipes.Safe (runSafeT)
-
 import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
 import Clapi.Path (Path, root)
