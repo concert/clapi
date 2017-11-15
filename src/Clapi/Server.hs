@@ -19,7 +19,7 @@ import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
-  Directed(..), Protocol, sendFwd, sendRev, (<->), waitThen, runProtocolIO)
+  Directed(..), Protocol, sendFwd, sendRev, (<<->), waitThen, runProtocolIO)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -97,7 +97,7 @@ _serveToChan perClientProtocol onShutdown listenSock inChan =
       runProtocolIO
           (NSB.recv sock 4096) (BQ.writeChan inChan)
           (NSB.sendAll sock) (Q.readChan returnChanOut)
-          (blk addr returnChanIn <-> perClientProtocol)
+          (blk addr returnChanIn <<-> perClientProtocol)
     blk addr returnChanIn =
       do
         sendFwd $ ClientConnect addr returnChanIn
@@ -138,7 +138,7 @@ protocolServer listenSock perClientProtocol sharedProtocol onShutdown =
     bar o = runProtocolIO
         (BQ.readChan o) undefined
         (uncurry Q.writeChan) neverDoAnything
-        (servBlk mempty <-> sharedProtocol)
+        (servBlk mempty <<-> sharedProtocol)
     servBlk connectedMap = do
         d <- Protocol.wait
         case d of
@@ -159,7 +159,7 @@ protocolServer listenSock perClientProtocol sharedProtocol onShutdown =
         (Map.lookup a m)
 
 demoServer = withListen HostAny "1234" $ \(lsock, _) ->
-    protocolServer lsock fakeAuth (subscriptionRegistrar <-> loggyEcho) (return ())
+    protocolServer lsock fakeAuth (subscriptionRegistrar <<-> loggyEcho) (return ())
 
 loggyCat :: (Show a) => Protocol (ClientEvent' a x) (ClientEvent' a x) b b IO ()
 loggyCat = forever $ do

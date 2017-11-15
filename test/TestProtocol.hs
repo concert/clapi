@@ -23,7 +23,7 @@ tests = [
 testProtocolBasic =
     assertEqual "forwarded result" ((), "cba") result
   where
-    result = runState (runEffect $ source <-> cat <-> sink) []
+    result = runState (runEffect $ source <<-> cat <<-> sink) []
     source = (mapM_ sendFwd $ fmap Just "abc") >> sendFwd Nothing
     sink = forever $ wait >>= \(Fwd a) -> (lift $ modify (a:))
     cat = waitThen (maybe (return ()) (\a -> sendFwd a >> cat)) undefined
@@ -49,7 +49,7 @@ testCollision =
   do
     assertEqual "smashed" (Set.fromList [lyricFwd, lyricRev]) smashed
   where
-    smashed = execState (runEffect $ fireFwd <-> fireRev) mempty
+    smashed = execState (runEffect $ fireFwd <<-> fireRev) mempty
     lyricFwd = "always going forward"
     lyricRev = "we can't find reverse"
     fireFwd = do

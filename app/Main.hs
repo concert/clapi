@@ -11,11 +11,11 @@ import System.Posix.Signals
 import Network.Simple.TCP hiding (send)
 import Network.Socket (SockAddr(SockAddrCan))
 
-import Clapi.Server (protocolServer, withListen, AddrWithUser(..))
+import Clapi.Server (protocolServer, withListen, AddrWithUser(awuAddr))
 import Clapi.SerialisationProtocol (eventSerialiser)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
-import Clapi.Protocol ((<->))
+import Clapi.Protocol ((<<->))
 import Clapi.Auth (noAuth)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
@@ -28,8 +28,8 @@ shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
     s d act ms = liftIO (putStrLn $ tag ++ d ++ (show ms)) >> act ms
 
 -- FIXME: This is owned by something unsendable and we should reflect that
-apiClaimed :: Owners (AddrWithUser SockAddr String)
-apiClaimed = Map.singleton "api" $ AddrWithUser (SockAddrCan 12) "relay"
+apiClaimed :: Owners SockAddr
+apiClaimed = Map.singleton "api" $ SockAddrCan 12
 
 main :: IO ()
 main =
@@ -39,5 +39,5 @@ main =
     withListen HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
-    perClientProto = shower "network" <-> noAuth <-> eventSerialiser
-    totalProto = shower "total" <-> namespaceTrackerProtocol apiClaimed mempty <-> attributor <-> shower "relay" <-> relay baseValuespace
+    perClientProto = shower "network" <<-> noAuth <<-> eventSerialiser awuAddr <<-> attributor
+    totalProto = shower "total" <<-> namespaceTrackerProtocol apiClaimed mempty <<-> shower "relay" <<-> relay baseValuespace

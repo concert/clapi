@@ -11,17 +11,19 @@ import Clapi.Protocol (
 import Clapi.Server (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (Message)
 
-eventSerialiser :: (Serialisable a, Serialisable b, Monad m) => Protocol
-    (ClientEvent i ByteString c)
-    (ClientEvent i a c)
-    (ServerEvent i ByteString)
-    (ServerEvent i b)
-    m ()
-eventSerialiser = serialiser' $ parse parser
+eventSerialiser :: (Serialisable a, Serialisable b, Monad m) =>
+    (i -> j) ->  -- Not sold on this
+    Protocol
+        (ClientEvent i ByteString c)
+        (ClientEvent i a c)
+        (ServerEvent j ByteString)
+        (ServerEvent j b)
+        m ()
+eventSerialiser idAdapt = serialiser' $ parse parser
   where
     serialiser' p = waitThen (fwd p) (rev p)
     fwd parseNext (ClientData i bs) = case parseNext bs of
-        Fail _ ctxs err -> sendRev $ ServerData i $ fromString err
+        Fail _ ctxs err -> sendRev $ ServerData (idAdapt i) $ fromString err
         Partial cont -> serialiser' cont
         Done unconsumed msgs -> sendFwd (ClientData i msgs) >> fwd (parse parser) (ClientData i unconsumed)
     fwd p (ClientConnect i b) = sendFwd (ClientConnect i b) >> serialiser' p
@@ -50,7 +52,7 @@ mapProtocol toA fromA fromB toB p = FreeT $ go <$> runFreeT p
     wn next = mapProtocol toA fromA fromB toB next
 
 serialiser :: (Serialisable a, Serialisable b, Monad m) => Protocol ByteString a ByteString b m ()
-serialiser = mapProtocol (ClientData 0) unpackClientData unpackServerData (ServerData 0) eventSerialiser
+serialiser = mapProtocol (ClientData 0) unpackClientData unpackServerData (ServerData 0) $ eventSerialiser id
   where
     unpackClientData (ClientData _ bs) = bs
     unpackServerData (ServerData _ bs) = bs
