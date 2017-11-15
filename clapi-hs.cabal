@@ -23,7 +23,6 @@ library
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
-                     , Clapi.Parsing
                      , Clapi.Path
                      , Clapi.PathQ
                      , Path.Parsing
