@@ -53,10 +53,6 @@ library
                      , network
                      , network-simple
                      , mtl
-                     , pipes
-                     , pipes-concurrency
-                     , pipes-network
-                     , pipes-safe
                      , regex-pcre
                      , scientific
                      , split
@@ -99,8 +95,6 @@ test-suite clapi-hs-test
                      , mtl
                      , network
                      , network-simple
-                     , pipes
-                     , pipes-safe
                      , QuickCheck
                      , test-framework
                      , test-framework-hunit
