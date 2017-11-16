@@ -25,7 +25,7 @@ import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Path.Parsing (toText)
 
-applyMessage :: (MonadFail m) => Valuespace v -> OwnerUpdateMessage -> m (Valuespace Unvalidated)
+applyMessage :: (MonadFail m) => Valuespace Unvalidated -> OwnerUpdateMessage -> m (Valuespace Unvalidated)
 applyMessage vs msg = case msg of
     (Right (UMsgSet p t v i a s)) -> vsSet a i v p s t vs
     (Right (UMsgAdd p t v i a s)) -> vsAdd a i v p s t vs
@@ -35,15 +35,15 @@ applyMessage vs msg = case msg of
     (Left (UMsgAssignType p tp)) -> return $ vsAssignType p tp vs
     (Left (UMsgDelete p)) -> vsDelete p vs
 
-applyMessages :: Valuespace v -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
+applyMessages :: Valuespace Unvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
 applyMessages mvvs = applySuccessful [] mvvs
   where
-    applySuccessful :: [(Path, String)] -> Valuespace v -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
-    applySuccessful errs vs [] = (Map.fromList errs, unvalidate vs)
+    applySuccessful :: [(Path, String)] -> Valuespace Unvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
+    applySuccessful errs vs [] = (Map.fromList errs, vs)
     applySuccessful errs vs (m:ms) = case canFailApply vs m of
         (Left es) -> applySuccessful ((uMsgPath m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
-    canFailApply :: Valuespace v -> OwnerUpdateMessage -> CanFail (Valuespace Unvalidated)
+    canFailApply :: Valuespace Unvalidated -> OwnerUpdateMessage -> CanFail (Valuespace Unvalidated)
     canFailApply = applyMessage
 
 treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> OwnerUpdateMessage
@@ -78,7 +78,7 @@ handleMutationMessages ::
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
     errs = Map.union aErrs vErrs
-    (aErrs, vs') = applyMessages vs msgs
+    (aErrs, vs') = applyMessages (unvalidate vs) msgs
     vs'' = modifyRootTypePath vs vs'
     (vErrs, vvs) = vsValidate vs''
     errMsgs = map (\(p, es) -> UMsgError p (T.pack es)) (Map.assocs errs)

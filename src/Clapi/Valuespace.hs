@@ -217,19 +217,19 @@ valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
 type VsTree = ClapiTree [ClapiValue]
 type DefMap = Map.Map NodePath Definition
-data Validated
-data Unvalidated
+type Validated = ()
+type Unvalidated = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
     _xrefs :: Mos.Dependencies' (NodePath, (Maybe Site, Time)) NodePath,
     _defs :: DefMap,
-    _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
+    _unvalidated :: v
     } deriving (Eq)
 makeLenses ''Valuespace
 
-unvalidate :: Valuespace v -> Valuespace Unvalidated
-unvalidate (Valuespace tr ty x d u) = Valuespace tr ty x d u
+unvalidate :: Valuespace Validated -> Valuespace Unvalidated
+unvalidate (Valuespace tr ty x d _) = Valuespace tr ty x d mempty
 
 vsGetTree :: Valuespace v -> VsTree
 vsGetTree = view tree
@@ -252,7 +252,7 @@ vsDiff v0 v1 = (map taAsVd typeAssigns) ++ (tdAsVd nd)
 instance Show (Valuespace v) where
     show = show . view tree
 
-instance Monoid (Valuespace v) where
+instance Monoid v => Monoid (Valuespace v) where
     mempty = Valuespace mempty mempty mempty mempty mempty
     mappend (Valuespace a1 b1 c1 d1 e1) (Valuespace a2 b2 c2 d2 e2) =
         Valuespace (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2) (e1 <> e2)
@@ -291,7 +291,7 @@ vsValidate :: Valuespace Unvalidated -> MonadErrorMap (Valuespace Validated)
 vsValidate =
     rectifyTypes >=> validateChildren >=> validateData >=> markValid
   where
-    markValid = return . set unvalidated mempty
+    markValid = return . set unvalidated ()
 
 rectifyTypes ::
     Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
@@ -425,7 +425,7 @@ overUnvalidatedNodes ::
     (
        NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
        CanFail a
-    ) -> Valuespace v -> MonadErrorMap (Map.Map NodePath a)
+    ) -> Valuespace Unvalidated -> MonadErrorMap (Map.Map NodePath a)
 overUnvalidatedNodes f vs =
   do
     filtered <-
@@ -470,7 +470,7 @@ validateNodeData vs np siteMap = getDef np vs >>= body
 --         def <- getDef np vs
 --         traverse (validate (getType vs) (view validators def)) (toList n)
 
-vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
+vsAssignType :: NodePath -> TypePath -> Valuespace Unvalidated -> Valuespace Unvalidated
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
@@ -479,7 +479,7 @@ vsAssignType np tp =
     taintXRefDependants np
 
 vsDelete ::
-    (MonadFail m) => NodePath -> Valuespace v -> m (Valuespace Unvalidated)
+    (MonadFail m) => NodePath -> Valuespace Unvalidated -> m (Valuespace Unvalidated)
 vsDelete np =
     tree (treeDeleteNode np) .
     over types (Mos.delDependency np) .
@@ -487,18 +487,18 @@ vsDelete np =
     set (unvalidated . at (Path.up np)) (Just Nothing)
 
 taintData ::
-    NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace Unvalidated
+    NodePath -> Maybe Site -> Time -> Valuespace Unvalidated -> Valuespace Unvalidated
 taintData np s t =
     over (unvalidated . at np . non mempty . non mempty) (Set.insert (s, t))
 
-taintTypeDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
+taintTypeDependants :: NodePath -> Valuespace Unvalidated -> Valuespace Unvalidated
 taintTypeDependants np vs =
     over unvalidated (Maybe.update Map.union maybeTaintedMap) vs
   where
     maybeTaintedMap = Map.fromSet (const Nothing) <$>
         (Mos.getDependants np $ view types vs)
 
-taintXRefDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
+taintXRefDependants :: NodePath -> Valuespace Unvalidated -> Valuespace Unvalidated
 taintXRefDependants np vs = over unvalidated (Map.union taintedMap) vs
   where
     taintedMap =
@@ -507,26 +507,26 @@ taintXRefDependants np vs = over unvalidated (Map.union taintedMap) vs
 
 vsAdd ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
-    NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
+    NodePath -> Maybe Site -> Time -> Valuespace Unvalidated -> m (Valuespace Unvalidated)
 vsAdd a i vs np s t =
     tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np
 
 
 vsSet ::
     (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
-    NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
+    NodePath -> Maybe Site -> Time -> Valuespace Unvalidated -> m (Valuespace Unvalidated)
 vsSet a i vs np s t =
     tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np
 
 vsRemove ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
-    Valuespace v -> m (Valuespace Unvalidated)
+    Valuespace Unvalidated -> m (Valuespace Unvalidated)
 vsRemove a np s t =
     tree (treeRemove a np s t) . taintData np s t
 
 vsClear ::
     (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
-    Valuespace v -> m (Valuespace Unvalidated)
+    Valuespace Unvalidated -> m (Valuespace Unvalidated)
 vsClear a np s t =
     tree (treeClear a np s t) . taintData np s t
 
@@ -536,12 +536,12 @@ anon = Nothing
 tconst = Time 0 0
 
 addConst ::
-    (MonadFail m) => NodePath -> [ClapiValue] -> Valuespace v ->
+    (MonadFail m) => NodePath -> [ClapiValue] -> Valuespace Unvalidated ->
     m (Valuespace Unvalidated)
 addConst np cvs = vsAdd anon IConstant cvs np globalSite tconst
 
 define ::
-    (MonadFail m) => NodePath -> Definition -> Valuespace v ->
+    (MonadFail m) => NodePath -> Definition -> Valuespace Unvalidated ->
     m (Valuespace Unvalidated)
 define defPath def vs =
     addConst defPath (defToValues def) vs >>=
@@ -549,7 +549,7 @@ define defPath def vs =
 
 
 autoDefineStruct ::
-    (MonadFail m) => NodePath -> TypePath -> Valuespace v ->
+    (MonadFail m) => NodePath -> TypePath -> Valuespace Unvalidated ->
     m (Valuespace Unvalidated)
 autoDefineStruct np tp vs =
   let node = view (tree . at np . non mempty) vs in
@@ -575,7 +575,7 @@ assert p s a | p a = a
 baseValuespace :: Valuespace Validated
 baseValuespace =
     either error (snd . assert (null . fst) (show . fst) . vsValidate) $
-    return mempty >>=
+    return (unvalidate mempty) >>=
     define (metaTypePath Tuple) baseTupleDef >>=
     define (metaTypePath Struct) baseStructDef >>=
     define (metaTypePath Array) baseArrayDef >>=

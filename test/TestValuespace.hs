@@ -8,7 +8,6 @@ import Test.QuickCheck (
     Arbitrary(..), Gen, Property, arbitrary, oneof, elements, listOf, listOf1,
     arbitraryBoundedEnum, vector, vectorOf)
 
-import Data.Coerce (coerce)
 import Data.Either (either)
 import qualified Data.Text as T
 import Data.Word (Word16)
@@ -51,7 +50,7 @@ testTupleDef =
 
 
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
-    fst $ vsValidate $ coerce baseValuespace
+    fst $ vsValidate $ unvalidate baseValuespace
 
 assertValidationErrors errPaths =
     assertEqual "did not find errors" (Set.fromList errPaths) . Map.keysSet .
@@ -62,7 +61,7 @@ testChildTypeValidation =
     -- Set /api/self/version to have the wrong type, but perfectly valid
     -- data for that wrong type:
     badVs <- vsSet anon IConstant [ClString "banana"] [pathq|/api/self/version|]
-          globalSite tconst baseValuespace >>=
+          globalSite tconst (unvalidate baseValuespace) >>=
         return . vsAssignType [pathq|/api/self/version|]
             [pathq|/api/types/self/build|]
     assertValidationErrors [[pathq|/api/self|]] badVs
@@ -75,7 +74,8 @@ testTypeChangeInvalidation =
     newDef <- tupleDef Cannot "for test" ["versionString"] ["string[apple]"]
         mempty
     badVs <- vsSet anon IConstant (defToValues newDef)
-        [pathq|/api/types/self/version|] globalSite tconst baseValuespace
+        [pathq|/api/types/self/version|] globalSite tconst
+        (unvalidate baseValuespace)
     assertValidationErrors [[pathq|/api/self/version|]] badVs
 
 
@@ -94,7 +94,7 @@ vsWithXRef =
         ["ref[/api/types/self/version]"] mempty
     vsAdd anon IConstant (defToValues newNodeDef)
           [pathq|/api/types/test_type|] globalSite tconst
-          baseValuespace >>=
+          (unvalidate baseValuespace) >>=
         vsSet anon IConstant (defToValues newCDef)
           [pathq|/api/types/containers/types|] globalSite tconst >>=
         -- FIXME: should infer this from the container
