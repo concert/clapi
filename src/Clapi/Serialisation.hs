@@ -89,10 +89,6 @@ decodeLengthPrefixedBytes decoder = do
     bytes <- APBS.take $ fromIntegral len
     return $ decoder bytes
 
-instance Serialisable String where
-    builder = prefixLength . fromString
-    parser = decodeLengthPrefixedBytes toString
-
 decodeUtf8With' = decodeUtf8With onError
   where
     onError :: String -> Maybe Word8 -> Maybe Char
@@ -102,10 +98,6 @@ decodeUtf8With' = decodeUtf8With onError
 instance Serialisable T.Text where
     builder = prefixLength . fromText
     parser = decodeLengthPrefixedBytes decodeUtf8With'
-
-instance Serialisable [T.Text] where
-    builder = encodeListN
-    parser = parseListN
 
 instance Serialisable Char where
     builder = return . fromChar
@@ -161,18 +153,11 @@ instance Serialisable ClapiValue where
         cvParser ClTString = ClString <$> (parser :: Parser T.Text)
         cvParser ClTList = ClList <$> (parser :: Parser [ClapiValue])
 
-
-encodeListN :: (Serialisable a) => [a] -> CanFail Builder
-encodeListN items = (lenBuilder $ length items) <<>> (foldl (<<>>) (return mempty) (map builder items))
-
-parseListN :: (Serialisable a) => Parser [a]
-parseListN = do
-    len <- parser :: Parser Word16
-    count (fromIntegral len) parser
-
-instance Serialisable [ClapiValue] where
-    builder = encodeListN
-    parser = parseListN
+instance Serialisable a => Serialisable [a] where
+    builder items = (lenBuilder $ length items) <<>> (foldl (<<>>) (return mempty) (map builder items))
+    parser = do
+        len <- parser :: Parser Word16
+        count (fromIntegral len) parser
 
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTaggedParser td p = do
@@ -228,7 +213,7 @@ dumtParser e = case e of
     (DUMTSet) -> sap UMsgSet
     (DUMTRemove) -> rcp UMsgRemove
     (DUMTClear) -> rcp UMsgClear
-    (DUMTSetChildren) -> UMsgSetChildren <$> parser <*> parseListN <*> parser
+    (DUMTSetChildren) -> UMsgSetChildren <$> parser <*> parser <*> parser
   where
     sap mt = mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     rcp mt = mt <$> parser <*> parser <*> parser <*> parser
@@ -238,7 +223,7 @@ dumtBuilder m = case m of
     (UMsgSet p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
     (UMsgRemove p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
     (UMsgClear p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
-    (UMsgSetChildren p ns a) -> builder p <<>> encodeListN ns <<>> builder a
+    (UMsgSetChildren p ns a) -> builder p <<>> builder ns <<>> builder a
 
 instance Serialisable DataUpdateMessage where
     builder = tdTaggedBuilder dumtTaggedData dumtBuilder
@@ -281,12 +266,12 @@ instance Serialisable OwnerUpdateMessage where
     parser = parseEither oumTaggedData tumtParser dumtParser
 
 instance Serialisable RequestBundle where
-    builder (RequestBundle subs dums) = encodeListN subs <<>> encodeListN dums
-    parser = RequestBundle <$> parseListN <*> parseListN
+    builder (RequestBundle subs dums) = builder subs <<>> builder dums
+    parser = RequestBundle <$> parser <*> parser
 
 instance Serialisable UpdateBundle where
-    builder (UpdateBundle errs oums) = encodeListN errs <<>> encodeListN oums
-    parser = UpdateBundle <$> parseListN <*> parseListN
+    builder (UpdateBundle errs oums) = builder errs <<>> builder oums
+    parser = UpdateBundle <$> parser <*> parser
 
 data BundleTypeEnum
   = RequestBundleType
