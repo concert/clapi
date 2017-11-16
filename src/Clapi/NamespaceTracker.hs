@@ -18,7 +18,7 @@ import Control.Lens (view, set, Lens', _1, _2)
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 import Clapi.Path (Name, Path(..))
-import Clapi.Types (ClapiValue(ClString), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), Bundle(..), UpdateBundle(..), RequestBundle(..), UMsgError(..), UMsg(..), SubMessage(..))
+import Clapi.Types (ClapiValue(ClString), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), ToRelayBundle(..), FromRelayBundle(..), OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..), UMsgError(..), UMsg(..), SubMessage(..))
 import Clapi.Server (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
@@ -107,9 +107,9 @@ liftedWaitThen onFwd onRev = do
 type DownstreamCtx i = (i, Maybe [UMsgError])
 
 type NsProtocol m i = Protocol
-    (ClientEvent i Bundle ())
+    (ClientEvent i ToRelayBundle ())
     ((DownstreamCtx i, Request))
-    (ServerEvent i UpdateBundle)
+    (ServerEvent i FromRelayBundle)
     ((DownstreamCtx i, Response))
     m
 
@@ -121,10 +121,10 @@ namespaceTrackerProtocol ::
 namespaceTrackerProtocol o r = evalStateT _namespaceTrackerProtocol (o, r)
 
 
-allPaths :: Bundle -> [Path]
+allPaths :: ToRelayBundle -> [Path]
 allPaths b = case b of
-    (Left (UpdateBundle errs oums)) -> ps errs ++ ps oums
-    (Right (RequestBundle subs dums)) -> ps subs ++ ps dums
+    (TRBOwner (UpdateBundle errs oums)) -> ps errs ++ ps oums
+    (TRBClient (RequestBundle subs dums)) -> ps subs ++ ps dums
   where
     ps :: (UMsg m) => [m] -> [Path]
     ps = map uMsgPath
@@ -137,22 +137,22 @@ _namespaceTrackerProtocol ::
         ()
 _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
   where
-    sendErrorBundle i s ps = lift . sendRev $ ServerData i $
-        UpdateBundle (map (flip UMsgError s) ps) []
+    sendErrorBundle i s ps = lift . sendRev $ ServerData i $ FRBOwner $
+        OwnerRequestBundle (map (flip UMsgError s) ps) []
     kick i = do
         lift . sendRev $ ServerDisconnect i
         fwd $ ClientDisconnect i
     hasOwnership :: (Monad m, UMsg msg, Ord i, Show i) => i -> Ownership -> [msg] -> StateT (Owners i) m [Path]
     hasOwnership i eo ms = get >>= \s -> return $ filter (\p -> Just eo == getPathOwnership i s p) $ map uMsgPath ms
-    fwd :: (Monad m, Ord i, Show i) => ClientEvent i Bundle x -> StateT (Owners i, Registered i) (NsProtocol m i) ()
     fwd (ClientConnect i x) = return mempty
-    fwd (ClientData i b@(Left (UpdateBundle errs oums))) = do
+    fwd (ClientData i b@(TRBOwner (UpdateBundle errs oums))) = do
         badErrPaths <- stateFst $ hasOwnership i Client errs
         badOumPaths <- stateFst $ hasOwnership i Client oums
         if not $ null $ badErrPaths ++ badOumPaths
-            then sendErrorBundle i "Path already has another owner" $ allPaths b
+            then lift . sendRev $ ServerData i $ FRBOwner $ OwnerRequestBundle (
+                map (flip UMsgError "Path already has another owner") $ allPaths b) []
             else lift $ sendFwd ((i, Just errs), OwnerRequest oums)
-    fwd (ClientData i (Right (RequestBundle subs dums))) = do
+    fwd (ClientData i (TRBClient (RequestBundle subs dums))) = do
         badSubPaths <- stateFst $ hasOwnership i Owner subs
         badDumPaths <- stateFst $ hasOwnership i Owner dums
         let allBadPaths = badSubPaths ++ badDumPaths
@@ -172,7 +172,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         stateFst $ sendToOwners updates
         if (null valErrs) && (null gets)
             then return mempty
-            else lift $ sendRev $ ServerData i $ UpdateBundle valErrs gets
+            else lift $ sendRev $ ServerData i $ FRBClient $ UpdateBundle valErrs gets
       where
         sendToOwners ::
             (Monad m, Ord i) =>
@@ -182,11 +182,12 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
             po <- get
             lift $ mapM_ sendRev $ sendables po
           where
-            sendables po = (\(i, dums) -> ServerData i $ UpdateBundle [] $ map Right dums) <$> Map.toList (sendableMap po)
+            sendables po = (\(i, dums) -> ServerData i $ FRBOwner $ OwnerRequestBundle [] $ dums) <$>
+                Map.toList (sendableMap po)
             sendableMap po = foldl (appendUpdate po) mempty updates
             appendUpdate po sm u = Map.insertWith (++) (Map.findWithDefault (error "No owner!") (namespace $ uMsgPath u) po) [u] sm
     rev ((i, ownErrs), BadOwnerResponse errs) = do
-        lift $ sendRev $ ServerData i $ UpdateBundle errs []
+        lift $ sendRev $ ServerData i $ FRBOwner $ OwnerRequestBundle errs []
     rev ((i, ownErrs), GoodOwnerResponse updates) = do
         stateFst $ updateOwnerships i $ lefts updates
         stateSnd $ sendToSubs (fromJust ownErrs) updates  -- ownErrors should never be Nothing here
@@ -202,10 +203,10 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
             lift $ mapM_ sendRev $ filter nonEmptySendable $ getSendables ps
           where
             getSendables ps = map (\(i, paths) -> ServerData i $ filteredByPath paths) $ Map.toList ps
-            filteredByPath paths = UpdateBundle (filter (inPaths paths) errs) (filter (inPaths paths) oms)
+            filteredByPath paths = FRBClient $ UpdateBundle (filter (inPaths paths) errs) (filter (inPaths paths) oms)
             inPaths :: UMsg msg => Set.Set Path -> msg -> Bool
             inPaths paths = flip elem paths . uMsgPath
-            nonEmptySendable (ServerData _ (UpdateBundle [] [])) = False
+            nonEmptySendable (ServerData _ (FRBClient (UpdateBundle [] []))) = False
             nonEmptySendable _ = True
 
 handleUnsubscriptions ::
