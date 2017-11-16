@@ -35,11 +35,11 @@ import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
-    CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType, Bundle(..),
-    Time(..), Interpolation(..), InterpolationType(..), interpolationType,
-    UMsgError(..), SubMessage(..), DataUpdateMessage(..),
-    TreeUpdateMessage(..), OwnerUpdateMessage(..), RequestBundle(..),
-    UpdateBundle(..))
+    CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType,
+    ToRelayBundle(..), FromRelayBundle(..), Time(..), Interpolation(..),
+    InterpolationType(..), interpolationType, UMsgError(..), SubMessage(..),
+    DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
+    RequestBundle(..), UpdateBundle(..), OwnerRequestBundle(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Util (composeParsers)
@@ -89,10 +89,6 @@ decodeLengthPrefixedBytes decoder = do
     bytes <- APBS.take $ fromIntegral len
     return $ decoder bytes
 
-instance Serialisable String where
-    builder = prefixLength . fromString
-    parser = decodeLengthPrefixedBytes toString
-
 decodeUtf8With' = decodeUtf8With onError
   where
     onError :: String -> Maybe Word8 -> Maybe Char
@@ -102,10 +98,6 @@ decodeUtf8With' = decodeUtf8With onError
 instance Serialisable T.Text where
     builder = prefixLength . fromText
     parser = decodeLengthPrefixedBytes decodeUtf8With'
-
-instance Serialisable [T.Text] where
-    builder = encodeListN
-    parser = parseListN
 
 instance Serialisable Char where
     builder = return . fromChar
@@ -161,18 +153,11 @@ instance Serialisable ClapiValue where
         cvParser ClTString = ClString <$> (parser :: Parser T.Text)
         cvParser ClTList = ClList <$> (parser :: Parser [ClapiValue])
 
-
-encodeListN :: (Serialisable a) => [a] -> CanFail Builder
-encodeListN items = (lenBuilder $ length items) <<>> (foldl (<<>>) (return mempty) (map builder items))
-
-parseListN :: (Serialisable a) => Parser [a]
-parseListN = do
-    len <- parser :: Parser Word16
-    count (fromIntegral len) parser
-
-instance Serialisable [ClapiValue] where
-    builder = encodeListN
-    parser = parseListN
+instance Serialisable a => Serialisable [a] where
+    builder items = (lenBuilder $ length items) <<>> (foldl (<<>>) (return mempty) (map builder items))
+    parser = do
+        len <- parser :: Parser Word16
+        count (fromIntegral len) parser
 
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
 tdTaggedParser td p = do
@@ -228,7 +213,7 @@ dumtParser e = case e of
     (DUMTSet) -> sap UMsgSet
     (DUMTRemove) -> rcp UMsgRemove
     (DUMTClear) -> rcp UMsgClear
-    (DUMTSetChildren) -> UMsgSetChildren <$> parser <*> parseListN <*> parser
+    (DUMTSetChildren) -> UMsgSetChildren <$> parser <*> parser <*> parser
   where
     sap mt = mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     rcp mt = mt <$> parser <*> parser <*> parser <*> parser
@@ -238,7 +223,7 @@ dumtBuilder m = case m of
     (UMsgSet p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
     (UMsgRemove p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
     (UMsgClear p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
-    (UMsgSetChildren p ns a) -> builder p <<>> encodeListN ns <<>> builder a
+    (UMsgSetChildren p ns a) -> builder p <<>> builder ns <<>> builder a
 
 instance Serialisable DataUpdateMessage where
     builder = tdTaggedBuilder dumtTaggedData dumtBuilder
@@ -281,29 +266,54 @@ instance Serialisable OwnerUpdateMessage where
     parser = parseEither oumTaggedData tumtParser dumtParser
 
 instance Serialisable RequestBundle where
-    builder (RequestBundle subs dums) = encodeListN subs <<>> encodeListN dums
-    parser = RequestBundle <$> parseListN <*> parseListN
+    builder (RequestBundle subs dums) = builder subs <<>> builder dums
+    parser = RequestBundle <$> parser <*> parser
 
 instance Serialisable UpdateBundle where
-    builder (UpdateBundle errs oums) = encodeListN errs <<>> encodeListN oums
-    parser = UpdateBundle <$> parseListN <*> parseListN
+    builder (UpdateBundle errs oums) = builder errs <<>> builder oums
+    parser = UpdateBundle <$> parser <*> parser
 
-data BundleTypeEnum
-  = RequestBundleType
-  | UpdateBundleType deriving (Enum, Bounded)
+instance Serialisable OwnerRequestBundle where
+    builder (OwnerRequestBundle errs dums) = encodeListN errs <<>> encodeListN dums
+    parser = OwnerRequestBundle <$> parseListN <*> parseListN
 
-bundleTaggedData = taggedData typeToTag bundleType
+data ToRelayBundleTypeEnum
+  = RequestToRelayBundleType
+  | UpdateToRelayBundleType deriving (Enum, Bounded)
+
+trbTaggedData = taggedData typeToTag bundleType
   where
-    typeToTag (RequestBundleType) = 'r'
-    typeToTag (UpdateBundleType) = 'u'
-    bundleType (Left (UpdateBundle _ _)) = UpdateBundleType
-    bundleType (Right (RequestBundle _ _)) = RequestBundleType
+    typeToTag (RequestToRelayBundleType) = 'r'
+    typeToTag (UpdateToRelayBundleType) = 'u'
+    bundleType (TRBOwner _) = UpdateToRelayBundleType
+    bundleType (TRBClient _) = RequestToRelayBundleType
 
-instance Serialisable Bundle where
-    builder = tdTaggedBuilder bundleTaggedData $ either builder builder
-    parser = tdTaggedParser bundleTaggedData $ \e -> case e of
-        (UpdateBundleType) -> Left <$> parser
-        (RequestBundleType) -> Right <$> parser
+instance Serialisable ToRelayBundle where
+    builder = tdTaggedBuilder trbTaggedData $ \b -> case b of
+        (TRBClient rb) -> builder rb
+        (TRBOwner ub) -> builder ub
+    parser = tdTaggedParser trbTaggedData $ \e -> case e of
+        (UpdateToRelayBundleType) -> TRBOwner <$> parser
+        (RequestToRelayBundleType) -> TRBClient <$> parser
+
+data FromRelayBundleTypeEnum
+  = RequestFromRelayBundleType
+  | UpdateFromRelayBundleType deriving (Enum, Bounded)
+
+frbTaggedData = taggedData typeToTag bundleType
+  where
+    typeToTag (RequestFromRelayBundleType) = 'R'
+    typeToTag (UpdateFromRelayBundleType) = 'U'
+    bundleType (FRBOwner _) = RequestFromRelayBundleType
+    bundleType (FRBClient _) = UpdateFromRelayBundleType
+
+instance Serialisable FromRelayBundle where
+    builder = tdTaggedBuilder frbTaggedData $ \b -> case b of
+        (FRBClient rb) -> builder rb
+        (FRBOwner ub) -> builder ub
+    parser = tdTaggedParser frbTaggedData $ \e -> case e of
+        (UpdateFromRelayBundleType) -> FRBClient <$> parser
+        (RequestFromRelayBundleType) -> FRBOwner <$> parser
 
 
 badTag :: (MonadFail m) => String -> Char ->  m a
