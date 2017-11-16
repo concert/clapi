@@ -50,7 +50,7 @@ fromRight (Right b) = b
 mapFilterJust :: Map.Map k (Maybe a) -> Map.Map k a
 mapFilterJust = fmap fromJust . Map.filter isJust
 
-data Liberty = Cannot | May | Must deriving (Show, Eq, Ord, Enum, Bounded)
+data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 data Definition =
