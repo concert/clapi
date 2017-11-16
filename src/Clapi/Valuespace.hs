@@ -50,24 +50,21 @@ fromRight (Right b) = b
 mapFilterJust :: Map.Map k (Maybe a) -> Map.Map k a
 mapFilterJust = fmap fromJust . Map.filter isJust
 
-data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
+data Liberty = Cannot | May | Must deriving (Show, Eq, Ord, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 data Definition =
     TupleDef {
-      _liberty :: Liberty,
       _doc :: T.Text,
       _valueNames :: [Path.Name],
       _validators :: [Validator],
       _permittedInterpolations :: Set.Set InterpolationType}
   | StructDef {
-      _liberty :: Liberty,
       _doc :: T.Text,
       _childNames :: [Path.Name],
       _childTypes :: [Path.Path],
       _childLiberties :: [Liberty]}
   | ArrayDef {
-      _liberty :: Liberty,
       _doc :: T.Text,
       _childType :: Path.Path,
       _childLiberty :: Liberty}
@@ -84,9 +81,9 @@ makeLenses ''Definition
 --         printf "<ArrayDef %s %s %s>" (show l) (show ct) (show cl)
 
 tupleDef ::
-    (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [T.Text] ->
+    (MonadFail m) => T.Text -> [Path.Name] -> [T.Text] ->
     Set.Set InterpolationType -> m Definition
-tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
+tupleDef doc valueNames validatorDescs permittedInterpolations =
    let
      lvn = length valueNames
      lvd = length validatorDescs
@@ -99,13 +96,13 @@ tupleDef liberty doc valueNames validatorDescs permittedInterpolations =
         lvn lvd)
      validators <- mapM (eitherFail . fromText) validatorDescs
      return $
-        TupleDef liberty doc valueNames validators
+        TupleDef doc valueNames validators
         permittedInterpolations
 
 structDef ::
-    (MonadFail m) => Liberty -> T.Text -> [Path.Name] -> [TypePath] ->
+    (MonadFail m) => T.Text -> [Path.Name] -> [TypePath] ->
     [Liberty] -> m Definition
-structDef liberty doc childNames childTypes childLiberties =
+structDef doc childNames childTypes childLiberties =
   let
     lcn = length childNames
     lct = length childTypes
@@ -115,11 +112,11 @@ structDef liberty doc childNames childTypes childLiberties =
         fail $ printf
         "mismatched number of child names (%v), types (%v) and liberties(%v)"
         lcn lct lcl)
-    return $ StructDef liberty doc childNames childTypes childLiberties
+    return $ StructDef doc childNames childTypes childLiberties
 
 arrayDef ::
-    (MonadFail m) => Liberty -> T.Text -> TypePath -> Liberty -> m Definition
-arrayDef l d ct cl = return $ ArrayDef l d ct cl
+    (MonadFail m) => T.Text -> TypePath -> Liberty -> m Definition
+arrayDef d ct cl = return $ ArrayDef d ct cl
 
 apiRoot :: Path.Path
 apiRoot = [pathq|/api|]
@@ -150,35 +147,32 @@ namesDesc = "set[string[]]"
 typeDesc = "ref[/api/types/base]"
 
 baseTupleDef = fromJust $ tupleDef
-    Cannot "t" ["liberty", "doc", "valueNames", "validators", "interpolationTypes"]
-    [libertyDesc, "string", namesDesc, "list[validator]", setDesc interpolationTypeDesc] mempty
+    "t" ["doc", "valueNames", "validators", "interpolationTypes"]
+    ["string", namesDesc, "list[validator]", setDesc interpolationTypeDesc] mempty
 baseStructDef = fromJust $ tupleDef
-    Cannot "s" ["liberty", "doc", "childNames", "childTypes", "clibs"]
-    [libertyDesc, "string", namesDesc, listDesc typeDesc, listDesc libertyDesc] mempty
+    "s" ["doc", "childNames", "childTypes", "clibs"]
+    ["string", namesDesc, listDesc typeDesc, listDesc libertyDesc] mempty
 baseArrayDef = fromJust $ tupleDef
-    Cannot "a" ["liberty", "doc", "childType", "clib"]
-    [libertyDesc, "string", typeDesc, libertyDesc] mempty
+    "a" ["doc", "childType", "clib"]
+    ["string", typeDesc, libertyDesc] mempty
 
 defToValues :: Definition -> [ClapiValue]
-defToValues (TupleDef l d ns vs is) =
+defToValues (TupleDef d ns vs is) =
   [
-    toClapiValue $ Enumerated l,
     toClapiValue d,
     toClapiValue $ ns,
     toClapiValue $ desc <$> vs,
     toClapiValue $ Enumerated <$> Set.toList is
   ]
-defToValues (StructDef l d ns ts ls) =
+defToValues (StructDef d ns ts ls) =
   [
-    toClapiValue $ Enumerated l,
     toClapiValue d,
     toClapiValue $ ns,
     toClapiValue $ T.pack . Path.toString <$> ts,
     toClapiValue $ Enumerated <$> ls
   ]
-defToValues (ArrayDef l d t cl) =
+defToValues (ArrayDef d t cl) =
   [
-    toClapiValue $ Enumerated l,
     toClapiValue d,
     toClapiValue $ T.pack $ Path.toString t,
     toClapiValue $ Enumerated cl
@@ -187,30 +181,27 @@ defToValues (ArrayDef l d t cl) =
 
 valuesToDef :: (MonadFail m) => MetaType -> [ClapiValue] -> m Definition
 valuesToDef
-    Tuple [l@(ClEnum _), ClString d, ns@(ClList _), vds@(ClList _), is@(ClList _)] =
+    Tuple [ClString d, ns@(ClList _), vds@(ClList _), is@(ClList _)] =
   do
     -- FIXME: need to be able to unpack enums
-    l' <- getEnum <$> fromClapiValue l
     ns' <- fromClapiValue ns
     vds' <- fromClapiValue vds
     is' <- Set.fromList <$> fmap getEnum <$> fromClapiValue is
-    tupleDef l' d ns' vds' is'
+    tupleDef d ns' vds' is'
 valuesToDef
-    Struct [l@(ClEnum _), ClString d, ns@(ClList _), ts@(ClList _), ls@(ClList _)] =
+    Struct [ClString d, ns@(ClList _), ts@(ClList _), ls@(ClList _)] =
   do
-    l' <- getEnum <$> fromClapiValue l
     ns' <- fromClapiValue ns
     ts' <- fmap T.unpack <$> fromClapiValue ts
     ts'' <- mapM Path.fromString ts'
     ls' <- fmap getEnum <$> fromClapiValue ls
-    structDef l' d ns' ts'' ls'
+    structDef d ns' ts'' ls'
 valuesToDef
-    Array [l@(ClEnum _), ClString d, ClString t, cl@(ClEnum _)] =
+    Array [ClString d, ClString t, cl@(ClEnum _)] =
   do
-    l' <- getEnum <$> fromClapiValue l
     t' <- Path.fromString $ T.unpack t
     cl' <- getEnum <$> fromClapiValue cl
-    arrayDef l' d t' cl'
+    arrayDef d t' cl'
 -- TODO: This error doesn't give you much of a hint
 valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
@@ -370,7 +361,7 @@ validateNodeChildren getType' np node def@(StructDef {}) =
   in do
     when ((missing, extra) /= mempty) failKeys
     validateChildKeyTypes getType' np expectedKeys expectedTypes
-validateNodeChildren getType' np node (ArrayDef liberty _doc expectedType childLiberty) =
+validateNodeChildren getType' np node (ArrayDef _doc expectedType childLiberty) =
   let
     nodeKeys = view getKeys node
     dups = duplicates nodeKeys
@@ -563,7 +554,7 @@ autoDefineStruct np tp vs =
 
 autoGenStructDef :: (MonadFail m) => ([Path.Name], [TypePath]) -> m Definition
 autoGenStructDef (childNames, childTypes) =
-    structDef Cannot "auto-generated container" childNames childTypes
+    structDef "auto-generated container" childNames childTypes
     (fmap (const Cannot) childNames)
 
 
@@ -617,10 +608,10 @@ baseValuespace =
     versionPath = [pathq|/api/self/version|]
     versionDefPath = [pathq|/api/types/self/version|]
     versionDef = fromJust $ tupleDef
-        Cannot "t" ["maj", "min"] ["word32", "int32"] mempty
+        "t" ["maj", "min"] ["word32", "int32"] mempty
 
     -- See if making path an isString that errors gives us friendly compile time failures
     buildPath = [pathq|/api/self/build|]
     buildDefPath = [pathq|/api/types/self/build|]
     buildDef = fromJust $ tupleDef
-        Cannot "b" ["commit_hash"] ["string[banana]"] mempty
+        "b" ["commit_hash"] ["string[banana]"] mempty
