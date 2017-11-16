@@ -274,8 +274,8 @@ instance Serialisable UpdateBundle where
     parser = UpdateBundle <$> parser <*> parser
 
 instance Serialisable OwnerRequestBundle where
-    builder (OwnerRequestBundle errs dums) = encodeListN errs <<>> encodeListN dums
-    parser = OwnerRequestBundle <$> parseListN <*> parseListN
+    builder (OwnerRequestBundle errs dums) = builder errs <<>> builder dums
+    parser = OwnerRequestBundle <$> parser <*> parser
 
 data ToRelayBundleTypeEnum
   = RequestToRelayBundleType
