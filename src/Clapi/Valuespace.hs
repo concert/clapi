@@ -1,11 +1,11 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>))
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.State (State, modify)
-import Control.Lens ((&), makeLenses, view, at, over, set, non, _Just, _1, _2)
+import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust)
 import qualified Data.Set as Set
@@ -219,8 +219,8 @@ type VsTree = ClapiTree [ClapiValue]
 type DefMap = Map.Map NodePath Definition
 type Validated = ()
 type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
-newtype Unvalidated = Unvalidated {_uvtt :: TaintTracker}
-makeLenses ''Unvalidated
+newtype Unvalidated = Unvalidated {_unvalidatedUvtt :: TaintTracker}
+makeFields ''Unvalidated
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
