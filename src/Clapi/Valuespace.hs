@@ -218,7 +218,9 @@ valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 type VsTree = ClapiTree [ClapiValue]
 type DefMap = Map.Map NodePath Definition
 type Validated = ()
-type Unvalidated = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
+type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
+newtype Unvalidated = Unvalidated {_uvtt :: TaintTracker}
+makeLenses ''Unvalidated
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
@@ -229,7 +231,7 @@ data Valuespace v = Valuespace {
 makeLenses ''Valuespace
 
 unvalidate :: Valuespace Validated -> Valuespace Unvalidated
-unvalidate (Valuespace tr ty x d _) = Valuespace tr ty x d mempty
+unvalidate (Valuespace tr ty x d _) = Valuespace tr ty x d (Unvalidated mempty)
 
 vsGetTree :: Valuespace v -> VsTree
 vsGetTree = view tree
@@ -299,7 +301,7 @@ rectifyTypes vs =
   do
     unvalidatedsTypes <-
         eitherErrorMap . Map.mapWithKey (\np _ -> getType vs np) .
-        view unvalidated $ vs
+        view (unvalidated . uvtt) $ vs
     newDefs <-
         eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
     return . over defs (Map.union newDefs) $ vs
@@ -324,7 +326,7 @@ validateChildren ::
 validateChildren vs =
   let
     unvalidatedNodes = Map.restrictKeys (view tree vs) (Map.keysSet $
-        view unvalidated vs)
+        view (unvalidated . uvtt) vs)
   in do
     nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef unvalidatedNodes
     eitherErrorMap $ Map.mapWithKey
@@ -429,7 +431,7 @@ overUnvalidatedNodes ::
 overUnvalidatedNodes f vs =
   do
     filtered <-
-        eitherErrorMap . Map.mapWithKey getAndFilterNode $ view unvalidated vs
+        eitherErrorMap . Map.mapWithKey getAndFilterNode $ view (unvalidated . uvtt) vs
     eitherErrorMap . Map.mapWithKey f $ filtered
   where
     getAndFilterNode np mtps = getNode np vs >>= return . filterNode mtps
@@ -474,8 +476,8 @@ vsAssignType :: NodePath -> TypePath -> Valuespace Unvalidated -> Valuespace Unv
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
-    set (unvalidated . at np) (Just Nothing) .
-    set (unvalidated . at (Path.up np)) (Just Nothing) .
+    set (unvalidated . uvtt . at np) (Just Nothing) .
+    set (unvalidated . uvtt . at (Path.up np)) (Just Nothing) .
     taintXRefDependants np
 
 vsDelete ::
@@ -483,23 +485,23 @@ vsDelete ::
 vsDelete np =
     tree (treeDeleteNode np) .
     over types (Mos.delDependency np) .
-    set (unvalidated . at np) Nothing .
-    set (unvalidated . at (Path.up np)) (Just Nothing)
+    set (unvalidated . uvtt . at np) Nothing .
+    set (unvalidated . uvtt . at (Path.up np)) (Just Nothing)
 
 taintData ::
     NodePath -> Maybe Site -> Time -> Valuespace Unvalidated -> Valuespace Unvalidated
 taintData np s t =
-    over (unvalidated . at np . non mempty . non mempty) (Set.insert (s, t))
+    over (unvalidated . uvtt . at np . non mempty . non mempty) (Set.insert (s, t))
 
 taintTypeDependants :: NodePath -> Valuespace Unvalidated -> Valuespace Unvalidated
 taintTypeDependants np vs =
-    over unvalidated (Maybe.update Map.union maybeTaintedMap) vs
+    over (unvalidated . uvtt) (Maybe.update Map.union maybeTaintedMap) vs
   where
     maybeTaintedMap = Map.fromSet (const Nothing) <$>
         (Mos.getDependants np $ view types vs)
 
 taintXRefDependants :: NodePath -> Valuespace Unvalidated -> Valuespace Unvalidated
-taintXRefDependants np vs = over unvalidated (Map.union taintedMap) vs
+taintXRefDependants np vs = over (unvalidated . uvtt) (Map.union taintedMap) vs
   where
     taintedMap =
         fmap Just . Set.foldr (uncurry Mos.insert) mempty .
