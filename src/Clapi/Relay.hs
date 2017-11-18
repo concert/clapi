@@ -19,13 +19,13 @@ import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
 import Clapi.Valuespace (
     Valuespace, vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
-    vsDelete, Unvalidated, unvalidate, Validated, vsValidate, MonadErrorMap,
+    vsDelete, OwnerUnvalidated, ownerUnlock, Validated, vsValidate, MonadErrorMap,
     vsGetTree, VsDelta, vsDiff, getType, Liberty(Cannot))
 import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Path.Parsing (toText)
 
-applyMessage :: (MonadFail m) => Valuespace Unvalidated -> OwnerUpdateMessage -> m (Valuespace Unvalidated)
+applyMessage :: (MonadFail m) => Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> m (Valuespace OwnerUnvalidated)
 applyMessage vs msg = case msg of
     (Right (UMsgSet p t v i a s)) -> vsSet a i v p s t vs
     (Right (UMsgAdd p t v i a s)) -> vsAdd a i v p s t vs
@@ -35,15 +35,15 @@ applyMessage vs msg = case msg of
     (Left (UMsgAssignType p tp)) -> return $ vsAssignType p tp vs
     (Left (UMsgDelete p)) -> vsDelete p vs
 
-applyMessages :: Valuespace Unvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
+applyMessages :: Valuespace OwnerUnvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace OwnerUnvalidated)
 applyMessages mvvs = applySuccessful [] mvvs
   where
-    applySuccessful :: [(Path, String)] -> Valuespace Unvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace Unvalidated)
+    applySuccessful :: [(Path, String)] -> Valuespace OwnerUnvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace OwnerUnvalidated)
     applySuccessful errs vs [] = (Map.fromList errs, vs)
     applySuccessful errs vs (m:ms) = case canFailApply vs m of
         (Left es) -> applySuccessful ((uMsgPath m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
-    canFailApply :: Valuespace Unvalidated -> OwnerUpdateMessage -> CanFail (Valuespace Unvalidated)
+    canFailApply :: Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> CanFail (Valuespace OwnerUnvalidated)
     canFailApply = applyMessage
 
 treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> OwnerUpdateMessage
@@ -58,7 +58,7 @@ treeDeltaToMsg p td = case td of
 deltaToMsg :: VsDelta -> OwnerUpdateMessage
 deltaToMsg (p, d) = either (Left . UMsgAssignType p) (treeDeltaToMsg p) d
 
-modifyRootTypePath :: Valuespace Validated -> Valuespace Unvalidated -> Valuespace Unvalidated
+modifyRootTypePath :: Valuespace Validated -> Valuespace OwnerUnvalidated -> Valuespace OwnerUnvalidated
 modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
   where
     rootTypePath = moe "root has no type" $ getType vs' root
@@ -78,7 +78,7 @@ handleMutationMessages ::
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
     errs = Map.union aErrs vErrs
-    (aErrs, vs') = applyMessages (unvalidate vs) msgs
+    (aErrs, vs') = applyMessages (ownerUnlock vs) msgs
     vs'' = modifyRootTypePath vs vs'
     (vErrs, vvs) = vsValidate vs''
     errMsgs = map (\(p, es) -> UMsgError p (T.pack es)) (Map.assocs errs)

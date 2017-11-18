@@ -50,7 +50,7 @@ testTupleDef =
 
 
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
-    fst $ vsValidate $ unvalidate baseValuespace
+    fst $ vsValidate $ ownerUnlock baseValuespace
 
 assertValidationErrors errPaths =
     assertEqual "did not find errors" (Set.fromList errPaths) . Map.keysSet .
@@ -61,7 +61,7 @@ testChildTypeValidation =
     -- Set /api/self/version to have the wrong type, but perfectly valid
     -- data for that wrong type:
     badVs <- vsSet anon IConstant [ClString "banana"] [pathq|/api/self/version|]
-          globalSite tconst (unvalidate baseValuespace) >>=
+          globalSite tconst (ownerUnlock baseValuespace) >>=
         return . vsAssignType [pathq|/api/self/version|]
             [pathq|/api/types/self/build|]
     assertValidationErrors [[pathq|/api/self|]] badVs
@@ -75,11 +75,11 @@ testTypeChangeInvalidation =
         mempty
     badVs <- vsSet anon IConstant (defToValues newDef)
         [pathq|/api/types/self/version|] globalSite tconst
-        (unvalidate baseValuespace)
+        (ownerUnlock baseValuespace)
     assertValidationErrors [[pathq|/api/self/version|]] badVs
 
 
-vsWithXRef :: (MonadFail m) => m (Valuespace Unvalidated)
+vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
 vsWithXRef =
   do
     newCDef <- structDef Cannot "updated for test"
@@ -94,7 +94,7 @@ vsWithXRef =
         ["ref[/api/types/self/version]"] mempty
     vsAdd anon IConstant (defToValues newNodeDef)
           [pathq|/api/types/test_type|] globalSite tconst
-          (unvalidate baseValuespace) >>=
+          (ownerUnlock baseValuespace) >>=
         vsSet anon IConstant (defToValues newCDef)
           [pathq|/api/types/containers/types|] globalSite tconst >>=
         -- FIXME: should infer this from the container
