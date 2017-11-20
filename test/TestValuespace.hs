@@ -41,10 +41,10 @@ tests = [
 testTupleDef =
   do
     assertFailed "duplicate names" $
-        tupleDef Cannot "docs" ["hi", "hi"] ["string", "int32"] mempty
+        tupleDef "docs" ["hi", "hi"] ["string", "int32"] mempty
     assertFailed "mismatched names/types" $
-        tupleDef Cannot "docs" ["a", "b"] ["int32"] mempty
-    def <- tupleDef Cannot "docs" ["a"] ["int32"] mempty
+        tupleDef "docs" ["a", "b"] ["int32"] mempty
+    def <- tupleDef "docs" ["a"] ["int32"] mempty
     assertEqual "tuple validation" (return []) $
         validate undefined (view validators def) [ClInt32 42]
 
@@ -71,7 +71,7 @@ testTypeChangeInvalidation =
   do
     -- Make sure changing /api/types/self/version goes and checks things defined
     -- to have that type:
-    newDef <- tupleDef Cannot "for test" ["versionString"] ["string[apple]"]
+    newDef <- tupleDef "for test" ["versionString"] ["string[apple]"]
         mempty
     badVs <- vsSet anon IConstant (defToValues newDef)
         [pathq|/api/types/self/version|] globalSite tconst
@@ -82,7 +82,7 @@ testTypeChangeInvalidation =
 vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
 vsWithXRef =
   do
-    newCDef <- structDef Cannot "updated for test"
+    newCDef <- structDef "updated for test"
         ["base", "self", "containers", "test_type", "test_value"] [
           [pathq|/api/types/containers/base|],
           [pathq|/api/types/containers/types_self|],
@@ -90,7 +90,7 @@ vsWithXRef =
           (metaTypePath Tuple),
           [pathq|/api/types/test_type|]]
         [Cannot, Cannot, Cannot, Cannot, Cannot]
-    newNodeDef <- tupleDef Cannot "for test" ["daRef"]
+    newNodeDef <- tupleDef "for test" ["daRef"]
         ["ref[/api/types/self/version]"] mempty
     vsAdd anon IConstant (defToValues newNodeDef)
           [pathq|/api/types/test_type|] globalSite tconst
@@ -119,7 +119,7 @@ testXRefValidation =
 
 testXRefRevalidation =
   do
-    newDef <- structDef Cannot "for test" ["build", "version"]
+    newDef <- structDef "for test" ["build", "version"]
         [[pathq|/api/types/self/build|], [pathq|/api/types/self/build|]]
         [Cannot, Cannot]
     badVs <- vsWithXRef >>=
@@ -153,13 +153,12 @@ instance Arbitrary Definition where
       do
         n <- arbitrary
         fDef <- oneof [
-            tupleDef <$> arbitrary <*> arbitrary <*>
+            tupleDef <$> arbitrary <*>
                 (pure $ take n $ T.pack <$> infiniteStrings 4) <*>
                 pure (replicate n "int32") <*> arbitrary,
-            structDef <$> arbitrary <*> arbitrary <*> vector n <*>
+            structDef <$> arbitrary <*> vector n <*>
                 vectorOf n arbitraryPath <*> vector n,
-            arrayDef <$> arbitrary <*> arbitrary <*> arbitraryPath <*>
-                arbitrary]
+            arrayDef <$> arbitrary <*> arbitraryPath <*> arbitrary]
         either error return fDef
 
 

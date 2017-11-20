@@ -35,14 +35,14 @@ testRootStructExtend = assertMsgsInclude expectedMsgs updates
         Right $ UMsgAdd
             [pathq|/foo/type|]
             z
-            [cannot, s "atypical", los ["type"], los ["/api/types/base/struct/"], ClList [cannot]]
+            [s "atypical", los ["type"], los ["/api/types/base/struct/"], ClList [cannot]]
             IConstant
             Nothing
             Nothing,
         Left $ UMsgAssignType [pathq|/foo|] [pathq|/foo/type|]]
     expectedMsgs = inMsgs ++ [Right $ UMsgSet (tp root) z extendedV IConstant Nothing Nothing]
     z = Time 0 0
-    extendedV = [cannot, s "auto-generated container", los ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], ClList [cannot, cannot]]
+    extendedV = [s "auto-generated container", los ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], ClList [cannot, cannot]]
     s = ClString
     los = ClList . (map s)
     lop ps = los $ map toText ps
