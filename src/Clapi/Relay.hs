@@ -156,7 +156,7 @@ nsChange (p, Right Tree.Delete) = maybeNamespace NsRemove p
 nsChange _ = Nothing
 
 updateRootType :: [ClapiValue] -> NsChange -> [ClapiValue]
-updateRootType [lib, doc, ClList names, ClList types, ClList libs] m = lib:doc:tinfo
+updateRootType [doc, ClList names, ClList types, ClList libs] m = doc:tinfo
   where
     tinfo = map ClList $ case m of
         (NsAssign n tp) -> [c n:names, cp tp:types, cannot:libs]
