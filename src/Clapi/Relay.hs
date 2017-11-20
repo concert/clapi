@@ -97,7 +97,6 @@ handleOwnerMessages ::
     (Either [UMsgError] [OwnerUpdateMessage], Valuespace Validated)
 handleOwnerMessages msgs vs = (rmsgs, rvs)
   where
-    -- FIXME: handle owner initiated error messages
     rvs = if errored then vs else vvs
     errored = not $ null errMsgs
     (vcMsgs, errMsgs, vvs) = handleMutationMessages vs msgs
