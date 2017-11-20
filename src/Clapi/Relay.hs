@@ -123,9 +123,9 @@ handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), 
     nodeMsgs p n = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty n
     rightOrDie (Right x) = x
     (aErrs, vs') = applyMessages applyDum (clientUnlock vs) updates
-    (vErrs, vs'') = vsClientValidate vs'
+    (vErrs, vsDeltas) = vsClientValidate vs'
     vsErrs = errMapToErrMsgs $ Map.union aErrs vErrs
-    vsMsgs = rights $ map deltaToMsg $ vsDiff vs vs''  -- FIXME: rights is a fudge
+    vsMsgs = rights $ map deltaToMsg $ vsDeltas  -- FIXME: rights is a fudge
 
 handleClientMessagesS ::
     [Path] ->

@@ -478,8 +478,19 @@ validateNodeData vs np siteMap = getDef np vs >>= body
 --         def <- getDef np vs
 --         traverse (validate (getType vs) (view validators def)) (toList n)
 
-vsClientValidate :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
-vsClientValidate = rectifyTypes  -- FIXME: all other validation
+vsClientValidate :: Valuespace ClientUnvalidated -> MonadErrorMap [VsDelta]
+vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
+  where
+    ovs = origVs $ view unvalidated vs
+    doValidate knownErrs vs = let (em, vs') = doValidateStep vs in if null em
+        then (knownErrs, vs')
+        else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
+    doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+    doValidateStep = rectifyTypes  -- FIXME: all other validation
+    rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
+    rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
+    dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
+    dupNode p Nothing Nothing vs = maybe vs id $ vsDelete p vs
 
 vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
