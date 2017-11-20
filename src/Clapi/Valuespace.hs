@@ -390,7 +390,7 @@ flattenNestedMaps mm = foldMap id $ Map.mapWithKey f mm
     f k1 = Map.mapKeys ((,) k1)
 
 validateData ::
-    Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace OwnerUnvalidated)
+    (HasUvtt v TaintTracker) => Valuespace v -> MonadErrorMap (Valuespace v)
 validateData vs =
   do
     newXRefDeps <- overUnvalidatedNodes (validateNodeData vs) vs
@@ -421,10 +421,10 @@ filterNode mtps n =
     filterSiteMap sites tps
 
 overUnvalidatedNodes ::
-    (
+    (HasUvtt v TaintTracker) => (
        NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
        CanFail a
-    ) -> Valuespace OwnerUnvalidated -> MonadErrorMap (Map.Map NodePath a)
+    ) -> Valuespace v -> MonadErrorMap (Map.Map NodePath a)
 overUnvalidatedNodes f vs =
   do
     filtered <-
@@ -477,7 +477,7 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
         then (knownErrs, vs')
         else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
     doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
-    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit -- FIXME: all other validation
+    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit >>= validateData -- FIXME: all other validation
     rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
     rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
     dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
