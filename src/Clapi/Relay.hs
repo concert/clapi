@@ -109,12 +109,11 @@ handleOwnerMessages msgs vs = (rmsgs, rvs)
 handleOwnerMessagesS :: [OwnerUpdateMessage] -> State (Valuespace Validated) (Either [UMsgError] [OwnerUpdateMessage])
 handleOwnerMessagesS msgs = state (handleOwnerMessages msgs)
 
--- Technically this returns [DataUpdateMessage] for vsMsgs
 handleClientMessages ::
     [Path] ->
     [DataUpdateMessage] ->
     Valuespace Validated ->
-    (([UMsgError], [OwnerUpdateMessage], [OwnerUpdateMessage]), Valuespace Validated)
+    (([UMsgError], [OwnerUpdateMessage], [DataUpdateMessage]), Valuespace Validated)
 handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), vs)
   where
     (subErrs, getMs) = fmap concat $ partitionEithers $ map handleGet $ zip (map nodeInfo getPaths) getPaths
@@ -126,12 +125,12 @@ handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), 
     (aErrs, vs') = applyMessages applyDum (clientUnlock vs) updates
     (vErrs, vs'') = vsClientValidate vs'
     vsErrs = errMapToErrMsgs $ Map.union aErrs vErrs
-    vsMsgs = map deltaToMsg $ vsDiff vs vs''
+    vsMsgs = rights $ map deltaToMsg $ vsDiff vs vs''  -- FIXME: rights is a fudge
 
 handleClientMessagesS ::
     [Path] ->
     [DataUpdateMessage] ->
-    State (Valuespace Validated) ([UMsgError], [OwnerUpdateMessage], [OwnerUpdateMessage])
+    State (Valuespace Validated) ([UMsgError], [OwnerUpdateMessage], [DataUpdateMessage])
 handleClientMessagesS paths msgs = state (handleClientMessages paths msgs)
 
 handleMessages :: Valuespace Validated -> Request -> (Response, Valuespace Validated)
@@ -139,7 +138,7 @@ handleMessages vs (ClientRequest getPaths updates) = runState hc vs
   where
     hc = do
         (errs, gets, vmsgs) <- handleClientMessagesS getPaths updates
-        return $ ClientResponse gets errs (rights vmsgs)  -- FIXME: rights is a fudge
+        return $ ClientResponse gets errs vmsgs
 handleMessages vs (OwnerRequest updates) = runState ho vs
   where
     ho = do
