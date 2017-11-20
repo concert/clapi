@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 module Clapi.Relay where
 
 import Control.Monad.Fail (MonadFail)
@@ -19,32 +19,37 @@ import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
 import Clapi.Valuespace (
     Valuespace, vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
-    vsDelete, OwnerUnvalidated, ownerUnlock, Validated, vsValidate, MonadErrorMap,
-    vsGetTree, VsDelta, vsDiff, getType, Liberty(Cannot))
+    vsDelete, OwnerUnvalidated, ownerUnlock, clientUnlock, Validated,
+    vsValidate, vsClientValidate, MonadErrorMap, vsGetTree, VsDelta, vsDiff,
+    getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
 import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Path.Parsing (toText)
 
-applyMessage :: (MonadFail m) => Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> m (Valuespace OwnerUnvalidated)
-applyMessage vs msg = case msg of
-    (Right (UMsgSet p t v i a s)) -> vsSet a i v p s t vs
-    (Right (UMsgAdd p t v i a s)) -> vsAdd a i v p s t vs
-    (Right (UMsgRemove p t a s)) -> vsRemove a p s t vs
-    (Right (UMsgClear p t a s)) -> vsClear a p s t vs
-    (Right (UMsgSetChildren p c a)) -> undefined -- FIXME: backing implementation
+applyDum :: (MonadFail m, HasUvtt v TaintTracker) => Valuespace v -> DataUpdateMessage -> m (Valuespace v)
+applyDum vs msg = case msg of
+    (UMsgSet p t v i a s) -> vsSet a i v p s t vs
+    (UMsgAdd p t v i a s) -> vsAdd a i v p s t vs
+    (UMsgRemove p t a s) -> vsRemove a p s t vs
+    (UMsgClear p t a s) -> vsClear a p s t vs
+    (UMsgSetChildren p c a) -> undefined -- FIXME: backing implementation
+
+applyOwnerMessage :: (MonadFail m) => Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> m (Valuespace OwnerUnvalidated)
+applyOwnerMessage vs msg = case msg of
+    (Right dum) -> applyDum vs dum
     (Left (UMsgAssignType p tp)) -> return $ vsAssignType p tp vs
     (Left (UMsgDelete p)) -> vsDelete p vs
 
-applyMessages :: Valuespace OwnerUnvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace OwnerUnvalidated)
-applyMessages mvvs = applySuccessful [] mvvs
+applyMessages ::
+    (UMsg msg) =>
+    (Valuespace v -> msg -> CanFail (Valuespace v)) ->
+    Valuespace v -> [msg] -> MonadErrorMap (Valuespace v)
+applyMessages apply1 mvvs = applySuccessful [] mvvs
   where
-    applySuccessful :: [(Path, String)] -> Valuespace OwnerUnvalidated -> [OwnerUpdateMessage] -> MonadErrorMap (Valuespace OwnerUnvalidated)
     applySuccessful errs vs [] = (Map.fromList errs, vs)
-    applySuccessful errs vs (m:ms) = case canFailApply vs m of
+    applySuccessful errs vs (m:ms) = case apply1 vs m of
         (Left es) -> applySuccessful ((uMsgPath m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
-    canFailApply :: Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> CanFail (Valuespace OwnerUnvalidated)
-    canFailApply = applyMessage
 
 treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> OwnerUpdateMessage
 treeDeltaToMsg p td = case td of
@@ -71,19 +76,20 @@ modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
     loe s k m = moe s $ Map.lookup k m
     moe s m = maybe (error s) id m
 
+errMapToErrMsgs :: ErrorMap -> [UMsgError]
+errMapToErrMsgs errs = map (\(p, es) -> UMsgError p (T.pack es)) (Map.assocs errs)
+
 handleMutationMessages ::
     Valuespace Validated ->
     [OwnerUpdateMessage] ->
     ([OwnerUpdateMessage], [UMsgError], Valuespace Validated)
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
-    errs = Map.union aErrs vErrs
-    (aErrs, vs') = applyMessages (ownerUnlock vs) msgs
+    (aErrs, vs') = applyMessages applyOwnerMessage (ownerUnlock vs) msgs
     vs'' = modifyRootTypePath vs vs'
     (vErrs, vvs) = vsValidate vs''
-    errMsgs = map (\(p, es) -> UMsgError p (T.pack es)) (Map.assocs errs)
-    vcMsgs = dmsgs vs vvs
-    dmsgs v v' = map deltaToMsg $ vsDiff v v'
+    errMsgs = errMapToErrMsgs $ Map.union aErrs vErrs
+    vcMsgs = map deltaToMsg $ vsDiff vs vvs
 
 handleOwnerMessages ::
     [OwnerUpdateMessage] ->
@@ -118,7 +124,10 @@ handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), 
     nodeInfo p = (getType vs p, Map.lookup p $ vsGetTree vs)
     nodeMsgs p n = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty n
     rightOrDie (Right x) = x
-    (vsMsgs, vsErrs, _) = handleMutationMessages vs (map Right updates)
+    (aErrs, vs') = applyMessages applyDum (clientUnlock vs) updates
+    (vErrs, vs'') = vsClientValidate vs'
+    vsErrs = errMapToErrMsgs $ Map.union aErrs vErrs
+    vsMsgs = map deltaToMsg $ vsDiff vs vs''
 
 handleClientMessagesS ::
     [Path] ->

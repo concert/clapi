@@ -220,9 +220,7 @@ type DefMap = Map.Map NodePath Definition
 type Validated = ()
 type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
 newtype OwnerUnvalidated = OwnerUnvalidated {_ownerUnvalidatedUvtt :: TaintTracker}
-makeFields ''OwnerUnvalidated
-newtype ClientUnvalidated = ClientUnvalidated {_clientUnvalidatedUvtt :: TaintTracker}
-makeFields ''ClientUnvalidated
+data ClientUnvalidated = ClientUnvalidated {_clientUnvalidatedUvtt :: TaintTracker, origVs :: Valuespace Validated}
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
@@ -230,10 +228,15 @@ data Valuespace v = Valuespace {
     _defs :: DefMap,
     _unvalidated :: v
     } deriving (Eq)
+makeFields ''OwnerUnvalidated
+makeFields ''ClientUnvalidated
 makeLenses ''Valuespace
 
 ownerUnlock :: Valuespace Validated -> Valuespace OwnerUnvalidated
 ownerUnlock (Valuespace tr ty x d _) = Valuespace tr ty x d (OwnerUnvalidated mempty)
+
+clientUnlock :: Valuespace Validated -> Valuespace ClientUnvalidated
+clientUnlock vs@(Valuespace tr ty x d _) = Valuespace tr ty x d $ ClientUnvalidated mempty vs
 
 vsGetTree :: Valuespace v -> VsTree
 vsGetTree = view tree
@@ -282,7 +285,8 @@ getNode np = note f . view (tree . at np)
 getChildren :: (MonadFail m) => NodePath -> Valuespace v -> m [Path.Name]
 getChildren np vs = getNode np vs >>= return . view getKeys
 
-type MonadErrorMap a = (Map.Map NodePath String, a)
+type ErrorMap = Map.Map NodePath String
+type MonadErrorMap a = (ErrorMap, a)
 
 eitherErrorMap ::
     Map.Map NodePath (Either String a) -> MonadErrorMap (Map.Map NodePath a)
@@ -473,6 +477,9 @@ validateNodeData vs np siteMap = getDef np vs >>= body
 --     getXRefDeps np n = do
 --         def <- getDef np vs
 --         traverse (validate (getType vs) (view validators def)) (toList n)
+
+vsClientValidate :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+vsClientValidate = rectifyTypes  -- FIXME: all other validation
 
 vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
