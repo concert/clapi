@@ -477,11 +477,30 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
         then (knownErrs, vs')
         else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
     doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
-    doValidateStep = rectifyTypes  -- FIXME: all other validation
+    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit -- FIXME: all other validation
     rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
     rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
     dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
     dupNode p Nothing Nothing vs = maybe vs id $ vsDelete p vs
+
+getLiberty :: MonadFail m => NodePath -> Valuespace ClientUnvalidated -> m Liberty
+getLiberty p vs = do
+    (parent, name) <- Path.splitBasename p
+    def <- getDef parent vs
+    libertyOf name def
+  where
+    libertyOf name (TupleDef {}) = fail "Tuples have no children"
+    libertyOf name (StructDef _ names _ clibs) = note "Not a child of parent struct" $ lookup name $ zip names clibs
+    libertyOf name (ArrayDef _ _ clib) = return clib
+
+checkLibertiesPermit :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+checkLibertiesPermit vs = (errs, vs)
+  where
+    taintedPaths = Map.keys $ view (unvalidated . uvtt) vs
+    liberties = zip taintedPaths (map (flip getLiberty vs) taintedPaths :: [Maybe Liberty])
+    libErrs = filter (maybe True (== Cannot) . snd) liberties
+    errs = Map.fromList $ fmap (fmap libErrString) libErrs
+    libErrString l = "Client not permitted to change path with liberty: " ++ (show l)
 
 vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
