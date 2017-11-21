@@ -492,7 +492,7 @@ getLiberty p vs = do
     libertyOf name def
   where
     libertyOf name (TupleDef {}) = fail "Tuples have no children"
-    libertyOf name (StructDef _ names _ clibs) = note "Not a child of parent struct" $ lookup name $ zip names clibs
+    libertyOf name (StructDef _ names _ clibs) = note "Not a permitted child of parent struct" $ lookup name $ zip names clibs
     libertyOf name (ArrayDef _ _ clib) = return clib
 
 checkLibertiesPermit :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
