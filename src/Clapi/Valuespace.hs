@@ -485,8 +485,8 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
     dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
     dupNode p Nothing Nothing vs = maybe vs id $ vsDelete p vs
 
-getLiberty :: MonadFail m => NodePath -> Valuespace ClientUnvalidated -> m Liberty
-getLiberty p vs = do
+getLiberty :: MonadFail m => Valuespace ClientUnvalidated -> NodePath -> m Liberty
+getLiberty vs p = do
     (parent, name) <- Path.splitBasename p
     def <- getDef parent vs
     libertyOf name def
@@ -499,7 +499,7 @@ checkLibertiesPermit :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespac
 checkLibertiesPermit vs = (errs, vs)
   where
     taintedPaths = Map.keys $ view (unvalidated . uvtt) vs
-    liberties = zip taintedPaths (map (flip getLiberty vs) taintedPaths :: [Maybe Liberty])
+    liberties = zip taintedPaths (map (getLiberty vs) taintedPaths :: [Maybe Liberty])
     libErrs = filter (maybe True (== Cannot) . snd) liberties
     errs = Map.fromList $ fmap (fmap libErrString) libErrs
     libErrString l = "Client not permitted to change path with liberty: " ++ (show l)
@@ -518,9 +518,9 @@ validateClientNodeChildren :: (NodePath -> Maybe Node) -> (NodePath -> Maybe Nod
 validateClientNodeChildren getOldNode getNewNode np node def = Map.fromList $ case def of
     (TupleDef {}) -> if null childKeys then mempty else map (\p -> (p, "Tuples have no children!")) childPaths
     (StructDef _doc childNames _childTypes childLiberties) -> let
-        nameLibMap = Map.fromList $ zip  childNames childLiberties
+        nameLibMap = Map.fromList $ zip childNames childLiberties
         getChildErr name = let sp = childPath name in
-            fmap (\e -> (sp, e)) $ case Map.lookup name nameLibMap of
+            fmap ((,) sp) $ case Map.lookup name nameLibMap of
                 Nothing -> Just "Unexpected child"
                 (Just Cannot) -> if unmodified sp then Nothing else Just "Can't touch"
                 (Just Must) -> if null $ getNewNode sp then Just "Must exist" else Nothing
