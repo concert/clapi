@@ -7,7 +7,7 @@ import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.State (State, modify)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, mapMaybe)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
@@ -318,19 +318,21 @@ validateTypeNode metaType node =
     defCvs <- fmap snd . unwrapTimePoint . snd . head . Map.toList $ globalTimeSeries
     valuesToDef metaType defCvs
 
-validateChildren ::
-    Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace OwnerUnvalidated)
-validateChildren vs =
-  let
+taintedNodesWithDefs :: (HasUvtt v TaintTracker) =>
+    Valuespace v -> MonadErrorMap (Map.Map NodePath (Node, Definition))
+taintedNodesWithDefs vs = eitherErrorMap $ Map.mapWithKey pairDef unvalidatedNodes
+  where
     unvalidatedNodes = Map.restrictKeys (view tree vs) (Map.keysSet $
         view (unvalidated . uvtt) vs)
-  in do
-    nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef unvalidatedNodes
-    eitherErrorMap $ Map.mapWithKey
-        (\np (n, d) -> validateNodeChildren (getType vs) np n d) nodesWithDefs
-    return vs
-  where
     pairDef np n = (,) n <$> getDef np vs
+
+validateChildren ::
+    Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace OwnerUnvalidated)
+validateChildren vs = do
+    tnwd <- taintedNodesWithDefs vs
+    eitherErrorMap $ Map.mapWithKey
+        (\np (n, d) -> validateNodeChildren (getType vs) np n d) tnwd
+    return vs
 
 
 validateChildKeyTypes ::
@@ -477,7 +479,7 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
         then (knownErrs, vs')
         else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
     doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
-    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit >>= validateData -- FIXME: all other validation
+    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit >>= validateClientChildren >>= validateData
     rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
     rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
     dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
@@ -501,6 +503,36 @@ checkLibertiesPermit vs = (errs, vs)
     libErrs = filter (maybe True (== Cannot) . snd) liberties
     errs = Map.fromList $ fmap (fmap libErrString) libErrs
     libErrString l = "Client not permitted to change path with liberty: " ++ (show l)
+
+validateClientChildren :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+validateClientChildren vs = do
+    tnwd <- taintedNodesWithDefs vs
+    mapM_ checkPath $ Map.assocs tnwd
+    return vs
+  where
+    checkPath (np, (node, def)) = (validateClientNodeChildren getOldNode getNewNode np node def, ())
+    getOldNode np = Map.lookup np $ vsGetTree vs
+    getNewNode np = Map.lookup np $ vsGetTree $ origVs $ view unvalidated vs
+
+validateClientNodeChildren :: (NodePath -> Maybe Node) -> (NodePath -> Maybe Node) -> NodePath -> Node -> Definition -> ErrorMap
+validateClientNodeChildren getOldNode getNewNode np node def = Map.fromList $ case def of
+    (TupleDef {}) -> if null childKeys then mempty else map (\p -> (p, "Tuples have no children!")) childPaths
+    (StructDef _doc childNames _childTypes childLiberties) -> let
+        nameLibMap = Map.fromList $ zip  childNames childLiberties
+        getChildErr name = let sp = childPath name in
+            fmap (\e -> (sp, e)) $ case Map.lookup name nameLibMap of
+                Nothing -> Just "Unexpected child"
+                (Just Cannot) -> if unmodified sp then Nothing else Just "Can't touch"
+                (Just Must) -> if null $ getNewNode sp then Just "Must exist" else Nothing
+                (Just May) -> Nothing
+      in mapMaybe getChildErr childKeys
+    (ArrayDef _doc _childType childLiberty) -> if childLiberty /= Cannot then mempty else
+        (\p -> (p, "Not mutable")) <$> filter unmodified childPaths
+  where
+    childKeys = view getKeys node
+    childPath name = np +| name
+    childPaths = map childPath childKeys
+    unmodified p = getOldNode p == getNewNode p
 
 vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
