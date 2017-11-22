@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK prune #-}
 {-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, FlexibleContexts #-}
 module Clapi.Valuespace where
 
