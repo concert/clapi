@@ -1,13 +1,14 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
+{-# OPTIONS_HADDOCK prune #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, FlexibleContexts #-}
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>))
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.State (State, modify)
-import Control.Lens ((&), makeLenses, view, at, over, set, non, _Just, _1, _2)
+import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, mapMaybe)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
@@ -208,19 +209,26 @@ valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
 
 type VsTree = ClapiTree [ClapiValue]
 type DefMap = Map.Map NodePath Definition
-data Validated
-data Unvalidated
+type Validated = ()
+type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
+newtype OwnerUnvalidated = OwnerUnvalidated {_ownerUnvalidatedUvtt :: TaintTracker}
+data ClientUnvalidated = ClientUnvalidated {_clientUnvalidatedUvtt :: TaintTracker, origVs :: Valuespace Validated}
 data Valuespace v = Valuespace {
     _tree :: VsTree,
     _types :: Mos.Dependencies NodePath TypePath,
     _xrefs :: Mos.Dependencies' (NodePath, (Maybe Site, Time)) NodePath,
     _defs :: DefMap,
-    _unvalidated :: Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
+    _unvalidated :: v
     } deriving (Eq)
+makeFields ''OwnerUnvalidated
+makeFields ''ClientUnvalidated
 makeLenses ''Valuespace
 
-unvalidate :: Valuespace v -> Valuespace Unvalidated
-unvalidate (Valuespace tr ty x d u) = Valuespace tr ty x d u
+ownerUnlock :: Valuespace Validated -> Valuespace OwnerUnvalidated
+ownerUnlock (Valuespace tr ty x d _) = Valuespace tr ty x d (OwnerUnvalidated mempty)
+
+clientUnlock :: Valuespace Validated -> Valuespace ClientUnvalidated
+clientUnlock vs@(Valuespace tr ty x d _) = Valuespace tr ty x d $ ClientUnvalidated mempty vs
 
 vsGetTree :: Valuespace v -> VsTree
 vsGetTree = view tree
@@ -243,7 +251,7 @@ vsDiff v0 v1 = (map taAsVd typeAssigns) ++ (tdAsVd nd)
 instance Show (Valuespace v) where
     show = show . view tree
 
-instance Monoid (Valuespace v) where
+instance Monoid v => Monoid (Valuespace v) where
     mempty = Valuespace mempty mempty mempty mempty mempty
     mappend (Valuespace a1 b1 c1 d1 e1) (Valuespace a2 b2 c2 d2 e2) =
         Valuespace (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2) (e1 <> e2)
@@ -269,7 +277,8 @@ getNode np = note f . view (tree . at np)
 getChildren :: (MonadFail m) => NodePath -> Valuespace v -> m [Path.Name]
 getChildren np vs = getNode np vs >>= return . view getKeys
 
-type MonadErrorMap a = (Map.Map NodePath String, a)
+type ErrorMap = Map.Map NodePath String
+type MonadErrorMap a = (ErrorMap, a)
 
 eitherErrorMap ::
     Map.Map NodePath (Either String a) -> MonadErrorMap (Map.Map NodePath a)
@@ -278,19 +287,19 @@ eitherErrorMap =
     over _2 (fmap fromRight) .
     Map.partition isLeft
 
-vsValidate :: Valuespace Unvalidated -> MonadErrorMap (Valuespace Validated)
+vsValidate :: Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace Validated)
 vsValidate =
     rectifyTypes >=> validateChildren >=> validateData >=> markValid
   where
-    markValid = return . set unvalidated mempty
+    markValid = return . set unvalidated ()
 
 rectifyTypes ::
-    Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
+    (HasUvtt v TaintTracker) => Valuespace v -> MonadErrorMap (Valuespace v)
 rectifyTypes vs =
   do
     unvalidatedsTypes <-
         eitherErrorMap . Map.mapWithKey (\np _ -> getType vs np) .
-        view unvalidated $ vs
+        view (unvalidated . uvtt) $ vs
     newDefs <-
         eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
     return . over defs (Map.union newDefs) $ vs
@@ -310,19 +319,21 @@ validateTypeNode metaType node =
     defCvs <- fmap snd . unwrapTimePoint . snd . head . Map.toList $ globalTimeSeries
     valuesToDef metaType defCvs
 
-validateChildren ::
-    Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
-validateChildren vs =
-  let
-    unvalidatedNodes = Map.restrictKeys (view tree vs) (Map.keysSet $
-        view unvalidated vs)
-  in do
-    nodesWithDefs <- eitherErrorMap $ Map.mapWithKey pairDef unvalidatedNodes
-    eitherErrorMap $ Map.mapWithKey
-        (\np (n, d) -> validateNodeChildren (getType vs) np n d) nodesWithDefs
-    return vs
+taintedNodesWithDefs :: (HasUvtt v TaintTracker) =>
+    Valuespace v -> MonadErrorMap (Map.Map NodePath (Node, Definition))
+taintedNodesWithDefs vs = eitherErrorMap $ Map.mapWithKey pairDef unvalidatedNodes
   where
+    unvalidatedNodes = Map.restrictKeys (view tree vs) (Map.keysSet $
+        view (unvalidated . uvtt) vs)
     pairDef np n = (,) n <$> getDef np vs
+
+validateChildren ::
+    Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace OwnerUnvalidated)
+validateChildren vs = do
+    tnwd <- taintedNodesWithDefs vs
+    eitherErrorMap $ Map.mapWithKey
+        (\np (n, d) -> validateNodeChildren (getType vs) np n d) tnwd
+    return vs
 
 
 validateChildKeyTypes ::
@@ -382,7 +393,7 @@ flattenNestedMaps mm = foldMap id $ Map.mapWithKey f mm
     f k1 = Map.mapKeys ((,) k1)
 
 validateData ::
-    Valuespace Unvalidated -> MonadErrorMap (Valuespace Unvalidated)
+    (HasUvtt v TaintTracker) => Valuespace v -> MonadErrorMap (Valuespace v)
 validateData vs =
   do
     newXRefDeps <- overUnvalidatedNodes (validateNodeData vs) vs
@@ -413,14 +424,14 @@ filterNode mtps n =
     filterSiteMap sites tps
 
 overUnvalidatedNodes ::
-    (
+    (HasUvtt v TaintTracker) => (
        NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
        CanFail a
     ) -> Valuespace v -> MonadErrorMap (Map.Map NodePath a)
 overUnvalidatedNodes f vs =
   do
     filtered <-
-        eitherErrorMap . Map.mapWithKey getAndFilterNode $ view unvalidated vs
+        eitherErrorMap . Map.mapWithKey getAndFilterNode $ view (unvalidated . uvtt) vs
     eitherErrorMap . Map.mapWithKey f $ filtered
   where
     getAndFilterNode np mtps = getNode np vs >>= return . filterNode mtps
@@ -461,63 +472,130 @@ validateNodeData vs np siteMap = getDef np vs >>= body
 --         def <- getDef np vs
 --         traverse (validate (getType vs) (view validators def)) (toList n)
 
-vsAssignType :: NodePath -> TypePath -> Valuespace v -> Valuespace Unvalidated
+vsClientValidate :: Valuespace ClientUnvalidated -> MonadErrorMap [VsDelta]
+vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
+  where
+    ovs = origVs $ view unvalidated vs
+    doValidate knownErrs vs = let (em, vs') = doValidateStep vs in if null em
+        then (knownErrs, vs')
+        else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
+    doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit >>= validateClientChildren >>= validateData
+    rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
+    rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
+    dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
+    dupNode p Nothing Nothing vs = maybe vs id $ vsDelete p vs
+
+getLiberty :: MonadFail m => Valuespace ClientUnvalidated -> NodePath -> m Liberty
+getLiberty vs p = do
+    (parent, name) <- Path.splitBasename p
+    def <- getDef parent vs
+    libertyOf name def
+  where
+    libertyOf name (TupleDef {}) = fail "Tuples have no children"
+    libertyOf name (StructDef _ names _ clibs) = note "Not a permitted child of parent struct" $ lookup name $ zip names clibs
+    libertyOf name (ArrayDef _ _ clib) = return clib
+
+checkLibertiesPermit :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+checkLibertiesPermit vs = (errs, vs)
+  where
+    taintedPaths = Map.keys $ view (unvalidated . uvtt) vs
+    liberties = zip taintedPaths (map (getLiberty vs) taintedPaths :: [Maybe Liberty])
+    libErrs = filter (maybe True (== Cannot) . snd) liberties
+    errs = Map.fromList $ fmap (fmap libErrString) libErrs
+    libErrString l = "Client not permitted to change path with liberty: " ++ (show l)
+
+validateClientChildren :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
+validateClientChildren vs = do
+    tnwd <- taintedNodesWithDefs vs
+    mapM_ checkPath $ Map.assocs tnwd
+    return vs
+  where
+    checkPath (np, (node, def)) = (validateClientNodeChildren getOldNode getNewNode np node def, ())
+    getOldNode np = Map.lookup np $ vsGetTree vs
+    getNewNode np = Map.lookup np $ vsGetTree $ origVs $ view unvalidated vs
+
+validateClientNodeChildren :: (NodePath -> Maybe Node) -> (NodePath -> Maybe Node) -> NodePath -> Node -> Definition -> ErrorMap
+validateClientNodeChildren getOldNode getNewNode np node def = Map.fromList $ case def of
+    (TupleDef {}) -> if null childKeys then mempty else map (\p -> (p, "Tuples have no children!")) childPaths
+    (StructDef _doc childNames _childTypes childLiberties) -> let
+        nameLibMap = Map.fromList $ zip childNames childLiberties
+        getChildErr name = let sp = childPath name in
+            fmap ((,) sp) $ case Map.lookup name nameLibMap of
+                Nothing -> Just "Unexpected child"
+                (Just Cannot) -> if unmodified sp then Nothing else Just "Can't touch"
+                (Just Must) -> if null $ getNewNode sp then Just "Must exist" else Nothing
+                (Just May) -> Nothing
+      in mapMaybe getChildErr childKeys
+    (ArrayDef _doc _childType childLiberty) -> if childLiberty /= Cannot then mempty else
+        (\p -> (p, "Not mutable")) <$> filter unmodified childPaths
+  where
+    childKeys = view getKeys node
+    childPath name = np +| name
+    childPaths = map childPath childKeys
+    unmodified p = getOldNode p == getNewNode p
+
+vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
-    set (unvalidated . at np) (Just Nothing) .
-    set (unvalidated . at (Path.up np)) (Just Nothing) .
+    set (unvalidated . uvtt . at np) (Just Nothing) .
+    set (unvalidated . uvtt . at (Path.up np)) (Just Nothing) .
     taintXRefDependants np
 
 vsDelete ::
-    (MonadFail m) => NodePath -> Valuespace v -> m (Valuespace Unvalidated)
+    (MonadFail m, HasUvtt v TaintTracker) => NodePath -> Valuespace v -> m (Valuespace v)
 vsDelete np =
     tree (treeDeleteNode np) .
     over types (Mos.delDependency np) .
-    set (unvalidated . at np) Nothing .
-    set (unvalidated . at (Path.up np)) (Just Nothing)
+    set (unvalidated . uvtt . at np) Nothing .
+    set (unvalidated . uvtt . at (Path.up np)) (Just Nothing)
 
 taintData ::
-    NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace Unvalidated
+    (HasUvtt v TaintTracker) => NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace v
 taintData np s t =
-    over (unvalidated . at np . non mempty . non mempty) (Set.insert (s, t))
+    over (unvalidated . uvtt . at np . non mempty . non mempty) (Set.insert (s, t))
 
-taintTypeDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
+taintTypeDependants :: (HasUvtt v TaintTracker) => NodePath -> Valuespace v -> Valuespace v
 taintTypeDependants np vs =
-    over unvalidated (Maybe.update Map.union maybeTaintedMap) vs
+    over (unvalidated . uvtt) (Maybe.update Map.union maybeTaintedMap) vs
   where
     maybeTaintedMap = Map.fromSet (const Nothing) <$>
         (Mos.getDependants np $ view types vs)
 
-taintXRefDependants :: NodePath -> Valuespace v -> Valuespace Unvalidated
-taintXRefDependants np vs = over unvalidated (Map.union taintedMap) vs
+taintXRefDependants :: (HasUvtt v TaintTracker) => NodePath -> Valuespace v -> Valuespace v
+taintXRefDependants np vs = over (unvalidated . uvtt) (Map.union taintedMap) vs
   where
     taintedMap =
         fmap Just . Set.foldr (uncurry Mos.insert) mempty .
         Mos.getDependants' np $ view xrefs vs
 
 vsAdd ::
-    (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
-    NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
+    (MonadFail m, HasUvtt v TaintTracker) =>
+    Maybe Attributee -> Interpolation -> [ClapiValue] -> NodePath ->
+    Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsAdd a i vs np s t =
     tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np
 
 
 vsSet ::
-    (MonadFail m) => Maybe Attributee -> Interpolation -> [ClapiValue] ->
-    NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace Unvalidated)
+    (MonadFail m, HasUvtt v TaintTracker) =>
+    Maybe Attributee -> Interpolation -> [ClapiValue] ->
+    NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsSet a i vs np s t =
     tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np
 
 vsRemove ::
-    (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
-    Valuespace v -> m (Valuespace Unvalidated)
+    (MonadFail m, HasUvtt v TaintTracker) =>
+    Maybe Attributee -> NodePath -> Maybe Site -> Time ->
+    Valuespace v -> m (Valuespace v)
 vsRemove a np s t =
     tree (treeRemove a np s t) . taintData np s t
 
 vsClear ::
-    (MonadFail m) => Maybe Attributee -> NodePath -> Maybe Site -> Time ->
-    Valuespace v -> m (Valuespace Unvalidated)
+    (MonadFail m, HasUvtt v TaintTracker) =>
+    Maybe Attributee -> NodePath -> Maybe Site -> Time ->
+    Valuespace v -> m (Valuespace v)
 vsClear a np s t =
     tree (treeClear a np s t) . taintData np s t
 
@@ -527,21 +605,21 @@ anon = Nothing
 tconst = Time 0 0
 
 addConst ::
-    (MonadFail m) => NodePath -> [ClapiValue] -> Valuespace v ->
-    m (Valuespace Unvalidated)
+    (MonadFail m) => NodePath -> [ClapiValue] -> Valuespace OwnerUnvalidated ->
+    m (Valuespace OwnerUnvalidated)
 addConst np cvs = vsAdd anon IConstant cvs np globalSite tconst
 
 define ::
-    (MonadFail m) => NodePath -> Definition -> Valuespace v ->
-    m (Valuespace Unvalidated)
+    (MonadFail m) => NodePath -> Definition -> Valuespace OwnerUnvalidated ->
+    m (Valuespace OwnerUnvalidated)
 define defPath def vs =
     addConst defPath (defToValues def) vs >>=
     return . vsAssignType defPath (metaTypePath . metaType $ def)
 
 
 autoDefineStruct ::
-    (MonadFail m) => NodePath -> TypePath -> Valuespace v ->
-    m (Valuespace Unvalidated)
+    (MonadFail m) => NodePath -> TypePath -> Valuespace OwnerUnvalidated ->
+    m (Valuespace OwnerUnvalidated)
 autoDefineStruct np tp vs =
   let node = view (tree . at np . non mempty) vs in
   do
@@ -566,7 +644,7 @@ assert p s a | p a = a
 baseValuespace :: Valuespace Validated
 baseValuespace =
     either error (snd . assert (null . fst) (show . fst) . vsValidate) $
-    return mempty >>=
+    return (ownerUnlock mempty) >>=
     define (metaTypePath Tuple) baseTupleDef >>=
     define (metaTypePath Struct) baseStructDef >>=
     define (metaTypePath Array) baseArrayDef >>=
