@@ -2,10 +2,19 @@ module Clapi.TimeDiffProtocol (TimeDelta, timeDiffProto) where
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import Data.Word (Word32)
+import System.Clock (Clock(Monotonic), TimeSpec(..), getTime)
 
 import Clapi.Types (Time(..), TimeStamped(..))
 import Clapi.Server (ClientEvent(..), ServerEvent)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
+
+fromTimeSpec :: TimeSpec -> Time
+fromTimeSpec (TimeSpec s ns) = Time
+    (fromIntegral s)
+    (round $ (toRational (maxBound :: Word32) / 10 ^^ 9) * (toRational ns))
+
+getTimeMonotonic :: IO Time
+getTimeMonotonic = fromTimeSpec <$> getTime Monotonic
 
 newtype TimeDelta = TimeDelta Time
 
