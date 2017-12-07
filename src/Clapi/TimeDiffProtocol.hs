@@ -2,30 +2,23 @@ module Clapi.TimeDiffProtocol (TimeDelta, timeDiffProto) where
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import Data.Word (Word32)
-import System.Clock (Clock(Monotonic), TimeSpec(..), getTime)
+import System.Clock (Clock(Monotonic), TimeSpec, getTime, toNanoSecs)
 
 import Clapi.Types (Time(..), TimeStamped(..))
 import Clapi.Server (ClientEvent(..), ServerEvent)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 
-fromTimeSpec :: TimeSpec -> Time
-fromTimeSpec (TimeSpec s ns) = Time
-    (fromIntegral s)
-    (round $ (toRational (maxBound :: Word32) / 10 ^^ 9) * (toRational ns))
+timeToFloat :: Time -> Float
+timeToFloat (Time s f) = fromRational $ toRational s + (toRational f / toRational (maxBound :: Word32))
 
-getTimeMonotonic :: IO Time
-getTimeMonotonic = fromTimeSpec <$> getTime Monotonic
+getMonotonicTimeFloat :: IO Float
+getMonotonicTimeFloat = (\ts -> fromRational $ (toRational $ toNanoSecs ts) / 10.0^9) <$> getTime Monotonic
 
-newtype TimeDelta = TimeDelta Time
-
-timeDelta :: Time -> Time -> TimeDelta
-timeDelta (Time s0 f0) (Time s1 f1) = TimeDelta $ if f1 > f0
-    then Time (s0 - s1 - 1) ((maxBound :: Word32) - f1 + f0)
-    else Time (s0 - s1) (f0 - f1)
+newtype TimeDelta = TimeDelta Float
 
 timeDiffProto ::
     Monad m =>
-    (m Time) ->
+    (m Float) ->
     (i -> TimeDelta -> m ()) ->
     (i -> m ()) ->
     Protocol
@@ -37,8 +30,9 @@ timeDiffProto ::
 timeDiffProto getTime storeDelta dropDelta = forever $ waitThen fwd sendRev
   where
     fwd (ClientData i (TimeStamped (theirTime, a))) = do
-        ourTime <- lift getTime
-        lift $ storeDelta i $ timeDelta ourTime theirTime
+        let theirTimeF = timeToFloat theirTime
+        ourTimeF <- lift getTime
+        lift $ storeDelta i $ TimeDelta $ ourTimeF - theirTimeF
         sendFwd $ ClientData i a
     fwd (ClientConnect i x)  = sendFwd $ ClientConnect i x
     fwd (ClientDisconnect i) = do
