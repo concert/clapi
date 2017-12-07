@@ -1,4 +1,4 @@
-module Path.Parsing (toString, toText, fromString, pathP, nameP) where
+module Path.Parsing (toString, toText, fromString, fromText, pathP, nameP) where
 
 import Data.Char (isLetter, isDigit)
 import qualified Data.Text as T
@@ -33,5 +33,8 @@ toText (Path cs) = T.append sepText $ T.intercalate sepText cs
 toString :: Path -> String
 toString p = T.unpack $ toText p
 
-fromString :: (MonadFail m) => String -> m Path
-fromString s = eitherFail $ parseOnly pathP (T.pack s)
+fromText :: MonadFail m => T.Text -> m Path
+fromText t = eitherFail $ parseOnly pathP t
+
+fromString :: MonadFail m => String -> m Path
+fromString s = fromText $ T.pack s
