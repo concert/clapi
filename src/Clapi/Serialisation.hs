@@ -7,6 +7,10 @@ module Clapi.Serialisation
       cvTaggedData,
       DataUpdateMsgType(..),
       dumtTaggedData,
+      TreeUpdateMsgType(..),
+      tumtTaggedData,
+      SubMsgType(..),
+      subMsgTaggedData,
       interpolationTaggedData,
       Serialisable
     ) where
