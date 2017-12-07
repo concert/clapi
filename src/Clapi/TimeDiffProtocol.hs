@@ -1,4 +1,4 @@
-module Clapi.TimeDiffProtocol (timeDiffProto) where
+module Clapi.TimeDiffProtocol (TimeDelta, timeDiffProto) where
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import Data.Word (Word32)

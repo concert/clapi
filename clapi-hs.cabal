@@ -20,6 +20,7 @@ library
                      , Data.Map.Clapi
                      , Clapi.Attributor
                      , Clapi.Auth
+                     , Clapi.ClientInfoCollector
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
