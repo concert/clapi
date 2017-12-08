@@ -20,6 +20,7 @@ import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Directed(..), Protocol, sendFwd, sendRev, (<<->), waitThen, runProtocolIO)
+import Clapi.PerClientProto (PerClientInboundEvent, PerClientOutboundEvent, liftToPerClientEvent)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -79,6 +80,20 @@ type ServerEvent' = ServerEvent ClientAddr
 
 instance Show (Q.InChan a) where
     show _ = "<InChan>"
+
+_handlePerClient ::
+    i ->
+    Protocol B.ByteString a B.ByteString b IO () ->
+    ((PerClientOutboundEvent b -> IO ()) -> IO (PerClientInboundEvent i a -> IO ())) ->
+    NS.Socket ->
+    IO ()
+_handlePerClient i proto toMainChan sock = do
+    (clientChanIn, clientChanOut) <- Q.newChan
+    mainChanIn <- toMainChan $ Q.writeChan clientChanIn
+    runProtocolIO
+        (NSB.recv sock 4096) mainChanIn
+        (NSB.sendAll sock) (Q.readChan clientChanOut)
+        (liftToPerClientEvent i proto)
 
 _serveToChan ::
   Protocol
