@@ -43,7 +43,8 @@ import Clapi.Types(
     ToRelayBundle(..), FromRelayBundle(..), Time(..), Interpolation(..),
     InterpolationType(..), interpolationType, UMsgError(..), SubMessage(..),
     DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
-    RequestBundle(..), UpdateBundle(..), OwnerRequestBundle(..))
+    RequestBundle(..), UpdateBundle(..), OwnerRequestBundle(..),
+    TimeStamped(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Util (composeParsers)
@@ -349,3 +350,7 @@ instance (Serialisable a) => Serialisable (Maybe a) where
           'J' -> Just <$> parser
           'N' -> return Nothing
           c -> badTag "maybe" c
+
+instance (Serialisable a) => Serialisable (TimeStamped a) where
+    builder (TimeStamped (t, a)) = builder t <<>> builder a
+    parser = curry TimeStamped <$> parser <*> parser
