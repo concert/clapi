@@ -65,14 +65,14 @@ serialiser = serialiser' $ parse parser
         (\bs -> sendRev bs >> serialiser' p)
         (encode b)
 
-pceSerialiser i = liftToClientEvent i serialiser
+pceSerialiser i = liftToPerClientEvent i serialiser
 
 data PerClientInboundEvent i a
   = PcieConnected i | PcieDisconnected i | PcieData i a
 
 data PerClientOutboundEvent a = PcoeDisconnected | PcoeData a
 
-liftToClientEvent ::
+liftToPerClientEvent ::
     Monad m
     => i
     -> Protocol ByteString a ByteString b m ()
@@ -80,15 +80,15 @@ liftToClientEvent ::
          ByteString (PerClientInboundEvent i a)
          ByteString (PerClientOutboundEvent b)
          m ()
-liftToClientEvent i p = do
+liftToPerClientEvent i p = do
     sendFwd $ PcieConnected i
     FreeT $ go <$> runFreeT p
   where
     go (Free (Wait f)) = Free (Wait $ g f)
-    go (Free (SendFwd a next)) = Free (SendFwd (PcieData i a) (liftToClientEvent i next))
-    go (Free (SendRev bs next)) = Free (SendRev bs (liftToClientEvent i next))
+    go (Free (SendFwd a next)) = Free (SendFwd (PcieData i a) (liftToPerClientEvent i next))
+    go (Free (SendRev bs next)) = Free (SendRev bs (liftToPerClientEvent i next))
     go (Pure x) = Free (SendFwd (PcieDisconnected i) (return x))
     g _ (Fwd "") = sendFwd $ PcieDisconnected i
-    g f (Fwd bs) = liftToClientEvent i $ f $ Fwd bs
+    g f (Fwd bs) = liftToPerClientEvent i $ f $ Fwd bs
     g _ (Rev PcoeDisconnected) = return ()
-    g f (Rev (PcoeData b)) = liftToClientEvent i $ f $ Rev b
+    g f (Rev (PcoeData b)) = liftToPerClientEvent i $ f $ Rev b
