@@ -15,6 +15,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Void
 import Text.Printf
+import Control.Concurrent.MVar
 
 import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
@@ -135,10 +136,13 @@ bob = "bob"
 
 helloP = [pathq|/hello|]
 
+noopPub :: Monad m => Owners i -> m ()
+noopPub = void . return
+
 testMessageToPreowned =
   let
     owners = Map.singleton "hello" "relay itself"
-    protocol = forTest <<-> namespaceTrackerProtocol owners mempty <<-> fakeRelay
+    protocol = forTest <<-> namespaceTrackerProtocol noopPub owners mempty <<-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP root]
       sendFwd $ ClientDisconnect alice
@@ -151,7 +155,7 @@ testMessageToPreowned =
 testSubscribeAsOwner =
   let
     aliceOwns = Map.singleton "hello" "alice"
-    protocol = forTest <<-> namespaceTrackerProtocol aliceOwns mempty <<-> fakeRelay
+    protocol = forTest <<-> namespaceTrackerProtocol noopPub aliceOwns mempty <<-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice $ TRBClient $ RequestBundle [UMsgSubscribe helloP] []
       resps <- collectAllResponsesUntil alice
@@ -164,7 +168,7 @@ testUnsubscribeWhenNotSubscribed =
   let
     ownedP = [pathq|/owned|]
     owners = Map.singleton "owned" bob
-    protocol = forTest <<-> namespaceTrackerProtocol owners mempty <<-> fakeRelay
+    protocol = forTest <<-> namespaceTrackerProtocol noopPub owners mempty <<-> fakeRelay
     forTest = do
       sendFwd $ ClientData alice $ TRBClient $ RequestBundle [UMsgUnsubscribe ownedP] []
       sendFwd $ ClientDisconnect alice
@@ -175,7 +179,7 @@ testUnsubscribeWhenNotSubscribed =
 
 testValidationErrorReturned =
   let
-    protocol = assertions <<-> namespaceTrackerProtocol mempty mempty <<-> errorSender
+    protocol = assertions <<-> namespaceTrackerProtocol noopPub mempty mempty <<-> errorSender
     errorSender = sendRev $ ((alice, Nothing), BadOwnerResponse [err])
     err = UMsgError [pathq|/bad|] "wrong"
     assertions = do
@@ -226,7 +230,7 @@ untilDisconnect i = waitThen fwd next
         | i == i' = sendRev e
         | otherwise = sendRev e >> untilDisconnect i
 
-nstBounceProto = namespaceTrackerProtocol mempty mempty <<-> fakeRelay
+nstBounceProto = namespaceTrackerProtocol noopPub mempty mempty <<-> fakeRelay
 
 testSubscribeAsClient =
     -- Get informed of changes by owner
@@ -287,7 +291,7 @@ testClientDisconnectUnsubsResubs = do
 
 testOwnerDisconnectDisowns = do
     -- and unregisters clients
-    response <- trackerHelper [
+    response <- pubTrackerHelper expectedPubs [
         ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType [pathq|/fudge|] root], -- Need something to disconnect at end
         ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP root],
         ClientData bob $ TRBClient $ RequestBundle [UMsgSubscribe helloP] [],
@@ -300,6 +304,14 @@ testOwnerDisconnectDisowns = do
     assertMapValue bob [
         FRBClient $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP], FRBClient $ UpdateBundle [] [Left $ UMsgDelete helloP]] response
     assertMapValue "charlie" [FRBClient $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP]] response
+  where
+    expectedPubs = map Map.fromList
+      [ [("fudge", bob)]
+      , [("fudge", bob), ("hello", alice)]
+      , [("fudge", bob)]
+      , [("fudge", bob), ("hello", "dave")]
+      , [("hello", "dave")]
+      ]
 
 testClientSetForwarded = do
     response <- trackerHelper [
@@ -308,16 +320,30 @@ testClientSetForwarded = do
     assertOnlyKeysInMap [alice] response
     assertMapValue alice [FRBOwner $ OwnerRequestBundle [] [dum helloP Set]] response
 
-trackerHelper = trackerHelper' mempty mempty
+pubTrackerHelper ::
+    forall i.  (Ord i, Show i) =>
+    [Owners i] -> [ClientEvent i ToRelayBundle ()] ->
+    IO (Map.Map i [FromRelayBundle])
+pubTrackerHelper expectedPubs inMsgs = do
+    pubList <- newMVar []
+    rv <- trackerHelper' (listPub pubList) mempty mempty inMsgs
+    actualPubs <- takeMVar pubList
+    assertEqual "Publishes" expectedPubs (reverse actualPubs)
+    return rv
+  where
+    listPub mv o = modifyMVar_ mv (\l -> return $ o : l)
+
+trackerHelper = trackerHelper' noopPub mempty mempty
 
 trackerHelper' ::
     forall i.  (Ord i, Show i) =>
+    (Owners i -> IO ()) ->
     Owners i -> Registered i -> [ClientEvent i ToRelayBundle ()] ->
     IO (Map.Map i [FromRelayBundle])
-trackerHelper' owners registered as =
+trackerHelper' pub owners registered as =
     mapPack <$> gogo as' i (trackerProto <<-> fakeRelay)
   where
-    trackerProto = namespaceTrackerProtocol owners registered
+    trackerProto = namespaceTrackerProtocol pub owners registered
     i = i' $ head as
     i' :: ClientEvent i ToRelayBundle () -> i
     i' (ClientData i _) = i

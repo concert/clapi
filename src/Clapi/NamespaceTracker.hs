@@ -116,9 +116,10 @@ type NsProtocol m i = Protocol
 
 namespaceTrackerProtocol ::
     (Monad m, Ord i, Show i) =>
+    (Owners i -> m ()) ->
     Owners i -> Registered i ->
     NsProtocol m i ()
-namespaceTrackerProtocol o r = evalStateT _namespaceTrackerProtocol (o, r)
+namespaceTrackerProtocol p o r = evalStateT (_namespaceTrackerProtocol p) (o, r)
 
 
 allPaths :: ToRelayBundle -> [Path]
@@ -131,11 +132,16 @@ allPaths b = case b of
 
 _namespaceTrackerProtocol ::
     (Monad m, Ord i, Show i) =>
+    (Owners i -> m ()) ->
     StateT
         (Owners i, Registered i)
         (NsProtocol m i)
         ()
-_namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
+_namespaceTrackerProtocol publish = forever $ do
+    (o, _) <- get
+    liftedWaitThen fwd rev
+    (o', _) <- get
+    when (o /= o') (lift . lift $ publish o')
   where
     sendErrorBundle i s ps = lift . sendRev $ ServerData i $ FRBOwner $
         OwnerRequestBundle (map (flip UMsgError s) ps) []
