@@ -321,7 +321,7 @@ testClientSetForwarded = do
     assertMapValue alice [FRBOwner $ OwnerRequestBundle [] [dum helloP Set]] response
 
 pubTrackerHelper ::
-    forall i.  (Ord i, Show i) =>
+    (Ord i, Show i) =>
     [Owners i] -> [ClientEvent i ToRelayBundle ()] ->
     IO (Map.Map i [FromRelayBundle])
 pubTrackerHelper expectedPubs inMsgs = do
