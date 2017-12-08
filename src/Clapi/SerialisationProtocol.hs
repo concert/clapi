@@ -53,10 +53,19 @@ mapProtocol toA fromA fromB toB p = FreeT $ go <$> runFreeT p
     wn next = mapProtocol toA fromA fromB toB next
 
 serialiser :: (Serialisable a, Serialisable b, Monad m) => Protocol ByteString a ByteString b m ()
-serialiser = mapProtocol (ClientData 0) unpackClientData unpackServerData (ServerData 0) $ eventSerialiser id
+serialiser = serialiser' $ parse parser
   where
-    unpackClientData (ClientData _ bs) = bs
-    unpackServerData (ServerData _ bs) = bs
+    serialiser' p = waitThen (fwd p) (rev p)
+    fwd parseNext bs = case parseNext bs of
+        Fail _ ctxs err -> sendRev $ fromString err
+        Partial cont -> serialiser' cont
+        Done unconsumed a -> sendFwd a >> fwd (parse parser) unconsumed
+    rev p b = either
+        (const $ error "encode failed")
+        (\bs -> sendRev bs >> serialiser' p)
+        (encode b)
+
+pceSerialiser i = liftToClientEvent i serialiser
 
 data PerClientInboundEvent i a
   = PcieConnected i | PcieDisconnected i | PcieData i a
