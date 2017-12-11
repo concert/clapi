@@ -26,7 +26,8 @@ import Clapi.Types (
     UMsgError(..), OwnerUpdateMessage(..), UMsg(..), ClapiValue(..),
     UpdateBundle(..), RequestBundle(..), ToRelayBundle(..),
     FromRelayBundle(..), SubMessage(..), OwnerRequestBundle(..))
-import Clapi.Server (ClientEvent(..), ServerEvent(..), neverDoAnything)
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
+import Clapi.Server (neverDoAnything)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Request(..), Response(..))
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
@@ -193,10 +194,10 @@ testValidationErrorReturned =
 
 gogo ::
     (Eq i) =>
-    [ClientEvent i a x] ->
+    [ClientEvent i a] ->
     i ->
     Protocol
-        (ClientEvent i a x) Void
+        (ClientEvent i a) Void
         (ServerEvent i b) Void IO () ->
     IO [ServerEvent i b]
 gogo as i p =
@@ -322,7 +323,7 @@ testClientSetForwarded = do
 
 pubTrackerHelper ::
     (Ord i, Show i) =>
-    [Owners i] -> [ClientEvent i ToRelayBundle ()] ->
+    [Owners i] -> [ClientEvent i ToRelayBundle] ->
     IO (Map.Map i [FromRelayBundle])
 pubTrackerHelper expectedPubs inMsgs = do
     pubList <- newMVar []
@@ -338,17 +339,17 @@ trackerHelper = trackerHelper' noopPub mempty mempty
 trackerHelper' ::
     forall i.  (Ord i, Show i) =>
     (Owners i -> IO ()) ->
-    Owners i -> Registered i -> [ClientEvent i ToRelayBundle ()] ->
+    Owners i -> Registered i -> [ClientEvent i ToRelayBundle] ->
     IO (Map.Map i [FromRelayBundle])
 trackerHelper' pub owners registered as =
     mapPack <$> gogo as' i (trackerProto <<-> fakeRelay)
   where
     trackerProto = namespaceTrackerProtocol pub owners registered
     i = i' $ head as
-    i' :: ClientEvent i ToRelayBundle () -> i
+    i' :: ClientEvent i ToRelayBundle -> i
     i' (ClientData i _) = i
-    i' (ClientConnect i _) = i
-    as' :: [ClientEvent i ToRelayBundle ()]
+    i' (ClientConnect i) = i
+    as' :: [ClientEvent i ToRelayBundle]
     as' = as ++ [ClientDisconnect i]
     mapPack :: [ServerEvent i FromRelayBundle] -> Map.Map i [FromRelayBundle]
     mapPack [] = Map.empty
