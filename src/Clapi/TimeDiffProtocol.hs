@@ -22,8 +22,8 @@ timeDiffProto ::
     (i -> TimeDelta -> m ()) ->
     (i -> m ()) ->
     Protocol
-        (ClientEvent i (TimeStamped a) x)
-        (ClientEvent i a x)
+        (ClientEvent i (TimeStamped a))
+        (ClientEvent i a)
         (ServerEvent i b)
         (ServerEvent i b)
         m ()
@@ -34,7 +34,7 @@ timeDiffProto getTime storeDelta dropDelta = forever $ waitThen fwd sendRev
         ourTimeF <- lift getTime
         lift $ storeDelta i $ TimeDelta $ ourTimeF - theirTimeF
         sendFwd $ ClientData i a
-    fwd (ClientConnect i x)  = sendFwd $ ClientConnect i x
+    fwd (ClientConnect i)  = sendFwd $ ClientConnect i
     fwd (ClientDisconnect i) = do
         lift $ dropDelta i
         sendFwd $ ClientDisconnect i

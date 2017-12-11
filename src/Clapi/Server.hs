@@ -66,8 +66,8 @@ serve' listenSock handler onShutdown = E.mask_ $ loop []
 
 type ClientAddr = NS.SockAddr
 
-data ClientEvent ident a b
-    = ClientConnect ident b
+data ClientEvent ident a
+    = ClientConnect ident
     | ClientDisconnect ident
     | ClientData ident a
     deriving (Eq, Show)
@@ -104,7 +104,7 @@ protocolServer ::
     NS.Socket ->
     (NS.SockAddr -> (i, Protocol B.ByteString a B.ByteString b IO ())) ->
     Protocol
-        (ClientEvent i a ())
+        (ClientEvent i a)
         Void
         (ServerEvent i b)
         Void IO () ->
@@ -133,7 +133,7 @@ protocolServer listenSock getClientProto mainProto onShutdown = do
     -- FIXME: go down to 1 type for these clienty/servery events
     toPerClient (ServerData i b) = (i, PcoeData b)
     toPerClient (ServerDisconnect i) = (i, PcoeDisconnected)
-    fromPerClient (PcieConnected i) = ClientConnect i ()
+    fromPerClient (PcieConnected i) = ClientConnect i
     fromPerClient (PcieDisconnected i) = ClientDisconnect i
     fromPerClient (PcieData i a) = ClientData i a
 

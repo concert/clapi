@@ -107,7 +107,7 @@ liftedWaitThen onFwd onRev = do
 type DownstreamCtx i = (i, Maybe [UMsgError])
 
 type NsProtocol m i = Protocol
-    (ClientEvent i ToRelayBundle ())
+    (ClientEvent i ToRelayBundle)
     ((DownstreamCtx i, Request))
     (ServerEvent i FromRelayBundle)
     ((DownstreamCtx i, Response))
@@ -144,7 +144,7 @@ _namespaceTrackerProtocol = forever $ liftedWaitThen fwd rev
         fwd $ ClientDisconnect i
     hasOwnership :: (Monad m, UMsg msg, Ord i, Show i) => i -> Ownership -> [msg] -> StateT (Owners i) m [Path]
     hasOwnership i eo ms = get >>= \s -> return $ filter (\p -> Just eo == getPathOwnership i s p) $ map uMsgPath ms
-    fwd (ClientConnect i x) = return mempty
+    fwd (ClientConnect i) = return mempty
     fwd (ClientData i b@(TRBOwner (UpdateBundle errs oums))) = do
         badErrPaths <- stateFst $ hasOwnership i Client errs
         badOumPaths <- stateFst $ hasOwnership i Client oums
