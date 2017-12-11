@@ -21,9 +21,10 @@ import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
 
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (
-  ClientEvent(..), ClientEvent', ServerEvent(..), ServerEvent', doubleCatch,
-  swallowExc, withListen, serve', protocolServer)
+  ClientEvent', ServerEvent', doubleCatch, swallowExc, withListen, serve',
+  protocolServer)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Helpers (seconds, timeLimit)
 import qualified Control.Concurrent.Chan.Unagi as Q
@@ -147,7 +148,7 @@ cat = forever $ waitThen sendFwd sendRev
 
 echo :: (Monad m) =>
   Protocol
-    (ClientEvent' a ())
+    (ClientEvent' a)
     Void
     (ServerEvent' a)
     Void m ()
@@ -156,12 +157,14 @@ echo = forever $ waitThen boing undefined
     boing (ClientData addr a) = sendRev (ServerData addr a)
     boing _ = return ()
 
+getCat addr = (addr, cat)
+
 testProtocolServerBasicEcho = withListen' $ \(lsock, laddr) ->
   let
      client word = connect "127.0.0.1" (show $ getPort laddr) $ \(csock, _) ->
        send csock word >> recv csock 4096
   in
-    withAsync (protocolServer lsock cat echo (return ())) $ \_ ->
+    withAsync (protocolServer lsock getCat echo (return ())) $ \_ ->
       do
         receivedWords <- mapConcurrently client words
         assertEqual "received words" words receivedWords
@@ -174,7 +177,7 @@ testProtocolServerClosesGracefully =
     addrV <- newEmptyMVar
     a <- async $ withListen' $ \(lsock, laddr) -> do
         putMVar addrV laddr
-        protocolServer lsock cat echo (putMVar addrV laddr)
+        protocolServer lsock getCat echo (putMVar addrV laddr)
     let kill = killThread (asyncThreadId a)
     port <- show . getPort <$> takeMVar addrV
     timeLimit 0.2 $ connect "127.0.0.1" port $ \(csock, _) -> do

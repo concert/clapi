@@ -19,13 +19,13 @@ library
                      , Data.Map.Mol
                      , Data.Map.Clapi
                      , Clapi.Attributor
-                     , Clapi.Auth
                      , Clapi.ClientInfoCollector
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
                      , Clapi.Path
                      , Clapi.PathQ
+                     , Clapi.PerClientProto
                      , Path.Parsing
                      , Clapi.Relay
                      , Clapi.Serialisation

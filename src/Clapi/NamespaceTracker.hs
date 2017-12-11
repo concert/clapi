@@ -19,7 +19,7 @@ import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 import Clapi.Path (Name, Path(..))
 import Clapi.Types (ClapiValue(ClString), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), ToRelayBundle(..), FromRelayBundle(..), OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..), UMsgError(..), UMsg(..), SubMessage(..))
-import Clapi.Server (ClientEvent(..), ServerEvent(..))
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
 data Ownership = Owner | Client deriving (Eq, Show)
@@ -107,7 +107,7 @@ liftedWaitThen onFwd onRev = do
 type DownstreamCtx i = (i, Maybe [UMsgError])
 
 type NsProtocol m i = Protocol
-    (ClientEvent i ToRelayBundle ())
+    (ClientEvent i ToRelayBundle)
     ((DownstreamCtx i, Request))
     (ServerEvent i FromRelayBundle)
     ((DownstreamCtx i, Response))
@@ -150,7 +150,7 @@ _namespaceTrackerProtocol publish = forever $ do
         fwd $ ClientDisconnect i
     hasOwnership :: (Monad m, UMsg msg, Ord i, Show i) => i -> Ownership -> [msg] -> StateT (Owners i) m [Path]
     hasOwnership i eo ms = get >>= \s -> return $ filter (\p -> Just eo == getPathOwnership i s p) $ map uMsgPath ms
-    fwd (ClientConnect i x) = return mempty
+    fwd (ClientConnect i) = return mempty
     fwd (ClientData i b@(TRBOwner (UpdateBundle errs oums))) = do
         badErrPaths <- stateFst $ hasOwnership i Client errs
         badOumPaths <- stateFst $ hasOwnership i Client oums
