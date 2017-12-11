@@ -107,9 +107,8 @@ protocolServer listenSock getClientProto mainProto onShutdown = do
   where
     mainP mainChan clientMap = runProtocolIO
         (BQ.readChan mainChan) undefined
-        (toClientProto clientMap) neverDoAnything
+        (dispatch clientMap) neverDoAnything
         mainProto
-    toClientProto clientMap = dispatch clientMap
     dispatch clientMap msg = withMVar clientMap (\m -> maybe
         (return ()) (\tc -> tc msg) (Map.lookup (seIdent msg) m))
     addReturnPath clientMap mainI i rp = do
