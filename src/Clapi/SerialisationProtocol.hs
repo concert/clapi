@@ -1,5 +1,5 @@
 
-module Clapi.SerialisationProtocol (serialiser, mapProtocol, eventSerialiser) where
+module Clapi.SerialisationProtocol (serialiser, mapProtocol) where
 
 import Control.Monad.Trans.Free
 import Data.Attoparsec.ByteString (parse, Result, IResult(..))
@@ -10,30 +10,6 @@ import Clapi.Serialisation (encode, parser, Serialisable)
 import Clapi.Protocol (
     Protocol, wait, waitThen, sendFwd, sendRev, ProtocolF(..), Directed(..))
 import Clapi.Server (ClientEvent(..), ServerEvent(..))
-import Clapi.PerClientProto (liftToPerClientEvent)
-
-eventSerialiser :: (Serialisable a, Serialisable b, Monad m) =>
-    (i -> j) ->  -- Not sold on this
-    Protocol
-        (ClientEvent i ByteString c)
-        (ClientEvent i a c)
-        (ServerEvent j ByteString)
-        (ServerEvent j b)
-        m ()
-eventSerialiser idAdapt = serialiser' $ parse parser
-  where
-    serialiser' p = waitThen (fwd p) (rev p)
-    fwd parseNext (ClientData i bs) = case parseNext bs of
-        Fail _ ctxs err -> sendRev $ ServerData (idAdapt i) $ fromString err
-        Partial cont -> serialiser' cont
-        Done unconsumed msgs -> sendFwd (ClientData i msgs) >> fwd (parse parser) (ClientData i unconsumed)
-    fwd p (ClientConnect i b) = sendFwd (ClientConnect i b) >> serialiser' p
-    fwd p (ClientDisconnect i) = sendFwd (ClientDisconnect i) >> serialiser' p
-    rev p (ServerData i msgs) = either
-        (const $ error "encode failed")
-        (\bs -> sendRev (ServerData i bs) >> serialiser' p)
-        (encode msgs)
-    rev p (ServerDisconnect i) = sendRev (ServerDisconnect i) >> serialiser' p
 
 mapProtocol ::
     Monad m
@@ -64,5 +40,3 @@ serialiser = serialiser' $ parse parser
         (const $ error "encode failed")
         (\bs -> sendRev bs >> serialiser' p)
         (encode b)
-
-pceSerialiser i = liftToPerClientEvent i serialiser
