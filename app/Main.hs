@@ -11,7 +11,7 @@ import System.Posix.Signals
 import Network.Simple.TCP hiding (send)
 import Network.Socket (SockAddr(SockAddrCan))
 
-import Clapi.Server (protocolServer, withListen, AddrWithUser(awuAddr))
+import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)

@@ -121,18 +121,3 @@ protocolServer listenSock getClientProto mainProto onShutdown = do
         let (i, cp) = getClientProto addr
         _handlePerClient i cp (addReturnPath clientMap mainI i) sock
         rmReturnPath clientMap i
-
--- NB: Should make this an opaque type with accessors only, no constructor
--- pattern matching:
-data AddrWithUser a u = AddrWithUser {
-    awuAddr :: a,
-    awuUser :: u
-    } deriving (Eq, Ord)
-
-instance (Show a, Show u) => Show (AddrWithUser a u) where
-    show (AddrWithUser a u) = show u ++ ":" ++ show a
-
-newAwu :: a -> u -> AddrWithUser a u
-newAwu = AddrWithUser
-
-type AddrWithUser' = AddrWithUser ClientAddr B.ByteString
