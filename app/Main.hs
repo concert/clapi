@@ -38,5 +38,5 @@ main =
     withListen HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
-    perClientProto = serialiser <<-> attributor "someone"
+    perClientProto addr = (addr, serialiser <<-> attributor "someone")
     totalProto = shower "total" <<-> namespaceTrackerProtocol apiClaimed mempty <<-> relay baseValuespace

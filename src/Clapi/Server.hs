@@ -96,41 +96,10 @@ _handlePerClient i proto toMainChan sock = do
         (NSB.sendAll sock) (Q.readChan clientChanOut)
         (liftToPerClientEvent i proto)
 
-_serveToChan ::
-  Protocol
-      (ClientEvent' B.ByteString (Q.InChan (ServerEvent i b))) a'
-      (ServerEvent' B.ByteString) (ServerEvent i b)
-      IO () ->
-  IO () ->
-  NS.Socket ->
-  BQ.InChan a' ->
-  IO ()
-_serveToChan perClientProtocol onShutdown listenSock inChan =
-    serve' listenSock handler onShutdown
-  where
-    handler (sock, addr) = do
-      (returnChanIn, returnChanOut) <- Q.newChan
-      runProtocolIO
-          (NSB.recv sock 4096) (BQ.writeChan inChan)
-          (NSB.sendAll sock) (Q.readChan returnChanOut)
-          (blk addr returnChanIn <<-> perClientProtocol)
-    blk addr returnChanIn =
-      do
-        sendFwd $ ClientConnect addr returnChanIn
-        inner
-      where
-        inner = do
-            d <- Protocol.wait
-            case d of
-              Fwd "" -> sendFwd (ClientDisconnect addr) >> return ()
-              Fwd bs -> sendFwd (ClientData addr bs) >> inner
-              Rev (ServerData _ bs) -> sendRev bs >> inner
-              Rev (ServerDisconnect _) -> return ()
-
 neverDoAnything :: IO a
 neverDoAnything = fix id
 
-protocolServer' ::
+protocolServer ::
     (Ord i) =>
     NS.Socket ->
     (NS.SockAddr -> (i, Protocol B.ByteString a B.ByteString b IO ())) ->
@@ -141,7 +110,7 @@ protocolServer' ::
         Void IO () ->
     IO () ->
     IO ()
-protocolServer' listenSock getClientProto mainProto onShutdown = do
+protocolServer listenSock getClientProto mainProto onShutdown = do
     (mainI, mainO) <- BQ.newChan 4
     clientMap <- newMVar mempty
     withAsync (mainP mainO clientMap) (clientP mainI clientMap)
@@ -167,50 +136,6 @@ protocolServer' listenSock getClientProto mainProto onShutdown = do
     fromPerClient (PcieConnected i) = ClientConnect i ()
     fromPerClient (PcieDisconnected i) = ClientDisconnect i
     fromPerClient (PcieData i a) = ClientData i a
-
-protocolServer ::
-  (Ord i) =>
-  NS.Socket ->
-  Protocol
-     (ClientEvent' B.ByteString (Q.InChan (ServerEvent i b)))
-     (ClientEvent i a' (Q.InChan (ServerEvent i b)))
-     (ServerEvent' B.ByteString)
-     (ServerEvent i b)
-     IO () ->
-  Protocol
-      (ClientEvent i a' ())
-      Void
-      (ServerEvent i b)
-      Void IO () ->
-  IO () ->
-  IO ()
-protocolServer listenSock perClientProtocol sharedProtocol onShutdown =
-  do
-    (i, o) <- BQ.newChan 4
-    withAsync (bar o) (\as -> _serveToChan perClientProtocol onShutdown listenSock i)
-  where
-    bar o = runProtocolIO
-        (BQ.readChan o) undefined
-        (uncurry Q.writeChan) neverDoAnything
-        (servBlk mempty <<-> sharedProtocol)
-    servBlk connectedMap = do
-        d <- Protocol.wait
-        case d of
-          Fwd (ClientConnect addr q) ->
-             sendFwd (ClientConnect addr ()) >> servBlk (Map.insert addr q connectedMap)
-          Fwd (ClientDisconnect addr) ->
-             sendFwd (ClientDisconnect addr) >> servBlk (Map.delete addr connectedMap)
-          Fwd (ClientData addr bs) ->
-             sendFwd (ClientData addr bs) >> servBlk connectedMap
-          Rev se@(ServerDisconnect addr) ->
-             toClient se connectedMap addr >>
-             servBlk (Map.delete addr connectedMap)
-          Rev se@(ServerData addr bs) ->
-             toClient se connectedMap addr >> servBlk connectedMap
-    toClient se m a = maybe
-        (return ())
-        (\chan -> sendRev (chan, se))
-        (Map.lookup a m)
 
 -- NB: Should make this an opaque type with accessors only, no constructor
 -- pattern matching:
