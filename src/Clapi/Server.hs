@@ -3,6 +3,7 @@ module Clapi.Server where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (async, cancel, link, poll, wait, withAsync)
+import Control.Concurrent.MVar
 import qualified Control.Concurrent.Chan.Unagi as Q
 import qualified Control.Concurrent.Chan.Unagi.Bounded as BQ
 import qualified Control.Exception as E
@@ -20,7 +21,7 @@ import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Directed(..), Protocol, sendFwd, sendRev, (<<->), waitThen, runProtocolIO)
-import Clapi.PerClientProto (PerClientInboundEvent, PerClientOutboundEvent, liftToPerClientEvent)
+import Clapi.PerClientProto (PerClientInboundEvent(..), PerClientOutboundEvent(..), liftToPerClientEvent)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -128,6 +129,44 @@ _serveToChan perClientProtocol onShutdown listenSock inChan =
 
 neverDoAnything :: IO a
 neverDoAnything = fix id
+
+protocolServer' ::
+    (Ord i) =>
+    NS.Socket ->
+    (NS.SockAddr -> (i, Protocol B.ByteString a B.ByteString b IO ())) ->
+    Protocol
+        (ClientEvent i a ())
+        Void
+        (ServerEvent i b)
+        Void IO () ->
+    IO () ->
+    IO ()
+protocolServer' listenSock getClientProto mainProto onShutdown = do
+    (mainI, mainO) <- BQ.newChan 4
+    clientMap <- newMVar mempty
+    withAsync (mainP mainO clientMap) (clientP mainI clientMap)
+  where
+    mainP mainChan clientMap = runProtocolIO
+        (BQ.readChan mainChan) undefined
+        (toClientProto clientMap) neverDoAnything
+        mainProto
+    toClientProto clientMap = uncurry (dispatch clientMap) . toPerClient
+    dispatch clientMap i msg = withMVar clientMap (\m -> maybe (return ()) (\tc -> tc msg) (Map.lookup i m))
+    addReturnPath clientMap mainI i rp = do
+        modifyMVar_ clientMap (return . Map.insert i rp)
+        return (BQ.writeChan mainI . fromPerClient)
+    rmReturnPath clientMap i = modifyMVar_ clientMap (return . Map.delete i)
+    clientP mainI clientMap _as = serve' listenSock (clientHandler clientMap mainI) onShutdown
+    clientHandler clientMap mainI (sock, addr) = do
+        let (i, cp) = getClientProto addr
+        _handlePerClient i cp (addReturnPath clientMap mainI i) sock
+        rmReturnPath clientMap i
+    -- FIXME: go down to 1 type for these clienty/servery events
+    toPerClient (ServerData i b) = (i, PcoeData b)
+    toPerClient (ServerDisconnect i) = (i, PcoeDisconnected)
+    fromPerClient (PcieConnected i) = ClientConnect i ()
+    fromPerClient (PcieDisconnected i) = ClientDisconnect i
+    fromPerClient (PcieData i a) = ClientData i a
 
 protocolServer ::
   (Ord i) =>
