@@ -5,7 +5,7 @@ import Data.Word (Word32)
 import System.Clock (Clock(Monotonic), TimeSpec, getTime, toNanoSecs)
 
 import Clapi.Types (Time(..), TimeStamped(..))
-import Clapi.Server (ClientEvent(..), ServerEvent)
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 
 timeToFloat :: Time -> Float

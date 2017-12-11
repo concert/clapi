@@ -21,7 +21,7 @@ import Network.Simple.TCP (HostPreference(HostAny), bindSock)
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Directed(..), Protocol, sendFwd, sendRev, (<<->), waitThen, runProtocolIO)
-import Clapi.PerClientProto (PerClientInboundEvent(..), PerClientOutboundEvent(..), liftToPerClientEvent)
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..), liftToPerClientEvent, seIdent)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -66,17 +66,7 @@ serve' listenSock handler onShutdown = E.mask_ $ loop []
 
 type ClientAddr = NS.SockAddr
 
-data ClientEvent ident a
-    = ClientConnect ident
-    | ClientDisconnect ident
-    | ClientData ident a
-    deriving (Eq, Show)
 type ClientEvent' = ClientEvent ClientAddr
-
-data ServerEvent ident a
-    = ServerData ident a
-    | ServerDisconnect ident
-    deriving (Eq, Show)
 type ServerEvent' = ServerEvent ClientAddr
 
 instance Show (Q.InChan a) where
@@ -85,7 +75,7 @@ instance Show (Q.InChan a) where
 _handlePerClient ::
     i ->
     Protocol B.ByteString a B.ByteString b IO () ->
-    ((PerClientOutboundEvent b -> IO ()) -> IO (PerClientInboundEvent i a -> IO ())) ->
+    ((ServerEvent i b -> IO ()) -> IO (ClientEvent i a -> IO ())) ->
     NS.Socket ->
     IO ()
 _handlePerClient i proto toMainChan sock = do
@@ -119,23 +109,18 @@ protocolServer listenSock getClientProto mainProto onShutdown = do
         (BQ.readChan mainChan) undefined
         (toClientProto clientMap) neverDoAnything
         mainProto
-    toClientProto clientMap = uncurry (dispatch clientMap) . toPerClient
-    dispatch clientMap i msg = withMVar clientMap (\m -> maybe (return ()) (\tc -> tc msg) (Map.lookup i m))
+    toClientProto clientMap = dispatch clientMap
+    dispatch clientMap msg = withMVar clientMap (\m -> maybe
+        (return ()) (\tc -> tc msg) (Map.lookup (seIdent msg) m))
     addReturnPath clientMap mainI i rp = do
         modifyMVar_ clientMap (return . Map.insert i rp)
-        return (BQ.writeChan mainI . fromPerClient)
+        return (BQ.writeChan mainI)
     rmReturnPath clientMap i = modifyMVar_ clientMap (return . Map.delete i)
     clientP mainI clientMap _as = serve' listenSock (clientHandler clientMap mainI) onShutdown
     clientHandler clientMap mainI (sock, addr) = do
         let (i, cp) = getClientProto addr
         _handlePerClient i cp (addReturnPath clientMap mainI i) sock
         rmReturnPath clientMap i
-    -- FIXME: go down to 1 type for these clienty/servery events
-    toPerClient (ServerData i b) = (i, PcoeData b)
-    toPerClient (ServerDisconnect i) = (i, PcoeDisconnected)
-    fromPerClient (PcieConnected i) = ClientConnect i
-    fromPerClient (PcieDisconnected i) = ClientDisconnect i
-    fromPerClient (PcieData i a) = ClientData i a
 
 -- NB: Should make this an opaque type with accessors only, no constructor
 -- pattern matching:

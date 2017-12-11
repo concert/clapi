@@ -19,7 +19,7 @@ import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 import Clapi.Path (Name, Path(..))
 import Clapi.Types (ClapiValue(ClString), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), ToRelayBundle(..), FromRelayBundle(..), OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..), UMsgError(..), UMsg(..), SubMessage(..))
-import Clapi.Server (ClientEvent(..), ServerEvent(..))
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
 data Ownership = Owner | Client deriving (Eq, Show)

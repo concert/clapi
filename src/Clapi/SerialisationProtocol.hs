@@ -9,7 +9,7 @@ import Data.ByteString.UTF8 (fromString)
 import Clapi.Serialisation (encode, parser, Serialisable)
 import Clapi.Protocol (
     Protocol, wait, waitThen, sendFwd, sendRev, ProtocolF(..), Directed(..))
-import Clapi.Server (ClientEvent(..), ServerEvent(..))
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 
 mapProtocol ::
     Monad m

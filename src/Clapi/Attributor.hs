@@ -1,7 +1,7 @@
 module Clapi.Attributor where
 import Control.Monad (forever)
 
-import Clapi.Server (ClientEvent(..), AddrWithUser(..))
+import Clapi.PerClientProto (ClientEvent(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Types (ToRelayBundle(..), RequestBundle(..), DataUpdateMessage(..))
 
