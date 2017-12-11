@@ -19,7 +19,6 @@ library
                      , Data.Map.Mol
                      , Data.Map.Clapi
                      , Clapi.Attributor
-                     , Clapi.Auth
                      , Clapi.ClientInfoCollector
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol

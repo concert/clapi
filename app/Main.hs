@@ -12,11 +12,10 @@ import Network.Simple.TCP hiding (send)
 import Network.Socket (SockAddr(SockAddrCan))
 
 import Clapi.Server (protocolServer, withListen, AddrWithUser(awuAddr))
-import Clapi.SerialisationProtocol (eventSerialiser)
+import Clapi.SerialisationProtocol (serialiser)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Protocol ((<<->))
-import Clapi.Auth (noAuth)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
 
@@ -39,5 +38,5 @@ main =
     withListen HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
-    perClientProto = noAuth <<-> eventSerialiser awuAddr <<-> attributor
+    perClientProto = serialiser <<-> attributor "someone"
     totalProto = shower "total" <<-> namespaceTrackerProtocol apiClaimed mempty <<-> relay baseValuespace

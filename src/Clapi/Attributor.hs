@@ -9,11 +9,9 @@ import Clapi.Types (ToRelayBundle(..), RequestBundle(..), DataUpdateMessage(..))
 attributeDataUpdateMsg :: String -> DataUpdateMessage -> DataUpdateMessage
 attributeDataUpdateMsg u m = m{duMsgAttributee = Just u}
 
-attributor :: Monad m => Protocol (ClientEvent (AddrWithUser i String) ToRelayBundle x) (ClientEvent i ToRelayBundle x) a a m ()
-attributor = forever $ waitThen fwdAttributed sendRev
+attributor :: Monad m => String -> Protocol ToRelayBundle ToRelayBundle a a m ()
+attributor u = forever $ waitThen fwdAttributed sendRev
   where
-    fwdAttributed (ClientData (AddrWithUser i u) (TRBClient (RequestBundle gets dums))) =
-        sendFwd $ ClientData i $ TRBClient $ RequestBundle gets (fmap (attributeDataUpdateMsg u) dums)
-    fwdAttributed (ClientData awu b) = sendFwd $ ClientData (awuAddr awu) b
-    fwdAttributed (ClientConnect awu x) = sendFwd $ ClientConnect (awuAddr awu) x
-    fwdAttributed (ClientDisconnect awu) = sendFwd $ ClientDisconnect (awuAddr awu)
+    fwdAttributed (TRBClient (RequestBundle gets dums)) =
+        sendFwd $ TRBClient $ RequestBundle gets (fmap (attributeDataUpdateMsg u) dums)
+    fwdAttributed (TRBOwner b) = sendFwd $ TRBOwner b
