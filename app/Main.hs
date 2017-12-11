@@ -39,4 +39,4 @@ main =
         protocolServer lsock perClientProto totalProto (return ())
   where
     perClientProto addr = (addr, serialiser <<-> attributor "someone")
-    totalProto = shower "total" <<-> namespaceTrackerProtocol apiClaimed mempty <<-> relay baseValuespace
+    totalProto = shower "total" <<-> namespaceTrackerProtocol (void . return) apiClaimed mempty <<-> relay baseValuespace
