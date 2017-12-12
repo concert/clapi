@@ -15,11 +15,10 @@ import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
-import Clapi.Protocol ((<<->))
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
-
-import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
+import Clapi.RelayApi (relayApiProto)
+import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
 shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
@@ -27,8 +26,9 @@ shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
     s d act ms = liftIO (putStrLn $ tag ++ d ++ (show ms)) >> act ms
 
 -- FIXME: This is owned by something unsendable and we should reflect that
+internalAddr = SockAddrCan 12
 apiClaimed :: Owners SockAddr
-apiClaimed = Map.singleton "api" $ SockAddrCan 12
+apiClaimed = Map.singleton "api" internalAddr
 
 main :: IO ()
 main =
@@ -39,4 +39,4 @@ main =
         protocolServer lsock perClientProto totalProto (return ())
   where
     perClientProto addr = (addr, serialiser <<-> attributor "someone")
-    totalProto = shower "total" <<-> namespaceTrackerProtocol (void . return) apiClaimed mempty <<-> relay baseValuespace
+    totalProto = shower "total" <<-> relayApiProto internalAddr <<-> namespaceTrackerProtocol (void . return) apiClaimed mempty <<-> relay baseValuespace

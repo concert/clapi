@@ -649,11 +649,8 @@ baseValuespace =
     define (metaTypePath Struct) baseStructDef >>=
     define (metaTypePath Array) baseArrayDef >>=
     define versionDefPath versionDef >>=
-    define buildDefPath buildDef >>=
     return . vsAssignType versionPath versionDefPath >>=
     addConst versionPath [ClWord32 0, ClInt32 (-1023)] >>=
-    return . vsAssignType buildPath buildDefPath >>=
-    addConst buildPath [ClString "banana"] >>=
 
     autoDefineStruct
         [pathq|/api/types/base|]
@@ -687,9 +684,3 @@ baseValuespace =
     versionDefPath = [pathq|/api/types/self/version|]
     versionDef = fromJust $ tupleDef
         "t" ["maj", "min"] ["word32", "int32"] mempty
-
-    -- See if making path an isString that errors gives us friendly compile time failures
-    buildPath = [pathq|/api/self/build|]
-    buildDefPath = [pathq|/api/types/self/build|]
-    buildDef = fromJust $ tupleDef
-        "b" ["commit_hash"] ["string[banana]"] mempty
