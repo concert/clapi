@@ -28,6 +28,7 @@ library
                      , Clapi.PerClientProto
                      , Path.Parsing
                      , Clapi.Relay
+                     , Clapi.RelayApi
                      , Clapi.Serialisation
                      , Clapi.Server
                      , Clapi.TaggedData

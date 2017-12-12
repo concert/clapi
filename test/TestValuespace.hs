@@ -60,10 +60,13 @@ testChildTypeValidation =
   do
     -- Set /api/self/version to have the wrong type, but perfectly valid
     -- data for that wrong type:
-    badVs <- vsSet anon IConstant [ClString "banana"] [pathq|/api/self/version|]
+    badVs <- vsSet
+          anon IConstant
+          [ClString "doccy", ClList [], ClList [], ClList [ClEnum 0]]
+          [pathq|/api/self/version|]
           globalSite tconst (ownerUnlock baseValuespace) >>=
         return . vsAssignType [pathq|/api/self/version|]
-            [pathq|/api/types/self/build|]
+            [pathq|/api/types/base/tuple|]
     assertValidationErrors [[pathq|/api/self|]] badVs
 
 
@@ -112,22 +115,22 @@ testXRefValidation =
     -- Change the type of the instance referenced in a cross reference
     vs <- vsWithXRef
     assertValidationErrors [] vs
-    badVs <- vsSet anon IConstant [ClString "/api/self/build"]
+    badVs <- vsSet anon IConstant [ClString "/api/types/base/tuple"]
         [pathq|/api/types/test_value|] globalSite tconst vs
     assertValidationErrors [[pathq|/api/types/test_value|]] badVs
 
 
 testXRefRevalidation =
   do
-    newDef <- structDef "for test" ["build", "version"]
-        [[pathq|/api/types/self/build|], [pathq|/api/types/self/build|]]
-        [Cannot, Cannot]
+    newDef <- structDef "for test" ["version"]
+        [[pathq|/api/types/base/tuple|]]
+        [Cannot]
     badVs <- vsWithXRef >>=
         vsSet anon IConstant (defToValues newDef)
             [pathq|/api/types/containers/self|] globalSite tconst >>=
         return . vsAssignType [pathq|/api/self/version|]
-            [pathq|/api/types/self/build|] >>=
-        vsSet anon IConstant [ClString "banana"] [pathq|/api/self/version|]
+            [pathq|/api/types/base/tuple|] >>=
+        vsSet anon IConstant [ClString "banana", ClList [], ClList [], ClList [ClEnum 0]] [pathq|/api/self/version|]
             globalSite tconst
     assertValidationErrors [[pathq|/api/types/test_value|]] badVs
 
