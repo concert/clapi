@@ -211,7 +211,8 @@ type VsTree = ClapiTree [ClapiValue]
 type DefMap = Map.Map NodePath Definition
 type Validated = ()
 type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
-newtype OwnerUnvalidated = OwnerUnvalidated {_ownerUnvalidatedUvtt :: TaintTracker}
+type ExplicitTypeAssignments = Set.Set TypePath
+data OwnerUnvalidated = OwnerUnvalidated {_ownerUnvalidatedUvtt :: TaintTracker, _ownerUnvalidatedEtas :: ExplicitTypeAssignments}
 data ClientUnvalidated = ClientUnvalidated {_clientUnvalidatedUvtt :: TaintTracker, origVs :: Valuespace Validated}
 data Valuespace v = Valuespace {
     _tree :: VsTree,
@@ -225,7 +226,7 @@ makeFields ''ClientUnvalidated
 makeLenses ''Valuespace
 
 ownerUnlock :: Valuespace Validated -> Valuespace OwnerUnvalidated
-ownerUnlock (Valuespace tr ty x d _) = Valuespace tr ty x d (OwnerUnvalidated mempty)
+ownerUnlock (Valuespace tr ty x d _) = Valuespace tr ty x d (OwnerUnvalidated mempty mempty)
 
 clientUnlock :: Valuespace Validated -> Valuespace ClientUnvalidated
 clientUnlock vs@(Valuespace tr ty x d _) = Valuespace tr ty x d $ ClientUnvalidated mempty vs
@@ -535,12 +536,13 @@ validateClientNodeChildren getOldNode getNewNode np node def = Map.fromList $ ca
     childPaths = map childPath childKeys
     unmodified p = getOldNode p == getNewNode p
 
-vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
+vsAssignType :: (HasUvtt v TaintTracker, HasEtas v ExplicitTypeAssignments) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
     set (unvalidated . uvtt . at np) (Just Nothing) .
     set (unvalidated . uvtt . at (Path.up np)) (Just Nothing) .
+    over (unvalidated . etas) (Set.insert np) .
     taintXRefDependants np
 
 vsDelete ::
