@@ -379,8 +379,6 @@ validateNodeChildren getType' np node (ArrayDef _doc expectedType childLiberty) 
     dups = duplicates nodeKeys
     failDups = when (not . null $ dups) $ fail $
         printf "duplicate array keys %s" (show dups)
-    failTypes bad = when (not . null $ bad) $ fail $
-        printf "bad child types %s" (show bad)
   in do
     mapM_ (eitherFail . parseOnly Path.nameP) nodeKeys
     failDups
