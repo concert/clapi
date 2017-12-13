@@ -64,7 +64,7 @@ deltaToMsg :: VsDelta -> OwnerUpdateMessage
 deltaToMsg (p, d) = either (Left . UMsgAssignType p) (treeDeltaToMsg p) d
 
 modifyRootTypePath :: Valuespace Validated -> Valuespace OwnerUnvalidated -> Valuespace OwnerUnvalidated
-modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
+modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs'''
   where
     rootTypePath = moe "root has no type" $ getType vs' root
     rootTypeNode = loe "root type path missing" rootTypePath $ vsGetTree vs'
@@ -72,6 +72,7 @@ modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
     (i, rootType) = moe "root type deleted" mtp
     rootType' = foldl updateRootType rootType $ mapMaybe nsChange $ vsDiff vs vs'
     vs'' = moe "root type set failed" $ vsSet a i rootType' rootTypePath Nothing z vs'
+    vs''' = vsAssignType root rootTypePath vs''
     z = Time 0 0
     loe s k m = moe s $ Map.lookup k m
     moe s m = maybe (error s) id m

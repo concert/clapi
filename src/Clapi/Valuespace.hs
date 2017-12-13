@@ -25,7 +25,7 @@ import Data.Maybe.Clapi (note)
 import qualified Data.Maybe.Clapi as Maybe
 
 import Clapi.Util (duplicates, eitherFail, partitionDifferenceL)
-import Clapi.Path ((+|))
+import Clapi.Path ((+|), splitBasename)
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Types (
@@ -289,24 +289,40 @@ eitherErrorMap =
     Map.partition isLeft
 
 vsValidate :: Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace Validated)
-vsValidate =
-    rectifyTypes >=> validateChildren >=> validateData >=> markValid
+vsValidate vs =
+    rectifyTypes vs (view (unvalidated . etas) vs) >>= validateChildren >>= validateData >>= markValid
   where
     markValid = return . set unvalidated ()
 
-rectifyTypes ::
-    (HasUvtt v TaintTracker) => Valuespace v -> MonadErrorMap (Valuespace v)
-rectifyTypes vs =
-  do
-    unvalidatedsTypes <-
-        eitherErrorMap . Map.mapWithKey (\np _ -> getType vs np) .
-        view (unvalidated . uvtt) $ vs
-    newDefs <-
-        eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
-    return . over defs (Map.union newDefs) $ vs
+rectifyTypes :: (HasUvtt v TaintTracker) => Valuespace v -> Set.Set NodePath -> MonadErrorMap (Valuespace v)
+rectifyTypes vs explicitPaths = populateDefsFor (Map.keysSet (view (unvalidated . uvtt) vs)) vs
   where
-    toMetaTypes = mapFilterJust . fmap categoriseMetaTypePath
-    toDef np mt = getNode np vs >>= validateTypeNode mt
+    explicitlyAssigned = Map.restrictKeys (fst $ view types vs) explicitPaths
+    populateDefsFor :: Set.Set NodePath -> Valuespace v -> MonadErrorMap (Valuespace v)
+    populateDefsFor deflessNodes vs = if null deflessNodes then (mempty, vs) else let
+        np = head $ Set.toList deflessNodes
+        cftad = getOrBuildDef deflessNodes np
+      in do
+        vs' <- case cftad of
+            Left err -> (Map.fromList [(np, err)], vs)
+            Right (tp, md) -> (mempty, over types (Mos.setDependency np tp) $ over defs (Map.insert tp md) vs)
+        populateDefsFor (Set.fromList $ tail $ Set.toList deflessNodes) vs'
+
+    getOrInferType :: Set.Set NodePath -> NodePath -> CanFail TypePath
+    getOrInferType dirtyPaths np = if Set.member np dirtyPaths
+      then maybe (parentDerivedType dirtyPaths np) Right $ Map.lookup np explicitlyAssigned
+      else getType vs np
+    parentDerivedType :: Set.Set NodePath -> NodePath -> CanFail TypePath
+    parentDerivedType dirtyPaths np = case splitBasename np of
+        Just (pp, cn) -> getOrBuildDef dirtyPaths pp >>= return . snd >>= note "Parent has no type for child" . flip childTypesOf cn
+        Nothing -> error "Hit root deriving parent types, code bad."
+    getOrBuildDef :: Set.Set NodePath -> NodePath -> CanFail (TypePath, Definition)
+    getOrBuildDef dirtyPaths np = do
+        tp <- getOrInferType dirtyPaths np
+        mt <- getOrInferType dirtyPaths tp >>= categoriseMetaTypePath
+        tn <- getNode tp vs
+        d <- validateTypeNode mt tn
+        return (tp, d)
 
 validateTypeNode :: (MonadFail m) => MetaType -> Node -> m Definition
 validateTypeNode metaType node =
@@ -339,11 +355,11 @@ validateChildren vs = do
 
 validateChildKeyTypes ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath ->
-    [Path.Name] -> [TypePath] -> m ()
-validateChildKeyTypes getType' np orderedKeys expectedTypes =
+    [Path.Name] -> (Path.Name -> Maybe TypePath) -> m ()
+validateChildKeyTypes getType' np expectedNames childTypeFor =
   let
     expectedTypeMap = Map.fromList $
-        zip orderedKeys (zip expectedTypes ((np +|) <$> orderedKeys))
+        (\cn -> (cn, (fromJust $ childTypeFor cn, np +| cn))) <$> expectedNames
     failTypes bad = when (not . null $ bad) $ fail $
         printf "bad child types for %s:%s" (show np) (concatMap fmtBct $ Map.assocs bad)
     fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
@@ -354,6 +370,10 @@ validateChildKeyTypes getType' np orderedKeys expectedTypes =
         (traverse . traverse) getType' expectedTypeMap
     failTypes taggedBadTypes
 
+childTypesOf :: Definition -> Path.Name -> Maybe TypePath
+childTypesOf (TupleDef _ _ _ _) = const Nothing
+childTypesOf (StructDef _ names types _) = flip Map.lookup $ Map.fromList $ zip names types
+childTypesOf (ArrayDef _ childType _) = const $ Just childType
 
 validateNodeChildren ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath -> Node ->
@@ -364,7 +384,6 @@ validateNodeChildren _ _ node (TupleDef {}) = case view getKeys node of
 validateNodeChildren getType' np node def@(StructDef {}) =
   let
     expectedKeys = view childNames def
-    expectedTypes = view childTypes def
     nodeKeys = view getKeys node
     (missing, extra) = partitionDifferenceL expectedKeys nodeKeys
     failKeys = fail $
@@ -372,8 +391,8 @@ validateNodeChildren getType' np node def@(StructDef {}) =
         (show nodeKeys)
   in do
     when ((missing, extra) /= mempty) failKeys
-    validateChildKeyTypes getType' np expectedKeys expectedTypes
-validateNodeChildren getType' np node (ArrayDef _doc expectedType childLiberty) =
+    validateChildKeyTypes getType' np expectedKeys (childTypesOf def)
+validateNodeChildren getType' np node def@(ArrayDef {}) =
   let
     nodeKeys = view getKeys node
     dups = duplicates nodeKeys
@@ -382,7 +401,7 @@ validateNodeChildren getType' np node (ArrayDef _doc expectedType childLiberty) 
   in do
     mapM_ (eitherFail . parseOnly Path.nameP) nodeKeys
     failDups
-    validateChildKeyTypes getType' np nodeKeys (repeat expectedType)
+    validateChildKeyTypes getType' np nodeKeys (childTypesOf def)
 
 
 flattenNestedMaps ::
@@ -479,7 +498,7 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
         then (knownErrs, vs')
         else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
     doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
-    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit >>= validateClientChildren >>= validateData
+    doValidateStep vs = rectifyTypes vs mempty >>= checkLibertiesPermit >>= validateClientChildren >>= validateData
     rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
     rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
     dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
