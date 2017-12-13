@@ -5,7 +5,7 @@ module Clapi.Valuespace where
 import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>))
 import Control.Monad.Fail (MonadFail, fail)
-import Control.Monad.Except (ExceptT, throwError, runExceptT)
+import Control.Monad.Except (throwError, runExceptT)
 import Control.Monad.State (State, modify, get, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
@@ -302,25 +302,21 @@ rectifyTypes vs explicitPaths =
     populateDefsFor (Map.keysSet (view (unvalidated . uvtt) vs)) vs
   where
     explicitlyAssigned = Map.restrictKeys (fst $ view types vs) explicitPaths
-    populateDefsFor :: Set.Set NodePath -> Valuespace v -> MonadErrorMap (Valuespace v)
     populateDefsFor deflessNodes vs = if null deflessNodes then (mempty, vs) else let
         np = head $ Set.toList deflessNodes
       in do
-        case runState (runExceptT (getOrBuildDef np)) (deflessNodes, vs) of
+        case runState (runExceptT $ getOrBuildDef np) (deflessNodes, vs) of
             (Left err, (deflessNodes', vs')) -> (Map.fromList [(np, err)], vs)
             (Right _, (deflessNodes', vs')) -> populateDefsFor deflessNodes' vs'
 
-    getOrInferType :: NodePath -> ExceptT String (State (Set.Set NodePath, Valuespace v)) TypePath
     getOrInferType np = do
         (dirtyPaths, vs) <- get
         if Set.member np dirtyPaths
             then maybe (parentDerivedType np) return (Map.lookup np explicitlyAssigned)
             else cfet $ getType vs np
-    parentDerivedType :: NodePath -> ExceptT String (State (Set.Set NodePath, Valuespace v)) TypePath
     parentDerivedType np = case splitBasename np of
         Just (pp, cn) -> getOrBuildDef pp >>= cfet . note "Parent has no child for type" . flip childTypeFor cn
         Nothing -> return $ error "Hit root deriving parent types, code bad."
-    getOrBuildDef :: NodePath -> ExceptT String (State (Set.Set NodePath, Valuespace v)) Definition
     getOrBuildDef np = do
         tp <- getOrInferType np
         mtp <- getOrInferType tp
@@ -335,7 +331,6 @@ rectifyTypes vs explicitPaths =
           in
             (dirtyPaths', vs')
         return md
-    cfet :: Monad b => CanFail a -> ExceptT String b a
     cfet cf = case cf of
         Left err -> throwError err
         Right v -> return v
