@@ -372,7 +372,7 @@ validateChildKeyTypes getType' np expectedNames childTypeFor =
 
 childTypesOf :: Definition -> Path.Name -> Maybe TypePath
 childTypesOf (TupleDef _ _ _ _) = const Nothing
-childTypesOf (StructDef _ names types _) = flip Map.lookup $ Map.fromList $ zip names types
+childTypesOf (StructDef _ names types _) = flip lookup $ zip names types
 childTypesOf (ArrayDef _ childType _) = const $ Just childType
 
 validateNodeChildren ::
