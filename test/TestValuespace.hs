@@ -128,8 +128,6 @@ testXRefRevalidation =
     badVs <- vsWithXRef >>=
         vsSet anon IConstant (defToValues newDef)
             [pathq|/api/types/containers/self|] globalSite tconst >>=
-        return . vsAssignType [pathq|/api/self/version|]
-            [pathq|/api/types/base/tuple|] >>=
         vsSet anon IConstant [ClString "banana", ClList [], ClList [], ClList [ClEnum 0]] [pathq|/api/self/version|]
             globalSite tconst
     assertValidationErrors [[pathq|/api/types/test_value|]] badVs
