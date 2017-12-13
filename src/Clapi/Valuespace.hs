@@ -314,7 +314,7 @@ rectifyTypes vs explicitPaths = populateDefsFor (Map.keysSet (view (unvalidated 
       else getType vs np
     parentDerivedType :: Set.Set NodePath -> NodePath -> CanFail TypePath
     parentDerivedType dirtyPaths np = case splitBasename np of
-        Just (pp, cn) -> getOrBuildDef dirtyPaths pp >>= return . snd >>= note "Parent has no type for child" . flip childTypesOf cn
+        Just (pp, cn) -> getOrBuildDef dirtyPaths pp >>= return . snd >>= note "Parent has no type for child" . flip childTypeFor cn
         Nothing -> error "Hit root deriving parent types, code bad."
     getOrBuildDef :: Set.Set NodePath -> NodePath -> CanFail (TypePath, Definition)
     getOrBuildDef dirtyPaths np = do
@@ -356,10 +356,10 @@ validateChildren vs = do
 validateChildKeyTypes ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath ->
     [Path.Name] -> (Path.Name -> Maybe TypePath) -> m ()
-validateChildKeyTypes getType' np expectedNames childTypeFor =
+validateChildKeyTypes getType' np expectedNames nameToType =
   let
     expectedTypeMap = Map.fromList $
-        (\cn -> (cn, (fromJust $ childTypeFor cn, np +| cn))) <$> expectedNames
+        (\cn -> (cn, (fromJust $ nameToType cn, np +| cn))) <$> expectedNames
     failTypes bad = when (not . null $ bad) $ fail $
         printf "bad child types for %s:%s" (show np) (concatMap fmtBct $ Map.assocs bad)
     fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
@@ -370,10 +370,10 @@ validateChildKeyTypes getType' np expectedNames childTypeFor =
         (traverse . traverse) getType' expectedTypeMap
     failTypes taggedBadTypes
 
-childTypesOf :: Definition -> Path.Name -> Maybe TypePath
-childTypesOf (TupleDef _ _ _ _) = const Nothing
-childTypesOf (StructDef _ names types _) = flip lookup $ zip names types
-childTypesOf (ArrayDef _ childType _) = const $ Just childType
+childTypeFor :: Definition -> Path.Name -> Maybe TypePath
+childTypeFor (TupleDef _ _ _ _) = const Nothing
+childTypeFor (StructDef _ names types _) = flip lookup $ zip names types
+childTypeFor (ArrayDef _ childType _) = const $ Just childType
 
 validateNodeChildren ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath -> Node ->
@@ -391,7 +391,7 @@ validateNodeChildren getType' np node def@(StructDef {}) =
         (show nodeKeys)
   in do
     when ((missing, extra) /= mempty) failKeys
-    validateChildKeyTypes getType' np expectedKeys (childTypesOf def)
+    validateChildKeyTypes getType' np expectedKeys (childTypeFor def)
 validateNodeChildren getType' np node def@(ArrayDef {}) =
   let
     nodeKeys = view getKeys node
@@ -401,7 +401,7 @@ validateNodeChildren getType' np node def@(ArrayDef {}) =
   in do
     mapM_ (eitherFail . parseOnly Path.nameP) nodeKeys
     failDups
-    validateChildKeyTypes getType' np nodeKeys (childTypesOf def)
+    validateChildKeyTypes getType' np nodeKeys (childTypeFor def)
 
 
 flattenNestedMaps ::
