@@ -294,18 +294,22 @@ vsValidate vs =
   where
     markValid = return . set unvalidated ()
 
-rectifyTypes :: (HasUvtt v TaintTracker) => Valuespace v -> Set.Set NodePath -> MonadErrorMap (Valuespace v)
-rectifyTypes vs explicitPaths = populateDefsFor (Map.keysSet (view (unvalidated . uvtt) vs)) vs
+rectifyTypes ::
+    (HasUvtt v TaintTracker) =>
+    Valuespace v -> Set.Set NodePath -> MonadErrorMap (Valuespace v)
+rectifyTypes vs explicitPaths =
+    populateDefsFor (Map.keysSet (view (unvalidated . uvtt) vs)) vs
   where
     explicitlyAssigned = Map.restrictKeys (fst $ view types vs) explicitPaths
     populateDefsFor :: Set.Set NodePath -> Valuespace v -> MonadErrorMap (Valuespace v)
     populateDefsFor deflessNodes vs = if null deflessNodes then (mempty, vs) else let
         np = head $ Set.toList deflessNodes
-        cftad = getOrBuildDef deflessNodes np
       in do
-        vs' <- case cftad of
+        vs' <- case getOrBuildDef deflessNodes np of
             Left err -> (Map.fromList [(np, err)], vs)
-            Right (tp, md) -> (mempty, over types (Mos.setDependency np tp) $ over defs (Map.insert tp md) vs)
+            Right (tp, md) ->
+                ( mempty
+                , over types (Mos.setDependency np tp) $ over defs (Map.insert tp md) vs)
         populateDefsFor (Set.delete np deflessNodes) vs'
 
     getOrInferType :: Set.Set NodePath -> NodePath -> CanFail TypePath
@@ -314,7 +318,10 @@ rectifyTypes vs explicitPaths = populateDefsFor (Map.keysSet (view (unvalidated 
       else getType vs np
     parentDerivedType :: Set.Set NodePath -> NodePath -> CanFail TypePath
     parentDerivedType dirtyPaths np = case splitBasename np of
-        Just (pp, cn) -> getOrBuildDef dirtyPaths pp >>= return . snd >>= note "Parent has no type for child" . flip childTypeFor cn
+        Just (pp, cn) ->
+            getOrBuildDef dirtyPaths pp >>=
+            return . snd >>=
+            note "Parent has no type for child" . flip childTypeFor cn
         Nothing -> error "Hit root deriving parent types, code bad."
     getOrBuildDef :: Set.Set NodePath -> NodePath -> CanFail (TypePath, Definition)
     getOrBuildDef dirtyPaths np = do
