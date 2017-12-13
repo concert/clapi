@@ -306,7 +306,7 @@ rectifyTypes vs explicitPaths = populateDefsFor (Map.keysSet (view (unvalidated 
         vs' <- case cftad of
             Left err -> (Map.fromList [(np, err)], vs)
             Right (tp, md) -> (mempty, over types (Mos.setDependency np tp) $ over defs (Map.insert tp md) vs)
-        populateDefsFor (Set.fromList $ tail $ Set.toList deflessNodes) vs'
+        populateDefsFor (Set.delete np deflessNodes) vs'
 
     getOrInferType :: Set.Set NodePath -> NodePath -> CanFail TypePath
     getOrInferType dirtyPaths np = if Set.member np dirtyPaths
