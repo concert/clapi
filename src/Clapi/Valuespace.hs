@@ -5,7 +5,8 @@ module Clapi.Valuespace where
 import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>))
 import Control.Monad.Fail (MonadFail, fail)
-import Control.Monad.State (State, modify)
+import Control.Monad.Except (ExceptT, throwError, runExceptT)
+import Control.Monad.State (State, modify, get, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust, mapMaybe)
@@ -305,31 +306,39 @@ rectifyTypes vs explicitPaths =
     populateDefsFor deflessNodes vs = if null deflessNodes then (mempty, vs) else let
         np = head $ Set.toList deflessNodes
       in do
-        vs' <- case getOrBuildDef deflessNodes np of
-            Left err -> (Map.fromList [(np, err)], vs)
-            Right (tp, md) ->
-                ( mempty
-                , over types (Mos.setDependency np tp) $ over defs (Map.insert tp md) vs)
-        populateDefsFor (Set.delete np deflessNodes) vs'
+        case runState (runExceptT (getOrBuildDef np)) (deflessNodes, vs) of
+            (Left err, (deflessNodes', vs')) -> (Map.fromList [(np, err)], vs)
+            (Right _, (deflessNodes', vs')) -> populateDefsFor deflessNodes' vs'
 
-    getOrInferType :: Set.Set NodePath -> NodePath -> CanFail TypePath
-    getOrInferType dirtyPaths np = if Set.member np dirtyPaths
-      then maybe (parentDerivedType dirtyPaths np) Right $ Map.lookup np explicitlyAssigned
-      else getType vs np
-    parentDerivedType :: Set.Set NodePath -> NodePath -> CanFail TypePath
-    parentDerivedType dirtyPaths np = case splitBasename np of
-        Just (pp, cn) ->
-            getOrBuildDef dirtyPaths pp >>=
-            return . snd >>=
-            note "Parent has no type for child" . flip childTypeFor cn
-        Nothing -> error "Hit root deriving parent types, code bad."
-    getOrBuildDef :: Set.Set NodePath -> NodePath -> CanFail (TypePath, Definition)
-    getOrBuildDef dirtyPaths np = do
-        tp <- getOrInferType dirtyPaths np
-        mt <- getOrInferType dirtyPaths tp >>= categoriseMetaTypePath
-        tn <- getNode tp vs
-        d <- validateTypeNode mt tn
-        return (tp, d)
+    getOrInferType :: NodePath -> ExceptT String (State (Set.Set NodePath, Valuespace v)) TypePath
+    getOrInferType np = do
+        (dirtyPaths, vs) <- get
+        if Set.member np dirtyPaths
+            then maybe (parentDerivedType np) return (Map.lookup np explicitlyAssigned)
+            else cfet $ getType vs np
+    parentDerivedType :: NodePath -> ExceptT String (State (Set.Set NodePath, Valuespace v)) TypePath
+    parentDerivedType np = case splitBasename np of
+        Just (pp, cn) -> getOrBuildDef pp >>= cfet . note "Parent has no child for type" . flip childTypeFor cn
+        Nothing -> return $ error "Hit root deriving parent types, code bad."
+    getOrBuildDef :: NodePath -> ExceptT String (State (Set.Set NodePath, Valuespace v)) Definition
+    getOrBuildDef np = do
+        tp <- getOrInferType np
+        mtp <- getOrInferType tp
+        mt <- cfet $ categoriseMetaTypePath mtp
+        tn <- cfet $ getNode tp vs
+        md <- cfet $ validateTypeNode mt tn
+        modify $ \(dirtyPaths, vs) -> let
+            vs' =
+                over types (Mos.setDependency tp mtp . Mos.setDependency np tp) $
+                over defs (Map.insert tp md) vs
+            dirtyPaths' = Set.delete tp $ Set.delete np $ dirtyPaths
+          in
+            (dirtyPaths', vs')
+        return md
+    cfet :: Monad b => CanFail a -> ExceptT String b a
+    cfet cf = case cf of
+        Left err -> throwError err
+        Right v -> return v
 
 validateTypeNode :: (MonadFail m) => MetaType -> Node -> m Definition
 validateTypeNode metaType node =
