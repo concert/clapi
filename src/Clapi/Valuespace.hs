@@ -3,10 +3,10 @@
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
-import Control.Monad (liftM, when, (>=>))
+import Control.Monad (liftM, when, (>=>), void)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Except (throwError, runExceptT)
-import Control.Monad.State (State, modify, get, runState)
+import Control.Monad.State (State, modify, get, put, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust, mapMaybe)
@@ -139,6 +139,9 @@ categoriseMetaTypePath mtp
     | mtp == metaTypePath Struct = return Struct
     | mtp == metaTypePath Array = return Array
     | otherwise = fail "Weird metapath!"
+
+isMetaTypePath :: TypePath -> Bool
+isMetaTypePath p = Path.up p == [pathq|/api/types/base|]
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
@@ -298,39 +301,48 @@ vsValidate vs =
 rectifyTypes ::
     (HasUvtt v TaintTracker) =>
     Valuespace v -> Set.Set NodePath -> MonadErrorMap (Valuespace v)
-rectifyTypes vs explicitPaths =
-    populateDefsFor (Map.keysSet (view (unvalidated . uvtt) vs)) vs
+rectifyTypes valSpace explicitPaths =
+    populateDefsFor (Map.keysSet (view (unvalidated . uvtt) valSpace)) valSpace
   where
-    explicitlyAssigned = Map.restrictKeys (fst $ view types vs) explicitPaths
+    explicitlyAssigned = Map.restrictKeys (fst $ view types valSpace) explicitPaths
     populateDefsFor deflessNodes vs = if null deflessNodes then (mempty, vs) else let
         np = head $ Set.toList deflessNodes
       in do
-        case runState (runExceptT $ getOrBuildDef np) (deflessNodes, vs) of
+        case runState (runExceptT $ ensureDeffed np) (deflessNodes, vs) of
             (Left err, (deflessNodes', vs')) -> (Map.fromList [(np, err)], vs)
             (Right _, (deflessNodes', vs')) -> populateDefsFor deflessNodes' vs'
-
     getOrInferType np = do
         (dirtyPaths, vs) <- get
-        if Set.member np dirtyPaths
+        tp <- if Set.member np dirtyPaths
             then maybe (parentDerivedType np) return (Map.lookup np explicitlyAssigned)
             else cfet $ getType vs np
+        put (dirtyPaths, over types (Mos.setDependency np tp) vs)
+        return tp
     parentDerivedType np = case splitBasename np of
         Just (pp, cn) -> getOrBuildDef pp >>= cfet . note "Parent has no child for type" . flip childTypeFor cn
         Nothing -> return $ error "Hit root deriving parent types, code bad."
     getOrBuildDef np = do
         tp <- getOrInferType np
-        mtp <- getOrInferType tp
-        mt <- cfet $ categoriseMetaTypePath mtp
-        tn <- cfet $ getNode tp vs
+        (dirtyPaths, vs) <- get
+        if Set.member tp dirtyPaths
+          then buildDef tp
+          else cfet $ note "Clean type path defless" $ view (defs . at tp) vs
+    buildDef tp = do
+        mt <- getOrInferType tp >>= cfet . categoriseMetaTypePath
+        tn <- get >>= cfet . getNode tp . snd
         md <- cfet $ validateTypeNode mt tn
         modify $ \(dirtyPaths, vs) -> let
-            vs' =
-                over types (Mos.setDependency tp mtp . Mos.setDependency np tp) $
-                over defs (Map.insert tp md) vs
-            dirtyPaths' = Set.delete tp $ Set.delete np $ dirtyPaths
+            vs' = over defs (Map.insert tp md) vs
+            dirtyPaths' = Set.delete tp dirtyPaths
           in
             (dirtyPaths', vs')
         return md
+    ensureDeffed np = do
+        tp <- getOrInferType np
+        if isMetaTypePath tp
+          then void $ buildDef np
+          else return ()
+        modify $ \(dirtyPaths, vs) -> (Set.delete np dirtyPaths, vs)
     cfet cf = case cf of
         Left err -> throwError err
         Right v -> return v
