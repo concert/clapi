@@ -52,9 +52,11 @@ testTupleDef =
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
     fst $ vsValidate $ ownerUnlock baseValuespace
 
-assertValidationErrors errPaths =
-    assertEqual "did not find errors" (Set.fromList errPaths) . Map.keysSet .
-    fst . vsValidate
+assertValidationErrors :: [Path] -> Valuespace OwnerUnvalidated -> IO ()
+assertValidationErrors errPaths vs = let (errs, _vvs) = vsValidate vs in
+    assertEqual
+        (show errs ++ " did not contain expected paths")
+        (Set.fromList errPaths) (Map.keysSet errs)
 
 testChildTypeValidation =
   do
