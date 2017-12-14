@@ -35,8 +35,8 @@ import Clapi.Types (
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
-    treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths,
-    TreeDelta, treeDiff)
+    treeRemove, treeClear, treeSetChildren, getKeys, getSites, unwrapTimePoint,
+    getChildPaths, TreeDelta, treeDiff)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, fromText, enumDesc, validate, desc)
 import Clapi.PathQ
@@ -638,6 +638,12 @@ vsClear ::
 vsClear a np s t =
     tree (treeClear a np s t) . taintData np s t
 
+vsSetChildren ::
+    (MonadFail m, HasUvtt v TaintTracker) =>
+    NodePath -> [Path.Name] -> Valuespace v -> m (Valuespace v)
+vsSetChildren np cns =
+    tree (treeSetChildren np cns) .
+    set (unvalidated . uvtt . at np) (Just Nothing)
 
 globalSite = Nothing
 anon = Nothing

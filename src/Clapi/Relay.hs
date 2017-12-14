@@ -21,7 +21,7 @@ import Clapi.Valuespace (
     Valuespace, vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, OwnerUnvalidated, ownerUnlock, clientUnlock, Validated,
     vsValidate, vsClientValidate, MonadErrorMap, vsGetTree, VsDelta, vsDiff,
-    getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
+    vsSetChildren, getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
 import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Path.Parsing (toText)
@@ -32,7 +32,7 @@ applyDum vs msg = case msg of
     (UMsgAdd p t v i a s) -> vsAdd a i v p s t vs
     (UMsgRemove p t a s) -> vsRemove a p s t vs
     (UMsgClear p t a s) -> vsClear a p s t vs
-    (UMsgSetChildren p c a) -> undefined -- FIXME: backing implementation
+    (UMsgSetChildren p c a) -> vsSetChildren p c vs  -- FIXME: lost attributee
 
 applyOwnerMessage :: (MonadFail m) => Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> m (Valuespace OwnerUnvalidated)
 applyOwnerMessage vs msg = case msg of

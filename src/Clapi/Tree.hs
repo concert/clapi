@@ -152,7 +152,7 @@ treeSetChildren ::
 treeSetChildren path keys' tree
   | null $ duplicates keys' =
       do
-        (node, tree') <- updateLookupM (return . (getKeys .~ keys')) path tree
+        (node, tree') <- updateLookupM (return . (getKeys .~ keys')) path (treeInitNode path tree)
         let (addedKeys, removedKeys) = partitionDifferenceL keys' (view getKeys node)
         let tree'' = foldl (flip treeInitNode) tree' ((path +|) <$> addedKeys)
         foldM (flip treeDeleteNode) tree'' ((path +|) <$> removedKeys)

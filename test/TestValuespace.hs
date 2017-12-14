@@ -19,7 +19,7 @@ import Control.Monad.Fail (MonadFail)
 
 import Helpers (assertFailed)
 
-import Clapi.Path (Path(..))
+import Clapi.Path (Path(..), (+|))
 import Clapi.PathQ
 import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))
 import Clapi.Validator (validate)
@@ -35,6 +35,7 @@ tests = [
     testCase "test type change invalidates" testTypeChangeInvalidation,
     testCase "xref validation" testXRefValidation,
     testCase "xref revalidation" testXRefRevalidation,
+    testCase "array handling" testArray,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -131,6 +132,20 @@ testXRefRevalidation =
         vsSet anon IConstant [ClString "banana", ClList [], ClList [], ClList [ClEnum 0]] [pathq|/api/self/version|]
             globalSite tconst
     assertValidationErrors [[pathq|/api/types/test_value|]] badVs
+
+
+testArray =
+  do
+    newDef <- arrayDef "for test" [pathq|/api/types/self/version|] Cannot
+    (evs, testPath) <- extendedVs newDef
+    assertValidationErrors [[pathq|/api/types|]] evs
+    emptyArrayVs <- vsSetChildren testPath [] evs
+    assertValidationErrors [] emptyArrayVs
+    missingEntryVs <- vsSetChildren testPath ["a"] emptyArrayVs
+    assertValidationErrors [testPath] missingEntryVs
+    filledEntryVs <- vsAdd anon IConstant [ClWord32 0, ClInt32 12]
+        (testPath +| "a") globalSite tconst missingEntryVs
+    assertValidationErrors [] filledEntryVs
 
 
 arbitraryPath :: Gen Path
