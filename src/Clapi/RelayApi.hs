@@ -15,12 +15,13 @@ zt = Time 0 0
 
 sdp = [pathq|/api/types/base/struct|]
 tdp = [pathq|/api/types/base/tuple|]
+adp = [pathq|/api/types/base/array|]
 
 staticAdd :: Path -> [ClapiValue] -> OwnerUpdateMessage
 staticAdd p vs = Right $ UMsgAdd p zt vs IConstant Nothing Nothing
 
-structDefMsgs :: Path -> Text -> [(Text, Path)]-> [OwnerUpdateMessage]
-structDefMsgs sp doc tm = let
+structDefMsg :: Path -> Text -> [(Text, Path)]-> OwnerUpdateMessage
+structDefMsg sp doc tm = let
     liberties = replicate (length tm) $ Enumerated Cannot
     targs =
       [ ClString doc
@@ -28,19 +29,20 @@ structDefMsgs sp doc tm = let
       , toClapiValue $ map (toText . snd) tm
       , toClapiValue liberties]
   in
-    [ Left $ UMsgAssignType sp sdp
-    , staticAdd sp targs]
+    staticAdd sp targs
 
-tupleDefMsgs :: Path -> Text -> [(Text, Text)] -> [OwnerUpdateMessage]
-tupleDefMsgs p d fm = let
+tupleDefMsg :: Path -> Text -> [(Text, Text)] -> OwnerUpdateMessage
+tupleDefMsg p d fm = let
     targs =
       [ ClString d
       , toClapiValue $ map fst fm
       , toClapiValue $ map snd fm
       , toClapiValue [Enumerated ITConstant]]
   in
-    [ Left $ UMsgAssignType p tdp
-    , staticAdd p targs]
+    staticAdd p targs
+
+arrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
+arrayDefMsg p d ct = staticAdd p [ClString d, ClString $ toText ct, toClapiValue $ Enumerated Cannot]
 
 relayApiProto ::
     (Ord i) =>
@@ -51,19 +53,22 @@ relayApiProto ::
         IO ()
 relayApiProto selfAddr = publishRelayApi >> cat
   where
-    publishRelayApi = sendFwd $ ClientData selfAddr $ TRBOwner $ UpdateBundle [] $ concat
-      [ [Left $ UMsgAssignType [pathq|/relay|] rtp]
-      , structDefMsgs rtp "topdoc" [("build", btp), ("types", ttp)]
-      , [Left $ UMsgAssignType [pathq|/relay/types|] ttp]
-      , structDefMsgs ttp "typedoc" [("relay", sdp), ("types", sdp), ("build", tdp)]
-      , tupleDefMsgs btp "builddoc" [("commit_hash", "string[banana]")]
-      , initialData
-      ]
-    initialData =
-      [ staticAdd [pathq|/relay/build|] [ClString "banana"]
-      , Left $ UMsgAssignType [pathq|/relay/build|] btp
+    publishRelayApi = sendFwd $ ClientData selfAddr $ TRBOwner $ UpdateBundle [] $
+      [ Left $ UMsgAssignType [pathq|/relay|] rtp
+      , structDefMsg rtp "topdoc" [("build", btp), ("clients", catp), ("types", ttp)]
+      , Left $ UMsgAssignType [pathq|/relay/types/types|] sdp
+      , Left $ UMsgAssignType [pathq|/relay/types|] ttp
+      , structDefMsg ttp "typedoc" [("relay", sdp), ("types", sdp), ("clients", adp), ("client_info", tdp), ("build", tdp)]
+      , arrayDefMsg catp "clientsdoc" citp
+      , Right $ UMsgSetChildren [pathq|/relay/clients|] ["relay"] Nothing  -- FIXME: should be i
+      , staticAdd [pathq|/relay/clients/relay|] []
+      , tupleDefMsg citp "client info" []
+      , tupleDefMsg btp "builddoc" [("commit_hash", "string[banana]")]
+      , staticAdd [pathq|/relay/build|] [ClString "banana"]
       ]
     rtp = [pathq|/relay/types/relay|]
     btp = [pathq|/relay/types/build|]
     ttp = [pathq|/relay/types/types|]
+    catp = [pathq|/relay/types/clients|]
+    citp = [pathq|/relay/types/client_info|]
     cat = forever $ waitThen sendFwd sendRev
