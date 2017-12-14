@@ -84,32 +84,30 @@ testTypeChangeInvalidation =
     assertValidationErrors [[pathq|/api/self/version|]] badVs
 
 
-vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
-vsWithXRef =
-  do
+extendedVs :: (MonadFail m) => Definition -> m (Valuespace OwnerUnvalidated, Path)
+extendedVs def = do
     newCDef <- structDef "updated for test"
         ["base", "self", "containers", "test_type", "test_value"] [
           [pathq|/api/types/containers/base|],
           [pathq|/api/types/containers/types_self|],
           [pathq|/api/types/containers/containers|],
-          (metaTypePath Tuple),
+          (metaTypePath $ metaType def),
           [pathq|/api/types/test_type|]]
         [Cannot, Cannot, Cannot, Cannot, Cannot]
+    vs <- vsAdd anon IConstant (defToValues def) [pathq|/api/types/test_type|]
+          globalSite tconst (ownerUnlock baseValuespace) >>=
+        vsSet anon IConstant (defToValues newCDef)
+          [pathq|/api/types/containers/types|] globalSite tconst
+    return (vs, [pathq|/api/types/test_value|])
+
+
+vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
+vsWithXRef =
+  do
     newNodeDef <- tupleDef "for test" ["daRef"]
         ["ref[/api/types/self/version]"] mempty
-    vsAdd anon IConstant (defToValues newNodeDef)
-          [pathq|/api/types/test_type|] globalSite tconst
-          (ownerUnlock baseValuespace) >>=
-        vsSet anon IConstant (defToValues newCDef)
-          [pathq|/api/types/containers/types|] globalSite tconst >>=
-        -- FIXME: should infer this from the container
-        return . vsAssignType [pathq|/api/types/test_type|]
-          (metaTypePath Tuple) >>=
-        vsAdd anon IConstant [ClString "/api/self/version"]
-          [pathq|/api/types/test_value|] globalSite tconst >>=
-        -- FIXME: should infer this from the container
-        return . vsAssignType [pathq|/api/types/test_value|]
-          [pathq|/api/types/test_type|]
+    (vs, testPath) <- extendedVs newNodeDef
+    vsAdd anon IConstant [ClString "/api/self/version"] testPath globalSite tconst vs
 
 
 testXRefValidation =
