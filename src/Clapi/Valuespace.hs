@@ -319,29 +319,26 @@ rectifyTypes valSpace explicitPaths =
         put (dirtyPaths, over types (Mos.setDependency np tp) vs)
         return tp
     parentDerivedType np = case splitBasename np of
-        Just (pp, cn) -> getOrBuildDef pp >>= cfet . note "Parent has no child for type" . flip childTypeFor cn
+        Just (pp, cn) -> getOrInferType pp >>= getOrBuildDef >>=
+            cfet . note "Parent has no child for type" . flip childTypeFor cn
         Nothing -> return $ error "Hit root deriving parent types, code bad."
-    getOrBuildDef np = do
-        tp <- getOrInferType np
+    getOrBuildDef tp = do
         (dirtyPaths, vs) <- get
         if Set.member tp dirtyPaths
-          then buildDef tp
+          then do
+            mt <- getOrInferType tp >>= cfet . categoriseMetaTypePath
+            tn <- get >>= cfet . getNode tp . snd
+            md <- cfet $ validateTypeNode mt tn
+            modify $ \(dirtyPaths, vs) -> let
+                vs' = over defs (Map.insert tp md) vs
+                dirtyPaths' = Set.delete tp dirtyPaths
+              in
+                (dirtyPaths', vs')
+            return md
           else cfet $ note "Clean type path defless" $ view (defs . at tp) vs
-    buildDef tp = do
-        mt <- getOrInferType tp >>= cfet . categoriseMetaTypePath
-        tn <- get >>= cfet . getNode tp . snd
-        md <- cfet $ validateTypeNode mt tn
-        modify $ \(dirtyPaths, vs) -> let
-            vs' = over defs (Map.insert tp md) vs
-            dirtyPaths' = Set.delete tp dirtyPaths
-          in
-            (dirtyPaths', vs')
-        return md
     ensureDeffed np = do
         tp <- getOrInferType np
-        if isMetaTypePath tp
-          then void $ buildDef np
-          else return ()
+        when (isMetaTypePath tp) $ void $ getOrBuildDef np
         modify $ \(dirtyPaths, vs) -> (Set.delete np dirtyPaths, vs)
     cfet cf = case cf of
         Left err -> throwError err
