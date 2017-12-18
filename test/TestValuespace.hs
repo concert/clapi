@@ -36,6 +36,7 @@ tests = [
     testCase "xref validation" testXRefValidation,
     testCase "xref revalidation" testXRefRevalidation,
     testCase "array handling" testArray,
+    testCase "cyclic inference" testCyclicInference,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -134,8 +135,7 @@ testXRefRevalidation =
     assertValidationErrors [[pathq|/api/types/test_value|]] badVs
 
 
-testArray =
-  do
+testArray = do
     newDef <- arrayDef "for test" [pathq|/api/types/self/version|] Cannot
     (evs, testPath) <- extendedVs newDef
     assertValidationErrors [[pathq|/api/types|]] evs
@@ -147,6 +147,32 @@ testArray =
         (testPath +| "a") globalSite tconst missingEntryVs
     assertValidationErrors [] filledEntryVs
 
+
+addDef ::
+    MonadFail m => Path -> Definition -> Valuespace OwnerUnvalidated ->
+    m (Valuespace OwnerUnvalidated)
+addDef p d = vsAdd anon IConstant (defToValues d) p globalSite tconst
+
+
+testCyclicInference = do
+    outerType <- structDef "outer" ["defs"] [[pathq|/api/cyclic/defs/cyclic|]] [Cannot]
+    innerType <- structDef "inner" ["cyclic", "defs"] [[pathq|/api/types/base/struct|], [pathq|/api/types/base/struct|]] [Cannot, Cannot]
+    newCDef <- structDef "updated for test"
+        ["self", "types", "cyclic"] [
+          [pathq|/api/types/containers/self|],
+          [pathq|/api/types/containers/types|],
+          [pathq|/api/cyclic/defs/cyclic|]]
+        [Cannot, Cannot, Cannot]
+    badVs <- vsSet anon IConstant (defToValues newCDef)
+          [pathq|/api/types/containers/api|] globalSite tconst
+          (ownerUnlock baseValuespace) >>=
+        addDef [pathq|/api/cyclic/defs/cyclic|] outerType >>=
+        addDef [pathq|/api/cyclic/defs/defs|] innerType -- >>=
+    assertValidationErrors [
+        [pathq|/api/cyclic|], [pathq|/api/cyclic/defs|],
+        [pathq|/api/cyclic/defs/cyclic|], [pathq|/api/cyclic/defs/defs|],
+        [pathq|/api/types/containers/api|]]
+        badVs
 
 arbitraryPath :: Gen Path
 arbitraryPath = fmap Path $ listOf $ fmap T.pack $ listOf1 $ elements ['a'..'z']

@@ -6,7 +6,7 @@ import Prelude hiding (fail)
 import Control.Monad (liftM, when, (>=>), void)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Except (throwError, runExceptT)
-import Control.Monad.State (State, modify, get, put, runState)
+import Control.Monad.State (State, modify, get, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust, mapMaybe)
@@ -309,24 +309,33 @@ rectifyTypes valSpace explicitPaths =
         np = head $ Set.toList deflessNodes
       in do
         case runState (runExceptT $ ensureDeffed np) (deflessNodes, vs) of
-            (Left err, (deflessNodes', vs')) -> (Map.fromList [(np, err)], vs)
+            (Left err, (deflessNodes', vs')) -> (Map.fromList [(np, err)], vs')
             (Right _, (deflessNodes', vs')) -> populateDefsFor deflessNodes' vs'
-    getOrInferType np = do
+    getOrInferType np inProgress = do
         (dirtyPaths, vs) <- get
         tp <- if Set.member np dirtyPaths
-            then maybe (parentDerivedType np) return (Map.lookup np explicitlyAssigned)
+            then maybe
+                (parentDerivedType np $ Set.insert np inProgress)
+                return
+                (Map.lookup np explicitlyAssigned)
             else cfet $ getType vs np
-        put (dirtyPaths, over types (Mos.setDependency np tp) vs)
+        modify $ \(dirtyPaths, vs) -> (dirtyPaths, over types (Mos.setDependency np tp) vs)
         return tp
-    parentDerivedType np = case splitBasename np of
-        Just (pp, cn) -> getOrInferType pp >>= getOrBuildDef >>=
-            cfet . note "Parent has no child for type" . flip childTypeFor cn
+    parentDerivedType np inProgress = case splitBasename np of
+        Just (pp, cn) -> do
+            tp <- getOrInferType pp inProgress
+            when (Set.member tp inProgress) $ throwError $
+                "Cannot infer type of " ++ show np ++
+                " as the meta type of its parent's type " ++ show tp ++
+                " requires this to be resolved."
+            def <- getOrBuildDef tp inProgress
+            cfet $ note ("Parent " ++ show tp ++ " has no child " ++ show cn) $ childTypeFor def cn
         Nothing -> return $ error "Hit root deriving parent types, code bad."
-    getOrBuildDef tp = do
+    getOrBuildDef tp inProgress = do
         (dirtyPaths, vs) <- get
         if Set.member tp dirtyPaths
           then do
-            mt <- getOrInferType tp >>= cfet . categoriseMetaTypePath
+            mt <- getOrInferType tp inProgress >>= cfet . categoriseMetaTypePath
             tn <- get >>= cfet . getNode tp . snd
             md <- cfet $ validateTypeNode mt tn
             modify $ \(dirtyPaths, vs) -> let
@@ -337,8 +346,8 @@ rectifyTypes valSpace explicitPaths =
             return md
           else cfet $ note "Clean type path defless" $ view (defs . at tp) vs
     ensureDeffed np = do
-        tp <- getOrInferType np
-        when (isMetaTypePath tp) $ void $ getOrBuildDef np
+        tp <- getOrInferType np mempty
+        when (isMetaTypePath tp) $ void $ getOrBuildDef np mempty
         modify $ \(dirtyPaths, vs) -> (Set.delete np dirtyPaths, vs)
     cfet cf = case cf of
         Left err -> throwError err
@@ -580,7 +589,8 @@ vsAssignType np tp =
     set (unvalidated . uvtt . at np) (Just Nothing) .
     set (unvalidated . uvtt . at (Path.up np)) (Just Nothing) .
     over (unvalidated . etas) (Set.insert np) .
-    taintXRefDependants np
+    taintXRefDependants np .
+    taintImplicitAdditions np
 
 vsDelete ::
     (MonadFail m, HasUvtt v TaintTracker) => NodePath -> Valuespace v -> m (Valuespace v)
@@ -609,12 +619,18 @@ taintXRefDependants np vs = over (unvalidated . uvtt) (Map.union taintedMap) vs
         fmap Just . Set.foldr (uncurry Mos.insert) mempty .
         Mos.getDependants' np $ view xrefs vs
 
+-- FIXME: Duplicates logic from Tree (about constructing parent nodes)
+taintImplicitAdditions :: (HasUvtt v TaintTracker) => NodePath -> Valuespace v -> Valuespace v
+taintImplicitAdditions np vs = let pp = Path.up np in if pp /= np && Map.notMember pp (view tree vs)
+  then taintImplicitAdditions pp $ set (unvalidated . uvtt . at pp) (Just Nothing) vs
+  else vs
+
 vsAdd ::
     (MonadFail m, HasUvtt v TaintTracker) =>
     Maybe Attributee -> Interpolation -> [ClapiValue] -> NodePath ->
     Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsAdd a i vs np s t =
-    tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np
+    tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np . taintImplicitAdditions np
 
 
 vsSet ::
@@ -622,7 +638,7 @@ vsSet ::
     Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsSet a i vs np s t =
-    tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np
+    tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np . taintImplicitAdditions np
 
 vsRemove ::
     (MonadFail m, HasUvtt v TaintTracker) =>
@@ -643,7 +659,8 @@ vsSetChildren ::
     NodePath -> [Path.Name] -> Valuespace v -> m (Valuespace v)
 vsSetChildren np cns =
     tree (treeSetChildren np cns) .
-    set (unvalidated . uvtt . at np) (Just Nothing)
+    set (unvalidated . uvtt . at np) (Just Nothing) .
+    taintImplicitAdditions np
 
 globalSite = Nothing
 anon = Nothing
