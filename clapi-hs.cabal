@@ -111,13 +111,13 @@ test-suite clapi-hs-test
                      , Data.Map.TestMos
                      , TestSerialisationProtocol
                      , PathSpec
+                     , TypesSpec
                      , TestProtocol
                      , TestNamespaceTracker
                      , TestRelay
                      , TestServer
                      , TestTextSerialisation
                      , TestTree
-                     , TestTypes
                      , TestUtil
                      , TestValidator
                      , TestValuespace
