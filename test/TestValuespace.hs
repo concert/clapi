@@ -19,7 +19,7 @@ import Control.Monad.Fail (MonadFail)
 
 import Helpers (assertFailed)
 
-import Clapi.Path (Path(..))
+import Clapi.Path (Path(..), (+|))
 import Clapi.PathQ
 import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))
 import Clapi.Validator (validate)
@@ -35,6 +35,8 @@ tests = [
     testCase "test type change invalidates" testTypeChangeInvalidation,
     testCase "xref validation" testXRefValidation,
     testCase "xref revalidation" testXRefRevalidation,
+    testCase "array handling" testArray,
+    testCase "cyclic inference" testCyclicInference,
     testProperty "Definition <-> ClapiValue round trip" propDefRoundTrip
     ]
 
@@ -52,9 +54,11 @@ testTupleDef =
 testBaseValuespace = assertEqual "correct base valuespace" mempty $
     fst $ vsValidate $ ownerUnlock baseValuespace
 
-assertValidationErrors errPaths =
-    assertEqual "did not find errors" (Set.fromList errPaths) . Map.keysSet .
-    fst . vsValidate
+assertValidationErrors :: [Path] -> Valuespace OwnerUnvalidated -> IO ()
+assertValidationErrors errPaths vs = let (errs, _vvs) = vsValidate vs in
+    assertEqual
+        (show errs ++ " did not contain expected paths")
+        (Set.fromList errPaths) (Map.keysSet errs)
 
 testChildTypeValidation =
   do
@@ -82,32 +86,30 @@ testTypeChangeInvalidation =
     assertValidationErrors [[pathq|/api/self/version|]] badVs
 
 
-vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
-vsWithXRef =
-  do
+extendedVs :: (MonadFail m) => Definition -> m (Valuespace OwnerUnvalidated, Path)
+extendedVs def = do
     newCDef <- structDef "updated for test"
         ["base", "self", "containers", "test_type", "test_value"] [
           [pathq|/api/types/containers/base|],
           [pathq|/api/types/containers/types_self|],
           [pathq|/api/types/containers/containers|],
-          (metaTypePath Tuple),
+          (metaTypePath $ metaType def),
           [pathq|/api/types/test_type|]]
         [Cannot, Cannot, Cannot, Cannot, Cannot]
+    vs <- vsAdd anon IConstant (defToValues def) [pathq|/api/types/test_type|]
+          globalSite tconst (ownerUnlock baseValuespace) >>=
+        vsSet anon IConstant (defToValues newCDef)
+          [pathq|/api/types/containers/types|] globalSite tconst
+    return (vs, [pathq|/api/types/test_value|])
+
+
+vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
+vsWithXRef =
+  do
     newNodeDef <- tupleDef "for test" ["daRef"]
         ["ref[/api/types/self/version]"] mempty
-    vsAdd anon IConstant (defToValues newNodeDef)
-          [pathq|/api/types/test_type|] globalSite tconst
-          (ownerUnlock baseValuespace) >>=
-        vsSet anon IConstant (defToValues newCDef)
-          [pathq|/api/types/containers/types|] globalSite tconst >>=
-        -- FIXME: should infer this from the container
-        return . vsAssignType [pathq|/api/types/test_type|]
-          (metaTypePath Tuple) >>=
-        vsAdd anon IConstant [ClString "/api/self/version"]
-          [pathq|/api/types/test_value|] globalSite tconst >>=
-        -- FIXME: should infer this from the container
-        return . vsAssignType [pathq|/api/types/test_value|]
-          [pathq|/api/types/test_type|]
+    (vs, testPath) <- extendedVs newNodeDef
+    vsAdd anon IConstant [ClString "/api/self/version"] testPath globalSite tconst vs
 
 
 testXRefValidation =
@@ -128,12 +130,49 @@ testXRefRevalidation =
     badVs <- vsWithXRef >>=
         vsSet anon IConstant (defToValues newDef)
             [pathq|/api/types/containers/self|] globalSite tconst >>=
-        return . vsAssignType [pathq|/api/self/version|]
-            [pathq|/api/types/base/tuple|] >>=
         vsSet anon IConstant [ClString "banana", ClList [], ClList [], ClList [ClEnum 0]] [pathq|/api/self/version|]
             globalSite tconst
     assertValidationErrors [[pathq|/api/types/test_value|]] badVs
 
+
+testArray = do
+    newDef <- arrayDef "for test" [pathq|/api/types/self/version|] Cannot
+    (evs, testPath) <- extendedVs newDef
+    assertValidationErrors [[pathq|/api/types|]] evs
+    emptyArrayVs <- vsSetChildren testPath [] evs
+    assertValidationErrors [] emptyArrayVs
+    missingEntryVs <- vsSetChildren testPath ["a"] emptyArrayVs
+    assertValidationErrors [testPath] missingEntryVs
+    filledEntryVs <- vsAdd anon IConstant [ClWord32 0, ClInt32 12]
+        (testPath +| "a") globalSite tconst missingEntryVs
+    assertValidationErrors [] filledEntryVs
+
+
+addDef ::
+    MonadFail m => Path -> Definition -> Valuespace OwnerUnvalidated ->
+    m (Valuespace OwnerUnvalidated)
+addDef p d = vsAdd anon IConstant (defToValues d) p globalSite tconst
+
+
+testCyclicInference = do
+    outerType <- structDef "outer" ["defs"] [[pathq|/api/cyclic/defs/cyclic|]] [Cannot]
+    innerType <- structDef "inner" ["cyclic", "defs"] [[pathq|/api/types/base/struct|], [pathq|/api/types/base/struct|]] [Cannot, Cannot]
+    newCDef <- structDef "updated for test"
+        ["self", "types", "cyclic"] [
+          [pathq|/api/types/containers/self|],
+          [pathq|/api/types/containers/types|],
+          [pathq|/api/cyclic/defs/cyclic|]]
+        [Cannot, Cannot, Cannot]
+    badVs <- vsSet anon IConstant (defToValues newCDef)
+          [pathq|/api/types/containers/api|] globalSite tconst
+          (ownerUnlock baseValuespace) >>=
+        addDef [pathq|/api/cyclic/defs/cyclic|] outerType >>=
+        addDef [pathq|/api/cyclic/defs/defs|] innerType -- >>=
+    assertValidationErrors [
+        [pathq|/api/cyclic|], [pathq|/api/cyclic/defs|],
+        [pathq|/api/cyclic/defs/cyclic|], [pathq|/api/cyclic/defs/defs|],
+        [pathq|/api/types/containers/api|]]
+        badVs
 
 arbitraryPath :: Gen Path
 arbitraryPath = fmap Path $ listOf $ fmap T.pack $ listOf1 $ elements ['a'..'z']

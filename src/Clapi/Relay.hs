@@ -21,7 +21,7 @@ import Clapi.Valuespace (
     Valuespace, vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, OwnerUnvalidated, ownerUnlock, clientUnlock, Validated,
     vsValidate, vsClientValidate, MonadErrorMap, vsGetTree, VsDelta, vsDiff,
-    getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
+    vsSetChildren, getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
 import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 import Path.Parsing (toText)
@@ -32,7 +32,7 @@ applyDum vs msg = case msg of
     (UMsgAdd p t v i a s) -> vsAdd a i v p s t vs
     (UMsgRemove p t a s) -> vsRemove a p s t vs
     (UMsgClear p t a s) -> vsClear a p s t vs
-    (UMsgSetChildren p c a) -> undefined -- FIXME: backing implementation
+    (UMsgSetChildren p c a) -> vsSetChildren p c vs  -- FIXME: lost attributee
 
 applyOwnerMessage :: (MonadFail m) => Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> m (Valuespace OwnerUnvalidated)
 applyOwnerMessage vs msg = case msg of
@@ -64,7 +64,7 @@ deltaToMsg :: VsDelta -> OwnerUpdateMessage
 deltaToMsg (p, d) = either (Left . UMsgAssignType p) (treeDeltaToMsg p) d
 
 modifyRootTypePath :: Valuespace Validated -> Valuespace OwnerUnvalidated -> Valuespace OwnerUnvalidated
-modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
+modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs'''
   where
     rootTypePath = moe "root has no type" $ getType vs' root
     rootTypeNode = loe "root type path missing" rootTypePath $ vsGetTree vs'
@@ -72,6 +72,7 @@ modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs''
     (i, rootType) = moe "root type deleted" mtp
     rootType' = foldl updateRootType rootType $ mapMaybe nsChange $ vsDiff vs vs'
     vs'' = moe "root type set failed" $ vsSet a i rootType' rootTypePath Nothing z vs'
+    vs''' = vsAssignType root rootTypePath vs''
     z = Time 0 0
     loe s k m = moe s $ Map.lookup k m
     moe s m = maybe (error s) id m

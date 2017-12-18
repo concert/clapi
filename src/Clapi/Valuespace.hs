@@ -3,9 +3,10 @@
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
-import Control.Monad (liftM, when, (>=>))
+import Control.Monad (liftM, when, (>=>), void)
 import Control.Monad.Fail (MonadFail, fail)
-import Control.Monad.State (State, modify)
+import Control.Monad.Except (throwError, runExceptT)
+import Control.Monad.State (State, modify, get, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
 import Data.Maybe (isJust, fromJust, mapMaybe)
@@ -25,7 +26,7 @@ import Data.Maybe.Clapi (note)
 import qualified Data.Maybe.Clapi as Maybe
 
 import Clapi.Util (duplicates, eitherFail, partitionDifferenceL)
-import Clapi.Path ((+|))
+import Clapi.Path ((+|), splitBasename)
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Types (
@@ -34,8 +35,8 @@ import Clapi.Types (
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
-    treeRemove, treeClear, getKeys, getSites, unwrapTimePoint, getChildPaths,
-    TreeDelta, treeDiff)
+    treeRemove, treeClear, treeSetChildren, getKeys, getSites, unwrapTimePoint,
+    getChildPaths, TreeDelta, treeDiff)
 import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator, fromText, enumDesc, validate, desc)
 import Clapi.PathQ
@@ -139,6 +140,9 @@ categoriseMetaTypePath mtp
     | mtp == metaTypePath Array = return Array
     | otherwise = fail "Weird metapath!"
 
+isMetaTypePath :: TypePath -> Bool
+isMetaTypePath p = Path.up p == [pathq|/api/types/base|]
+
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
 listDesc d = T.pack $ printf "list[%v]" d
@@ -211,7 +215,8 @@ type VsTree = ClapiTree [ClapiValue]
 type DefMap = Map.Map NodePath Definition
 type Validated = ()
 type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
-newtype OwnerUnvalidated = OwnerUnvalidated {_ownerUnvalidatedUvtt :: TaintTracker}
+type ExplicitTypeAssignments = Set.Set TypePath
+data OwnerUnvalidated = OwnerUnvalidated {_ownerUnvalidatedUvtt :: TaintTracker, _ownerUnvalidatedEtas :: ExplicitTypeAssignments}
 data ClientUnvalidated = ClientUnvalidated {_clientUnvalidatedUvtt :: TaintTracker, origVs :: Valuespace Validated}
 data Valuespace v = Valuespace {
     _tree :: VsTree,
@@ -225,7 +230,7 @@ makeFields ''ClientUnvalidated
 makeLenses ''Valuespace
 
 ownerUnlock :: Valuespace Validated -> Valuespace OwnerUnvalidated
-ownerUnlock (Valuespace tr ty x d _) = Valuespace tr ty x d (OwnerUnvalidated mempty)
+ownerUnlock (Valuespace tr ty x d _) = Valuespace tr ty x d (OwnerUnvalidated mempty mempty)
 
 clientUnlock :: Valuespace Validated -> Valuespace ClientUnvalidated
 clientUnlock vs@(Valuespace tr ty x d _) = Valuespace tr ty x d $ ClientUnvalidated mempty vs
@@ -288,24 +293,65 @@ eitherErrorMap =
     Map.partition isLeft
 
 vsValidate :: Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace Validated)
-vsValidate =
-    rectifyTypes >=> validateChildren >=> validateData >=> markValid
+vsValidate vs =
+    rectifyTypes vs (view (unvalidated . etas) vs) >>= validateChildren >>= validateData >>= markValid
   where
     markValid = return . set unvalidated ()
 
 rectifyTypes ::
-    (HasUvtt v TaintTracker) => Valuespace v -> MonadErrorMap (Valuespace v)
-rectifyTypes vs =
-  do
-    unvalidatedsTypes <-
-        eitherErrorMap . Map.mapWithKey (\np _ -> getType vs np) .
-        view (unvalidated . uvtt) $ vs
-    newDefs <-
-        eitherErrorMap . Map.mapWithKey toDef $ toMetaTypes unvalidatedsTypes
-    return . over defs (Map.union newDefs) $ vs
+    (HasUvtt v TaintTracker) =>
+    Valuespace v -> Set.Set NodePath -> MonadErrorMap (Valuespace v)
+rectifyTypes valSpace explicitPaths =
+    populateDefsFor (Map.keysSet (view (unvalidated . uvtt) valSpace)) valSpace
   where
-    toMetaTypes = mapFilterJust . fmap categoriseMetaTypePath
-    toDef np mt = getNode np vs >>= validateTypeNode mt
+    explicitlyAssigned = Map.restrictKeys (fst $ view types valSpace) explicitPaths
+    populateDefsFor deflessNodes vs = if null deflessNodes then (mempty, vs) else let
+        np = head $ Set.toList deflessNodes
+      in do
+        case runState (runExceptT $ ensureDeffed np) (deflessNodes, vs) of
+            (Left err, (deflessNodes', vs')) -> (Map.fromList [(np, err)], vs')
+            (Right _, (deflessNodes', vs')) -> populateDefsFor deflessNodes' vs'
+    getOrInferType np inProgress = do
+        (dirtyPaths, vs) <- get
+        tp <- if Set.member np dirtyPaths
+            then maybe
+                (parentDerivedType np $ Set.insert np inProgress)
+                return
+                (Map.lookup np explicitlyAssigned)
+            else cfet $ getType vs np
+        modify $ \(dirtyPaths, vs) -> (dirtyPaths, over types (Mos.setDependency np tp) vs)
+        return tp
+    parentDerivedType np inProgress = case splitBasename np of
+        Just (pp, cn) -> do
+            tp <- getOrInferType pp inProgress
+            when (Set.member tp inProgress) $ throwError $
+                "Cannot infer type of " ++ show np ++
+                " as the meta type of its parent's type " ++ show tp ++
+                " requires this to be resolved."
+            def <- getOrBuildDef tp inProgress
+            cfet $ note ("Parent " ++ show tp ++ " has no child " ++ show cn) $ childTypeFor def cn
+        Nothing -> return $ error "Hit root deriving parent types, code bad."
+    getOrBuildDef tp inProgress = do
+        (dirtyPaths, vs) <- get
+        if Set.member tp dirtyPaths
+          then do
+            mt <- getOrInferType tp inProgress >>= cfet . categoriseMetaTypePath
+            tn <- get >>= cfet . getNode tp . snd
+            md <- cfet $ validateTypeNode mt tn
+            modify $ \(dirtyPaths, vs) -> let
+                vs' = over defs (Map.insert tp md) vs
+                dirtyPaths' = Set.delete tp dirtyPaths
+              in
+                (dirtyPaths', vs')
+            return md
+          else cfet $ note "Clean type path defless" $ view (defs . at tp) vs
+    ensureDeffed np = do
+        tp <- getOrInferType np mempty
+        when (isMetaTypePath tp) $ void $ getOrBuildDef np mempty
+        modify $ \(dirtyPaths, vs) -> (Set.delete np dirtyPaths, vs)
+    cfet cf = case cf of
+        Left err -> throwError err
+        Right v -> return v
 
 validateTypeNode :: (MonadFail m) => MetaType -> Node -> m Definition
 validateTypeNode metaType node =
@@ -338,11 +384,11 @@ validateChildren vs = do
 
 validateChildKeyTypes ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath ->
-    [Path.Name] -> [TypePath] -> m ()
-validateChildKeyTypes getType' np orderedKeys expectedTypes =
+    [Path.Name] -> (Path.Name -> Maybe TypePath) -> m ()
+validateChildKeyTypes getType' np expectedNames nameToType =
   let
     expectedTypeMap = Map.fromList $
-        zip orderedKeys (zip expectedTypes ((np +|) <$> orderedKeys))
+        (\cn -> (cn, (fromJust $ nameToType cn, np +| cn))) <$> expectedNames
     failTypes bad = when (not . null $ bad) $ fail $
         printf "bad child types for %s:%s" (show np) (concatMap fmtBct $ Map.assocs bad)
     fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
@@ -353,6 +399,10 @@ validateChildKeyTypes getType' np orderedKeys expectedTypes =
         (traverse . traverse) getType' expectedTypeMap
     failTypes taggedBadTypes
 
+childTypeFor :: Definition -> Path.Name -> Maybe TypePath
+childTypeFor (TupleDef _ _ _ _) = const Nothing
+childTypeFor (StructDef _ names types _) = flip lookup $ zip names types
+childTypeFor (ArrayDef _ childType _) = const $ Just childType
 
 validateNodeChildren ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath -> Node ->
@@ -363,7 +413,6 @@ validateNodeChildren _ _ node (TupleDef {}) = case view getKeys node of
 validateNodeChildren getType' np node def@(StructDef {}) =
   let
     expectedKeys = view childNames def
-    expectedTypes = view childTypes def
     nodeKeys = view getKeys node
     (missing, extra) = partitionDifferenceL expectedKeys nodeKeys
     failKeys = fail $
@@ -371,19 +420,17 @@ validateNodeChildren getType' np node def@(StructDef {}) =
         (show nodeKeys)
   in do
     when ((missing, extra) /= mempty) failKeys
-    validateChildKeyTypes getType' np expectedKeys expectedTypes
-validateNodeChildren getType' np node (ArrayDef _doc expectedType childLiberty) =
+    validateChildKeyTypes getType' np expectedKeys (childTypeFor def)
+validateNodeChildren getType' np node def@(ArrayDef {}) =
   let
     nodeKeys = view getKeys node
     dups = duplicates nodeKeys
     failDups = when (not . null $ dups) $ fail $
         printf "duplicate array keys %s" (show dups)
-    failTypes bad = when (not . null $ bad) $ fail $
-        printf "bad child types %s" (show bad)
   in do
     mapM_ (eitherFail . parseOnly Path.nameP) nodeKeys
     failDups
-    validateChildKeyTypes getType' np nodeKeys (repeat expectedType)
+    validateChildKeyTypes getType' np nodeKeys (childTypeFor def)
 
 
 flattenNestedMaps ::
@@ -480,7 +527,7 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
         then (knownErrs, vs')
         else doValidate (Map.union knownErrs em) $ rollbackErrs em vs'
     doValidateStep :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
-    doValidateStep vs = rectifyTypes vs >>= checkLibertiesPermit >>= validateClientChildren >>= validateData
+    doValidateStep vs = rectifyTypes vs mempty >>= checkLibertiesPermit >>= validateClientChildren >>= validateData
     rollbackErrs errs vs = foldl rollbackPath vs $ Map.keys errs
     rollbackPath vs p = dupNode p (getType ovs p) (Map.lookup p $ vsGetTree ovs) (fromJust $ vsDelete p vs)
     dupNode p (Just tp) (Just n) vs = over tree (Map.insert p n) $ over types (Mos.setDependency p tp) vs
@@ -535,13 +582,15 @@ validateClientNodeChildren getOldNode getNewNode np node def = Map.fromList $ ca
     childPaths = map childPath childKeys
     unmodified p = getOldNode p == getNewNode p
 
-vsAssignType :: (HasUvtt v TaintTracker) => NodePath -> TypePath -> Valuespace v -> Valuespace v
+vsAssignType :: (HasUvtt v TaintTracker, HasEtas v ExplicitTypeAssignments) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
     set (unvalidated . uvtt . at np) (Just Nothing) .
     set (unvalidated . uvtt . at (Path.up np)) (Just Nothing) .
-    taintXRefDependants np
+    over (unvalidated . etas) (Set.insert np) .
+    taintXRefDependants np .
+    taintImplicitAdditions np
 
 vsDelete ::
     (MonadFail m, HasUvtt v TaintTracker) => NodePath -> Valuespace v -> m (Valuespace v)
@@ -570,12 +619,18 @@ taintXRefDependants np vs = over (unvalidated . uvtt) (Map.union taintedMap) vs
         fmap Just . Set.foldr (uncurry Mos.insert) mempty .
         Mos.getDependants' np $ view xrefs vs
 
+-- FIXME: Duplicates logic from Tree (about constructing parent nodes)
+taintImplicitAdditions :: (HasUvtt v TaintTracker) => NodePath -> Valuespace v -> Valuespace v
+taintImplicitAdditions np vs = let pp = Path.up np in if pp /= np && Map.notMember pp (view tree vs)
+  then taintImplicitAdditions pp $ set (unvalidated . uvtt . at pp) (Just Nothing) vs
+  else vs
+
 vsAdd ::
     (MonadFail m, HasUvtt v TaintTracker) =>
     Maybe Attributee -> Interpolation -> [ClapiValue] -> NodePath ->
     Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsAdd a i vs np s t =
-    tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np
+    tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np . taintImplicitAdditions np
 
 
 vsSet ::
@@ -583,7 +638,7 @@ vsSet ::
     Maybe Attributee -> Interpolation -> [ClapiValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsSet a i vs np s t =
-    tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np
+    tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np . taintImplicitAdditions np
 
 vsRemove ::
     (MonadFail m, HasUvtt v TaintTracker) =>
@@ -599,6 +654,13 @@ vsClear ::
 vsClear a np s t =
     tree (treeClear a np s t) . taintData np s t
 
+vsSetChildren ::
+    (MonadFail m, HasUvtt v TaintTracker) =>
+    NodePath -> [Path.Name] -> Valuespace v -> m (Valuespace v)
+vsSetChildren np cns =
+    tree (treeSetChildren np cns) .
+    set (unvalidated . uvtt . at np) (Just Nothing) .
+    taintImplicitAdditions np
 
 globalSite = Nothing
 anon = Nothing
