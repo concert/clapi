@@ -95,6 +95,7 @@ test-suite clapi-hs-test
                      , clapi-hs
                      , either
                      , HUnit
+                     , hspec
                      , lens
                      , mtl
                      , network
@@ -109,7 +110,7 @@ test-suite clapi-hs-test
   other-modules:       Helpers
                      , Data.Map.TestMos
                      , TestSerialisationProtocol
-                     , TestPath
+                     , PathSpec
                      , TestProtocol
                      , TestNamespaceTracker
                      , TestRelay

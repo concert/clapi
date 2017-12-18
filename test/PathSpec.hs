@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-module TestPath where
+module PathSpec where
 
+import Test.Hspec
+import Test.QuickCheck (property)
 import Test.HUnit ((@=?), assertEqual)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
@@ -19,8 +21,8 @@ import Clapi.Serialisation (encode, decode)
 tests = [
     testCase "roundtrip path" testPathRoundtrip,
     testCase "path fromString" testPathFromString,
-    testCase "up" testUp,
-    testCase "pathQ" testPathQ
+    testCase "up" testUp
+    -- testCase "pathQ" testPathQ
     ]
 
 testPathRoundtrip =
@@ -46,6 +48,9 @@ testUp =
     assertEqual "root up failed" root $ up root
     assertEqual "normal up failed" (Path ["a"]) $ up $ Path ["a", "b"]
 
-testPathQ =
-  do
-    assertEqual "pathq" (Path ["oi", "mate"]) $ [pathq|/oi/mate|]
+spec :: Spec
+spec = do
+    describe "Quasiquoter" $ it "Produces expected path" $ [pathq|/oi/mate|] `shouldBe` Path ["oi", "mate"]
+    describe "Failything" $ it "Fails" $ 1 `shouldBe` 2
+    describe "Props" $ it "isEven" $ property (\x -> even $ (x :: Int) * 2)
+    describe "Faility" $ it "isDubiouslyEven" $ property (\x -> even $ (x :: Int))
