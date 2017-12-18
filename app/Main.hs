@@ -10,6 +10,10 @@ import Control.Exception
 import System.Posix.Signals
 import Network.Simple.TCP hiding (send)
 import Network.Socket (SockAddr(SockAddrCan))
+import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.Text as T
+import Crypto.Hash.SHA256 (hash)
+import qualified Data.ByteString.Base16 as B16
 
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
@@ -17,7 +21,7 @@ import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
-import Clapi.RelayApi (relayApiProto)
+import Clapi.RelayApi (relayApiProto, PathSegmenty(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
@@ -29,6 +33,10 @@ shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
 internalAddr = SockAddrCan 12
 apiClaimed :: Owners SockAddr
 apiClaimed = Map.singleton "api" internalAddr
+
+instance PathSegmenty SockAddr where
+    pathSegmentFor (SockAddrCan _) = "relay"
+    pathSegmentFor clientAddr = T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
 
 main :: IO ()
 main =

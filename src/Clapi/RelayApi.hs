@@ -1,11 +1,12 @@
 {-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
-module Clapi.RelayApi (relayApiProto) where
+module Clapi.RelayApi (relayApiProto, PathSegmenty(..)) where
 import Control.Monad (forever)
-import Data.Text (Text)
+import Data.Text (Text, pack)
+import qualified Data.List as List
 
-import Clapi.Path (Path)
+import Clapi.Path (Path, (+|), Name)
 import Path.Parsing (toText)
-import Clapi.PerClientProto (ClientEvent(ClientData), ServerEvent)
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (ToRelayBundle(..), FromRelayBundle, InterpolationType(ITConstant), Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..), ClapiValue(ClString), Enumerated(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
@@ -44,24 +45,28 @@ tupleDefMsg p d fm = let
 arrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
 arrayDefMsg p d ct = staticAdd p [ClString d, ClString $ toText ct, toClapiValue $ Enumerated Cannot]
 
+class PathSegmenty a where
+    pathSegmentFor :: a -> Name
+
 relayApiProto ::
-    (Ord i) =>
+    (Ord i, PathSegmenty i) =>
     i ->
     Protocol
         (ClientEvent i ToRelayBundle) (ClientEvent i ToRelayBundle)
         (ServerEvent i FromRelayBundle) (ServerEvent i FromRelayBundle)
         IO ()
-relayApiProto selfAddr = publishRelayApi >> cat
+relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
   where
-    publishRelayApi = sendFwd $ ClientData selfAddr $ TRBOwner $ UpdateBundle [] $
+    toNST = sendFwd . ClientData selfAddr . TRBOwner . UpdateBundle []
+    publishRelayApi = toNST
       [ Left $ UMsgAssignType [pathq|/relay|] rtp
       , structDefMsg rtp "topdoc" [("build", btp), ("clients", catp), ("types", ttp)]
       , Left $ UMsgAssignType [pathq|/relay/types/types|] sdp
       , Left $ UMsgAssignType [pathq|/relay/types|] ttp
       , structDefMsg ttp "typedoc" [("relay", sdp), ("types", sdp), ("clients", adp), ("client_info", tdp), ("build", tdp)]
       , arrayDefMsg catp "clientsdoc" citp
-      , Right $ UMsgSetChildren [pathq|/relay/clients|] ["relay"] Nothing  -- FIXME: should be i
-      , staticAdd [pathq|/relay/clients/relay|] []
+      , Right $ UMsgSetChildren cap [ownSeg] Nothing
+      , staticAdd (cap +| ownSeg) []
       , tupleDefMsg citp "client info" []
       , tupleDefMsg btp "builddoc" [("commit_hash", "string[banana]")]
       , staticAdd [pathq|/relay/build|] [ClString "banana"]
@@ -71,4 +76,21 @@ relayApiProto selfAddr = publishRelayApi >> cat
     ttp = [pathq|/relay/types/types|]
     catp = [pathq|/relay/types/clients|]
     citp = [pathq|/relay/types/client_info|]
-    cat = forever $ waitThen sendFwd sendRev
+    cap = [pathq|/relay/clients|]
+    ownSeg = pathSegmentFor selfAddr
+    steadyState cl = waitThen (fwd cl) (rev cl)
+    fwd cl b@(ClientConnect cid) = sendFwd b >> toNST uMsgs >> steadyState cl'
+      where
+        cSeg = pathSegmentFor cid
+        cl' = cSeg : cl
+        uMsgs =
+          [ Right $ UMsgSetChildren cap cl' Nothing
+          , staticAdd (cap +| cSeg) []
+          ]
+    fwd cl b@(ClientData _ _) = sendFwd b >> steadyState cl
+    fwd cl b@(ClientDisconnect cid) = sendFwd b >> removeClient cl cid
+    rev cl b@(ServerData _ _) = sendRev b >> steadyState cl
+    rev cl b@(ServerDisconnect cid) = sendRev b >> removeClient cl cid
+    removeClient cl cid = toNST [ Right $ UMsgSetChildren cap cl' Nothing ] >> steadyState cl'
+      where
+        cl' = List.delete (pathSegmentFor cid) cl
