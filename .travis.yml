@@ -16,7 +16,7 @@ before_install:
 install:
   - stack --no-terminal --install-ghc test --only-dependencies
 script:
-  - stack --no-terminal test --haddock --no-haddock-deps --test-arguments --threads=1
+  - stack --no-terminal test
 notifications:
   email: false
   irc:
