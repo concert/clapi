@@ -3,7 +3,9 @@
 module TypesSpec where
 
 import Test.Hspec
-import Test.QuickCheck (Arbitrary(..), Gen, property, oneof, elements, choose, listOf)
+import Test.QuickCheck
+  ( Arbitrary(..), Gen, property, oneof, elements, choose, listOf
+  , counterexample)
 
 import Control.Monad (replicateM, liftM2)
 import Control.Monad.Fail (MonadFail)
@@ -120,4 +122,4 @@ spec = do
             b = RequestBundle [] ms
             result = encode b >>= decode :: CanFail RequestBundle
           in
-            Right b == result
+            counterexample (show result) $ Right b == result
