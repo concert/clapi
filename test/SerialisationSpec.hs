@@ -5,7 +5,7 @@ module SerialisationSpec where
 
 import Test.Hspec
 import Test.QuickCheck
-  (property, counterexample, Arbitrary(..), oneof, listOf)
+  (property, counterexample, Arbitrary(..), Gen, oneof, listOf)
 import Test.QuickCheck.Instances ()
 
 import Data.ByteString (ByteString)
@@ -15,8 +15,8 @@ import Data.Word (Word16)
 
 import Clapi.Path (Path(..))
 import Clapi.Types
-  ( CanFail, RequestBundle, Interpolation(..), SubMessage(..), RequestBundle(..)
-  , DataUpdateMessage(..))
+  ( CanFail, Time, Attributee, Site, ClapiValue, RequestBundle
+  , Interpolation(..), SubMessage(..), RequestBundle(..), DataUpdateMessage(..))
 import Clapi.Serialisation (encode, decode)
 
 import TypesSpec () -- For Arbitrary instances of ClapiValue
@@ -39,13 +39,15 @@ instance Arbitrary RequestBundle where
     [RequestBundle subs' msgs' | (subs', msgs') <- shrink (subs, msgs)]
 
 instance Arbitrary DataUpdateMessage where
-  arbitrary = UMsgSet
-    <$> arbitrary  -- Path
-    <*> arbitrary  -- Time
-    <*> listOf arbitrary  -- Args
-    <*> arbitrary  -- Interpolation
-    <*> arbitrary  -- Attributee
-    <*> arbitrary  -- Site
+  arbitrary = oneof
+    [ UMsgSet
+      <$> (arbitrary :: Gen Path)
+      <*> (arbitrary :: Gen Time)
+      <*> (listOf arbitrary :: Gen [ClapiValue])
+      <*> (arbitrary :: Gen Interpolation)
+      <*> (arbitrary :: Gen (Maybe Attributee))
+      <*> (arbitrary :: Gen (Maybe Site))
+    ]
   shrink (UMsgSet (Path []) _ [] _ Nothing Nothing) = []
   shrink (UMsgSet p t vs i a s) =
     [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
