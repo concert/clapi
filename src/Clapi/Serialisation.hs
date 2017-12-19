@@ -33,7 +33,8 @@ import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8With)
 
-import Data.Attoparsec.ByteString (Parser, parseOnly, count, anyWord8, satisfy, inClass)
+import Data.Attoparsec.ByteString
+  (Parser, parseOnly, count, anyWord8, satisfy, inClass)
 import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 import qualified Data.Attoparsec.ByteString as APBS
 import qualified Data.Attoparsec.Text as APT
@@ -85,8 +86,9 @@ lenBuilder x
   | otherwise = Left "Too long"
 
 prefixLength :: Builder -> CanFail Builder
-prefixLength b = (lenBuilder byteSize) <<>> (return b) where
-    byteSize = B.length $ toByteString b
+prefixLength b = (lenBuilder byteSize) <<>> (return $ fromByteString bs) where
+    bs = toByteString b
+    byteSize = B.length bs
 
 decodeLengthPrefixedBytes :: (B.ByteString -> b) -> Parser b
 decodeLengthPrefixedBytes decoder = do
@@ -110,7 +112,8 @@ instance Serialisable Char where
 
 instance Serialisable Time where
     builder (Time x y) = return (fromWord64be x <> fromWord32be y)
-    parser = Time <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
+    parser =
+      Time <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
 
 instance Serialisable Path.Path where
     builder = builder . Path.toText
@@ -159,7 +162,9 @@ instance Serialisable ClapiValue where
         cvParser ClTList = ClList <$> (parser :: Parser [ClapiValue])
 
 instance Serialisable a => Serialisable [a] where
-    builder items = (lenBuilder $ length items) <<>> (foldl (<<>>) (return mempty) (map builder items))
+    builder items =
+      (lenBuilder $ length items) <<>>
+      (foldl (<<>>) (return mempty) (map builder items))
     parser = do
         len <- parser :: Parser Word16
         count (fromIntegral len) parser
@@ -169,7 +174,8 @@ tdTaggedParser td p = do
     t <- satisfy (inClass $ tdAllTags td)
     p $ tdTagToEnum td $ chr $ fromIntegral t
 
-tdTaggedBuilder :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
+tdTaggedBuilder
+  :: TaggedData e a -> (a -> CanFail Builder) -> a -> CanFail Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 instance Serialisable UMsgError where
@@ -220,15 +226,23 @@ dumtParser e = case e of
     (DUMTClear) -> rcp UMsgClear
     (DUMTSetChildren) -> UMsgSetChildren <$> parser <*> parser <*> parser
   where
-    sap mt = mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
+    sap mt =
+      mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     rcp mt = mt <$> parser <*> parser <*> parser <*> parser
 
 dumtBuilder m = case m of
-    (UMsgAdd p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
-    (UMsgSet p t v i a s) -> builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>> builder s
-    (UMsgRemove p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
-    (UMsgClear p t a s) -> builder p <<>> builder t <<>> builder a <<>> builder s
-    (UMsgSetChildren p ns a) -> builder p <<>> builder ns <<>> builder a
+    (UMsgAdd p t v i a s) ->
+      builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
+      builder s
+    (UMsgSet p t v i a s) ->
+      builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
+      builder s
+    (UMsgRemove p t a s) ->
+      builder p <<>> builder t <<>> builder a <<>> builder s
+    (UMsgClear p t a s) ->
+      builder p <<>> builder t <<>> builder a <<>> builder s
+    (UMsgSetChildren p ns a) ->
+      builder p <<>> builder ns <<>> builder a
 
 instance Serialisable DataUpdateMessage where
     builder = tdTaggedBuilder dumtTaggedData dumtBuilder
@@ -253,8 +267,11 @@ tumtParser :: TreeUpdateMsgType -> Parser TreeUpdateMessage
 tumtParser (TUMTAssignType) = UMsgAssignType <$> parser <*> parser
 tumtParser (TUMTDelete) = UMsgDelete <$> parser
 
-parseEither :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b) -> Parser (Either a b)
-parseEither td pa pb = tdTaggedParser td $ either (fmap Left . pa) (fmap Right . pb)
+parseEither
+  :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b)
+  -> Parser (Either a b)
+parseEither td pa pb =
+  tdTaggedParser td $ either (fmap Left . pa) (fmap Right . pb)
 
 buildEither ::
     TaggedData (Either e f) (Either a b) ->
@@ -262,7 +279,8 @@ buildEither ::
     (b -> CanFail Builder) ->
     Either a b ->
     CanFail Builder
-buildEither td ba bb eab = (builder $ tdInstanceToTag td eab) <<>> either ba bb eab
+buildEither td ba bb eab =
+  (builder $ tdInstanceToTag td eab) <<>> either ba bb eab
 
 oumTaggedData = eitherTagged tumtTaggedData dumtTaggedData
 

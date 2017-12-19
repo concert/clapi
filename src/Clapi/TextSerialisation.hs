@@ -2,6 +2,7 @@
 module Clapi.TextSerialisation where
 import Data.Monoid
 import Data.Text (Text, unpack, empty)
+import qualified Data.Text as T
 import Control.Applicative ((<|>))
 
 import Blaze.ByteString.Builder (Builder)
@@ -90,12 +91,10 @@ timeParser = do
     f <- decimal
     return $ Time s f
 
-attributeeParser :: Parser (Maybe String)
+attributeeParser :: Parser (Maybe Text)
 attributeeParser = nothingEmpty <$> (char ' ' >> quotedString)
   where
-    nothingEmpty t = case unpack t of
-        "" -> Nothing
-        s -> Just s
+    nothingEmpty t = if T.null t then Nothing else Just t
 
 -- FIXME: copy of the one in Serialisation.hs because parser types differ
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a

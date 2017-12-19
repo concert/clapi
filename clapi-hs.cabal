@@ -101,6 +101,7 @@ test-suite clapi-hs-test
                      , network
                      , network-simple
                      , QuickCheck
+                     , quickcheck-instances
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2
@@ -117,7 +118,7 @@ test-suite clapi-hs-test
                      , ServerSpec
                      , TestTextSerialisation
                      , TestTree
-                     , TestTypes
+                     , TypesSpec
                      , UtilSpec
                      , TestValidator
                      , TestValuespace
