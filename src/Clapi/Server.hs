@@ -87,7 +87,7 @@ _handlePerClient i proto toMainChan sock = do
         (liftToPerClientEvent i proto)
 
 neverDoAnything :: IO a
-neverDoAnything = fix id
+neverDoAnything = forever $ threadDelay maxBound
 
 protocolServer ::
     (Ord i) =>
