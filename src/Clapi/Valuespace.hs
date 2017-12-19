@@ -31,9 +31,10 @@ import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
 import Clapi.Types (
     CanFail, ClapiValue(..), InterpolationType(..), Interpolation(..), Time(..),
-    Enumerated(..), toClapiValue, fromClapiValue, getEnum, interpolationType)
+    Enumerated(..), toClapiValue, fromClapiValue, getEnum, interpolationType,
+    Site, Attributee)
 import Clapi.Tree (
-    ClapiTree, NodePath, TypePath, Site, Attributed, Attributee,
+    ClapiTree, NodePath, TypePath, Attributed,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
     treeRemove, treeClear, treeSetChildren, getKeys, getSites, unwrapTimePoint,
     getChildPaths, TreeDelta, treeDiff)
