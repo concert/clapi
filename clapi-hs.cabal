@@ -116,7 +116,7 @@ test-suite clapi-hs-test
                      , NamespaceTrackerSpec
                      , RelaySpec
                      , ServerSpec
-                     , TestTextSerialisation
+                     , TextSerialisationSpec
                      , TestTree
                      , TypesSpec
                      , UtilSpec
