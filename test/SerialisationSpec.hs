@@ -5,7 +5,7 @@ module SerialisationSpec where
 
 import Test.Hspec
 import Test.QuickCheck
-  (property, counterexample, Arbitrary(..), Gen, oneof, listOf)
+  (property, counterexample, Arbitrary(..), Gen, oneof)
 import Test.QuickCheck.Instances ()
 
 import Data.ByteString (ByteString)
