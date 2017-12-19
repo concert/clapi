@@ -86,8 +86,9 @@ lenBuilder x
   | otherwise = Left "Too long"
 
 prefixLength :: Builder -> CanFail Builder
-prefixLength b = (lenBuilder byteSize) <<>> (return b) where
-    byteSize = B.length $ toByteString b
+prefixLength b = (lenBuilder byteSize) <<>> (return $ fromByteString bs) where
+    bs = toByteString b
+    byteSize = B.length bs
 
 decodeLengthPrefixedBytes :: (B.ByteString -> b) -> Parser b
 decodeLengthPrefixedBytes decoder = do

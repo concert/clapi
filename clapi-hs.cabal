@@ -101,6 +101,7 @@ test-suite clapi-hs-test
                      , network
                      , network-simple
                      , QuickCheck
+                     , quickcheck-instances
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2

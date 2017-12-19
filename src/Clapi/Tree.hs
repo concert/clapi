@@ -42,7 +42,8 @@ import Clapi.Path (
     Name, Path(..), root, isChildOfAny, isChildOf, childPaths, splitBasename,
     pathsAndChildNames, (+|), isParentOf)
 import Path.Parsing (toString)
-import Clapi.Types (CanFail, Time, ClapiValue, Interpolation(..))
+import Clapi.Types
+  (CanFail, Time, ClapiValue, Interpolation(..), Attributee, Site)
 import Data.Maybe.Clapi (note)
 
 import qualified Data.Maybe.Clapi as Maybe
@@ -54,11 +55,9 @@ type NodePath = Path
 type TypePath = Path
 
 type TimePoint a = (Interpolation, a)
-type Attributee = String
 type Attributed a = (Maybe Attributee, a)
 type TimeSeries a = Map.Map Time (Attributed (Maybe (TimePoint a)))
 
-type Site = String
 type SiteMap a = Map.Map (Maybe Site) (TimeSeries a)
 
 data Node a = Node {
@@ -116,14 +115,14 @@ formatTree tree = intercalate "\n" lines
     nodeSiteMapToLines path node =
         pad path $ mconcat $ fmap siteToLines $ Map.toList $ view getSites node
     siteToLines (Nothing, ts) = "global:" : (pad root $ tsToLines ts)
-    siteToLines (Just site, ts) = (site ++ ":") : (pad root $ tsToLines ts)
+    siteToLines (Just site, ts) = (T.unpack site ++ ":") : (pad root $ tsToLines ts)
     tsToLines ts = fmap attpToLine $ Map.toList ts
     attpToLine (t, (att, Nothing)) =
         printf "%s: deleted (%s)" (show t) (showAtt att)
     attpToLine (t, (att, Just (_, a))) =
         printf "%s: %s (%s)" (show t) (show a) (showAtt att)
     showAtt Nothing = "Anon"
-    showAtt (Just att) = att
+    showAtt (Just att) = T.unpack att
 
 treeOrphansAndMissing :: ClapiTree a -> (Set.Set NodePath, Set.Set NodePath)
 treeOrphansAndMissing tree = (orphans, missing)
