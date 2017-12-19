@@ -1,21 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
-module TestValidator where
+module ValidatorSpec where
 
-import Helpers (assertFailed)
-import Test.HUnit (assertEqual)
-import Test.Framework.Providers.HUnit (testCase)
+import Test.Hspec
 
 import Control.Monad (join)
+import Data.Either (isRight, isLeft)
 import qualified Data.Set as Set
 
 import Clapi.Types (ClapiValue(..))
 import Clapi.Tree (treeInitNode)
 import Clapi.Validator (success, fromText, validatorValidator, goValidate)
-
-tests = [
-    -- testCase "ref validator" testRefValidator,
-    testCase "validator validator" testValidatorValidator
-    ]
 
 -- testRefValidator =
 --   do
@@ -30,12 +24,11 @@ tests = [
 --     result cv = join (fv <*> pure tree <*> pure cv)
 
 
-testValidatorValidator =
-  do
-    assertFailed "bad description" $ fromText badValue
-    assertFailed "bad description" $ fromText badValue'
-    assertFailed "bad value" $ validate (ClString badValue)
-    assertEqual "success" success $ validate (ClString "int32")
+spec = describe "Validator" $ do
+    it "Fails on no description" $ fromText badValue `shouldSatisfy` isLeft
+    it "Fails on foo" $ fromText badValue' `shouldSatisfy` isLeft
+    it "Fails from wrapper" $ validate (ClString badValue) `shouldSatisfy` isLeft
+    it "Works in success case" $ validate (ClString "int32") `shouldSatisfy` isRight
   where
     validate = goValidate (validatorValidator "desk") undefined
     badValue = "validator[]"

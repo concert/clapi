@@ -120,7 +120,7 @@ test-suite clapi-hs-test
                      , TestTree
                      , TypesSpec
                      , UtilSpec
-                     , TestValidator
+                     , ValidatorSpec
                      , ValuespaceSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
