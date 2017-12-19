@@ -13,13 +13,13 @@ import qualified Data.ByteString as BS
 import Data.Either (isLeft)
 import Data.Word (Word16)
 
-import Clapi.Path (Path(..))
+import Clapi.Path (Path(..), Name)
 import Clapi.Types
   ( CanFail, Time, Attributee, Site, ClapiValue, RequestBundle
   , Interpolation(..), SubMessage(..), RequestBundle(..), DataUpdateMessage(..))
 import Clapi.Serialisation (encode, decode)
 
-import TypesSpec () -- For Arbitrary instances of ClapiValue
+import TypesSpec (smallListOf, name) -- Incl. Arbitrary instances of ClapiValue
 
 
 instance Arbitrary Interpolation where
@@ -40,13 +40,34 @@ instance Arbitrary RequestBundle where
 
 instance Arbitrary DataUpdateMessage where
   arbitrary = oneof
-    [ UMsgSet
+    [ UMsgAdd
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
       <*> (listOf arbitrary :: Gen [ClapiValue])
       <*> (arbitrary :: Gen Interpolation)
       <*> (arbitrary :: Gen (Maybe Attributee))
       <*> (arbitrary :: Gen (Maybe Site))
+    , UMsgSet
+      <$> (arbitrary :: Gen Path)
+      <*> (arbitrary :: Gen Time)
+      <*> (listOf arbitrary :: Gen [ClapiValue])
+      <*> (arbitrary :: Gen Interpolation)
+      <*> (arbitrary :: Gen (Maybe Attributee))
+      <*> (arbitrary :: Gen (Maybe Site))
+    , UMsgRemove
+      <$> (arbitrary :: Gen Path)
+      <*> (arbitrary :: Gen Time)
+      <*> (arbitrary :: Gen (Maybe Attributee))
+      <*> (arbitrary :: Gen (Maybe Site))
+    , UMsgClear
+      <$> (arbitrary :: Gen Path)
+      <*> (arbitrary :: Gen Time)
+      <*> (arbitrary :: Gen (Maybe Attributee))
+      <*> (arbitrary :: Gen (Maybe Site))
+    , UMsgSetChildren
+      <$> (arbitrary :: Gen Path)
+      <*> (smallListOf name :: Gen [Name])
+      <*> (arbitrary :: Gen (Maybe Attributee))
     ]
   shrink (UMsgSet (Path []) _ [] _ Nothing Nothing) = []
   shrink (UMsgSet p t vs i a s) =
