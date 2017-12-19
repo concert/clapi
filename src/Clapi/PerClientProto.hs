@@ -30,13 +30,14 @@ liftToPerClientEvent ::
          m ()
 liftToPerClientEvent i p = do
     sendFwd $ ClientConnect i
-    FreeT $ go <$> runFreeT p
+    inner p
   where
+    inner p = FreeT $ go <$> runFreeT p
     go (Free (Wait f)) = Free (Wait $ g f)
-    go (Free (SendFwd a next)) = Free (SendFwd (ClientData i a) (liftToPerClientEvent i next))
-    go (Free (SendRev bs next)) = Free (SendRev bs (liftToPerClientEvent i next))
+    go (Free (SendFwd a next)) = Free (SendFwd (ClientData i a) (inner next))
+    go (Free (SendRev bs next)) = Free (SendRev bs (inner next))
     go (Pure x) = Free (SendFwd (ClientDisconnect i) (return x))
     g _ (Fwd "") = sendFwd $ ClientDisconnect i
-    g f (Fwd bs) = liftToPerClientEvent i $ f $ Fwd bs
+    g f (Fwd bs) = inner $ f $ Fwd bs
     g _ (Rev (ServerDisconnect _)) = return ()
-    g f (Rev (ServerData _ b)) = liftToPerClientEvent i $ f $ Rev b
+    g f (Rev (ServerData _ b)) = inner $ f $ Rev b
