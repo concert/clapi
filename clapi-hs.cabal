@@ -110,7 +110,7 @@ test-suite clapi-hs-test
                      , unagi-chan
   other-modules:       Helpers
                      , Data.Map.TestMos
-                     , TestSerialisationProtocol
+                     , SerialisationProtocolSpec
                      , PathSpec
                      , ProtocolSpec
                      , NamespaceTrackerSpec
