@@ -43,14 +43,14 @@ instance Arbitrary DataUpdateMessage where
     [ UMsgAdd
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (listOf arbitrary :: Gen [ClapiValue])
+      <*> (smallListOf arbitrary :: Gen [ClapiValue])
       <*> (arbitrary :: Gen Interpolation)
       <*> (arbitrary :: Gen (Maybe Attributee))
       <*> (arbitrary :: Gen (Maybe Site))
     , UMsgSet
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (listOf arbitrary :: Gen [ClapiValue])
+      <*> (smallListOf arbitrary :: Gen [ClapiValue])
       <*> (arbitrary :: Gen Interpolation)
       <*> (arbitrary :: Gen (Maybe Attributee))
       <*> (arbitrary :: Gen (Maybe Site))
