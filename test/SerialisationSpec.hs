@@ -69,10 +69,20 @@ instance Arbitrary DataUpdateMessage where
       <*> (smallListOf name :: Gen [Name])
       <*> (arbitrary :: Gen (Maybe Attributee))
     ]
+  shrink (UMsgAdd (Path []) _ [] _ Nothing Nothing) = []
+  shrink (UMsgAdd p t vs i a s) =
+    [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
   shrink (UMsgSet (Path []) _ [] _ Nothing Nothing) = []
   shrink (UMsgSet p t vs i a s) =
     [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink _ = []
+  shrink (UMsgRemove (Path []) _ Nothing Nothing) = []
+  shrink (UMsgRemove p t a s) =
+    [UMsgRemove p' t a' s' | (p', a', s') <- shrink (p, a, s)]
+  shrink (UMsgClear p t a s) =
+    [UMsgClear p' t a' s' | (p', a', s') <- shrink (p, a, s)]
+  shrink (UMsgSetChildren (Path []) [] Nothing) = []
+  shrink (UMsgSetChildren p ns a) =
+    [UMsgSetChildren p' ns' a' | (p', ns', a') <- shrink (p, ns, a)]
 
 
 showBytes :: ByteString -> String
