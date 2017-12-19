@@ -94,7 +94,6 @@ test-suite clapi-hs-test
                      , containers
                      , clapi-hs
                      , either
-                     , HUnit
                      , hspec
                      , lens
                      , mtl
@@ -102,9 +101,6 @@ test-suite clapi-hs-test
                      , network-simple
                      , QuickCheck
                      , quickcheck-instances
-                     , test-framework
-                     , test-framework-hunit
-                     , test-framework-quickcheck2
                      , text
                      , transformers
                      , unagi-chan

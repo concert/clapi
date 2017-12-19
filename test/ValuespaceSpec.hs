@@ -15,8 +15,6 @@ import Control.Lens (view)
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import Helpers (assertFailed)
-
 import Clapi.Path (Path(..), (+|))
 import Clapi.PathQ
 import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))

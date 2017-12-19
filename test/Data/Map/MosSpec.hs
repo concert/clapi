@@ -1,7 +1,6 @@
 module Data.Map.MosSpec where
 
 import Test.Hspec
-import Test.HUnit (assertEqual)
 
 import qualified Data.Set as Set
 
