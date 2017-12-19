@@ -57,8 +57,8 @@ relayApiProto ::
         IO ()
 relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
   where
-    toNST = sendFwd . ClientData selfAddr . TRBOwner . UpdateBundle []
-    publishRelayApi = toNST
+    pubUpdate = sendFwd . ClientData selfAddr . TRBOwner . UpdateBundle []
+    publishRelayApi = pubUpdate
       [ Left $ UMsgAssignType [pathq|/relay|] rtp
       , structDefMsg rtp "topdoc" [("build", btp), ("clients", catp), ("types", ttp)]
       , Left $ UMsgAssignType [pathq|/relay/types/types|] sdp
@@ -79,7 +79,7 @@ relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
     cap = [pathq|/relay/clients|]
     ownSeg = pathSegmentFor selfAddr
     steadyState cl = waitThen (fwd cl) (rev cl)
-    fwd cl b@(ClientConnect cid) = sendFwd b >> toNST uMsgs >> steadyState cl'
+    fwd cl b@(ClientConnect cid) = sendFwd b >> pubUpdate uMsgs >> steadyState cl'
       where
         cSeg = pathSegmentFor cid
         cl' = cSeg : cl
@@ -91,6 +91,6 @@ relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
     fwd cl b@(ClientDisconnect cid) = sendFwd b >> removeClient cl cid
     rev cl b@(ServerData _ _) = sendRev b >> steadyState cl
     rev cl b@(ServerDisconnect cid) = sendRev b >> removeClient cl cid
-    removeClient cl cid = toNST [ Right $ UMsgSetChildren cap cl' Nothing ] >> steadyState cl'
+    removeClient cl cid = pubUpdate [ Right $ UMsgSetChildren cap cl' Nothing ] >> steadyState cl'
       where
         cl' = List.delete (pathSegmentFor cid) cl
