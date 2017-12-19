@@ -5,7 +5,7 @@ cache:
   directories:
     - $HOME/.stack
     - $HOME/.local/bin
-    - $HOME/.stack-work
+    - $TRAVIS_BUILD_DIR/.stack-work
 addons:
   apt:
     packages:
@@ -15,7 +15,6 @@ before_install:
   - export PATH=$HOME/.local/bin:$PATH
   - which stack || travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 install:
-  - ls -R
   - stack --no-terminal --install-ghc test --only-dependencies
 script:
   - stack --no-terminal test
