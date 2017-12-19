@@ -3,7 +3,8 @@
 module TypesSpec where
 
 import Test.Hspec
-import Test.QuickCheck (Arbitrary(..), Gen, property, oneof, elements, choose)
+import Test.QuickCheck
+  (Arbitrary(..), Gen, property, oneof, elements, choose, arbitraryBoundedEnum)
 
 import Control.Monad (replicateM, liftM2)
 import Control.Monad.Fail (MonadFail)
@@ -40,7 +41,7 @@ instance Arbitrary Time where
 data TestEnum = One | Two | Three deriving (Bounded, Eq, Show, Ord, Enum)
 
 instance Arbitrary TestEnum where
-  arbitrary = elements [minBound..]
+  arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary ClapiValue where
   arbitrary = oneof gens

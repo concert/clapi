@@ -5,6 +5,7 @@ import Test.Hspec
 import Test.QuickCheck (
     Arbitrary(..), Gen, Property, arbitrary, oneof, elements, listOf, listOf1,
     arbitraryBoundedEnum, vector, vectorOf, property)
+import Test.QuickCheck.Instances ()
 
 import Data.Either (either)
 import qualified Data.Text as T
@@ -24,13 +25,15 @@ import Clapi.Valuespace
     -- metaType, defToValues, valuesToDef, vsValidate, baseValuespace,
     -- vsAssignType, vsSet, anon, tconst, globalSite)
 
+import TypesSpec () -- For Arbitrary instances
+
 spec :: Spec
 spec = do
     describe "tupleDef" $ do
         it "Rejects duplicate names" $
             tupleDef "docs" ["hi", "hi"] ["string", "int32"] mempty `shouldBe`
             Nothing
-        it "Rejects mismatched names and types" $ 
+        it "Rejects mismatched names and types" $
             tupleDef "docs" ["a", "b"] ["int32"] mempty `shouldBe` Nothing
         it "Works in the success case" $ do
             def <- tupleDef "docs" ["a"] ["int32"] mempty
@@ -143,17 +146,11 @@ addDef ::
     m (Valuespace OwnerUnvalidated)
 addDef p d = vsAdd anon IConstant (defToValues d) p globalSite tconst
 
-arbitraryPath :: Gen Path
-arbitraryPath = fmap Path $ listOf $ fmap T.pack $ listOf1 $ elements ['a'..'z']
-
 instance Arbitrary Liberty where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary InterpolationType where
     arbitrary = arbitraryBoundedEnum
-
-instance Arbitrary T.Text where
-    arbitrary = T.pack <$> arbitrary
 
 -- http://stackoverflow.com/questions/9542313/
 infiniteStrings :: Int -> [String]
@@ -168,6 +165,6 @@ instance Arbitrary Definition where
                 (pure $ take n $ T.pack <$> infiniteStrings 4) <*>
                 pure (replicate n "int32") <*> arbitrary,
             structDef <$> arbitrary <*> vector n <*>
-                vectorOf n arbitraryPath <*> vector n,
-            arrayDef <$> arbitrary <*> arbitraryPath <*> arbitrary]
+                vectorOf n (arbitrary :: Gen Path) <*> vector n,
+            arrayDef <$> arbitrary <*> (arbitrary :: Gen Path) <*> arbitrary]
         either error return fDef
