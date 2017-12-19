@@ -113,7 +113,7 @@ test-suite clapi-hs-test
                      , PathSpec
                      , TestProtocol
                      , TestNamespaceTracker
-                     , TestRelay
+                     , RelaySpec
                      , TestServer
                      , TestTextSerialisation
                      , TestTree
