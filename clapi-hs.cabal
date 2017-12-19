@@ -111,7 +111,7 @@ test-suite clapi-hs-test
                      , Data.Map.TestMos
                      , TestSerialisationProtocol
                      , PathSpec
-                     , TestProtocol
+                     , ProtocolSpec
                      , TestNamespaceTracker
                      , RelaySpec
                      , TestServer
