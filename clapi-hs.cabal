@@ -118,7 +118,7 @@ test-suite clapi-hs-test
                      , TestTextSerialisation
                      , TestTree
                      , TestTypes
-                     , TestUtil
+                     , UtilSpec
                      , TestValidator
                      , TestValuespace
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
