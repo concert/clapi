@@ -1,5 +1,5 @@
 {-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
-module Clapi.RelayApi (relayApiProto, PathSegmenty(..)) where
+module Clapi.RelayApi (relayApiProto, PathNameable(..)) where
 import Data.Monoid
 import Control.Monad (forever, when)
 import Data.Text (Text, pack)
@@ -62,11 +62,11 @@ clRef = ClString . toText
 arrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
 arrayDefMsg p d ct = staticAdd p [ClString d, clRef ct, toClapiValue $ Enumerated Cannot]
 
-class PathSegmenty a where
-    pathSegmentFor :: a -> Name
+class PathNameable a where
+    pathNameFor :: a -> Name
 
 relayApiProto ::
-    (Ord i, PathSegmenty i) =>
+    (Ord i, PathNameable i) =>
     MVar (Owners i) ->
     i ->
     Protocol
@@ -109,19 +109,19 @@ relayApiProto ownerMv selfAddr =
     odp = [pathq|/relay/types/owners|]
     oap = [pathq|/relay/owners|]
     refOf p = "ref[" <> toText p <> "]"
-    ownSeg = pathSegmentFor selfAddr
+    ownSeg = pathNameFor selfAddr
     subRoot = toNST $ TRBClient $ RequestBundle [UMsgSubscribe root] []
     steadyState oldOwnerMap ci = waitThen (fwd oldOwnerMap ci) (rev oldOwnerMap ci)
     pubOwnerMap old new = when (Map.keys old /= Map.keys new) $ do
         let scm = Right $ UMsgSetChildren oap (Map.keys new) Nothing
-        let om = (cap +|) . pathSegmentFor <$> Map.difference new old
+        let om = (cap +|) . pathNameFor <$> Map.difference new old
         pubUpdate $ scm : ((\(ownerN, refP) -> staticAdd (oap +| ownerN) [clRef refP]) <$> Map.toList om)
     handleOwnTat oldOwnerMap _ = do
         newOwnerMap <- lift (readMVar ownerMv)
         pubOwnerMap oldOwnerMap newOwnerMap
         return newOwnerMap
     clientPov ci i (FRBClient (UpdateBundle errs oums)) = let
-        theirTime = Map.lookup (pathSegmentFor i) ci
+        theirTime = Map.lookup (pathNameFor i) ci
         smt (Just a) (Just b) = a - b
         relClientInfo [td] = [toClapiValue $ smt (fromClapiValue td) theirTime]
         mkRelative m@(Right (UMsgAdd p t v i a s)) = if up p == cap
@@ -137,14 +137,14 @@ relayApiProto ownerMv selfAddr =
     clientPov _ i ob = ServerData i ob
     fwd oldOwnerMap ci (ClientConnect cid) = sendFwd (ClientConnect cid) >> pubUpdate uMsgs >> steadyState oldOwnerMap ci'
       where
-        cSeg = pathSegmentFor cid
+        cSeg = pathNameFor cid
         ci' = Map.insert cSeg tdZero ci
         uMsgs =
           [ Right $ UMsgSetChildren cap (Map.keys ci') Nothing
           , staticAdd (cap +| cSeg) [toClapiValue tdZero]
           ]
     fwd oldOwnerMap ci (ClientData cid (TimeStamped (theirTime, trb))) = do
-        let cSeg = pathSegmentFor cid
+        let cSeg = pathNameFor cid
         d <- lift $ getDelta theirTime
         let ci' = Map.insert cSeg d ci
         pubUpdate [ staticSet (cap +| cSeg) [toClapiValue d] ]
@@ -161,4 +161,4 @@ relayApiProto ownerMv selfAddr =
         pubUpdate [ Right $ UMsgSetChildren cap (Map.keys ci') Nothing ] >>
         steadyState oldOwnerMap ci'
       where
-        ci' = Map.delete (pathSegmentFor cid) ci
+        ci' = Map.delete (pathNameFor cid) ci

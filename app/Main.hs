@@ -22,7 +22,7 @@ import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
-import Clapi.RelayApi (relayApiProto, PathSegmenty(..))
+import Clapi.RelayApi (relayApiProto, PathNameable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
@@ -35,10 +35,10 @@ internalAddr = SockAddrCan 12
 apiClaimed :: Owners SockAddr
 apiClaimed = Map.singleton "api" internalAddr
 
-instance PathSegmenty SockAddr where
-    pathSegmentFor (SockAddrCan _) = "relay"
+instance PathNameable SockAddr where
+    pathNameFor (SockAddrCan _) = "relay"
     -- NOTE: Do not persist this as it depends on the form of show
-    pathSegmentFor clientAddr = T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
+    pathNameFor clientAddr = T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
 
 main :: IO ()
 main =
