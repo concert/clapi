@@ -21,6 +21,7 @@ import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
+import Clapi.TimeDiffProtocol (tdZero, getDelta)
 
 zt = Time 0 0
 
@@ -69,7 +70,9 @@ relayApiProto ::
         (ClientEvent i (TimeStamped ToRelayBundle)) (ClientEvent i ToRelayBundle)
         (ServerEvent i FromRelayBundle) (ServerEvent i FromRelayBundle)
         IO ()
-relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempty [ownSeg]
+relayApiProto ownerMv selfAddr =
+    publishRelayApi >> subRoot >>
+    steadyState mempty (Map.fromList [(ownSeg, tdZero)])
   where
     toNST = sendFwd . ClientData selfAddr
     pubUpdate = toNST . TRBOwner . UpdateBundle []
@@ -103,7 +106,7 @@ relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempt
     refOf p = "ref[" <> toText p <> "]"
     ownSeg = pathSegmentFor selfAddr
     subRoot = toNST $ TRBClient $ RequestBundle [UMsgSubscribe root] []
-    steadyState oldOwnerMap cl = waitThen (fwd oldOwnerMap cl) (rev oldOwnerMap cl)
+    steadyState oldOwnerMap ci = waitThen (fwd oldOwnerMap ci) (rev oldOwnerMap ci)
     pubOwnerMap old new = when (Map.keys old /= Map.keys new) $ do
         let scm = Right $ UMsgSetChildren oap (Map.keys new) Nothing
         let om = (cap +|) . pathSegmentFor <$> Map.difference new old
@@ -112,21 +115,25 @@ relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempt
         newOwnerMap <- lift (readMVar ownerMv)
         pubOwnerMap oldOwnerMap newOwnerMap
         return newOwnerMap
-    fwd oldOwnerMap cl (ClientConnect cid) = sendFwd (ClientConnect cid) >> pubUpdate uMsgs >> steadyState oldOwnerMap cl'
+    fwd oldOwnerMap ci (ClientConnect cid) = sendFwd (ClientConnect cid) >> pubUpdate uMsgs >> steadyState oldOwnerMap ci'
       where
         cSeg = pathSegmentFor cid
-        cl' = cSeg : cl
+        ci' = Map.insert cSeg tdZero ci
         uMsgs =
-          [ Right $ UMsgSetChildren cap cl' Nothing
+          [ Right $ UMsgSetChildren cap (Map.keys ci') Nothing
           , staticAdd (cap +| cSeg) []
           ]
-    fwd oldOwnerMap cl (ClientData cid (TimeStamped (theirTime, trb))) =
-        sendFwd (ClientData cid trb) >> steadyState oldOwnerMap cl
-    fwd oldOwnerMap cl (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap cl cid
-    rev oldOwnerMap cl b@(ServerData i ob) = do
+    fwd oldOwnerMap ci (ClientData cid (TimeStamped (theirTime, trb))) = do
+        ci' <- (\d -> Map.insert (pathSegmentFor cid) d ci) <$> lift (getDelta theirTime)
+        sendFwd (ClientData cid trb)
+        steadyState oldOwnerMap ci'
+    fwd oldOwnerMap ci (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap ci cid
+    rev oldOwnerMap ci b@(ServerData i ob) = do
         newOwnerMap <- if selfAddr == i then handleOwnTat oldOwnerMap ob else sendRev b >> return oldOwnerMap
-        steadyState newOwnerMap cl
-    rev oldOwnerMap cl b@(ServerDisconnect cid) = sendRev b >> removeClient oldOwnerMap cl cid
-    removeClient oldOwnerMap cl cid = pubUpdate [ Right $ UMsgSetChildren cap cl' Nothing ] >> steadyState oldOwnerMap cl'
+        steadyState newOwnerMap ci
+    rev oldOwnerMap ci b@(ServerDisconnect cid) = sendRev b >> removeClient oldOwnerMap ci cid
+    removeClient oldOwnerMap ci cid =
+        pubUpdate [ Right $ UMsgSetChildren cap (Map.keys ci') Nothing ] >>
+        steadyState oldOwnerMap ci'
       where
-        cl' = List.delete (pathSegmentFor cid) cl
+        ci' = Map.delete (pathSegmentFor cid) ci
