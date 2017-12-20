@@ -1,0 +1,162 @@
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+module ServerSpec where
+
+import Test.Hspec
+
+import Control.Monad (forever)
+import Data.Either (isRight)
+import Data.Maybe (isJust, fromJust)
+import Data.Void
+import System.Timeout
+import Control.Exception (AsyncException(ThreadKilled))
+import qualified Control.Exception as E
+import Control.Concurrent (threadDelay, killThread)
+import Control.Concurrent.Async (
+    async, withAsync, wait, cancel, asyncThreadId, mapConcurrently,
+    replicateConcurrently)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Control.Monad (forever)
+import qualified Network.Socket as NS
+import Network.Socket.ByteString (send, recv)
+import Network.Simple.TCP (HostPreference(HostAny), connect)
+
+import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
+import Clapi.Server (
+  ClientEvent', ServerEvent', doubleCatch, swallowExc, withListen, serve',
+  protocolServer)
+import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
+import Helpers (seconds, timeLimit)
+import qualified Control.Concurrent.Chan.Unagi as Q
+
+spec :: Spec
+spec = do
+    describe "Listen" $ do
+        it "Zero gives port" $ do
+            port <- withListen' (return . getPort . snd)
+            port `shouldSatisfy` (/= 0)
+    describe "doubleCatch" $ do
+        it "Thread terminated on second kill" $ do
+            (i, o) <- Q.newChan
+            dieLock <- newEmptyMVar
+            a <- async $ doubleCatch
+              (swallowExc $
+                Q.writeChan i "soft" >> putMVar dieLock () >> waitAges >> return ())
+              (Q.writeChan i "hard")
+              (Q.writeChan i "body" >> putMVar dieLock () >> waitAges :: IO ())
+            withAsync (killLoop dieLock i $ asyncThreadId a) $ \_ ->
+              do
+                result <- readToList o "hard" []
+                result `shouldBe` ["body", "die", "soft", "die", "hard"]
+                assertAsyncKilled a
+        it "Returns value on success" $ do
+            rv <- doubleCatch (swallowExc undefined) undefined (return 42)
+            rv `shouldBe` 42
+        it "Triggers soft kill first time" $ do
+            rv <- doubleCatch (swallowExc $ return 42) undefined undefined
+            rv `shouldBe` 42
+    describe "Server" $ do
+        it "Waits for children" $ killServerHelper connector0 handler0
+        it "Kills handlers on second kill" $ killServerHelper connector1 handler1
+    describe "Socket closes" $ do
+        it "On termination" $ socketCloseTest return
+        it "On error" $ socketCloseTest $ error "part of test"
+    it "Handles multiple connections" $ testMultipleConnections 42
+    describe "protocolServer" $ do
+        it "Echoes" $ withListen' $ \(lsock, laddr) ->
+          let
+             client word = connect "127.0.0.1" (show $ getPort laddr) $ \(csock, _) ->
+               send csock word >> recv csock 4096
+          in
+            withAsync (protocolServer lsock getCat echo (return ())) $ \_ ->
+              do
+                receivedWords <- mapConcurrently client words
+                receivedWords `shouldBe` words
+        it "Closes gracefully" $ do
+            addrV <- newEmptyMVar
+            a <- async $ withListen' $ \(lsock, laddr) -> do
+                putMVar addrV laddr
+                protocolServer lsock getCat echo (putMVar addrV laddr)
+            let kill = killThread (asyncThreadId a)
+            port <- show . getPort <$> takeMVar addrV
+            timeLimit 0.2 $ connect "127.0.0.1" port $ \(csock, _) -> do
+                let chat = send csock "hello" >> recv csock 4096
+                -- We have to do some initial chatting to ensure the connection has
+                -- been established before we kill the server, otherwise recv can get a
+                -- "connection reset by peer":
+                chat
+                kill
+                takeMVar addrV
+                -- killing once should just have stopped us listening, but not chatting
+                connect "127.0.0.1" port undefined
+                    `E.catch` (\(e :: E.IOException) -> return ())
+                chat
+                kill
+                bs <- recv csock 4096
+                bs `shouldBe` ""
+  where
+    waitAges = threadDelay (seconds 100)
+    readToList o stopAt l = do
+      item <- Q.readChan o
+      if item == stopAt
+        then return . reverse $ item : l
+        else readToList o stopAt $ item : l
+    killLoop m i tId = forever $
+      takeMVar m >> Q.writeChan i "die" >> killThread tId
+    assertAsyncKilled a = do
+        rv <- timeout (seconds 0.1) (E.try $ wait a)
+        rv `shouldBe` (Just $ Left E.ThreadKilled)
+    killServerHelper connector handler = withListen' $ \(lsock, laddr) -> do
+        v <- newEmptyMVar
+        withServe lsock (\(hsock, _) -> handler v hsock) $ \a ->
+         do
+            connect "127.0.0.1" (show . getPort $ laddr) $
+                \(csock, _) -> connector a csock
+            timeLimit 0.1 (takeMVar v)
+            assertAsyncKilled a
+    connector0 a csock = recv csock 4096 >> killThread (asyncThreadId a) >> send csock "bye"
+    handler0 v hsock = send hsock "hello" >> recv hsock 4096 >> putMVar v ()
+    connector1 a csock =
+        let kill = killThread (asyncThreadId a) in
+        recv csock 4096 >> kill >> kill
+    handler1 v hsock = E.catch
+        (send hsock "hello" >> threadDelay (seconds 1))
+        (\E.ThreadKilled -> putMVar v ())
+    socketCloseTest handler = withServe' handler $ \port-> do
+        mbs <- timeout (seconds 2) $
+            connect "127.0.0.1" port
+                (\(csock, _) -> recv csock 4096)
+        mbs `shouldBe` (Just "")
+    testMultipleConnections n = withServe'
+        (\(hsock, _) -> send hsock "hello") $
+        \port -> do
+            res <- replicateConcurrently n $ timeout (seconds 2) $
+                connect "127.0.0.1" port (\(csock, _) -> recv csock 4096)
+            replicate n (Just "hello") `shouldBe` res
+    words = ["hello", "world", "llama", "train"]
+
+getPort :: NS.SockAddr -> NS.PortNumber
+getPort (NS.SockAddrInet port _) = port
+getPort (NS.SockAddrInet6 port _ _ _) = port
+
+withListen' = withListen HostAny "0"
+withServe lsock handler = E.bracket (async $ serve' lsock handler (return ())) cancel
+withServe' handler io =
+    withListen' $ \(lsock, laddr) ->
+        withServe lsock handler $ \_ ->
+            io (show . getPort $ laddr)
+
+cat :: (Monad m) => Protocol a a b b m ()
+cat = forever $ waitThen sendFwd sendRev
+
+echo :: (Monad m) =>
+  Protocol
+    (ClientEvent' a)
+    Void
+    (ServerEvent' a)
+    Void m ()
+echo = forever $ waitThen boing undefined
+  where
+    boing (ClientData addr a) = sendRev (ServerData addr a)
+    boing _ = return ()
+
+getCat addr = (addr, cat)

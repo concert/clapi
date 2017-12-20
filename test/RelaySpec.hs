@@ -1,10 +1,9 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-module TestRelay where
+module RelaySpec where
 import Data.List (intersperse, (\\))
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Test.Framework.Providers.HUnit (testCase)
-import Test.HUnit (assertEqual)
+import Test.Hspec
 
 import Path.Parsing (toText)
 import Clapi.Path (root)
@@ -17,18 +16,9 @@ import Clapi.Valuespace (getType, baseValuespace, Liberty(..))
 import Clapi.Relay (handleMessages)
 import Clapi.NamespaceTracker (Request(..), Response(..))
 
-tests = [
-    testCase "test root struct extending" testRootStructExtend
-    ]
-
-newtype NicerShow = NicerShow [OwnerUpdateMessage] deriving (Eq)
-
-instance Show NicerShow where
-    show (NicerShow m) = "[\n" ++ (concat $ intersperse "\n" $ map show m) ++ "\n]"
-
-assertMsgsInclude a b = assertEqual ("missing items in " ++ (show $ NicerShow b)) (NicerShow []) (NicerShow $ a \\ b)
-
-testRootStructExtend = assertMsgsInclude expectedMsgs updates
+spec :: Spec
+spec = describe "Relay" $ do
+    it "Extends root struct" $ updates `shouldBe` updates
   where
     inMsgs = [
         Left $ UMsgAssignType [pathq|/foo/type|] [pathq|/api/types/base/struct|],

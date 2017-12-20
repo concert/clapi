@@ -2,6 +2,7 @@
 module Clapi.Types
     (
         CanFail,
+        Attributee, Site,
         ClapiTypeEnum(..),
         clapiValueType,
         Time(..),
@@ -43,8 +44,8 @@ type CanFail a = Either String a
 instance MonadFail (Either String) where
     fail s = Left s
 
-type Attributee = String
-type Site = String
+type Attributee = T.Text
+type Site = T.Text
 
 class UMsg a where
    uMsgPath :: a -> Path

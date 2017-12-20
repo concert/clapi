@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-module TestTree where
+module TreeSpec where
 
-import Helpers (assertFailed)
+import Test.Hspec
 import Data.Either (isRight)
 import Data.Foldable (toList)
 import Control.Monad (liftM, liftM2, replicateM)
@@ -9,9 +9,6 @@ import Test.QuickCheck (
     Gen, Arbitrary(..), arbitrary, (==>), forAll, choose, elements, shuffle,
     oneof, frequency, listOf, vectorOf, sublistOf, counterexample, property)
 import Test.QuickCheck.Property (Result(..), Property(..))
-import Test.HUnit (assertEqual)
-import Test.Framework.Providers.HUnit (testCase)
-import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -28,15 +25,22 @@ import Clapi.Tree (
     -- treeAdd, treeSet, treeDelete, treeDiff, treeApply
     )
 
-tests = [
-    -- testProperty "treeDiff round trip" propTreeDiffRoundTrip
-    testCase "treeInitNode" testInitNode,
-    testCase "treeDeleteNode" testDeleteNode
-    ]
+spec :: Spec
+spec = do
+    describe "Init node" $ do
+        it "Remains contiguous" $ do
+            assertContiguous t0
+            assertContiguous t1
+            assertContiguous t2
+            assertContiguous t3
+        it "Is as expected after 1 init" $
+            t1 `shouldBe` expectedT1
+        it "Is as expected after 3 inits" $
+            t3 `shouldBe` expectedT3
+    it "Deletes recursively" $
+        treeDeleteNode [pathq|/a/d|] t3 `shouldReturn` t1
 
-
-assertContiguous =
-    assertEqual "orphans/missing" (mempty, mempty) . treeOrphansAndMissing
+assertContiguous = flip shouldBe (mempty, mempty) . treeOrphansAndMissing
 
 t0 = mempty :: ClapiTree ()
 t1 = treeInitNode [pathq|/a/b/c|] t0
@@ -44,32 +48,17 @@ t2 = treeInitNode [pathq|/a/d/e|] t1
 t3 = treeInitNode [pathq|/a/d|] t2
 
 expectedT1 = Map.fromList [
-      (root, Node ["a"] mempty),
-      ([pathq|/a|], Node ["b"] mempty),
-      ([pathq|/a/b|], Node ["c"] mempty),
-      ([pathq|/a/b/c|], Node [] mempty)] :: ClapiTree ()
-
-testInitNode =
-   do
-    assertContiguous t1
-    assertEqual "after one init" expectedT1 t1
-    assertContiguous t2
-    assertContiguous t3
-    assertEqual "after two inits" expectedT3 t3
-  where
-    expectedT3 = Map.fromList [
-      (root, Node ["a"] mempty),
-      ([pathq|/a|], Node ["b", "d"] mempty),
-      ([pathq|/a/b|], Node ["c"] mempty),
-      ([pathq|/a/b/c|], Node [] mempty),
-      ([pathq|/a/d|], Node ["e"] mempty),
-      ([pathq|/a/d/e|], Node [] mempty)] :: ClapiTree ()
-
-
-testDeleteNode =
-  do
-    t4 <- treeDeleteNode [pathq|/a/d|] t3
-    assertEqual "after delete" t1 t4
+    (root, Node ["a"] mempty),
+    ([pathq|/a|], Node ["b"] mempty),
+    ([pathq|/a/b|], Node ["c"] mempty),
+    ([pathq|/a/b/c|], Node [] mempty)] :: ClapiTree ()
+expectedT3 = Map.fromList [
+    (root, Node ["a"] mempty),
+    ([pathq|/a|], Node ["b", "d"] mempty),
+    ([pathq|/a/b|], Node ["c"] mempty),
+    ([pathq|/a/b/c|], Node [] mempty),
+    ([pathq|/a/d|], Node ["e"] mempty),
+    ([pathq|/a/d/e|], Node [] mempty)] :: ClapiTree ()
 
 
 -- instance Arbitrary Time where
