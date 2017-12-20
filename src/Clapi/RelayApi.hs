@@ -21,7 +21,7 @@ import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
-import Clapi.TimeDiffProtocol (tdZero, getDelta)
+import Clapi.TimeDiffProtocol (tdZero, getDelta, tdClVal)
 
 zt = Time 0 0
 
@@ -31,6 +31,9 @@ adp = [pathq|/api/types/base/array|]
 
 staticAdd :: Path -> [ClapiValue] -> OwnerUpdateMessage
 staticAdd p vs = Right $ UMsgAdd p zt vs IConstant Nothing Nothing
+
+staticSet :: Path -> [ClapiValue] -> OwnerUpdateMessage
+staticSet p vs = Right $ UMsgSet p zt vs IConstant Nothing Nothing
 
 structDefMsg :: Path -> Text -> [(Text, Path)]-> OwnerUpdateMessage
 structDefMsg sp doc tm = let
@@ -86,8 +89,8 @@ relayApiProto ownerMv selfAddr =
         ("owner_info", tdp), ("owners", adp), ("build", tdp)]
       , arrayDefMsg catp "clientsdoc" citp
       , Right $ UMsgSetChildren cap [ownSeg] Nothing
-      , staticAdd (cap +| ownSeg) []
-      , tupleDefMsg citp "client info" []
+      , staticAdd (cap +| ownSeg) [tdClVal tdZero]
+      , tupleDefMsg citp "client info" [("clock_diff", "float")]
       , arrayDefMsg odp "ownersdoc" oidp
       , tupleDefMsg oidp "owner info" [("owner", refOf citp)]
       , Right $ UMsgSetChildren oap [] Nothing
@@ -121,10 +124,13 @@ relayApiProto ownerMv selfAddr =
         ci' = Map.insert cSeg tdZero ci
         uMsgs =
           [ Right $ UMsgSetChildren cap (Map.keys ci') Nothing
-          , staticAdd (cap +| cSeg) []
+          , staticAdd (cap +| cSeg) [tdClVal tdZero]
           ]
     fwd oldOwnerMap ci (ClientData cid (TimeStamped (theirTime, trb))) = do
-        ci' <- (\d -> Map.insert (pathSegmentFor cid) d ci) <$> lift (getDelta theirTime)
+        let cSeg = pathSegmentFor cid
+        d <- lift $ getDelta theirTime
+        let ci' = Map.insert cSeg d ci
+        pubUpdate [ staticSet (cap +| cSeg) [tdClVal d] ]
         sendFwd (ClientData cid trb)
         steadyState oldOwnerMap ci'
     fwd oldOwnerMap ci (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap ci cid

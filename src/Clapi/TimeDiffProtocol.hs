@@ -1,10 +1,10 @@
-module Clapi.TimeDiffProtocol (TimeDelta, timeDiffProto, getDelta, tdZero) where
+module Clapi.TimeDiffProtocol (TimeDelta, timeDiffProto, getDelta, tdZero, tdClVal) where
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import Data.Word (Word32)
 import System.Clock (Clock(Monotonic), TimeSpec, getTime, toNanoSecs)
 
-import Clapi.Types (Time(..), TimeStamped(..))
+import Clapi.Types (Time(..), TimeStamped(..), ClapiValue(ClFloat))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 
@@ -21,6 +21,9 @@ tdZero = TimeDelta 0.0
 
 getDelta :: Time -> IO TimeDelta
 getDelta theirTime = (\now -> TimeDelta $ now - (timeToFloat theirTime)) <$> getMonotonicTimeFloat
+
+tdClVal :: TimeDelta -> ClapiValue
+tdClVal (TimeDelta f) = ClFloat f
 
 timeDiffProto ::
     Monad m =>
