@@ -81,21 +81,26 @@ relayApiProto ownerMv selfAddr =
     pubUpdate = toNST . TRBOwner . UpdateBundle []
     publishRelayApi = pubUpdate
       [ Left $ UMsgAssignType [pathq|/relay|] rtp
-      , structDefMsg rtp "topdoc" [("build", btp), ("clients", catp), ("types", ttp), ("owners", odp)]
+      , structDefMsg rtp "topdoc" [
+        ("build", btp), ("self", selfTP), ("clients", catp), ("types", ttp),
+        ("owners", odp)]
       , Left $ UMsgAssignType [pathq|/relay/types/types|] sdp
       , Left $ UMsgAssignType [pathq|/relay/types|] ttp
       , structDefMsg ttp "typedoc" [
-        ("relay", sdp), ("types", sdp), ("clients", adp), ("client_info", tdp),
-        ("owner_info", tdp), ("owners", adp), ("build", tdp)]
+        ("relay", sdp), ("types", sdp), ("self", tdp), ("clients", adp),
+        ("client_info", tdp), ("owner_info", tdp), ("owners", adp),
+        ("build", tdp)]
       , arrayDefMsg catp "clientsdoc" citp
       , Right $ UMsgSetChildren cap [ownSeg] Nothing
       , staticAdd (cap +| ownSeg) [toClapiValue tdZero]
       , tupleDefMsg citp
-          "Info about connected clients (clock_diff is in seconds)"
-          [("clock_diff", "float")]
+        "Info about connected clients (clock_diff is in seconds)"
+        [("clock_diff", "float")]
       , arrayDefMsg odp "ownersdoc" oidp
       , tupleDefMsg oidp "owner info" [("owner", refOf citp)]
       , Right $ UMsgSetChildren oap [] Nothing
+      , tupleDefMsg selfTP "Which client are you" [("info", refOf citp)]
+      , staticAdd selfP [clRef $ cap +| ownSeg]
       , tupleDefMsg btp "builddoc" [("commit_hash", "string[banana]")]
       , staticAdd [pathq|/relay/build|] [ClString "banana"]
       ]
@@ -108,6 +113,8 @@ relayApiProto ownerMv selfAddr =
     oidp = [pathq|/relay/types/owner_info|]
     odp = [pathq|/relay/types/owners|]
     oap = [pathq|/relay/owners|]
+    selfTP = [pathq|/relay/types/self|]
+    selfP = [pathq|/relay/self|]
     refOf p = "ref[" <> toText p <> "]"
     ownSeg = pathNameFor selfAddr
     subRoot = toNST $ TRBClient $ RequestBundle [UMsgSubscribe root] []
@@ -121,15 +128,17 @@ relayApiProto ownerMv selfAddr =
         pubOwnerMap oldOwnerMap newOwnerMap
         return newOwnerMap
     clientPov ci i (FRBClient (UpdateBundle errs oums)) = let
-        theirTime = Map.lookup (pathNameFor i) ci
+        theirSeg = pathNameFor i
+        theirTime = Map.lookup theirSeg ci
         smt (Just a) (Just b) = a - b
-        relClientInfo [td] = [toClapiValue $ smt (fromClapiValue td) theirTime]
-        mkRelative m@(Right (UMsgAdd p t v i a s)) = if up p == cap
-          then Right $ UMsgAdd p t (relClientInfo v) i a s
-          else m
-        mkRelative m@(Right (UMsgSet p t v i a s)) = if up p == cap
-          then Right $ UMsgSet p t (relClientInfo v) i a s
-          else m
+        relClientInfo p = if p == selfP
+            then \_ -> [clRef $ cap +| theirSeg]
+            else if up p == cap
+                then \v -> case v of
+                    [td] -> [toClapiValue $ smt (fromClapiValue td) theirTime]
+                else id
+        mkRelative (Right (UMsgAdd p t v i a s)) = Right $ UMsgAdd p t (relClientInfo p v) i a s
+        mkRelative (Right (UMsgSet p t v i a s)) = Right $ UMsgSet p t (relClientInfo p v) i a s
         mkRelative m = m
         oums' = mkRelative <$> oums
       in
