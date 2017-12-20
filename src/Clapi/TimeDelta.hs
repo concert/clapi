@@ -9,7 +9,7 @@ timeToFloat :: Time -> Float
 timeToFloat (Time s f) = fromRational $ toRational s + (toRational f / toRational (maxBound :: Word32))
 
 getMonotonicTimeFloat :: IO Float
-getMonotonicTimeFloat = (\ts -> fromRational $ (toRational $ toNanoSecs ts) / 10.0^9) <$> getTime Monotonic
+getMonotonicTimeFloat = getTime Monotonic >>= return . fromRational . (/10.0^9) . toRational . toNanoSecs
 
 newtype TimeDelta = TimeDelta Float deriving Num
 
@@ -17,7 +17,7 @@ tdZero :: TimeDelta
 tdZero = TimeDelta 0.0
 
 getDelta :: Time -> IO TimeDelta
-getDelta theirTime = (\now -> TimeDelta $ now - (timeToFloat theirTime)) <$> getMonotonicTimeFloat
+getDelta theirTime = getMonotonicTimeFloat >>= return . TimeDelta . flip subtract (timeToFloat theirTime)
 
 instance Clapiable TimeDelta where
     toClapiValue (TimeDelta f) = ClFloat f
