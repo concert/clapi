@@ -90,7 +90,9 @@ relayApiProto ownerMv selfAddr =
       , arrayDefMsg catp "clientsdoc" citp
       , Right $ UMsgSetChildren cap [ownSeg] Nothing
       , staticAdd (cap +| ownSeg) [toClapiValue tdZero]
-      , tupleDefMsg citp "client info" [("clock_diff", "float")]
+      , tupleDefMsg citp
+          "Info about connected clients (clock_diff is in seconds)"
+          [("clock_diff", "float")]
       , arrayDefMsg odp "ownersdoc" oidp
       , tupleDefMsg oidp "owner info" [("owner", refOf citp)]
       , Right $ UMsgSetChildren oap [] Nothing
