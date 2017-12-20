@@ -8,11 +8,11 @@ import Control.Concurrent.MVar
 import Control.Monad.Trans (lift)
 import qualified Data.Map as Map
 
-import Clapi.Path (Path, (+|), Name, root)
+import Clapi.Path (Path, (+|), Name, root, up)
 import Path.Parsing (toText)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (
-    ToRelayBundle(..), FromRelayBundle, InterpolationType(ITConstant),
+    ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationType(ITConstant),
     Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..),
     OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..),
     ClapiValue(ClString), Enumerated(..), RequestBundle(..), SubMessage(..),
@@ -118,6 +118,21 @@ relayApiProto ownerMv selfAddr =
         newOwnerMap <- lift (readMVar ownerMv)
         pubOwnerMap oldOwnerMap newOwnerMap
         return newOwnerMap
+    clientPov ci i (FRBClient (UpdateBundle errs oums)) = let
+        theirTime = Map.lookup (pathSegmentFor i) ci
+        smt (Just a) (Just b) = a - b
+        relClientInfo [td] = [toClapiValue $ smt (fromClapiValue td) theirTime]
+        mkRelative m@(Right (UMsgAdd p t v i a s)) = if up p == cap
+          then Right $ UMsgAdd p t (relClientInfo v) i a s
+          else m
+        mkRelative m@(Right (UMsgSet p t v i a s)) = if up p == cap
+          then Right $ UMsgSet p t (relClientInfo v) i a s
+          else m
+        mkRelative m = m
+        oums' = mkRelative <$> oums
+      in
+        ServerData i $ FRBClient $ UpdateBundle errs oums'
+    clientPov _ i ob = ServerData i ob
     fwd oldOwnerMap ci (ClientConnect cid) = sendFwd (ClientConnect cid) >> pubUpdate uMsgs >> steadyState oldOwnerMap ci'
       where
         cSeg = pathSegmentFor cid
@@ -134,8 +149,10 @@ relayApiProto ownerMv selfAddr =
         sendFwd (ClientData cid trb)
         steadyState oldOwnerMap ci'
     fwd oldOwnerMap ci (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap ci cid
-    rev oldOwnerMap ci b@(ServerData i ob) = do
-        newOwnerMap <- if selfAddr == i then handleOwnTat oldOwnerMap ob else sendRev b >> return oldOwnerMap
+    rev oldOwnerMap ci (ServerData i frb) = do
+        newOwnerMap <- if selfAddr == i
+          then handleOwnTat oldOwnerMap frb
+          else sendRev (clientPov ci i frb) >> return oldOwnerMap
         steadyState newOwnerMap ci
     rev oldOwnerMap ci b@(ServerDisconnect cid) = sendRev b >> removeClient oldOwnerMap ci cid
     removeClient oldOwnerMap ci cid =
