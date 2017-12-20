@@ -17,7 +17,7 @@ tdZero :: TimeDelta
 tdZero = TimeDelta 0.0
 
 getDelta :: Time -> IO TimeDelta
-getDelta theirTime = getMonotonicTimeFloat >>= return . TimeDelta . flip subtract (timeToFloat theirTime)
+getDelta theirTime = getMonotonicTimeFloat >>= return . TimeDelta . subtract (timeToFloat theirTime)
 
 instance Clapiable TimeDelta where
     toClapiValue (TimeDelta f) = ClFloat f
