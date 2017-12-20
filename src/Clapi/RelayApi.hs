@@ -75,7 +75,7 @@ relayApiProto ::
         IO ()
 relayApiProto ownerMv selfAddr =
     publishRelayApi >> subRoot >>
-    steadyState mempty (Map.fromList [(ownSeg, tdZero)])
+    steadyState mempty (Map.singleton ownSeg tdZero)
   where
     toNST = sendFwd . ClientData selfAddr
     pubUpdate = toNST . TRBOwner . UpdateBundle []
