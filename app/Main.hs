@@ -37,6 +37,7 @@ apiClaimed = Map.singleton "api" internalAddr
 
 instance PathSegmenty SockAddr where
     pathSegmentFor (SockAddrCan _) = "relay"
+    -- NOTE: Do not persist this as it depends on the form of show
     pathSegmentFor clientAddr = T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
 
 main :: IO ()
