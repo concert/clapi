@@ -11,9 +11,9 @@ import Clapi.Types
 attributeDataUpdateMsg :: Text -> DataUpdateMessage -> DataUpdateMessage
 attributeDataUpdateMsg u m = m{duMsgAttributee = Just u}
 
-attributor :: Monad m => Attributee -> Protocol ToRelayBundle ToRelayBundle a a m ()
-attributor u = forever $ waitThen fwdAttributed sendRev
+attributor :: (Monad m, Functor f) => Attributee -> Protocol (f ToRelayBundle) (f ToRelayBundle) a a m ()
+attributor u = forever $ waitThen (sendFwd . fmap attributeClient) sendRev
   where
-    fwdAttributed (TRBClient (RequestBundle gets dums)) =
-        sendFwd $ TRBClient $ RequestBundle gets (fmap (attributeDataUpdateMsg u) dums)
-    fwdAttributed (TRBOwner b) = sendFwd $ TRBOwner b
+    attributeClient (TRBClient (RequestBundle gets dums)) =
+        TRBClient $ RequestBundle gets (fmap (attributeDataUpdateMsg u) dums)
+    attributeClient (TRBOwner b) = TRBOwner b

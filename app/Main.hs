@@ -10,6 +10,11 @@ import Control.Exception
 import System.Posix.Signals
 import Network.Simple.TCP hiding (send)
 import Network.Socket (SockAddr(SockAddrCan))
+import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.Text as T
+import Crypto.Hash.SHA256 (hash)
+import qualified Data.ByteString.Base16 as B16
+import Control.Concurrent.MVar
 
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
@@ -17,7 +22,7 @@ import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
-import Clapi.RelayApi (relayApiProto)
+import Clapi.RelayApi (relayApiProto, PathNameable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
@@ -30,13 +35,19 @@ internalAddr = SockAddrCan 12
 apiClaimed :: Owners SockAddr
 apiClaimed = Map.singleton "api" internalAddr
 
+instance PathNameable SockAddr where
+    pathNameFor (SockAddrCan _) = "relay"
+    -- NOTE: Do not persist this as it depends on the form of show
+    pathNameFor clientAddr = T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
+
 main :: IO ()
 main =
   do
+    ownershipMvar <- newMVar apiClaimed
     tid <- myThreadId
     installHandler keyboardSignal (Catch $ killThread tid) Nothing
     withListen HostAny "1234" $ \(lsock, _) ->
-        protocolServer lsock perClientProto totalProto (return ())
+        protocolServer lsock perClientProto (totalProto ownershipMvar) (return ())
   where
     perClientProto addr = (addr, serialiser <<-> attributor "someone")
-    totalProto = shower "total" <<-> relayApiProto internalAddr <<-> namespaceTrackerProtocol (void . return) apiClaimed mempty <<-> relay baseValuespace
+    totalProto ownershipMvar = shower "total" <<-> relayApiProto ownershipMvar internalAddr <<-> shower "nt" <<-> namespaceTrackerProtocol (void . swapMVar ownershipMvar) apiClaimed mempty <<-> relay baseValuespace
