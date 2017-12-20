@@ -21,7 +21,7 @@ import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
-import Clapi.TimeDiffProtocol (tdZero, getDelta, tdClVal)
+import Clapi.TimeDelta (tdZero, getDelta, tdClVal)
 
 zt = Time 0 0
 
