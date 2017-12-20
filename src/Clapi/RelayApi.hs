@@ -16,12 +16,12 @@ import Clapi.Types (
     Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..),
     OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..),
     ClapiValue(ClString), Enumerated(..), RequestBundle(..), SubMessage(..),
-    TimeStamped(..))
+    TimeStamped(..), Clapiable(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
-import Clapi.TimeDelta (tdZero, getDelta, tdClVal)
+import Clapi.TimeDelta (tdZero, getDelta)
 
 zt = Time 0 0
 
@@ -89,7 +89,7 @@ relayApiProto ownerMv selfAddr =
         ("owner_info", tdp), ("owners", adp), ("build", tdp)]
       , arrayDefMsg catp "clientsdoc" citp
       , Right $ UMsgSetChildren cap [ownSeg] Nothing
-      , staticAdd (cap +| ownSeg) [tdClVal tdZero]
+      , staticAdd (cap +| ownSeg) [toClapiValue tdZero]
       , tupleDefMsg citp "client info" [("clock_diff", "float")]
       , arrayDefMsg odp "ownersdoc" oidp
       , tupleDefMsg oidp "owner info" [("owner", refOf citp)]
@@ -124,13 +124,13 @@ relayApiProto ownerMv selfAddr =
         ci' = Map.insert cSeg tdZero ci
         uMsgs =
           [ Right $ UMsgSetChildren cap (Map.keys ci') Nothing
-          , staticAdd (cap +| cSeg) [tdClVal tdZero]
+          , staticAdd (cap +| cSeg) [toClapiValue tdZero]
           ]
     fwd oldOwnerMap ci (ClientData cid (TimeStamped (theirTime, trb))) = do
         let cSeg = pathSegmentFor cid
         d <- lift $ getDelta theirTime
         let ci' = Map.insert cSeg d ci
-        pubUpdate [ staticSet (cap +| cSeg) [tdClVal d] ]
+        pubUpdate [ staticSet (cap +| cSeg) [toClapiValue d] ]
         sendFwd (ClientData cid trb)
         steadyState oldOwnerMap ci'
     fwd oldOwnerMap ci (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap ci cid
