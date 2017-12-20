@@ -14,6 +14,7 @@ import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.Text as T
 import Crypto.Hash.SHA256 (hash)
 import qualified Data.ByteString.Base16 as B16
+import Control.Concurrent.MVar
 
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
@@ -41,10 +42,11 @@ instance PathSegmenty SockAddr where
 main :: IO ()
 main =
   do
+    ownershipMvar <- newMVar apiClaimed
     tid <- myThreadId
     installHandler keyboardSignal (Catch $ killThread tid) Nothing
     withListen HostAny "1234" $ \(lsock, _) ->
-        protocolServer lsock perClientProto totalProto (return ())
+        protocolServer lsock perClientProto (totalProto ownershipMvar) (return ())
   where
     perClientProto addr = (addr, serialiser <<-> attributor "someone")
-    totalProto = shower "total" <<-> relayApiProto internalAddr <<-> namespaceTrackerProtocol (void . return) apiClaimed mempty <<-> relay baseValuespace
+    totalProto ownershipMvar = shower "total" <<-> relayApiProto ownershipMvar internalAddr <<-> shower "nt" <<-> namespaceTrackerProtocol (void . swapMVar ownershipMvar) apiClaimed mempty <<-> relay baseValuespace

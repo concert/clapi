@@ -1,16 +1,21 @@
 {-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
 module Clapi.RelayApi (relayApiProto, PathSegmenty(..)) where
-import Control.Monad (forever)
+import Data.Monoid
+import Control.Monad (forever, when)
 import Data.Text (Text, pack)
 import qualified Data.List as List
+import Control.Concurrent.MVar
+import Control.Monad.Trans (lift)
+import qualified Data.Map as Map
 
-import Clapi.Path (Path, (+|), Name)
+import Clapi.Path (Path, (+|), Name, root)
 import Path.Parsing (toText)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Types (ToRelayBundle(..), FromRelayBundle, InterpolationType(ITConstant), Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..), ClapiValue(ClString), Enumerated(..))
+import Clapi.Types (ToRelayBundle(..), FromRelayBundle, InterpolationType(ITConstant), Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..), ClapiValue(ClString), Enumerated(..), RequestBundle(..), SubMessage(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
+import Clapi.NamespaceTracker (Owners)
 
 zt = Time 0 0
 
@@ -42,32 +47,42 @@ tupleDefMsg p d fm = let
   in
     staticAdd p targs
 
+clRef :: Path -> ClapiValue
+clRef = ClString . toText
+
 arrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
-arrayDefMsg p d ct = staticAdd p [ClString d, ClString $ toText ct, toClapiValue $ Enumerated Cannot]
+arrayDefMsg p d ct = staticAdd p [ClString d, clRef ct, toClapiValue $ Enumerated Cannot]
 
 class PathSegmenty a where
     pathSegmentFor :: a -> Name
 
 relayApiProto ::
     (Ord i, PathSegmenty i) =>
+    MVar (Owners i) ->
     i ->
     Protocol
         (ClientEvent i ToRelayBundle) (ClientEvent i ToRelayBundle)
         (ServerEvent i FromRelayBundle) (ServerEvent i FromRelayBundle)
         IO ()
-relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
+relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempty [ownSeg]
   where
-    pubUpdate = sendFwd . ClientData selfAddr . TRBOwner . UpdateBundle []
+    toNST = sendFwd . ClientData selfAddr
+    pubUpdate = toNST . TRBOwner . UpdateBundle []
     publishRelayApi = pubUpdate
       [ Left $ UMsgAssignType [pathq|/relay|] rtp
-      , structDefMsg rtp "topdoc" [("build", btp), ("clients", catp), ("types", ttp)]
+      , structDefMsg rtp "topdoc" [("build", btp), ("clients", catp), ("types", ttp), ("owners", odp)]
       , Left $ UMsgAssignType [pathq|/relay/types/types|] sdp
       , Left $ UMsgAssignType [pathq|/relay/types|] ttp
-      , structDefMsg ttp "typedoc" [("relay", sdp), ("types", sdp), ("clients", adp), ("client_info", tdp), ("build", tdp)]
+      , structDefMsg ttp "typedoc" [
+        ("relay", sdp), ("types", sdp), ("clients", adp), ("client_info", tdp),
+        ("owner_info", tdp), ("owners", adp), ("build", tdp)]
       , arrayDefMsg catp "clientsdoc" citp
       , Right $ UMsgSetChildren cap [ownSeg] Nothing
       , staticAdd (cap +| ownSeg) []
       , tupleDefMsg citp "client info" []
+      , arrayDefMsg odp "ownersdoc" oidp
+      , tupleDefMsg oidp "owner info" [("owner", refOf citp)]
+      , Right $ UMsgSetChildren oap [] Nothing
       , tupleDefMsg btp "builddoc" [("commit_hash", "string[banana]")]
       , staticAdd [pathq|/relay/build|] [ClString "banana"]
       ]
@@ -77,9 +92,22 @@ relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
     catp = [pathq|/relay/types/clients|]
     citp = [pathq|/relay/types/client_info|]
     cap = [pathq|/relay/clients|]
+    oidp = [pathq|/relay/types/owner_info|]
+    odp = [pathq|/relay/types/owners|]
+    oap = [pathq|/relay/owners|]
+    refOf p = "ref[" <> toText p <> "]"
     ownSeg = pathSegmentFor selfAddr
-    steadyState cl = waitThen (fwd cl) (rev cl)
-    fwd cl b@(ClientConnect cid) = sendFwd b >> pubUpdate uMsgs >> steadyState cl'
+    subRoot = toNST $ TRBClient $ RequestBundle [UMsgSubscribe root] []
+    steadyState oldOwnerMap cl = waitThen (fwd oldOwnerMap cl) (rev oldOwnerMap cl)
+    pubOwnerMap old new = when (Map.keys old /= Map.keys new) $ do
+        let scm = Right $ UMsgSetChildren oap (Map.keys new) Nothing
+        let om = (cap +|) . pathSegmentFor <$> Map.difference new old
+        pubUpdate $ scm : ((\(ownerN, refP) -> staticAdd (oap +| ownerN) [clRef refP]) <$> Map.toList om)
+    handleOwnTat oldOwnerMap _ = do
+        newOwnerMap <- lift (readMVar ownerMv)
+        pubOwnerMap oldOwnerMap newOwnerMap
+        return newOwnerMap
+    fwd oldOwnerMap cl b@(ClientConnect cid) = sendFwd b >> pubUpdate uMsgs >> steadyState oldOwnerMap cl'
       where
         cSeg = pathSegmentFor cid
         cl' = cSeg : cl
@@ -87,10 +115,12 @@ relayApiProto selfAddr = publishRelayApi >> steadyState [ownSeg]
           [ Right $ UMsgSetChildren cap cl' Nothing
           , staticAdd (cap +| cSeg) []
           ]
-    fwd cl b@(ClientData _ _) = sendFwd b >> steadyState cl
-    fwd cl b@(ClientDisconnect cid) = sendFwd b >> removeClient cl cid
-    rev cl b@(ServerData _ _) = sendRev b >> steadyState cl
-    rev cl b@(ServerDisconnect cid) = sendRev b >> removeClient cl cid
-    removeClient cl cid = pubUpdate [ Right $ UMsgSetChildren cap cl' Nothing ] >> steadyState cl'
+    fwd oldOwnerMap cl b@(ClientData _ _) = sendFwd b >> steadyState oldOwnerMap cl
+    fwd oldOwnerMap cl b@(ClientDisconnect cid) = sendFwd b >> removeClient oldOwnerMap cl cid
+    rev oldOwnerMap cl b@(ServerData i ob) = do
+        newOwnerMap <- if selfAddr == i then handleOwnTat oldOwnerMap ob else sendRev b >> return oldOwnerMap
+        steadyState newOwnerMap cl
+    rev oldOwnerMap cl b@(ServerDisconnect cid) = sendRev b >> removeClient oldOwnerMap cl cid
+    removeClient oldOwnerMap cl cid = pubUpdate [ Right $ UMsgSetChildren cap cl' Nothing ] >> steadyState oldOwnerMap cl'
       where
         cl' = List.delete (pathSegmentFor cid) cl
