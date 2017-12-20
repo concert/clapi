@@ -123,7 +123,10 @@ data OwnerRequestBundle = OwnerRequestBundle {orbErrs :: [UMsgError], orbMsgs ::
 data ToRelayBundle = TRBClient RequestBundle | TRBOwner UpdateBundle deriving (Eq, Show)
 data FromRelayBundle = FRBClient UpdateBundle | FRBOwner OwnerRequestBundle deriving (Eq, Show)
 
-newtype TimeStamped a = TimeStamped (Time, a)
+newtype TimeStamped a = TimeStamped (Time, a) deriving Show
+
+instance Functor TimeStamped where
+    fmap op (TimeStamped (t, a)) = TimeStamped (t, op a)
 
 -- Values:
 

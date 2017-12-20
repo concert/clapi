@@ -11,7 +11,12 @@ import qualified Data.Map as Map
 import Clapi.Path (Path, (+|), Name, root)
 import Path.Parsing (toText)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Types (ToRelayBundle(..), FromRelayBundle, InterpolationType(ITConstant), Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..), ClapiValue(ClString), Enumerated(..), RequestBundle(..), SubMessage(..))
+import Clapi.Types (
+    ToRelayBundle(..), FromRelayBundle, InterpolationType(ITConstant),
+    Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..),
+    OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..),
+    ClapiValue(ClString), Enumerated(..), RequestBundle(..), SubMessage(..),
+    TimeStamped(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
@@ -61,7 +66,7 @@ relayApiProto ::
     MVar (Owners i) ->
     i ->
     Protocol
-        (ClientEvent i ToRelayBundle) (ClientEvent i ToRelayBundle)
+        (ClientEvent i (TimeStamped ToRelayBundle)) (ClientEvent i ToRelayBundle)
         (ServerEvent i FromRelayBundle) (ServerEvent i FromRelayBundle)
         IO ()
 relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempty [ownSeg]
@@ -107,7 +112,7 @@ relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempt
         newOwnerMap <- lift (readMVar ownerMv)
         pubOwnerMap oldOwnerMap newOwnerMap
         return newOwnerMap
-    fwd oldOwnerMap cl b@(ClientConnect cid) = sendFwd b >> pubUpdate uMsgs >> steadyState oldOwnerMap cl'
+    fwd oldOwnerMap cl (ClientConnect cid) = sendFwd (ClientConnect cid) >> pubUpdate uMsgs >> steadyState oldOwnerMap cl'
       where
         cSeg = pathSegmentFor cid
         cl' = cSeg : cl
@@ -115,8 +120,9 @@ relayApiProto ownerMv selfAddr = publishRelayApi >> subRoot >> steadyState mempt
           [ Right $ UMsgSetChildren cap cl' Nothing
           , staticAdd (cap +| cSeg) []
           ]
-    fwd oldOwnerMap cl b@(ClientData _ _) = sendFwd b >> steadyState oldOwnerMap cl
-    fwd oldOwnerMap cl b@(ClientDisconnect cid) = sendFwd b >> removeClient oldOwnerMap cl cid
+    fwd oldOwnerMap cl (ClientData cid (TimeStamped (theirTime, trb))) =
+        sendFwd (ClientData cid trb) >> steadyState oldOwnerMap cl
+    fwd oldOwnerMap cl (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap cl cid
     rev oldOwnerMap cl b@(ServerData i ob) = do
         newOwnerMap <- if selfAddr == i then handleOwnTat oldOwnerMap ob else sendRev b >> return oldOwnerMap
         steadyState newOwnerMap cl
