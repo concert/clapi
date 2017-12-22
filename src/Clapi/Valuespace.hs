@@ -39,7 +39,7 @@ import Clapi.Tree (
     treeRemove, treeClear, treeSetChildren, getKeys, getSites, unwrapTimePoint,
     getChildPaths, TreeDelta, treeDiff)
 import qualified Clapi.Tree as Tree
-import Clapi.Validator (Validator, fromText, enumDesc, validate, desc)
+import Clapi.Validator (Validator(..), fromText, enumDesc, validate)
 import Clapi.PathQ
 
 type Node = Tree.Node [ClapiValue]
@@ -167,7 +167,7 @@ defToValues (TupleDef d ns vs is) =
   [
     toClapiValue d,
     toClapiValue $ ns,
-    toClapiValue $ desc <$> vs,
+    toClapiValue $ vDesc <$> vs,
     toClapiValue $ Enumerated <$> Set.toList is
   ]
 defToValues (StructDef d ns ts ls) =
