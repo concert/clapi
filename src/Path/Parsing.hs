@@ -1,17 +1,21 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+
 module Path.Parsing (toString, toText, fromString, fromText, pathP, nameP) where
 
 import Data.Char (isLetter, isDigit)
 import qualified Data.Text as T
-import Control.Applicative ((<|>))
 import Control.Monad.Fail (MonadFail)
 
 import Data.Attoparsec.Text (
-    Parser, char, letter, satisfy, many1, sepBy, parseOnly)
+    Parser, char, satisfy, many1, sepBy, parseOnly)
 
 import Clapi.Util (eitherFail)
-import Clapi.Path (Name, Path(..), root)
+import Clapi.Path (Name, Path(..))
 
+sepChar :: Char
 sepChar = '/'
+
+sepText :: T.Text
 sepText = T.singleton sepChar
 
 separatorP :: Parser Char
