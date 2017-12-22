@@ -1,7 +1,9 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 module Clapi.Path where
 
 import Prelude hiding (fail)
 import Data.List (isPrefixOf)
+import Data.List.NonEmpty (NonEmpty((:|)), fromList)
 import Data.Tuple (swap)
 import Data.Text (Text)
 import Control.Monad.Fail (MonadFail, fail)
@@ -21,15 +23,15 @@ up (Path names) = Path $ init names
 
 splitBasename :: (MonadFail m) => Path -> m (Path, Name)
 splitBasename (Path []) = fail "Can't split root path"
-splitBasename (Path ns) = return . swap $ Path <$> f ns
+splitBasename (Path names) = return . swap $ Path <$> f (fromList names)
   where
-    f (n:[]) = (n, [])
-    f (n:ns) = (n:) <$> f ns
+    f (n :| []) = (n, [])
+    f (n :| ns) = (n:) <$> f (fromList ns)
 
--- Generate a traversal to the root from the supplied path paired with the
--- child name from which each path was arrived at
+-- | Generate a traversal to the root from the supplied path paired with the
+--   child name from which each path was arrived at
 pathsAndChildNames :: Path -> [(Path, Maybe Name)]
-pathsAndChildNames p = (p, Nothing) : pac p
+pathsAndChildNames path = (path, Nothing) : pac path
   where
     pac = maybe [] (\(p, n) -> (p, Just n) : pac p) . splitBasename
 
