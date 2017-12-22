@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+
 module Data.Map.Mos where
 
 import qualified Data.Set as Set
@@ -30,7 +32,7 @@ toSet mos = foldMap id $ Map.mapWithKey (\k as -> Set.map ((,) k) as) mos
 difference :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 difference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
   where
-    f k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
+    f _k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
 
 union :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 union = Map.unionM
@@ -53,10 +55,11 @@ allDependencies = Map.keysSet . snd
 allDependants :: Dependencies k a -> Set.Set k
 allDependants = Map.keysSet . fst
 
-setDependency :: (Ord k, Ord a) => k -> a -> Dependencies k a -> Dependencies k a
+setDependency
+  :: (Ord k, Ord a) => k -> a -> Dependencies k a -> Dependencies k a
 setDependency k a (deps, revDeps) = (deps', insert a k $ revDeps' mCurA)
   where
-    f _ newA curA = newA
+    f _ newA _curA = newA
     (mCurA, deps') = Map.insertLookupWithKey f k a deps
     revDeps' (Just curA) = delete curA k revDeps
     revDeps' Nothing = revDeps
@@ -68,7 +71,7 @@ setDependencies newDs ds = foldr (uncurry setDependency) ds $ Map.toList newDs
 delDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Dependencies k a
 delDependency k (deps, revDeps) = (deps', revDeps' ma)
   where
-    f _ a = Nothing
+    f _ _ = Nothing
     (ma, deps') = Map.updateLookupWithKey f k deps
     revDeps' (Just a) = delete a k revDeps
     revDeps' Nothing = revDeps
@@ -82,12 +85,12 @@ type Dependencies' k a = (Mos k a, Mos a k)
 
 setDependencies' ::
     (Ord k, Ord a) => k -> [a] -> Dependencies' k a -> Dependencies' k a
-setDependencies' k [] ds = ds
+setDependencies' _ [] ds = ds
 setDependencies' k as (deps, revDeps) = (deps', revDeps'')
   where
-    f _ newAs curAs = newAs
+    f _ newAs _curAs = newAs
     (mas, deps') = Map.insertLookupWithKey f k (Set.fromList as) deps
-    revDeps' (Just as) = foldr (\a -> delete a k) revDeps as
+    revDeps' (Just as') = foldr (\a -> delete a k) revDeps as'
     revDeps' Nothing = revDeps
     revDeps'' = foldr (\a -> insert a k) (revDeps' mas) as
 
@@ -95,10 +98,10 @@ delDependencies' ::
     (Ord k, Ord a) => k -> Dependencies' k a -> Dependencies' k a
 delDependencies' k (deps, revDeps) = (deps', revDeps' mas)
   where
-    f _ a = Nothing
+    f _ _ = Nothing
     (mas, deps') = Map.updateLookupWithKey f k deps
     revDeps' (Just as) = foldr (\a -> delete a k) revDeps as
-    revDeps# Nothing = revDeps
+    revDeps' Nothing = revDeps
 
 getDependants' ::
   (Ord k, Ord a) => a -> Dependencies' k a -> Set.Set k

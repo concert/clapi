@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 module Data.Map.Mol where
 
 import qualified Data.Map as Map
