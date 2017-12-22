@@ -1,9 +1,12 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module Clapi.PerClientProto where
+
 import Control.Monad.Trans.Free
 
 import Data.ByteString (ByteString)
-import Clapi.Protocol (Protocol, sendFwd, sendRev, ProtocolF(..), Directed(..))
+import Clapi.Protocol (Protocol, sendFwd, ProtocolF(..), Directed(..))
 
 data ClientEvent ident a
     = ClientConnect ident
@@ -28,9 +31,9 @@ liftToPerClientEvent ::
          ByteString (ClientEvent i a)
          ByteString (ServerEvent i b)
          m ()
-liftToPerClientEvent i p = do
+liftToPerClientEvent i proto = do
     sendFwd $ ClientConnect i
-    inner p
+    inner proto
   where
     inner p = FreeT $ go <$> runFreeT p
     go (Free (Wait f)) = Free (Wait $ g f)
