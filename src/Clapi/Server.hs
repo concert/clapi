@@ -1,27 +1,26 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+
 module Clapi.Server where
 
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (async, cancel, link, poll, wait, withAsync)
+import Control.Concurrent.Async (async, cancel, poll, wait, withAsync)
 import Control.Concurrent.MVar
 import qualified Control.Concurrent.Chan.Unagi as Q
 import qualified Control.Concurrent.Chan.Unagi.Bounded as BQ
 import qualified Control.Exception as E
 import Control.Monad (filterM, forever, (>=>))
-import Control.Monad.IO.Class (liftIO, MonadIO)
 import qualified Data.ByteString as B
-import Data.Function (fix)
 import qualified Data.Map as Map
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (isNothing)
 import Data.Void (Void)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
-import Network.Simple.TCP (HostPreference(HostAny), bindSock)
+import Network.Simple.TCP (HostPreference, bindSock)
 
-import qualified Clapi.Protocol as Protocol
-import Clapi.Protocol (
-  Directed(..), Protocol, sendFwd, sendRev, (<<->), waitThen, runProtocolIO)
-import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..), liftToPerClientEvent, seIdent)
+import Clapi.Protocol (Protocol, runProtocolIO)
+import Clapi.PerClientProto
+  (ClientEvent(..), ServerEvent(..), liftToPerClientEvent, seIdent)
 
 data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
 
@@ -59,7 +58,7 @@ serve' listenSock handler onShutdown = E.mask_ $ loop []
         as' <- doubleCatch
             (throwAfter $ onShutdown >> mapM wait as)
             (mapM cancel as) (do
-                x@(sock, addr) <- NS.accept listenSock
+                x@(sock, _addr) <- NS.accept listenSock
                 a <- async (handler x `E.finally` NS.close sock)
                 filterM (poll >=> return . isNothing) (a:as))
         loop as'
