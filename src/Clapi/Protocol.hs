@@ -1,15 +1,16 @@
-{-# LANGUAGE ScopedTypeVariables, DeriveFunctor, ViewPatterns, PatternSynonyms
-#-}
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Clapi.Protocol where -- (
 --  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<<->)
 -- ) where
 
-import Control.Applicative
-import Control.Concurrent.Async (async, cancel, waitEither, concurrently_)
+import Control.Concurrent.Async (async, cancel, concurrently_)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (finally)
-import Control.Monad (forever, replicateM_)
-import Control.Monad.Trans (MonadIO, lift, liftIO)
+import Control.Monad (forever)
+import Control.Monad.Trans (MonadIO(..))
 import Control.Monad.Trans.Free
 import qualified Data.Sequence as S
 import Data.Void
@@ -36,8 +37,8 @@ data ProtocolF a a' b' b next =
 -- instance (Show a', Show b') => Show (ProtocolF a a' b' b next) where
 instance Show (ProtocolF a a' b' b next) where
   show (Wait _) = "wait"
-  show (SendFwd a' _) = "-> "-- ++ show a'
-  show (SendRev b' _) = "<- "-- ++ show b'
+  show (SendFwd _a' _) = "-> "-- ++ show a'
+  show (SendRev _b' _) = "<- "-- ++ show b'
 
 type Protocol a a' b' b m = FreeT (ProtocolF a a' b' b) m
 
@@ -56,7 +57,7 @@ composeRevBiased ::
     Protocol a1 a2 b3 b2 m () ->
     Protocol a2 a3 b2 b1 m () ->
     Protocol a1 a3 b3 b1 m ()
-composeRevBiased proto1 proto2 = comp proto1 mempty mempty proto2
+composeRevBiased protocol1 protocol2 = comp protocol1 mempty mempty protocol2
   where
     comp proto1 a2q b2q proto2 = FreeT $ do
         freeF1 <- runFreeT proto1
@@ -92,7 +93,7 @@ composeRevBiased proto1 proto2 = comp proto1 mempty mempty proto2
           Rev b1 -> comp (wait >>= f1) a2q b2q (f2 (Rev b1))
 
     -- Right sends to waiting left:
-    go (Free (Wait f1)) a2q b2q (Free (SendRev b2 next)) =
+    go (Free (Wait f1)) _a2q _b2q (Free (SendRev b2 next)) =
         runFreeT $ composeRevBiased (f1 (Rev b2)) next
 
     -- Left sends to waiting right:
@@ -113,8 +114,8 @@ composeRevBiased proto1 proto2 = comp proto1 mempty mempty proto2
         runFreeT $ sendFwd a3 >> comp (wrapFreeF freeF1) a2q b2q next
 
     -- Terminate:
-    go (Pure _) a2q b2q _ = return $ Pure ()
-    go _ a2q b2q (Pure _) = return $ Pure ()
+    go (Pure _) _a2q _b2q _ = return $ Pure ()
+    go _ _a2q _b2q (Pure _) = return $ Pure ()
 
 
 (<<->) :: (Monad m) =>
@@ -153,10 +154,10 @@ hostProtocol :: (MonadIO m) =>
     (b' -> m ()) -> IO b ->
     Protocol a a' b' b m r ->
     Protocol Void Void Void Void m r
-hostProtocol ioa ona' onb' iob proto = FreeT $ do
+hostProtocol ioa ona' onb' iob protocol = FreeT $ do
     mv <- liftIO $ newEmptyMVar
     as <- liftIO $ async $ waitEitherForever ioa iob (putMVar mv)
-    r <- go mv proto
+    r <- go mv protocol
     liftIO $ cancel as
     return r
   where
@@ -173,7 +174,9 @@ runEffect :: (Monad m) => Protocol Void Void Void Void m r -> m r
 runEffect proto = runFreeT proto >>= f
   where
     f (Pure r) = return r
-    f (Free (Wait g)) = error "Waiting for a Void value!"
+    f (Free (Wait _)) = error "Waiting for a Void value!"
+    f (Free (SendFwd _ _)) = error "SendFwd a Void value - how?!"
+    f (Free (SendRev _ _)) = error "SendRev a Void value - how?!"
 
 runProtocolIO :: (MonadIO m) =>
     IO a -> (a' -> m ()) ->
