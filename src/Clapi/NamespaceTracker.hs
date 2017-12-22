@@ -1,24 +1,26 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables, Rank2Types #-}
+
 module Clapi.NamespaceTracker where
 
-import Control.Monad (filterM, forever, when)
-import Control.Monad.State (StateT(..), evalStateT, get, gets, modify, put)
+import Control.Monad (forever, when)
+import Control.Monad.State (StateT(..), evalStateT, get, modify)
 import Control.Monad.Trans (MonadTrans, lift)
-import Control.Monad.Trans.Free
 import qualified Data.ByteString as B
-import Data.List (partition)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Data.Text as T
 import Data.Maybe (catMaybes, fromJust)
 import Data.Either (lefts)
 
 import Control.Lens (view, set, Lens', _1, _2)
 
 import qualified Data.Map.Mos as Mos
-import qualified Data.Map.Mol as Mol
 import Clapi.Path (Name, Path(..))
-import Clapi.Types (ClapiValue(ClString), DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..), ToRelayBundle(..), FromRelayBundle(..), OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..), UMsgError(..), UMsg(..), SubMessage(..))
+import Clapi.Types
+  ( DataUpdateMessage(..), TreeUpdateMessage(..)
+  , OwnerUpdateMessage, ToRelayBundle(..), FromRelayBundle(..)
+  , OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..)
+  , UMsgError(..), UMsg(..), SubMessage(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
@@ -40,10 +42,10 @@ data Response
 
 namespace :: Path -> Name
 namespace (Path []) = ""
-namespace (Path (n:ns)) = n
+namespace (Path (n:_ns)) = n
 
 isNamespace :: Path -> Bool
-isNamespace (Path (n:[])) = True
+isNamespace (Path (_name:[])) = True
 isNamespace _ = False
 
 maybeNamespace :: (Name -> a) -> Path -> Maybe a
@@ -150,7 +152,7 @@ _namespaceTrackerProtocol publish = forever $ do
         fwd $ ClientDisconnect i
     hasOwnership :: (Monad m, UMsg msg, Ord i, Show i) => i -> Ownership -> [msg] -> StateT (Owners i) m [Path]
     hasOwnership i eo ms = get >>= \s -> return $ filter (\p -> Just eo == getPathOwnership i s p) $ map uMsgPath ms
-    fwd (ClientConnect i) = return mempty
+    fwd (ClientConnect _i) = return mempty
     fwd (ClientData i b@(TRBOwner (UpdateBundle errs oums))) = do
         badErrPaths <- stateFst $ hasOwnership i Client errs
         badOumPaths <- stateFst $ hasOwnership i Client oums
@@ -173,26 +175,31 @@ _namespaceTrackerProtocol publish = forever $ do
         tums <- handleClientDisconnect i
         lift $ sendRev $ ServerDisconnect i
         lift $ sendFwd ((i, Just []), OwnerRequest $ map Left tums)
-    rev ((i, ownErrs), ClientResponse gets valErrs updates) = do
-        stateSnd $ mapM_ (registerSubscription i) gets
+    rev ((i, _ownErrs), ClientResponse getMsgs valErrs updates) = do
+        stateSnd $ mapM_ (registerSubscription i) getMsgs
         stateFst $ sendToOwners updates
-        if (null valErrs) && (null gets)
+        if (null valErrs) && (null getMsgs)
             then return mempty
-            else lift $ sendRev $ ServerData i $ FRBClient $ UpdateBundle valErrs gets
+            else lift $ sendRev $ ServerData i $ FRBClient $ UpdateBundle valErrs getMsgs
       where
         sendToOwners ::
             (Monad m, Ord i) =>
             [DataUpdateMessage] ->
             StateT (Owners i) (NsProtocol m i) ()
-        sendToOwners updates = do
+        sendToOwners updates' = do
             po <- get
             lift $ mapM_ sendRev $ sendables po
           where
-            sendables po = (\(i, dums) -> ServerData i $ FRBOwner $ OwnerRequestBundle [] $ dums) <$>
-                Map.toList (sendableMap po)
-            sendableMap po = foldl (appendUpdate po) mempty updates
-            appendUpdate po sm u = Map.insertWith (++) (Map.findWithDefault (error "No owner!") (namespace $ uMsgPath u) po) [u] sm
-    rev ((i, ownErrs), BadOwnerResponse errs) = do
+            sendables po =
+              (\(i', dums) -> ServerData i' $ FRBOwner $
+                  OwnerRequestBundle [] $ dums)
+              <$> Map.toList (sendableMap po)
+            sendableMap po = foldl (appendUpdate po) mempty updates'
+            appendUpdate po sm u = Map.insertWith
+              (++)
+              (Map.findWithDefault (error "No owner!")
+              (namespace $ uMsgPath u) po) [u] sm
+    rev ((i, _ownErrs), BadOwnerResponse errs) = do
         lift $ sendRev $ ServerData i $ FRBOwner $ OwnerRequestBundle errs []
     rev ((i, ownErrs), GoodOwnerResponse updates) = do
         stateFst $ updateOwnerships i $ lefts updates
@@ -208,7 +215,8 @@ _namespaceTrackerProtocol publish = forever $ do
             ps <- get
             lift $ mapM_ sendRev $ filter nonEmptySendable $ getSendables ps
           where
-            getSendables ps = map (\(i, paths) -> ServerData i $ filteredByPath paths) $ Map.toList ps
+            getSendables ps = map (\(i', paths) -> ServerData i' $
+                                    filteredByPath paths) $ Map.toList ps
             filteredByPath paths = FRBClient $ UpdateBundle (filter (inPaths paths) errs) (filter (inPaths paths) oms)
             inPaths :: UMsg msg => Set.Set Path -> msg -> Bool
             inPaths paths = flip elem paths . uMsgPath
