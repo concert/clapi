@@ -1,4 +1,6 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE FlexibleInstances #-}
+
 module Clapi.Serialisation
     (
       encode,
@@ -16,7 +18,7 @@ module Clapi.Serialisation
     ) where
 
 import Data.Char (chr)
-import Data.Monoid ((<>), mconcat, Sum(..))
+import Data.Monoid ((<>), Sum(..))
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (liftM2)
 import Control.Monad.Fail (MonadFail)
@@ -27,8 +29,7 @@ import Blaze.ByteString.Builder (
     fromWord32be, fromWord64be)
 import Data.ByteString.Builder(floatBE, doubleBE)
 import Blaze.ByteString.Builder.ByteString (fromByteString)
-import Blaze.ByteString.Builder.Char.Utf8 (fromChar, fromText, fromString)
-import Data.ByteString.UTF8 (toString)
+import Blaze.ByteString.Builder.Char.Utf8 (fromChar, fromText)
 import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8With)
@@ -37,20 +38,19 @@ import Data.Attoparsec.ByteString
   (Parser, parseOnly, count, anyWord8, satisfy, inClass)
 import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
 import qualified Data.Attoparsec.ByteString as APBS
-import qualified Data.Attoparsec.Text as APT
 
 import Clapi.Types(
     CanFail, ClapiTypeEnum(..), ClapiValue(..), clapiValueType,
     ToRelayBundle(..), FromRelayBundle(..), Time(..), Interpolation(..),
     InterpolationType(..), interpolationType, UMsgError(..), SubMessage(..),
-    DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
+    DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage,
     RequestBundle(..), UpdateBundle(..), OwnerRequestBundle(..),
     TimeStamped(..))
 import qualified Clapi.Path as Path
 import qualified Path.Parsing as Path
-import Clapi.Util (composeParsers)
 import Clapi.TaggedData
 
+(<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
 (<<>>) = liftM2 (<>)
 
 encode :: Serialisable a => a -> CanFail B.ByteString
@@ -96,11 +96,12 @@ decodeLengthPrefixedBytes decoder = do
     bytes <- APBS.take $ fromIntegral len
     return $ decoder bytes
 
+decodeUtf8With' :: B.ByteString -> T.Text
 decodeUtf8With' = decodeUtf8With onError
   where
     onError :: String -> Maybe Word8 -> Maybe Char
-    onError s Nothing = Nothing  -- End of input
-    onError s (Just c) = Just '?'  -- Undecodable
+    onError _s Nothing = Nothing  -- End of input
+    onError _s (Just _c) = Just '?'  -- Undecodable
 
 instance Serialisable T.Text where
     builder = prefixLength . fromText
@@ -131,6 +132,7 @@ typeTag ClTDouble = 'D'
 typeTag ClTString = 's'
 typeTag ClTList = 'l'
 
+cvTaggedData :: TaggedData ClapiTypeEnum ClapiValue
 cvTaggedData = taggedData typeTag clapiValueType
 
 cvBuilder :: ClapiValue -> CanFail Builder
@@ -186,6 +188,7 @@ data SubMsgType
   = SubMsgTSub
   | SubMsgTUnsub deriving (Enum, Bounded)
 
+subMsgTaggedData :: TaggedData SubMsgType SubMessage
 subMsgTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (SubMsgTSub) = 'S'
@@ -206,6 +209,7 @@ data DataUpdateMsgType
   | DUMTClear
   | DUMTSetChildren deriving (Enum, Bounded)
 
+dumtTaggedData :: TaggedData DataUpdateMsgType DataUpdateMessage
 dumtTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (DUMTAdd) = 'a'
@@ -219,6 +223,7 @@ dumtTaggedData = taggedData typeToTag msgToType
     msgToType (UMsgClear _ _ _ _) = DUMTClear
     msgToType (UMsgSetChildren _ _ _) = DUMTSetChildren
 
+dumtParser :: DataUpdateMsgType -> Parser DataUpdateMessage
 dumtParser e = case e of
     (DUMTAdd) -> sap UMsgAdd
     (DUMTSet) -> sap UMsgSet
@@ -230,6 +235,7 @@ dumtParser e = case e of
       mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     rcp mt = mt <$> parser <*> parser <*> parser <*> parser
 
+dumtBuilder :: DataUpdateMessage -> Either String Builder
 dumtBuilder m = case m of
     (UMsgAdd p t v i a s) ->
       builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
@@ -252,6 +258,7 @@ data TreeUpdateMsgType
   = TUMTAssignType
   | TUMTDelete deriving (Enum, Bounded)
 
+tumtTaggedData :: TaggedData TreeUpdateMsgType TreeUpdateMessage
 tumtTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (TUMTAssignType) = 'A'
@@ -282,6 +289,10 @@ buildEither ::
 buildEither td ba bb eab =
   (builder $ tdInstanceToTag td eab) <<>> either ba bb eab
 
+oumTaggedData
+  :: TaggedData
+      (Either TreeUpdateMsgType DataUpdateMsgType)
+      (Either TreeUpdateMessage DataUpdateMessage)
 oumTaggedData = eitherTagged tumtTaggedData dumtTaggedData
 
 instance Serialisable OwnerUpdateMessage where
@@ -304,6 +315,7 @@ data ToRelayBundleTypeEnum
   = RequestToRelayBundleType
   | UpdateToRelayBundleType deriving (Enum, Bounded)
 
+trbTaggedData :: TaggedData ToRelayBundleTypeEnum ToRelayBundle
 trbTaggedData = taggedData typeToTag bundleType
   where
     typeToTag (RequestToRelayBundleType) = 'r'
@@ -323,6 +335,7 @@ data FromRelayBundleTypeEnum
   = RequestFromRelayBundleType
   | UpdateFromRelayBundleType deriving (Enum, Bounded)
 
+frbTaggedData :: TaggedData FromRelayBundleTypeEnum FromRelayBundle
 frbTaggedData = taggedData typeToTag bundleType
   where
     typeToTag (RequestFromRelayBundleType) = 'R'
@@ -343,6 +356,7 @@ badTag :: (MonadFail m) => String -> Char ->  m a
 badTag n c = fail $ "Bad " ++ n ++ " type tag '" ++ (show c) ++ "'"
 
 
+interpolationTaggedData :: TaggedData InterpolationType Interpolation
 interpolationTaggedData = taggedData toTag interpolationType
   where
     toTag (ITConstant) = 'C'
@@ -367,7 +381,7 @@ instance (Serialisable a) => Serialisable (Maybe a) where
         case c of
           'J' -> Just <$> parser
           'N' -> return Nothing
-          c -> badTag "maybe" c
+          _ -> badTag "maybe" c
 
 instance (Serialisable a) => Serialisable (TimeStamped a) where
     builder (TimeStamped (t, a)) = builder t <<>> builder a
