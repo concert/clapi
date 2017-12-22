@@ -9,7 +9,7 @@ import qualified Data.Set as Set
 
 import Clapi.Types (ClapiValue(..))
 import Clapi.Tree (treeInitNode)
-import Clapi.Validator (success, fromText, validatorValidator, goValidate)
+import Clapi.Validator (success, fromText, validatorValidator, vValidate)
 
 -- testRefValidator =
 --   do
@@ -30,6 +30,6 @@ spec = describe "Validator" $ do
     it "Fails from wrapper" $ validate (ClString badValue) `shouldSatisfy` isLeft
     it "Works in success case" $ validate (ClString "int32") `shouldSatisfy` isRight
   where
-    validate = goValidate (validatorValidator "desk") undefined
+    validate = vValidate (validatorValidator "desk") undefined
     badValue = "validator[]"
     badValue' = "validator[foo]"
