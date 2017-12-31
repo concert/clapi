@@ -13,12 +13,14 @@ module Clapi.Util (
     uncamel,
     parseType,
     composeParsers,
+    showItems
 ) where
 
 import Prelude hiding (fail)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Maybe (fromJust)
 import Data.ByteString (ByteString)
+import Data.List (intercalate)
 import Data.List.Split (splitOn)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -139,3 +141,6 @@ composeParsers parserA parserB = do
   where
     handleResult (Left errStr) = fail errStr
     handleResult (Right x) = return x
+
+showItems :: (Show a) => [a] -> String
+showItems = intercalate ", " . fmap show
