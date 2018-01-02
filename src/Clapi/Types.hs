@@ -1,4 +1,6 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ExistentialQuantification, FlexibleInstances, DeriveFunctor #-}
+
 module Clapi.Types
     (
         CanFail,
@@ -20,7 +22,7 @@ module Clapi.Types
         SubMessage(..),
         DataUpdateMessage(..),
         TreeUpdateMessage(..),
-        OwnerUpdateMessage(..),
+        OwnerUpdateMessage,
         TimeStamped(..),
         UMsg(..),
         InterpolationType(..),
@@ -50,7 +52,8 @@ type Site = T.Text
 class UMsg a where
    uMsgPath :: a -> Path
 
-data UMsgError = UMsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
+data UMsgError
+  = UMsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
 
 instance UMsg UMsgError where
     uMsgPath = errMsgPath
@@ -141,7 +144,7 @@ data ClapiValue = ClTime Time |
     ClString T.Text | ClList [ClapiValue] deriving (Eq, Ord)
 
 instance Show ClapiValue where
-    show x = '_' : (show' x)
+    show a = '_' : (show' a)
       where
         show' (ClTime x) = show x
         show' (ClEnum x) = show x
@@ -175,9 +178,9 @@ safeToEnum :: (MonadFail m, Enum a, Bounded a) => Int -> m a
 safeToEnum i =
   let
     r = toEnum i
-    max = maxBound `asTypeOf` r
-    min = minBound `asTypeOf` r
-  in if fromEnum min <= i && i <= fromEnum max
+    theMax = maxBound `asTypeOf` r
+    theMin = minBound `asTypeOf` r
+  in if fromEnum theMin <= i && i <= fromEnum theMax
   then return r
   else fail "enum value out of range"
 

@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Clapi.Util (
     eitherFail,
     tagl, tagr,
@@ -37,6 +40,8 @@ tagr f a = (a, f a)
 
 append :: [a] -> a -> [a]
 append as a = as ++ [a]
+
+(+|) :: [a] -> a -> [a]
 (+|) = append
 
 appendIfAbsent :: (Eq a) => [a] -> a -> [a]
@@ -45,11 +50,12 @@ appendIfAbsent as a | a `elem` as = as
 (+|?) :: (Eq a) => [a] -> a -> [a]
 (+|?) = appendIfAbsent
 
-duplicates :: (Ord a) => [a] -> Set.Set a
-duplicates as = Map.keysSet $ Map.filter (>1) map
+duplicates :: forall a. (Ord a) => [a] -> Set.Set a
+duplicates as = Map.keysSet $ Map.filter (>1) theMap
   where
     count a m = Map.insertWith (const (+1)) a 1 m
-    map = foldr count mempty as
+    theMap :: Map.Map a Int
+    theMap = foldr count mempty as
 
 zipLongest :: (Monoid a, Monoid b) => [a] -> [b] -> [(a, b)]
 zipLongest [] [] = []
@@ -59,9 +65,9 @@ zipLongest (a:as) (b:bs) = (a, b) : zipLongest as bs
 
 
 strictZipWith :: (MonadFail m) => (a -> b -> c) -> [a] -> [b] -> m [c]
-strictZipWith f [] [] = return []
-strictZipWith f [] (b:bs) = fail "ran out of a's"
-strictZipWith f (a:as) [] = fail "ran out of b's"
+strictZipWith _ [] [] = return []
+strictZipWith _ [] (_b:_bs) = fail "ran out of a's"
+strictZipWith _ (_a:_as) [] = fail "ran out of b's"
 strictZipWith f (a:as) (b:bs) = (:) (f a b) <$> strictZipWith f as bs
 
 strictZip :: (MonadFail m) => [a] -> [b] -> m [(a, b)]
@@ -85,9 +91,9 @@ uncamel [] = []
 uncamel (c:cs) = toLower c : uncamel' cs where
     uncamel' :: String -> String
     uncamel' [] = []
-    uncamel' (c:cs)
-        | isUpper c = '_' : toLower c : uncamel' cs
-        | otherwise = c : uncamel' cs
+    uncamel' (c':cs')
+        | isUpper c' = '_' : toLower c' : uncamel' cs'
+        | otherwise = c' : uncamel' cs'
 
 camel :: String -> String
 camel = (foldl (++) "") . (map initCap) . (splitOn "_") where

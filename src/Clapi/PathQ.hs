@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     QuasiQuotes
   , TemplateHaskell

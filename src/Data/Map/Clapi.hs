@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 module Data.Map.Clapi where
 
 import qualified Data.Map as Map

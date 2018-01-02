@@ -1,16 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Clapi.TextSerialisation where
+
+import GHC.Float (double2Float)
+import Control.Monad (void)
 import Data.Monoid
-import Data.Text (Text, unpack, empty)
+import Data.Text (Text, empty)
 import qualified Data.Text as T
-import Control.Applicative ((<|>))
 
 import Blaze.ByteString.Builder (Builder)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString, fromChar, fromShow)
 
 import Data.Attoparsec.Text (
     Parser, char, decimal, takeTill, many1, IResult(..), satisfy, inClass,
-    parse, (<?>), endOfInput)
+    parse, (<?>), endOfInput, signed, double)
 
 import qualified Clapi.Serialisation as Wire
 import Clapi.TaggedData (tdAllTags, tdInstanceToTag, tdTagToEnum, TaggedData)
@@ -19,13 +21,22 @@ import Clapi.Types (
 import Clapi.Path (Path)
 
 cvBuilder :: ClapiValue -> Builder
+cvBuilder (ClWord32 i) = fromShow i
+cvBuilder (ClWord64 i) = fromShow i
 cvBuilder (ClInt32 i) = fromShow i
+cvBuilder (ClInt64 i) = fromShow i
+cvBuilder (ClFloat f) = fromShow f
+cvBuilder (ClDouble f) = fromShow f
 cvBuilder (ClString s) = fromShow s
+cvBuilder (ClTime t) = timeBuilder t
 -- I think this is the best you can do without path specific type info:
 cvBuilder (ClEnum i) = fromShow i
 
 tdTaggedBuilder :: TaggedData e a -> (a -> Builder) -> a -> Builder
 tdTaggedBuilder td bdr a = fromChar (tdInstanceToTag td $ a) <> bdr a
+
+timeBuilder :: Time -> Builder
+timeBuilder (Time s f) = fromShow s <> fromChar ':' <> fromShow f
 
 msgBuilder :: DataUpdateMessage -> Builder
 msgBuilder = tdTaggedBuilder Wire.dumtTaggedData dumBuilder
@@ -34,16 +45,15 @@ msgBuilder = tdTaggedBuilder Wire.dumtTaggedData dumBuilder
         (UMsgSet {}) -> tab valSubs msg
         (UMsgAdd {}) -> tab valSubs msg
         (UMsgRemove {}) -> tab noSubs msg
-    tb (Time s f) = (fromShow s) <> (fromChar ':') <> (fromShow f)
     ab ma = case ma of
         (Just  a) -> fromShow a
         Nothing -> fromString "\"\""
     tab subs msg = spJoin $
-        [tb $ duMsgTime msg] ++ (subs msg) ++ [ab $ duMsgAttributee msg]
+        [timeBuilder $ duMsgTime msg] ++ (subs msg) ++ [ab $ duMsgAttributee msg]
     spJoin bs = mconcat $ fmap (fromChar ' ' <>) bs
     vb vs = fmap cvBuilder vs
     ib = tdTaggedBuilder Wire.interpolationTaggedData $ \i -> case i of
-        (IBezier a b) -> error "bezier text serialisation not implemented"
+        (IBezier _ _) -> error "bezier text serialisation not implemented"
         _ -> mempty
     valSubs msg = (vb $ duMsgArgs msg) ++ [ib $ duMsgInterpolation msg]
     noSubs _ = []
@@ -64,14 +74,20 @@ encode msgs = header <> bodyBuilder
 quotedString :: Parser Text
 -- FIXME: escaped quotes unsupported
 quotedString = do
-    char '"'
+    void $ char '"'
     s <- takeTill (== '"')
-    char '"'
+    void $ char '"'
     return s
 
 cvParser :: ClapiTypeEnum -> Parser ClapiValue
-cvParser ClTInt32 = (ClInt32 <$> decimal) <?> "ClInt32"
+cvParser ClTInt32 = (ClInt32 <$> signed decimal) <?> "ClInt32"
+cvParser ClTInt64 = (ClInt64 <$> signed decimal) <?> "ClInt64"
+cvParser ClTWord32 = (ClWord32 <$> decimal) <?> "ClWord32"
+cvParser ClTWord64 = (ClWord64 <$> decimal) <?> "ClWord64"
+cvParser ClTFloat = (ClFloat . double2Float <$> double) <?> "ClFloat"
+cvParser ClTDouble = (ClDouble <$> double) <?> "ClDouble"
 cvParser ClTString = (ClString <$> quotedString) <?> "ClString"
+cvParser ClTTime = (ClTime <$> timeParser) <?> "ClTime"
 cvParser ClTEnum = (ClEnum <$> decimal) <?> "ClEnum"
 
 charIn :: String -> String -> Parser Char
@@ -87,7 +103,7 @@ getTupleParser = sequence <$> many1 (charIn (tdAllTags Wire.cvTaggedData) "type"
 timeParser :: Parser Time
 timeParser = do
     s <- decimal
-    char ':'
+    void $ char ':'
     f <- decimal
     return $ Time s f
 
@@ -132,7 +148,7 @@ msgParser path valParser = tdTaggedParser Wire.dumtTaggedData $ \e -> char ' ' >
 
 decode :: Path -> Text -> Either String [DataUpdateMessage]
 decode path txt = case parse getTupleParser txt of
-    Fail _ ctxs msg -> Left msg
+    Fail _ _ctxs msg -> Left msg
     Partial _ -> Left "Cannot decode empty"
     Done remaining p -> handleResult $ parse ((many1 $ innerParser p) <* endOfInput) remaining
   where

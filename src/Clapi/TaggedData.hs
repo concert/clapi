@@ -1,4 +1,9 @@
-module Clapi.TaggedData (TaggedData, taggedData, eitherTagged, tdAllTags, tdInstanceToTag, tdTagToEnum) where
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+
+module Clapi.TaggedData
+  ( TaggedData, taggedData, eitherTagged, tdAllTags, tdInstanceToTag
+  , tdTagToEnum) where
+
 import Data.List (intersect, nub)
 
 data TaggedData e a = TaggedData {
@@ -18,9 +23,11 @@ taggedData toTag typeToEnum = if nub allTags == allTags
     tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
     allTags = fst <$> tagMap
     fromTag t = maybe (err t) id $ lookup t tagMap
-    err t = error $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '" ++ allTags ++ "'"
+    err t = error $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '"
+      ++ allTags ++ "'"
 
-eitherTagged :: TaggedData e a -> TaggedData f b -> TaggedData (Either e f) (Either a b)
+eitherTagged
+  :: TaggedData e a -> TaggedData f b -> TaggedData (Either e f) (Either a b)
 eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
     [] -> TaggedData toTag fromTag allTags typeToEnum
     i -> error $ "Tags overlap: " ++ i

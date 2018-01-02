@@ -1,10 +1,11 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
+
 module Clapi.Validator where
 
 import qualified Data.Text as T
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
-import Control.Monad (join)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import Data.Word (Word32, Word64)
@@ -12,7 +13,6 @@ import Data.Int (Int32, Int64)
 import Data.Scientific (toRealFloat)
 import Data.Foldable (toList)
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
@@ -37,16 +37,17 @@ type Validate =
     (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail [NodePath]
 
 data Validator = Validator {
-    desc :: Text.Text,
-    goValidate :: Validate,
+    vDesc :: Text.Text,
+    vValidate :: Validate,
     vType :: VType}
 
 instance Show Validator where
-  show = Text.unpack . desc
+  show = Text.unpack . vDesc
 
 instance Eq Validator where
-  v1 == v2 = desc v1 == desc v2
+  v1 == v2 = vDesc v1 == vDesc v2
 
+success :: (Monad m, Monoid a) => m a
 success = return mempty
 
 maybeP :: Dat.Parser a -> Dat.Parser (Maybe a)
@@ -60,9 +61,9 @@ fromText t = Dat.parseOnly (mainParser <* Dat.endOfInput) t
         argValidator <- fromJust $ Map.lookup name argsParserMap
         return argValidator
     bracket p = do
-        Dat.char '['
+        _ <- Dat.char '['
         result <- p
-        Dat.char ']'
+        _ <- Dat.char ']'
         return result
     sep = Dat.char ':'
     argsParserMap :: Map.Map Text.Text (Dat.Parser Validator)
@@ -123,7 +124,7 @@ softValidate ::
     CanFail [NodePath]
 softValidate getTypePath vs cvs =
     fmap mconcat . sequence $
-    zipWith ($) [(goValidate v) getTypePath | v <- vs] cvs
+    zipWith ($) [(vValidate v) getTypePath | v <- vs] cvs
 
 timeValidator :: Text.Text -> Validator
 timeValidator t = Validator t doValidate VTime
@@ -133,37 +134,37 @@ timeValidator t = Validator t doValidate VTime
 
 getNumValidator :: forall a. (Clapiable a, Ord a, PrintfArg a) =>
     Text.Text -> VType -> Maybe a -> Maybe a -> Validator
-getNumValidator t vtype min max =
-    Validator t (\_ cv -> checkType cv >>= bound min max) vtype
+getNumValidator t vtype mMin mMax =
+    Validator t (\_ cv -> checkType cv >>= bound mMin mMax) vtype
   where
     -- FIXME: should say which type!
     checkType cv = note "Bad type" (fromClapiValue cv :: Maybe a)
     bound :: (Ord a) => Maybe a -> Maybe a -> a -> CanFail [NodePath]
-    bound Nothing Nothing v = success
-    bound (Just min) Nothing v
-      | v >= min = success
-      | otherwise = Left $ printf "%v is not >= %v" v min
-    bound Nothing (Just max) v
-      | v <= max = success
-      | otherwise = Left $ printf "%v is not <= %v" v max
-    bound (Just min) (Just max) v
-      | v >= min && v <= max = success
-      | otherwise = Left $ printf "%v not between %v and %v" v min max
+    bound Nothing Nothing _ = success
+    bound (Just theMin) Nothing v
+      | v >= theMin = success
+      | otherwise = Left $ printf "%v is not >= %v" v theMin
+    bound Nothing (Just theMax) v
+      | v <= theMax = success
+      | otherwise = Left $ printf "%v is not <= %v" v theMax
+    bound (Just theMin) (Just theMax) v
+      | v >= theMin && v <= theMax = success
+      | otherwise = Left $ printf "%v not between %v and %v" v theMin theMax
 
 getEnumValidator :: Text.Text -> [String] -> Validator
 getEnumValidator t names = Validator t doValidate VEnum
   where
-    max = fromIntegral $ length names - 1
+    theMax = fromIntegral $ length names - 1
     doValidate _ (ClEnum x)
-      | x <= max = success
-      | otherwise = Left $ printf "Enum value not <= %v" (max)
+      | x <= theMax = success
+      | otherwise = Left $ printf "Enum value not <= %v" (theMax)
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
 
 getStringValidator :: Text.Text -> Maybe String -> Validator
 getStringValidator desc p = Validator desc (doValidate p) VString
   where
     errStr = printf "did not match '%s'"
-    doValidate Nothing _ (ClString t) = success
+    doValidate Nothing _ (ClString _) = success
     doValidate (Just pattern) _ (ClString t) = const [] <$>
         note (errStr pattern) ((Text.unpack t) =~~ pattern :: Maybe ())
     doValidate _ _ _ = Left "Bad type"  -- FIXME: should say which!
@@ -206,6 +207,6 @@ getSetValidator t itemValidator =
     listValidator = getListValidator "" itemValidator
     setValidator getType cv@(ClList xs) =
         let dups = duplicates xs in
-        if null dups then goValidate listValidator getType cv
+        if null dups then vValidate listValidator getType cv
         else Left $ printf "Duplicate elements %v" $ showJoin ", " dups
     setValidator _ _ = Left "Bad type"

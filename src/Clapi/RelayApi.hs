@@ -1,9 +1,12 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
+
 module Clapi.RelayApi (relayApiProto, PathNameable(..)) where
+
 import Data.Monoid
-import Control.Monad (forever, when)
-import Data.Text (Text, pack)
-import qualified Data.List as List
+import Control.Monad (when)
+import Control.Monad.Fail (MonadFail)
+import Data.Text (Text)
 import Control.Concurrent.MVar
 import Control.Monad.Trans (lift)
 import qualified Data.Map as Map
@@ -14,7 +17,7 @@ import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (
     ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationType(ITConstant),
     Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..),
-    OwnerUpdateMessage(..), toClapiValue, Time(..), UpdateBundle(..),
+    OwnerUpdateMessage, toClapiValue, Time(..), UpdateBundle(..),
     ClapiValue(ClString), Enumerated(..), RequestBundle(..), SubMessage(..),
     TimeStamped(..), Clapiable(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
@@ -22,9 +25,12 @@ import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta)
+import Clapi.Util (strictZipWith)
 
+zt :: Time
 zt = Time 0 0
 
+sdp, tdp, adp :: Path
 sdp = [pathq|/api/types/base/struct|]
 tdp = [pathq|/api/types/base/tuple|]
 adp = [pathq|/api/types/base/array|]
@@ -129,16 +135,15 @@ relayApiProto ownerMv selfAddr =
         return newOwnerMap
     clientPov ci i (FRBClient (UpdateBundle errs oums)) = let
         theirSeg = pathNameFor i
-        theirTime = Map.lookup theirSeg ci
-        smt (Just a) (Just b) = a - b
+        theirTime = Map.findWithDefault
+          (error "Can't rewrite message for unconnected client") theirSeg ci
         relClientInfo p = if p == selfP
             then \_ -> [clRef $ cap +| theirSeg]
             else if up p == cap
-                then \v -> case v of
-                    [td] -> [toClapiValue $ smt (fromClapiValue td) theirTime]
+                then either error id . transformCvs [liftCv $ subtract theirTime]
                 else id
-        mkRelative (Right (UMsgAdd p t v i a s)) = Right $ UMsgAdd p t (relClientInfo p v) i a s
-        mkRelative (Right (UMsgSet p t v i a s)) = Right $ UMsgSet p t (relClientInfo p v) i a s
+        mkRelative (Right (UMsgAdd p t v i' a s)) = Right $ UMsgAdd p t (relClientInfo p v) i' a s
+        mkRelative (Right (UMsgSet p t v i' a s)) = Right $ UMsgSet p t (relClientInfo p v) i' a s
         mkRelative m = m
         oums' = mkRelative <$> oums
       in
@@ -171,3 +176,12 @@ relayApiProto ownerMv selfAddr =
         steadyState oldOwnerMap ci'
       where
         ci' = Map.delete (pathNameFor cid) ci
+
+type CvTransform m = ClapiValue -> m ClapiValue
+
+liftCv :: (Clapiable a, MonadFail m) => (a -> a) -> CvTransform m
+liftCv f cv = toClapiValue . f <$> fromClapiValue cv
+
+transformCvs
+  :: (MonadFail m) => [CvTransform m] -> [ClapiValue] -> m [ClapiValue]
+transformCvs ss cvs = strictZipWith ($) ss cvs >>= sequence
