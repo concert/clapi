@@ -1,42 +1,79 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-module Clapi.Path where
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DeriveLift #-}
+module Clapi.Path (
+    Path(..), Seg, mkSeg, unSeg,
+    pathP, segP, toText, fromText,
+    pattern Root, pattern (:</), pattern (:/),
+    isParentOf, isChildOf, isParentOfAny, isChildOfAny,
+    childPaths) where
 
 import Prelude hiding (fail)
+import qualified Data.Attoparsec.Text as DAT
+import Data.Attoparsec.Text (Parser)
+import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
-import Data.List.NonEmpty (NonEmpty((:|)), fromList)
-import Data.Tuple (swap)
+import Data.Monoid
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)
-import Clapi.Util (append)
+import Instances.TH.Lift ()
+import Language.Haskell.TH.Lift (Lift)
 
-type Name = Text
-newtype Path = Path [Name] deriving (Eq, Show, Ord)
+newtype Seg = Seg {unSeg :: Text} deriving (Eq, Ord, Lift)
 
-root :: Path
-root = Path []
+instance Show Seg where
+    show = show . unSeg
 
-up :: Path -> Path
-up (Path []) = root
--- FIXME: using Data.Seq would be faster than a built in list for init (removing
--- last element)
-up (Path names) = Path $ init names
+isValidSegChar :: Char -> Bool
+isValidSegChar c = isLetter c || isDigit c || c == '_'
 
-splitBasename :: (MonadFail m) => Path -> m (Path, Name)
-splitBasename (Path []) = fail "Can't split root path"
-splitBasename (Path names) = return . swap $ Path <$> f (fromList names)
-  where
-    f (n :| []) = (n, [])
-    f (n :| ns) = (n:) <$> f (fromList ns)
+segP :: Parser Seg
+segP = fmap (Seg . Text.pack) $ DAT.many1 $ DAT.satisfy isValidSegChar
 
--- | Generate a traversal to the root from the supplied path paired with the
---   child name from which each path was arrived at
-pathsAndChildNames :: Path -> [(Path, Maybe Name)]
-pathsAndChildNames path = (path, Nothing) : pac path
-  where
-    pac = maybe [] (\(p, n) -> (p, Just n) : pac p) . splitBasename
+mkSeg :: MonadFail m => Text -> m Seg
+mkSeg = either fail return . DAT.parseOnly (segP <* DAT.endOfInput)
 
-(+|) :: Path -> Name -> Path
-(+|) (Path p) n = Path $ append p n
+newtype Path = Path {unPath :: [Seg]} deriving (Eq, Ord, Lift)
+
+sepChar :: Char
+sepChar = '/'
+
+sepText :: Text
+sepText = Text.singleton sepChar
+
+instance Show Path where
+    show = Text.unpack . toText
+    
+toText :: Path -> Text
+toText (Path segs) = sepText <> Text.intercalate sepText (fmap unSeg segs)
+
+pattern Root :: Path
+pattern Root = Path []
+
+splitHead :: Path -> Maybe (Seg, Path)
+splitHead (Path []) = Nothing
+splitHead (Path (seg:segs)) = Just (seg, Path segs)
+
+pattern (:</) :: Seg -> Path -> Path
+pattern seg :</ path <- (splitHead -> Just (seg, path)) where
+    seg :</ path = Path $ seg : unPath path
+
+splitTail :: Path -> Maybe (Path, Seg)
+splitTail (Path []) = Nothing
+splitTail (Path segs) = Just (Path $ init segs, last segs)
+
+pattern (:/) :: Path -> Seg -> Path
+pattern path :/ seg <- (splitTail -> Just (path, seg)) where
+    path :/ seg = Path $ unPath path ++ [seg]
+
+pathP :: Parser Path
+pathP = let sepP = DAT.char sepChar in
+    fmap Path $ sepP >> segP `DAT.sepBy` sepP
+
+fromText :: MonadFail m => Text -> m Path
+fromText = either fail return . DAT.parseOnly (pathP <* DAT.endOfInput)
 
 isParentOf :: Path -> Path -> Bool
 isParentOf (Path a) (Path b) = isPrefixOf a b
@@ -48,8 +85,7 @@ isParentOfAny :: Path -> [Path] -> Bool
 isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
 
 isChildOfAny :: Path -> [Path] -> Bool
-isChildOfAny candidateChild parents =
-    or $ isChildOf candidateChild <$> parents
+isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
-childPaths :: Path -> [Name] -> [Path]
-childPaths (Path p) ns = Path . (p ++) . pure <$> ns
+childPaths :: Path -> [Seg] -> [Path]
+childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss

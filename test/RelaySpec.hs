@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
+{-# LANGUAGE PatternSynonyms #-}
 module RelaySpec where
 import Data.List (intersperse, (\\))
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Path.Parsing (toText)
-import Clapi.Path (root)
+import Clapi.Path (pattern Root, toText)
 import Clapi.PathQ
 import Clapi.Types (
     DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
@@ -25,12 +25,12 @@ spec = describe "Relay" $ do
         Right $ UMsgAdd
             [pathq|/foo/type|]
             z
-            [s "atypical", los ["type"], los ["/api/types/base/struct/"], ClList [cannot]]
+            [s "atypical", los ["type"], los ["/api/types/base/struct"], ClList [cannot]]
             IConstant
             Nothing
             Nothing,
         Left $ UMsgAssignType [pathq|/foo|] [pathq|/foo/type|]]
-    expectedMsgs = inMsgs ++ [Right $ UMsgSet (tp root) z extendedV IConstant Nothing Nothing]
+    expectedMsgs = inMsgs ++ [Right $ UMsgSet (tp Root) z extendedV IConstant Nothing Nothing]
     z = Time 0 0
     extendedV = [s "auto-generated container", los ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], ClList [cannot, cannot]]
     s = ClString

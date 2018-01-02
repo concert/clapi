@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Main where
 
 import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import Control.Monad
 import Control.Monad.Trans (liftIO)
 import Control.Concurrent
@@ -22,8 +24,10 @@ import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
-import Clapi.RelayApi (relayApiProto, PathNameable(..))
+import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
+import Clapi.Path (mkSeg)
+import Clapi.PathQ (segq)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
 shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
@@ -33,12 +37,12 @@ shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
 -- FIXME: This is owned by something unsendable and we should reflect that
 internalAddr = SockAddrCan 12
 apiClaimed :: Owners SockAddr
-apiClaimed = Map.singleton "api" internalAddr
+apiClaimed = Map.singleton [segq|api|] internalAddr
 
-instance PathNameable SockAddr where
-    pathNameFor (SockAddrCan _) = "relay"
+instance PathSegable SockAddr where
+    pathNameFor (SockAddrCan _) = [segq|relay|]
     -- NOTE: Do not persist this as it depends on the form of show
-    pathNameFor clientAddr = T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
+    pathNameFor clientAddr = fromJust $ mkSeg $ T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
 
 main :: IO ()
 main =

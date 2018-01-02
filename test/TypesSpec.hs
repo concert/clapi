@@ -6,6 +6,7 @@ import Test.Hspec
 import Test.QuickCheck
   (Arbitrary(..), Gen, property, oneof, elements, choose, arbitraryBoundedEnum)
 
+import Data.Maybe (fromJust)
 import Control.Monad (replicateM, liftM2)
 import Control.Monad.Fail (MonadFail)
 import Data.List (inits)
@@ -14,7 +15,7 @@ import qualified Data.Text as Text
 import Data.Word (Word32, Word64)
 import Data.Int (Int32, Int64)
 
-import Clapi.Path (Name, Path(..))
+import Clapi.Path (Seg, Path(..), mkSeg)
 import Clapi.Types
   (Time(..), ClapiValue(..), fromClapiValue, toClapiValue, Enumerated)
 
@@ -28,8 +29,11 @@ smallListOf1 g = do
   l <- choose (1, 5)
   replicateM l g
 
-name :: Gen Name
-name = Text.pack <$> smallListOf1 (elements ['a'..'z'])
+name :: Gen Seg
+name = fromJust . mkSeg . Text.pack <$> smallListOf1 (elements ['a'..'z'])
+
+instance Arbitrary Seg where
+  arbitrary = name
 
 instance Arbitrary Path where
   arbitrary = Path <$> smallListOf name

@@ -39,7 +39,7 @@ import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 import Control.Monad.Fail (MonadFail, fail)
 
-import Clapi.Path (Path, Name)
+import Clapi.Path (Path, Seg)
 
 type CanFail a = Either String a
 
@@ -106,7 +106,7 @@ data DataUpdateMessage =
       }
   | UMsgSetChildren
       { duMsgPath :: Path
-      , duMsgNames :: [Name]
+      , duMsgNames :: [Seg]
       , duMsgAttributee :: (Maybe Attributee)
       }
    deriving (Eq, Show)

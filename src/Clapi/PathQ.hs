@@ -2,25 +2,27 @@
 {-# LANGUAGE
     QuasiQuotes
   , TemplateHaskell
-  , StandaloneDeriving
-  , DeriveLift
 #-}
 
-module Clapi.PathQ (pathq) where
+module Clapi.PathQ (pathq, segq) where
 
 import Control.Monad ((>=>))
-import Instances.TH.Lift ()
-import Language.Haskell.TH.Lift (Lift, lift)
+import Data.Text (pack)
+import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
-import Clapi.Path (Path(..))
-import Path.Parsing (fromString)
-
-deriving instance Lift Path
+import Clapi.Path (fromText, mkSeg)
 
 pathq :: QuasiQuoter
 pathq = QuasiQuoter {
-    quoteExp = fromString >=> lift,
+    quoteExp = fromText . pack >=> lift,
+    quotePat = fail "Not supported",
+    quoteDec = fail "Not supported",
+    quoteType = fail "Not supported"}
+
+segq :: QuasiQuoter
+segq = QuasiQuoter {
+    quoteExp = mkSeg . pack >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}

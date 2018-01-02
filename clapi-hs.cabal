@@ -25,7 +25,6 @@ library
                      , Clapi.Path
                      , Clapi.PathQ
                      , Clapi.PerClientProto
-                     , Path.Parsing
                      , Clapi.Relay
                      , Clapi.RelayApi
                      , Clapi.Serialisation

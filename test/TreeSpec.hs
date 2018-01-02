@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
+{-# LANGUAGE PatternSynonyms #-}
 module TreeSpec where
 
 import Test.Hspec
@@ -15,7 +16,7 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 
 import qualified Data.Map.Mos as Mos
-import Clapi.Path (Path(..), isChildOfAny, root)
+import Clapi.Path (Path(..), isChildOfAny, pattern Root)
 import Clapi.PathQ
 import Clapi.Types (
     CanFail, ClapiValue(..), Time(..), InterpolationType(..), Interpolation(..))
@@ -48,16 +49,16 @@ t2 = treeInitNode [pathq|/a/d/e|] t1
 t3 = treeInitNode [pathq|/a/d|] t2
 
 expectedT1 = Map.fromList [
-    (root, Node ["a"] mempty),
-    ([pathq|/a|], Node ["b"] mempty),
-    ([pathq|/a/b|], Node ["c"] mempty),
+    (Root, Node [[segq|a|]] mempty),
+    ([pathq|/a|], Node [[segq|b|]] mempty),
+    ([pathq|/a/b|], Node [[segq|c|]] mempty),
     ([pathq|/a/b/c|], Node [] mempty)] :: ClapiTree ()
 expectedT3 = Map.fromList [
-    (root, Node ["a"] mempty),
-    ([pathq|/a|], Node ["b", "d"] mempty),
-    ([pathq|/a/b|], Node ["c"] mempty),
+    (Root, Node [[segq|a|]] mempty),
+    ([pathq|/a|], Node [[segq|b|], [segq|d|]] mempty),
+    ([pathq|/a/b|], Node [[segq|c|]] mempty),
     ([pathq|/a/b/c|], Node [] mempty),
-    ([pathq|/a/d|], Node ["e"] mempty),
+    ([pathq|/a/d|], Node [[segq|e|]] mempty),
     ([pathq|/a/d/e|], Node [] mempty)] :: ClapiTree ()
 
 

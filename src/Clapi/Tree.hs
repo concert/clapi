@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Clapi.Tree
@@ -23,7 +24,7 @@ where
 import Prelude hiding (fail)
 import qualified Data.Text as T
 import Data.List (partition, intercalate, delete)
-import Data.Maybe (maybeToList, fromMaybe)
+import Data.Maybe (maybeToList)
 import Data.Monoid ((<>))
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -38,14 +39,22 @@ import Text.Printf (printf)
 
 import Clapi.Util (duplicates, partitionDifferenceL, (+|?))
 import Clapi.Path (
-    Name, Path(..), root, childPaths, splitBasename,
-    pathsAndChildNames, (+|), isParentOf)
+    Seg, Path, pattern Root, childPaths, pattern (:/), pattern (:</),
+    isParentOf, unSeg, unPath)
 import Clapi.Types
   (CanFail, Time, Interpolation(..), Attributee, Site)
 import Data.Maybe.Clapi (note)
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Mol as Mol
+
+-- | Generate a traversal to the root from the supplied path paired with the
+--   child name from which each path was arrived at
+pathsAndChildNames :: Path -> [(Path, Maybe Seg)]
+pathsAndChildNames path = (path, Nothing) : pac path
+  where
+    pac Root = []
+    pac (p :/ s) = (p, Just s) : pac p
 
 type NodePath = Path
 type TypePath = Path
@@ -57,7 +66,7 @@ type TimeSeries a = Map.Map Time (Attributed (Maybe (TimePoint a)))
 type SiteMap a = Map.Map (Maybe Site) (TimeSeries a)
 
 data Node a = Node {
-    _getKeys :: [Name],
+    _getKeys :: [Seg],
     _getSites :: SiteMap a}
   deriving (Eq, Show)
 makeLenses ''Node
@@ -85,7 +94,7 @@ unwrapTimePoint = note "data deleted at time point" . snd
 --     unwrapTimePoint tp
 
 getChildPaths :: NodePath -> Node a -> [NodePath]
-getChildPaths rootPath node = (rootPath +|) <$> view getKeys node
+getChildPaths rootPath node = (rootPath :/) <$> view getKeys node
 
 type instance Index (Node a) = Maybe Site
 type instance IxValue (Node a) = TimeSeries a
@@ -103,16 +112,16 @@ formatTree tree = intercalate "\n" allLines
   where
     allLines = mconcat $ ["---"] : (fmap toLines $ Map.toList tree)
     toLines (path, node) = formatPath path : nodeSiteMapToLines path node
-    formatPath (Path []) = "/"
-    formatPath (Path (n:[])) = "  " ++ T.unpack n
-    formatPath (Path (_n:ns)) = "  " ++ formatPath (Path ns)
-    pad (Path names) someLines =
-      let padding = replicate ((length names + 1) * 2) ' ' in
+    formatPath Root = "/"
+    formatPath (s :</ Root) = "  " ++ T.unpack (unSeg s)
+    formatPath (_s :</ p) = "  " ++ formatPath p
+    pad p someLines =
+      let padding = replicate ((length (unPath p) + 1) * 2) ' ' in
         fmap (padding ++) someLines
     nodeSiteMapToLines path node =
         pad path $ mconcat $ fmap siteToLines $ Map.toList $ view getSites node
-    siteToLines (Nothing, ts) = "global:" : (pad root $ tsToLines ts)
-    siteToLines (Just site, ts) = (T.unpack site ++ ":") : (pad root $ tsToLines ts)
+    siteToLines (Nothing, ts) = "global:" : (pad Root $ tsToLines ts)
+    siteToLines (Just site, ts) = (T.unpack site ++ ":") : (pad Root $ tsToLines ts)
     tsToLines ts = fmap attpToLine $ Map.toList ts
     attpToLine (t, (att, Nothing)) =
         printf "%s: deleted (%s)" (show t) (showAtt att)
@@ -126,7 +135,7 @@ treeOrphansAndMissing tree = (orphans, missing)
   where
     nodes = Map.toList tree
     allChildPaths = Set.fromList . mconcat $ fmap (uncurry getChildPaths) nodes
-    allChildPaths' = Set.insert root allChildPaths
+    allChildPaths' = Set.insert Root allChildPaths
     allPaths = Set.fromList $ fmap fst nodes
     orphans = Set.difference allPaths allChildPaths'
     missing = Set.difference allChildPaths allPaths
@@ -144,14 +153,14 @@ updateLookupM f k m = sequenceFst $ at k updateValue m
 -- Sets the child keys attribute of a node in the tree and adds default empty
 -- nodes at the corresponding paths if required:
 treeSetChildren ::
-    (MonadFail m) => NodePath -> [Name] -> ClapiTree a -> m (ClapiTree a)
+    (MonadFail m) => NodePath -> [Seg] -> ClapiTree a -> m (ClapiTree a)
 treeSetChildren path keys' tree
   | null $ duplicates keys' =
       do
         (node, tree') <- updateLookupM (return . (getKeys .~ keys')) path (treeInitNode path tree)
         let (addedKeys, removedKeys) = partitionDifferenceL keys' (view getKeys node)
-        let tree'' = foldl (flip treeInitNode) tree' ((path +|) <$> addedKeys)
-        foldM (flip treeDeleteNode) tree'' ((path +|) <$> removedKeys)
+        let tree'' = foldl (flip treeInitNode) tree' ((path :/) <$> addedKeys)
+        foldM (flip treeDeleteNode) tree'' ((path :/) <$> removedKeys)
   | otherwise = fail $ printf "duplicate keys %s"
         (show . Set.toList $ duplicates keys')
 
@@ -168,7 +177,9 @@ treeDeleteNode ::
     forall m a. (MonadFail m) => NodePath -> ClapiTree a -> m (ClapiTree a)
 treeDeleteNode np tree =
   let
-    tree' = fromMaybe tree (pruneKey tree <$> splitBasename np)
+    tree' = case np of
+        Root -> tree
+        pp :/ s -> pruneKey tree (pp, s)
   in do
     (node, tree'') <- updateLookupM (const Nothing) np tree'
     foldM (flip treeDeleteNode) tree'' (childPaths np $ view getKeys node)
@@ -251,7 +262,7 @@ treeClear _att path justSite t tree = treeAction clear path justSite t tree
 
 data TreeDelta a = Init TypePath  -- FIXME: remove init
   | Delete
-  | SetChildren [Name]
+  | SetChildren [Seg]
   | Clear Time (Maybe Site) (Maybe Attributee)
   | Remove Time (Maybe Site) (Maybe Attributee)
   | Add Time a Interpolation (Maybe Site) (Maybe Attributee)
