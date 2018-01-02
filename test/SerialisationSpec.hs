@@ -13,7 +13,7 @@ import qualified Data.ByteString as BS
 import Data.Either (isLeft)
 import Data.Word (Word16)
 
-import Clapi.Path (Path(..), Name)
+import Clapi.Path (Path(..), Seg)
 import Clapi.Types
   ( CanFail, Time, Attributee, Site, ClapiValue, RequestBundle
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..)
@@ -64,7 +64,7 @@ instance Arbitrary DataUpdateMessage where
       <*> (arbitrary :: Gen (Maybe Site))
     , UMsgSetChildren
       <$> (arbitrary :: Gen Path)
-      <*> (smallListOf name :: Gen [Name])
+      <*> (smallListOf name :: Gen [Seg])
       <*> (arbitrary :: Gen (Maybe Attributee))
     ]
   shrink (UMsgAdd (Path []) _ [] _ Nothing Nothing) = []

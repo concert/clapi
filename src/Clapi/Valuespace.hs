@@ -1,5 +1,6 @@
 {-# OPTIONS_HADDOCK prune #-}
 {-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
@@ -26,9 +27,8 @@ import Data.Maybe.Clapi (note)
 import qualified Data.Maybe.Clapi as Maybe
 
 import Clapi.Util (duplicates, eitherFail, partitionDifferenceL)
-import Clapi.Path ((+|), splitBasename)
+import Clapi.Path (pattern (:/))
 import qualified Clapi.Path as Path
-import qualified Path.Parsing as Path
 import Clapi.Types (
     CanFail, ClapiValue(..), InterpolationType(..), Interpolation(..), Time(..),
     Enumerated(..), toClapiValue, fromClapiValue, getEnum, interpolationType,
@@ -59,12 +59,12 @@ data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 data Definition =
     TupleDef {
       _doc :: T.Text,
-      _valueNames :: [Path.Name],
+      _valueNames :: [Path.Seg],
       _validators :: [Validator],
       _permittedInterpolations :: Set.Set InterpolationType}
   | StructDef {
       _doc :: T.Text,
-      _childNames :: [Path.Name],
+      _childNames :: [Path.Seg],
       _childTypes :: [Path.Path],
       _childLiberties :: [Liberty]}
   | ArrayDef {
@@ -84,7 +84,7 @@ makeLenses ''Definition
 --         printf "<ArrayDef %s %s %s>" (show l) (show ct) (show cl)
 
 tupleDef ::
-    (MonadFail m) => T.Text -> [Path.Name] -> [T.Text] ->
+    (MonadFail m) => T.Text -> [Path.Seg] -> [T.Text] ->
     Set.Set InterpolationType -> m Definition
 tupleDef doc valueNames validatorDescs permittedInterpolations =
    let
@@ -103,7 +103,7 @@ tupleDef doc valueNames validatorDescs permittedInterpolations =
         permittedInterpolations
 
 structDef ::
-    (MonadFail m) => T.Text -> [Path.Name] -> [TypePath] ->
+    (MonadFail m) => T.Text -> [Path.Seg] -> [TypePath] ->
     [Liberty] -> m Definition
 structDef doc childNames childTypes childLiberties =
   let
@@ -142,7 +142,7 @@ categoriseMetaTypePath mtp
     | otherwise = fail "Weird metapath!"
 
 isMetaTypePath :: TypePath -> Bool
-isMetaTypePath p = Path.up p == [pathq|/api/types/base|]
+isMetaTypePath = maybe False (const True) . categoriseMetaTypePath
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
@@ -153,34 +153,38 @@ namesDesc = "set[string[]]"
 typeDesc = "ref[/api/types/base]"
 
 baseTupleDef = fromJust $ tupleDef
-    "t" ["doc", "valueNames", "validators", "interpolationTypes"]
+    "t" [
+        [segq|doc|],
+        [segq|valueNames|],
+        [segq|validators|],
+        [segq|interpolationTypes|]]
     ["string", namesDesc, "list[validator]", setDesc interpolationTypeDesc] mempty
 baseStructDef = fromJust $ tupleDef
-    "s" ["doc", "childNames", "childTypes", "clibs"]
+    "s" [[segq|doc|], [segq|childNames|], [segq|childTypes|], [segq|clibs|]]
     ["string", namesDesc, listDesc typeDesc, listDesc libertyDesc] mempty
 baseArrayDef = fromJust $ tupleDef
-    "a" ["doc", "childType", "clib"]
+    "a" [[segq|doc|], [segq|childType|], [segq|clib|]]
     ["string", typeDesc, libertyDesc] mempty
 
 defToValues :: Definition -> [ClapiValue]
 defToValues (TupleDef d ns vs is) =
   [
     toClapiValue d,
-    toClapiValue $ ns,
+    toClapiValue $ fmap Path.unSeg ns,
     toClapiValue $ vDesc <$> vs,
     toClapiValue $ Enumerated <$> Set.toList is
   ]
 defToValues (StructDef d ns ts ls) =
   [
     toClapiValue d,
-    toClapiValue $ ns,
-    toClapiValue $ T.pack . Path.toString <$> ts,
+    toClapiValue $ fmap Path.unSeg ns,
+    toClapiValue $ Path.toText <$> ts,
     toClapiValue $ Enumerated <$> ls
   ]
 defToValues (ArrayDef d t cl) =
   [
     toClapiValue d,
-    toClapiValue $ T.pack $ Path.toString t,
+    toClapiValue $ Path.toText t,
     toClapiValue $ Enumerated cl
   ]
 
@@ -190,22 +194,22 @@ valuesToDef
     Tuple [ClString d, ns@(ClList _), vds@(ClList _), is@(ClList _)] =
   do
     -- FIXME: need to be able to unpack enums
-    ns' <- fromClapiValue ns
+    ns' <- fromClapiValue ns >>= mapM Path.mkSeg
     vds' <- fromClapiValue vds
     is' <- Set.fromList <$> fmap getEnum <$> fromClapiValue is
     tupleDef d ns' vds' is'
 valuesToDef
     Struct [ClString d, ns@(ClList _), ts@(ClList _), ls@(ClList _)] =
   do
-    ns' <- fromClapiValue ns
-    ts' <- fmap T.unpack <$> fromClapiValue ts
-    ts'' <- mapM Path.fromString ts'
+    ns' <- fromClapiValue ns >>= mapM Path.mkSeg
+    ts' <- fromClapiValue ts
+    ts'' <- mapM Path.fromText ts'
     ls' <- fmap getEnum <$> fromClapiValue ls
     structDef d ns' ts'' ls'
 valuesToDef
     Array [ClString d, ClString t, cl@(ClEnum _)] =
   do
-    t' <- Path.fromString $ T.unpack t
+    t' <- Path.fromText t
     cl' <- getEnum <$> fromClapiValue cl
     arrayDef d t' cl'
 -- TODO: This error doesn't give you much of a hint
@@ -280,7 +284,7 @@ getNode np = note f . view (tree . at np)
   where
     f = printf "No node data found at %s" (show np)
 
-getChildren :: (MonadFail m) => NodePath -> Valuespace v -> m [Path.Name]
+getChildren :: (MonadFail m) => NodePath -> Valuespace v -> m [Path.Seg]
 getChildren np vs = getNode np vs >>= return . view getKeys
 
 type ErrorMap = Map.Map NodePath String
@@ -322,8 +326,9 @@ rectifyTypes valSpace explicitPaths =
             else cfet $ getType vs np
         modify $ \(dirtyPaths, vs) -> (dirtyPaths, over types (Mos.setDependency np tp) vs)
         return tp
-    parentDerivedType np inProgress = case splitBasename np of
-        Just (pp, cn) -> do
+    parentDerivedType np inProgress = case np of
+        Path.Root -> return $ error "Hit root deriving parent types, code bad."
+        (pp :/ cn) -> do
             tp <- getOrInferType pp inProgress
             when (Set.member tp inProgress) $ throwError $
                 "Cannot infer type of " ++ show np ++
@@ -331,7 +336,6 @@ rectifyTypes valSpace explicitPaths =
                 " requires this to be resolved."
             def <- getOrBuildDef tp inProgress
             cfet $ note ("Parent " ++ show tp ++ " has no child " ++ show cn) $ childTypeFor def cn
-        Nothing -> return $ error "Hit root deriving parent types, code bad."
     getOrBuildDef tp inProgress = do
         (dirtyPaths, vs) <- get
         if Set.member tp dirtyPaths
@@ -385,14 +389,14 @@ validateChildren vs = do
 
 validateChildKeyTypes ::
     (MonadFail m) => (NodePath -> m TypePath) -> NodePath ->
-    [Path.Name] -> (Path.Name -> Maybe TypePath) -> m ()
+    [Path.Seg] -> (Path.Seg -> Maybe TypePath) -> m ()
 validateChildKeyTypes getType' np expectedNames nameToType =
   let
     expectedTypeMap = Map.fromList $
-        (\cn -> (cn, (fromJust $ nameToType cn, np +| cn))) <$> expectedNames
+        (\cn -> (cn, (fromJust $ nameToType cn, np :/ cn))) <$> expectedNames
     failTypes bad = when (not . null $ bad) $ fail $
         printf "bad child types for %s:%s" (show np) (concatMap fmtBct $ Map.assocs bad)
-    fmtBct :: (Path.Name, (Path.Path, Path.Path)) -> String
+    fmtBct :: (Path.Seg, (Path.Path, Path.Path)) -> String
     fmtBct (p, (ap, ep)) = printf " (%s: %s != %s)" (show p) (show ap) (show ep)
   in do
     taggedBadTypes <-
@@ -400,7 +404,7 @@ validateChildKeyTypes getType' np expectedNames nameToType =
         (traverse . traverse) getType' expectedTypeMap
     failTypes taggedBadTypes
 
-childTypeFor :: Definition -> Path.Name -> Maybe TypePath
+childTypeFor :: Definition -> Path.Seg -> Maybe TypePath
 childTypeFor (TupleDef _ _ _ _) = const Nothing
 childTypeFor (StructDef _ names types _) = flip lookup $ zip names types
 childTypeFor (ArrayDef _ childType _) = const $ Just childType
@@ -429,7 +433,6 @@ validateNodeChildren getType' np node def@(ArrayDef {}) =
     failDups = when (not . null $ dups) $ fail $
         printf "duplicate array keys %s" (show dups)
   in do
-    mapM_ (eitherFail . parseOnly Path.nameP) nodeKeys
     failDups
     validateChildKeyTypes getType' np nodeKeys (childTypeFor def)
 
@@ -536,13 +539,15 @@ vsClientValidate vs = vsDiff ovs <$> doValidate mempty vs
 
 getLiberty :: MonadFail m => Valuespace ClientUnvalidated -> NodePath -> m Liberty
 getLiberty vs p = do
-    (parent, name) <- Path.splitBasename p
+    (parent, seg) <- case p of
+        Path.Root -> fail "Liberty of root?"
+        (p :/ s) -> return (p, s)
     def <- getDef parent vs
-    libertyOf name def
+    libertyOf seg def
   where
-    libertyOf name (TupleDef {}) = fail "Tuples have no children"
-    libertyOf name (StructDef _ names _ clibs) = note "Not a permitted child of parent struct" $ lookup name $ zip names clibs
-    libertyOf name (ArrayDef _ _ clib) = return clib
+    libertyOf seg (TupleDef {}) = fail "Tuples have no children"
+    libertyOf seg (StructDef _ segs _ clibs) = note "Not a permitted child of parent struct" $ lookup seg $ zip segs clibs
+    libertyOf seg (ArrayDef _ _ clib) = return clib
 
 checkLibertiesPermit :: Valuespace ClientUnvalidated -> MonadErrorMap (Valuespace ClientUnvalidated)
 checkLibertiesPermit vs = (errs, vs)
@@ -579,16 +584,20 @@ validateClientNodeChildren getOldNode getNewNode np node def = Map.fromList $ ca
         (\p -> (p, "Not mutable")) <$> filter unmodified childPaths
   where
     childKeys = view getKeys node
-    childPath name = np +| name
+    childPath name = np :/ name
     childPaths = map childPath childKeys
     unmodified p = getOldNode p == getNewNode p
+
+up :: Path.Path -> Path.Path
+up Path.Root = Path.Root
+up (p :/ s) = p
 
 vsAssignType :: (HasUvtt v TaintTracker, HasEtas v ExplicitTypeAssignments) => NodePath -> TypePath -> Valuespace v -> Valuespace v
 vsAssignType np tp =
     over tree (treeInitNode np) .
     over types (Mos.setDependency np tp) .
     set (unvalidated . uvtt . at np) (Just Nothing) .
-    set (unvalidated . uvtt . at (Path.up np)) (Just Nothing) .
+    set (unvalidated . uvtt . at (up np)) (Just Nothing) .
     over (unvalidated . etas) (Set.insert np) .
     taintXRefDependants np .
     taintImplicitAdditions np
@@ -599,7 +608,7 @@ vsDelete np =
     tree (treeDeleteNode np) .
     over types (Mos.delDependency np) .
     set (unvalidated . uvtt . at np) Nothing .
-    set (unvalidated . uvtt . at (Path.up np)) (Just Nothing)
+    set (unvalidated . uvtt . at (up np)) (Just Nothing)
 
 taintData ::
     (HasUvtt v TaintTracker) => NodePath -> Maybe Site -> Time -> Valuespace v -> Valuespace v
@@ -622,7 +631,7 @@ taintXRefDependants np vs = over (unvalidated . uvtt) (Map.union taintedMap) vs
 
 -- FIXME: Duplicates logic from Tree (about constructing parent nodes)
 taintImplicitAdditions :: (HasUvtt v TaintTracker) => NodePath -> Valuespace v -> Valuespace v
-taintImplicitAdditions np vs = let pp = Path.up np in if pp /= np && Map.notMember pp (view tree vs)
+taintImplicitAdditions np vs = let pp = up np in if pp /= np && Map.notMember pp (view tree vs)
   then taintImplicitAdditions pp $ set (unvalidated . uvtt . at pp) (Just Nothing) vs
   else vs
 
@@ -657,7 +666,7 @@ vsClear a np s t =
 
 vsSetChildren ::
     (MonadFail m, HasUvtt v TaintTracker) =>
-    NodePath -> [Path.Name] -> Valuespace v -> m (Valuespace v)
+    NodePath -> [Path.Seg] -> Valuespace v -> m (Valuespace v)
 vsSetChildren np cns =
     tree (treeSetChildren np cns) .
     set (unvalidated . uvtt . at np) (Just Nothing) .
@@ -693,7 +702,7 @@ autoDefineStruct np tp vs =
       view getKeys n,
       traverse (getType vs) $ getChildPaths np n)
 
-autoGenStructDef :: (MonadFail m) => ([Path.Name], [TypePath]) -> m Definition
+autoGenStructDef :: (MonadFail m) => ([Path.Seg], [TypePath]) -> m Definition
 autoGenStructDef (childNames, childTypes) =
     structDef "auto-generated container" childNames childTypes
     (fmap (const Cannot) childNames)
@@ -734,7 +743,7 @@ baseValuespace =
         [pathq|/api|]
         [pathq|/api/types/containers/api|] >>=
     autoDefineStruct
-        Path.root
+        Path.Root
         [pathq|/api/types/containers/root|] >>=
     return . vsAssignType
         [pathq|/api/types/containers/containers|]
@@ -746,4 +755,4 @@ baseValuespace =
     versionPath = [pathq|/api/self/version|]
     versionDefPath = [pathq|/api/types/self/version|]
     versionDef = fromJust $ tupleDef
-        "t" ["maj", "min"] ["word32", "int32"] mempty
+        "t" [[segq|maj|], [segq|min|]] ["word32", "int32"] mempty

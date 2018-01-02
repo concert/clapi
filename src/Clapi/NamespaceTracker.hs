@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables, Rank2Types #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Clapi.NamespaceTracker where
 
@@ -15,7 +16,7 @@ import Data.Either (lefts)
 import Control.Lens (view, set, Lens', _1, _2)
 
 import qualified Data.Map.Mos as Mos
-import Clapi.Path (Name, Path(..))
+import Clapi.Path (Seg, Path, pattern Root, pattern (:</), pattern (:/))
 import Clapi.Types
   ( DataUpdateMessage(..), TreeUpdateMessage(..)
   , OwnerUpdateMessage, ToRelayBundle(..), FromRelayBundle(..)
@@ -25,7 +26,7 @@ import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
 data Ownership = Owner | Client deriving (Eq, Show)
-type Owners i = Map.Map Name i
+type Owners i = Map.Map Seg i
 
 type Registered i = Mos.Mos i Path
 -- FIXME:
@@ -40,17 +41,17 @@ data Response
   | BadOwnerResponse [UMsgError]
   | GoodOwnerResponse [OwnerUpdateMessage] deriving (Eq, Show)
 
-namespace :: Path -> Name
-namespace (Path []) = ""
-namespace (Path (n:_ns)) = n
-
-isNamespace :: Path -> Bool
-isNamespace (Path (_name:[])) = True
-isNamespace _ = False
-
-maybeNamespace :: (Name -> a) -> Path -> Maybe a
-maybeNamespace f (Path (n:[])) = Just $ f n
+maybeNamespace :: (Seg -> a) -> Path -> Maybe a
+maybeNamespace f (n :</ Root) = Just $ f n
 maybeNamespace _ _ = Nothing
+
+namespaceOf :: Path -> Maybe Seg
+namespaceOf (n :</ _) = Just n
+namespaceOf _ = Nothing
+
+whenJust :: Monad m => Maybe a -> (a -> m ()) -> m ()
+whenJust Nothing _ = return ()
+whenJust (Just a) f = f a
 
 updateOwnerships ::
     forall m i. (Monad m, Ord i, Show i) => i -> [TreeUpdateMessage] -> StateT (Owners i) m ()
@@ -58,9 +59,9 @@ updateOwnerships i = mapM_ $ handle
   where
     handle :: TreeUpdateMessage -> StateT (Owners i) m ()
     handle (UMsgAssignType path _) =
-        when (isNamespace path) (modify $ \x -> Map.insert (namespace path) i x)
+        whenJust (maybeNamespace id path) (\seg -> modify $ Map.insert seg i)
     handle (UMsgDelete path) =
-        when (isNamespace path) (modify (Map.delete $ namespace path))
+        whenJust (maybeNamespace id path) (\seg -> modify $ Map.delete seg)
 
 registerSubscription ::
     (Monad m, Ord i) => i -> OwnerUpdateMessage -> StateT (Registered i) m ()
@@ -71,7 +72,7 @@ registerSubscription i m = case m of
 handleDeletedNamespace ::
     (Monad m, Ord i) => OwnerUpdateMessage -> StateT (Registered i) m ()
 handleDeletedNamespace (Left (UMsgDelete path)) =
-    when (isNamespace path) (modify (Mos.remove path))
+    whenJust (maybeNamespace id path) (\_ -> modify $ Mos.remove path)
 handleDeletedNamespace _ = return ()
 
 
@@ -197,8 +198,8 @@ _namespaceTrackerProtocol publish = forever $ do
             sendableMap po = foldl (appendUpdate po) mempty updates'
             appendUpdate po sm u = Map.insertWith
               (++)
-              (Map.findWithDefault (error "No owner!")
-              (namespace $ uMsgPath u) po) [u] sm
+              (maybe (error "No owner!") id $ namespaceOf (uMsgPath u) >>= \ns -> Map.lookup ns po)
+              [u] sm
     rev ((i, _ownErrs), BadOwnerResponse errs) = do
         lift $ sendRev $ ServerData i $ FRBOwner $ OwnerRequestBundle errs []
     rev ((i, ownErrs), GoodOwnerResponse updates) = do
@@ -235,7 +236,7 @@ handleUnsubscriptions i ms = catMaybes <$> mapM handle ms
     handle (UMsgUnsubscribe p) = modify (Mos.delete i p) >> return Nothing
 
 getPathOwnership :: (Ord i) => i -> Owners i -> Path -> Maybe Ownership
-getPathOwnership i owners = getNsOwnership . namespace
+getPathOwnership i owners p = namespaceOf p >>= getNsOwnership
   where
     getNsOwnership name = (\i' -> if i' == i then Owner else Client) <$> Map.lookup name owners
 
@@ -251,4 +252,4 @@ handleClientDisconnect i =
     stateL _1 (get >>=
         return . fmap namespaceDeleteMsg . Map.keys . Map.filter (== i))
   where
-    namespaceDeleteMsg name = UMsgDelete $ Path [name]
+    namespaceDeleteMsg seg = UMsgDelete $ Root :/ seg

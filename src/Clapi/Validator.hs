@@ -20,8 +20,7 @@ import Text.Printf (printf, PrintfArg)
 import qualified Data.Attoparsec.Text as Dat
 
 import Clapi.Util (duplicates)
-import Clapi.Path (Path, isChildOf)
-import Path.Parsing (nameP, pathP, toString)
+import Clapi.Path (Path, isChildOf, segP, pathP, toText, unSeg)
 import Clapi.Types (
     CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
 
@@ -96,7 +95,7 @@ fromText t = Dat.parseOnly (mainParser <* Dat.endOfInput) t
       where
         g = f <$> (maybeP argAP) <*> (maybeP $ sep >> argBP)
     mandatoryArgs1 f p = f <$> bracket p
-    enumP = Dat.sepBy (T.unpack <$> nameP) (Dat.char ',')
+    enumP = Dat.sepBy (T.unpack . unSeg <$> segP) (Dat.char ',')
     word32P = Dat.decimal :: Dat.Parser Word32
     word64P = Dat.decimal :: Dat.Parser Word64
     int32P = Dat.signed Dat.decimal :: Dat.Parser Int32
@@ -181,6 +180,7 @@ getRefValidator t requiredTypePath = Validator t doValidate VRef
         else Left $ printf "%v is of type %v, rather than expected %v"
           (toString nodePath) (toString typePath) (toString requiredTypePath)
     doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+    toString = T.unpack . toText
 
 
 validatorValidator :: Text.Text -> Validator

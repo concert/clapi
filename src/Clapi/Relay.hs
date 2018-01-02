@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Clapi.Relay where
 
 import Control.Monad.Fail (MonadFail)
@@ -14,7 +15,7 @@ import Clapi.Types (
     CanFail, OwnerUpdateMessage(..), TreeUpdateMessage(..),
     DataUpdateMessage(..), UMsgError(..), UMsg(..), ClapiValue(..), Time(..),
     Enumerated(..), toClapiValue)
-import Clapi.Path (Path, Name, root)
+import Clapi.Path (Path, Seg, toText, unSeg, pattern Root)
 import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
 import Clapi.Valuespace (
@@ -24,7 +25,6 @@ import Clapi.Valuespace (
     vsSetChildren, getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
 import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
-import Path.Parsing (toText)
 
 applyDum :: (MonadFail m, HasUvtt v TaintTracker) => Valuespace v -> DataUpdateMessage -> m (Valuespace v)
 applyDum vs msg = case msg of
@@ -66,13 +66,13 @@ deltaToMsg (p, d) = either (Left . UMsgAssignType p) (treeDeltaToMsg p) d
 modifyRootTypePath :: Valuespace Validated -> Valuespace OwnerUnvalidated -> Valuespace OwnerUnvalidated
 modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs'''
   where
-    rootTypePath = moe "root has no type" $ getType vs' root
+    rootTypePath = moe "root has no type" $ getType vs' Root
     rootTypeNode = loe "root type path missing" rootTypePath $ vsGetTree vs'
     (a, mtp) = loe "root type missing zero" z $ loe "root type missing global site" Nothing $ _getSites rootTypeNode
     (i, rootType) = moe "root type deleted" mtp
     rootType' = foldl updateRootType rootType $ mapMaybe nsChange $ vsDiff vs vs'
     vs'' = moe "root type set failed" $ vsSet a i rootType' rootTypePath Nothing z vs'
-    vs''' = vsAssignType root rootTypePath vs''
+    vs''' = vsAssignType Root rootTypePath vs''
     z = Time 0 0
     loe s k m = moe s $ Map.lookup k m
     moe s m = maybe (error s) id m
@@ -155,8 +155,8 @@ relay vs = waitThen fwd (const $ error "message from the void")
         relay vs'
 
 data NsChange =
-    NsAssign Name Path
-  | NsRemove Name
+    NsAssign Seg Path
+  | NsRemove Seg
 
 nsChange :: VsDelta -> Maybe NsChange
 nsChange (p, Left tp) = maybeNamespace (flip NsAssign tp) p
@@ -167,8 +167,8 @@ updateRootType :: [ClapiValue] -> NsChange -> [ClapiValue]
 updateRootType [doc, ClList names, ClList types, ClList libs] m = doc:tinfo
   where
     tinfo = map ClList $ case m of
-        (NsAssign n tp) -> [c n:names, cp tp:types, cannot:libs]
-        (NsRemove n) -> l3 . unzip3 $ filter (nameIsnt n) $ zip3 names types libs
+        (NsAssign n tp) -> [c (unSeg n):names, cp tp:types, cannot:libs]
+        (NsRemove n) -> l3 . unzip3 $ filter (nameIsnt $ unSeg n) $ zip3 names types libs
     l3 (ns, ts, ls) = [ns, ts, ls]
     nameIsnt n (n', _, _) = n' /= c n
     c = ClString

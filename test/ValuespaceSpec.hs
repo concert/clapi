@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
+{-# LANGUAGE PatternSynonyms #-}
 module ValuespaceSpec where
 
 import Test.Hspec
@@ -7,6 +8,7 @@ import Test.QuickCheck (
     arbitraryBoundedEnum, vector, vectorOf, property)
 import Test.QuickCheck.Instances ()
 
+import Data.Maybe (fromJust)
 import Data.Either (either)
 import qualified Data.Text as T
 import Data.Word (Word16)
@@ -16,7 +18,7 @@ import Control.Lens (view)
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import Clapi.Path (Path(..), (+|))
+import Clapi.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.PathQ
 import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))
 import Clapi.Validator (validate)
@@ -31,12 +33,12 @@ spec :: Spec
 spec = do
     describe "tupleDef" $ do
         it "Rejects duplicate names" $
-            tupleDef "docs" ["hi", "hi"] ["string", "int32"] mempty `shouldBe`
+            tupleDef "docs" [[segq|hi|], [segq|hi|]] ["string", "int32"] mempty `shouldBe`
             Nothing
         it "Rejects mismatched names and types" $
-            tupleDef "docs" ["a", "b"] ["int32"] mempty `shouldBe` Nothing
+            tupleDef "docs" [[segq|a|], [segq|b|]] ["int32"] mempty `shouldBe` Nothing
         it "Works in the success case" $ do
-            def <- tupleDef "docs" ["a"] ["int32"] mempty
+            def <- tupleDef "docs" [[segq|a|]] ["int32"] mempty
             validate undefined (view validators def) [ClInt32 42] `shouldBe` Right []
     describe "Validation" $ do
         it "baseValuespace valid" $ (fst $ vsValidate $ ownerUnlock baseValuespace) `shouldBe` mempty
@@ -55,7 +57,7 @@ spec = do
           do
             -- Make sure changing /api/types/self/version goes and checks things defined
             -- to have that type:
-            newDef <- tupleDef "for test" ["versionString"] ["string[apple]"]
+            newDef <- tupleDef "for test" [[segq|versionString|]] ["string[apple]"]
                 mempty
             badVs <- vsSet anon IConstant (defToValues newDef)
                 [pathq|/api/types/self/version|] globalSite tconst
@@ -69,7 +71,7 @@ spec = do
                 [pathq|/api/types/test_value|] globalSite tconst vs
             assertValidationErrors [[pathq|/api/types/test_value|]] badVs
         it "xref revalidation" $ do
-            newDef <- structDef "for test" ["version"]
+            newDef <- structDef "for test" [[segq|version|]]
                 [[pathq|/api/types/base/tuple|]]
                 [Cannot]
             badVs <- vsWithXRef >>=
@@ -84,16 +86,16 @@ spec = do
         assertValidationErrors [[pathq|/api/types|]] evs
         emptyArrayVs <- vsSetChildren testPath [] evs
         assertValidationErrors [] emptyArrayVs
-        missingEntryVs <- vsSetChildren testPath ["a"] emptyArrayVs
+        missingEntryVs <- vsSetChildren testPath [[segq|a|]] emptyArrayVs
         assertValidationErrors [testPath] missingEntryVs
         filledEntryVs <- vsAdd anon IConstant [ClWord32 0, ClInt32 12]
-            (testPath +| "a") globalSite tconst missingEntryVs
+            (testPath :/ [segq|a|]) globalSite tconst missingEntryVs
         assertValidationErrors [] filledEntryVs
     it "Doesn't get stuck with cyclic inference" $ do
-        outerType <- structDef "outer" ["defs"] [[pathq|/api/cyclic/defs/cyclic|]] [Cannot]
-        innerType <- structDef "inner" ["cyclic", "defs"] [[pathq|/api/types/base/struct|], [pathq|/api/types/base/struct|]] [Cannot, Cannot]
+        outerType <- structDef "outer" [[segq|defs|]] [[pathq|/api/cyclic/defs/cyclic|]] [Cannot]
+        innerType <- structDef "inner" [[segq|cyclic|], [segq|defs|]] [[pathq|/api/types/base/struct|], [pathq|/api/types/base/struct|]] [Cannot, Cannot]
         newCDef <- structDef "updated for test"
-            ["self", "types", "cyclic"] [
+            [[segq|self|], [segq|types|], [segq|cyclic|]] [
               [pathq|/api/types/containers/self|],
               [pathq|/api/types/containers/types|],
               [pathq|/api/cyclic/defs/cyclic|]]
@@ -102,7 +104,7 @@ spec = do
               [pathq|/api/types/containers/api|] globalSite tconst
               (ownerUnlock baseValuespace) >>=
             addDef [pathq|/api/cyclic/defs/cyclic|] outerType >>=
-            addDef [pathq|/api/cyclic/defs/defs|] innerType -- >>=
+            addDef [pathq|/api/cyclic/defs/defs|] innerType
         assertValidationErrors [
             [pathq|/api/cyclic|], [pathq|/api/cyclic/defs|],
             [pathq|/api/cyclic/defs/cyclic|], [pathq|/api/cyclic/defs/defs|],
@@ -118,7 +120,7 @@ spec = do
 extendedVs :: (MonadFail m) => Definition -> m (Valuespace OwnerUnvalidated, Path)
 extendedVs def = do
     newCDef <- structDef "updated for test"
-        ["base", "self", "containers", "test_type", "test_value"] [
+        [[segq|base|], [segq|self|], [segq|containers|], [segq|test_type|], [segq|test_value|]] [
           [pathq|/api/types/containers/base|],
           [pathq|/api/types/containers/types_self|],
           [pathq|/api/types/containers/containers|],
@@ -135,7 +137,7 @@ extendedVs def = do
 vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
 vsWithXRef =
   do
-    newNodeDef <- tupleDef "for test" ["daRef"]
+    newNodeDef <- tupleDef "for test" [[segq|daRef|]]
         ["ref[/api/types/self/version]"] mempty
     (vs, testPath) <- extendedVs newNodeDef
     vsAdd anon IConstant [ClString "/api/self/version"] testPath globalSite tconst vs
@@ -156,15 +158,18 @@ instance Arbitrary InterpolationType where
 infiniteStrings :: Int -> [String]
 infiniteStrings minLen = [minLen..] >>= (`replicateM` ['a'..'z'])
 
+uniqueSegs :: Int -> [Seg]
+uniqueSegs n = take n $ fromJust . mkSeg . T.pack <$> infiniteStrings 4
+
 instance Arbitrary Definition where
     arbitrary =
       do
         n <- arbitrary
         fDef <- oneof [
             tupleDef <$> arbitrary <*>
-                (pure $ take n $ T.pack <$> infiniteStrings 4) <*>
+                (pure $ uniqueSegs n) <*>
                 pure (replicate n "int32") <*> arbitrary,
-            structDef <$> arbitrary <*> vector n <*>
+            structDef <$> arbitrary <*> pure (uniqueSegs n) <*>
                 vectorOf n (arbitrary :: Gen Path) <*> vector n,
             arrayDef <$> arbitrary <*> (arbitrary :: Gen Path) <*> arbitrary]
         either error return fDef

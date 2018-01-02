@@ -47,7 +47,6 @@ import Clapi.Types(
     RequestBundle(..), UpdateBundle(..), OwnerRequestBundle(..),
     TimeStamped(..))
 import qualified Clapi.Path as Path
-import qualified Path.Parsing as Path
 import Clapi.TaggedData
 
 (<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
@@ -116,9 +115,13 @@ instance Serialisable Time where
     parser =
       Time <$> (fromIntegral <$> anyWord64be) <*> (fromIntegral <$> anyWord32be)
 
+instance Serialisable Path.Seg where
+    builder = builder . Path.unSeg
+    parser = parser >>= Path.mkSeg
+
 instance Serialisable Path.Path where
     builder = builder . Path.toText
-    parser = parser >>= Path.fromString
+    parser = parser >>= Path.fromText
 
 typeTag :: ClapiTypeEnum -> Char
 typeTag ClTTime = 't'
