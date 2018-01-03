@@ -13,7 +13,8 @@ module Clapi.Util (
     uncamel,
     parseType,
     composeParsers,
-    showItems
+    showItems,
+    mkProxy
 ) where
 
 import Prelude hiding (fail)
@@ -23,6 +24,7 @@ import Data.Maybe (fromJust)
 import Data.ByteString (ByteString)
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
+import Data.Proxy
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -152,3 +154,6 @@ composeParsers parserA parserB = do
 
 showItems :: (Show a) => [a] -> String
 showItems = intercalate ", " . fmap show
+
+mkProxy :: a -> Proxy a
+mkProxy _ = Proxy
