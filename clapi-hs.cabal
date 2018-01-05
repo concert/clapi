@@ -33,6 +33,7 @@ library
                      , Clapi.TextSerialisation
                      , Clapi.TimeDelta
                      , Clapi.Types
+                     , Clapi.Types.Base
                      , Clapi.Types.UniqList
                      , Clapi.Tree
                      , Clapi.Validator

@@ -42,6 +42,7 @@ import Control.Monad.Fail (MonadFail, fail)
 
 import Clapi.Path (Path, Seg)
 
+import Clapi.Types.Base as X
 import Clapi.Types.UniqList as X
 
 type CanFail a = Either String a
@@ -132,8 +133,6 @@ data FromRelayBundle = FRBClient UpdateBundle | FRBOwner OwnerRequestBundle deri
 newtype TimeStamped a = TimeStamped (Time, a) deriving (Show, Functor)
 
 -- Values:
-
-data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
 data ClapiTypeEnum
   = ClTTime | ClTEnum | ClTWord32 | ClTWord64 | ClTInt32 | ClTInt64
