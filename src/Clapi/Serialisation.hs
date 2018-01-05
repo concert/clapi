@@ -18,7 +18,7 @@ module Clapi.Serialisation
     ) where
 
 import Data.Char (chr)
-import Data.Monoid ((<>), Sum(..))
+import Data.Monoid ((<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (liftM2)
 import Control.Monad.Fail (MonadFail)
@@ -73,10 +73,6 @@ instance Serialisable Word32 where
 instance Serialisable Word64 where
     builder = return . fromWord64be
     parser = anyWord64be
-
-instance Serialisable a => Serialisable (Sum a) where
-    builder (Sum i) = builder i
-    parser = Sum <$> parser
 
 lenBuilder :: Int -> CanFail Builder
 lenBuilder x
