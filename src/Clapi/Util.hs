@@ -6,24 +6,29 @@ module Clapi.Util (
     tagl, tagr,
     append, (+|),
     appendIfAbsent, (+|?),
-    duplicates,
+    duplicates, ensureUnique,
     zipLongest, strictZipWith, strictZip,
     partitionDifference, partitionDifferenceL,
     camel,
     uncamel,
     parseType,
     composeParsers,
+    showItems,
+    mkProxy
 ) where
 
 import Prelude hiding (fail)
+import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Maybe (fromJust)
 import Data.ByteString (ByteString)
+import Data.List (intercalate)
 import Data.List.Split (splitOn)
+import Data.Proxy
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import Control.Monad.Fail (MonadFail, fail)
+import Text.Printf (printf)
 
 import qualified Data.Attoparsec.Internal.Types as I
 import qualified Data.Attoparsec.Text as APT
@@ -56,6 +61,13 @@ duplicates as = Map.keysSet $ Map.filter (>1) theMap
     count a m = Map.insertWith (const (+1)) a 1 m
     theMap :: Map.Map a Int
     theMap = foldr count mempty as
+
+ensureUnique :: (Ord a, Show a, MonadFail m) => String -> [a] -> m [a]
+ensureUnique name as =
+  let dups = duplicates as in
+    if not $ null $ dups
+    then fail $ printf "Duplicate %s: %s" name (showItems $ Set.toList dups)
+    else return as
 
 zipLongest :: (Monoid a, Monoid b) => [a] -> [b] -> [(a, b)]
 zipLongest [] [] = []
@@ -139,3 +151,9 @@ composeParsers parserA parserB = do
   where
     handleResult (Left errStr) = fail errStr
     handleResult (Right x) = return x
+
+showItems :: (Show a) => [a] -> String
+showItems = intercalate ", " . fmap show
+
+mkProxy :: a -> Proxy a
+mkProxy _ = Proxy
