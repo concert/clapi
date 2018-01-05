@@ -44,6 +44,7 @@ import Clapi.Path (Path, Seg)
 
 import Clapi.Types.Base as X
 import Clapi.Types.UniqList as X
+import Clapi.Types.Wire as X
 
 type CanFail a = Either String a
 
