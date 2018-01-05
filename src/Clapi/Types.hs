@@ -29,7 +29,7 @@ module Clapi.Types
         Interpolation(..),
         interpolation,
         interpolationType,
-        UniqList, mkUniqList
+        module X
     )
 where
 
@@ -40,8 +40,9 @@ import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 import Control.Monad.Fail (MonadFail, fail)
 
-import Clapi.Util (ensureUnique)
 import Clapi.Path (Path, Seg)
+
+import Clapi.Types.UniqList as X
 
 type CanFail a = Either String a
 
@@ -259,8 +260,3 @@ interpolationType :: Interpolation -> InterpolationType
 interpolationType IConstant = ITConstant
 interpolationType ILinear = ITLinear
 interpolationType (IBezier _ _) = ITBezier
-
-newtype UniqList a = UniqList {unUniqList :: [a]} deriving (Show, Eq, Functor)
-
-mkUniqList :: (Ord a, Show a, MonadFail m) => [a] -> m (UniqList a)
-mkUniqList as = UniqList <$> ensureUnique "items" as
