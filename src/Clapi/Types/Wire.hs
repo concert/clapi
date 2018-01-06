@@ -3,11 +3,11 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module Clapi.Types.Wire
-  ( Wireable -- , toHaskell
-  , WireValue(..)
-  , apply
-  ) where
+module Clapi.Types.Wire where
+  -- ( Wireable
+  -- , WireValue(..)
+  -- , apply
+  -- ) where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
@@ -52,7 +52,8 @@ instance Ord WireValue where
 castWireValue :: (MonadFail m, Wireable a) => WireValue -> m a
 castWireValue (WireValue x) = cast' x
 
-apply
-  :: (Wireable a, Wireable b, MonadFail m)
-  => (a -> b) -> WireValue -> m WireValue
-apply f = fmap (WireValue . f) . castWireValue
+(<|$|>) :: (Wireable a, MonadFail m) => (a -> b) -> WireValue -> m b
+f <|$|> wv = f <$> castWireValue wv
+
+(<|*|>) :: (Wireable a, MonadFail m) => m (a -> b) -> WireValue -> m b
+mf <|*|> wv = mf <*> castWireValue wv
