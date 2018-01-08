@@ -6,11 +6,12 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Clapi.Types.Wire where
-  -- ( Wireable
-  -- , WireValue(..)
-  -- , apply
-  -- ) where
+module Clapi.Types.Wire
+  ( Encodable(..)
+  , Wireable
+  , WireValue(..)
+  , (<|$|>), (<|*|>)
+  ) where
 
 import Prelude hiding (fail)
 
@@ -19,8 +20,8 @@ import Data.Maybe
 
 -- For building:
 import Blaze.ByteString.Builder
-  ( Builder, fromWord8, fromWord8s, fromWord16be, fromWord64be, fromWord32be
-  , fromInt32be, fromInt64be)
+  ( Builder, fromWord8, fromWord16be, fromWord64be, fromWord32be , fromInt32be
+  , fromInt64be)
 import Blaze.ByteString.Builder.Char.Utf8 (fromText)
 import Data.ByteString.Builder (floatBE, doubleBE)
 import Data.Monoid
@@ -41,7 +42,7 @@ import Data.Typeable
 
 import Clapi.Types.Base (Time(..))
 import Clapi.Types.ByteTagQ (btq)
-import Clapi.Util (bound, ensureUnique)
+import Clapi.Util (bound)
 
 -- Serialisation stuff that should live somewhere else:
 
