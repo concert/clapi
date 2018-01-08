@@ -13,6 +13,8 @@ import Data.Word
 import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
+import Clapi.Util (bound)
+
 btq :: QuasiQuoter
 btq = QuasiQuoter {
     quoteExp = fromStr >=> lift,
@@ -24,12 +26,3 @@ btq = QuasiQuoter {
     fromStr _ = fail "Not one char"
     fromChar :: MonadFail m => Char -> m Word8
     fromChar = bound
-    bound :: forall a b m. (Enum a, Enum b, Bounded b, MonadFail m) => a -> m b
-    bound i = let
-        low = fromEnum (minBound :: b)
-        high = fromEnum (maxBound :: b)
-        v = fromEnum i
-      in
-        if low <= v && v <= high
-          then return $ toEnum v
-          else MF.fail "out of bounds"
