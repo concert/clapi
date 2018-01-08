@@ -184,11 +184,11 @@ withWireTypeProxy
   :: forall r. (forall a. Wireable a => Proxy a -> r) -> WireType -> r
 withWireTypeProxy f wt = case wt of
     WtConc concT -> withWireConcreteTypeProxy f concT
-    _ -> let (concT, contTs) = unpackWt wt in
+    _ -> let (concT, contTs) = unpackWt in
       withWireConcreteTypeProxy (applyUnpacked contTs) concT
   where
-    unpackWt :: WireType -> (WireConcreteType, [WireContainerType])
-    unpackWt wt = let (c, ts) = inner wt in (c, reverse ts)
+    unpackWt :: (WireConcreteType, [WireContainerType])
+    unpackWt = let (c, ts) = inner wt in (c, reverse ts)
       where
         inner (WtConc t) = (t, [])
         inner (WtCont w s) = let (c, ts) = inner s in (c, w : ts)
