@@ -29,7 +29,7 @@ module Clapi.Types
         Interpolation(..),
         interpolation,
         interpolationType,
-        UniqList, mkUniqList
+        module X
     )
 where
 
@@ -40,8 +40,11 @@ import Data.Int (Int32, Int64)
 import qualified Data.Text as T
 import Control.Monad.Fail (MonadFail, fail)
 
-import Clapi.Util (ensureUnique)
 import Clapi.Path (Path, Seg)
+
+import Clapi.Types.Base as X
+import Clapi.Types.UniqList as X
+import Clapi.Types.Wire as X
 
 type CanFail a = Either String a
 
@@ -131,8 +134,6 @@ data FromRelayBundle = FRBClient UpdateBundle | FRBOwner OwnerRequestBundle deri
 newtype TimeStamped a = TimeStamped (Time, a) deriving (Show, Functor)
 
 -- Values:
-
-data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 
 data ClapiTypeEnum
   = ClTTime | ClTEnum | ClTWord32 | ClTWord64 | ClTInt32 | ClTInt64
@@ -259,8 +260,3 @@ interpolationType :: Interpolation -> InterpolationType
 interpolationType IConstant = ITConstant
 interpolationType ILinear = ITLinear
 interpolationType (IBezier _ _) = ITBezier
-
-newtype UniqList a = UniqList {unUniqList :: [a]} deriving (Show, Eq, Functor)
-
-mkUniqList :: (Ord a, Show a, MonadFail m) => [a] -> m (UniqList a)
-mkUniqList as = UniqList <$> ensureUnique "items" as

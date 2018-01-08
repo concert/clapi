@@ -33,6 +33,10 @@ library
                      , Clapi.TextSerialisation
                      , Clapi.TimeDelta
                      , Clapi.Types
+                     , Clapi.Types.Base
+                     , Clapi.Types.ByteTagQ
+                     , Clapi.Types.Wire
+                     , Clapi.Types.UniqList
                      , Clapi.Tree
                      , Clapi.Validator
                      , Clapi.Valuespace

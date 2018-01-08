@@ -14,7 +14,8 @@ module Clapi.Util (
     parseType,
     composeParsers,
     showItems,
-    mkProxy
+    mkProxy,
+    bound
 ) where
 
 import Prelude hiding (fail)
@@ -157,3 +158,14 @@ showItems = intercalate ", " . fmap show
 
 mkProxy :: a -> Proxy a
 mkProxy _ = Proxy
+
+bound :: forall a b m. (Enum a, Enum b, Bounded b, MonadFail m) => a -> m b
+bound i =
+  let
+    low = fromEnum (minBound :: b)
+    high = fromEnum (maxBound :: b)
+    v = fromEnum i
+  in
+    if low <= v && v <= high
+      then return $ toEnum v
+      else fail "out of bounds"
