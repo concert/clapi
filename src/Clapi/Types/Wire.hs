@@ -170,15 +170,15 @@ data WireType
 withWireConcreteTypeProxy
   :: (forall a. Wireable a => Proxy a -> r) -> WireConcreteType -> r
 withWireConcreteTypeProxy f t = case t of
-  WcTime -> f (Proxy :: Proxy Time)
-  WcWord8 -> f (Proxy :: Proxy Word8)
-  WcWord32 -> f (Proxy :: Proxy Word32)
-  WcWord64 -> f (Proxy :: Proxy Word64)
-  WcInt32 -> f (Proxy :: Proxy Int32)
-  WcInt64 -> f (Proxy :: Proxy Int64)
-  WcFloat -> f (Proxy :: Proxy Float)
-  WcDouble -> f (Proxy :: Proxy Double)
-  WcString -> f (Proxy :: Proxy Text)
+  WcTime -> f (Proxy @Time)
+  WcWord8 -> f (Proxy @Word8)
+  WcWord32 -> f (Proxy @Word32)
+  WcWord64 -> f (Proxy @Word64)
+  WcInt32 -> f (Proxy @Int32)
+  WcInt64 -> f (Proxy @Int64)
+  WcFloat -> f (Proxy @Float)
+  WcDouble -> f (Proxy @Double)
+  WcString -> f (Proxy @Text)
 
 withWireTypeProxy
   :: forall r. (forall a. Wireable a => Proxy a -> r) -> WireType -> r
