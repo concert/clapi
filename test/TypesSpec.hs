@@ -22,7 +22,7 @@ import Data.Int (Int32, Int64)
 
 import Clapi.Path (Seg, Path(..), mkSeg)
 import Clapi.Serialisation
-  ( WireType(..), WireContainerType(..), WireConcreteType(..), wireValueWireType
+  ( WireContainerType(..), WireConcreteType(..), wireValueWireType
   , withWireTypeProxy, unpackWireType)
 import Clapi.Types (Time(..), WireValue(..), Wireable, castWireValue)
 
@@ -75,7 +75,15 @@ instance Arbitrary WireValue where
       listify depth g = listify (depth - 1) (smallListOf g)
   shrink wv = let (concT, contTs) = unpackWireType $ wireValueWireType wv in
       case concT of
-        WcString -> lThing contTs (Proxy @Text)
+          WcTime -> lThing contTs (Proxy @Time)
+          WcWord8 -> lThing contTs (Proxy @Word8)
+          WcWord32 -> lThing contTs (Proxy @Word32)
+          WcWord64 -> lThing contTs (Proxy @Word64)
+          WcInt32 -> lThing contTs (Proxy @Int32)
+          WcInt64 -> lThing contTs (Proxy @Int64)
+          WcFloat -> lThing contTs (Proxy @Float)
+          WcDouble -> lThing contTs (Proxy @Double)
+          WcString -> lThing contTs (Proxy @Text)
     where
       lThing :: forall a. (Wireable a, Arbitrary a) => [WireContainerType] -> Proxy a -> [WireValue]
       lThing [] _ = fmap WireValue $ shrink @a $ fromJust $ castWireValue wv
