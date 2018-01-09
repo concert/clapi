@@ -1,17 +1,18 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
 module RelaySpec where
 import Data.List (intersperse, (\\))
 import Data.Maybe (fromJust)
-import qualified Data.Text as T
+import Data.Text (Text)
+import Data.Word
 import Test.Hspec
 
 import Clapi.Path (pattern Root, toText)
 import Clapi.PathQ
 import Clapi.Types (
     DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
-    Interpolation(IConstant), Time(..), ClapiValue(..), Enumerated(..),
-    toClapiValue)
+    Interpolation(IConstant), Time(..), WireValue(..))
 import Clapi.Valuespace (getType, baseValuespace, Liberty(..))
 import Clapi.Relay (handleMessages)
 import Clapi.NamespaceTracker (Request(..), Response(..))
@@ -25,17 +26,18 @@ spec = describe "Relay" $ do
         Right $ UMsgAdd
             [pathq|/foo/type|]
             z
-            [s "atypical", los ["type"], los ["/api/types/base/struct"], ClList [cannot]]
+            [t "atypical", lot ["type"], lop [[pathq|/api/types/base/struct|]], low [cannot]]
             IConstant
             Nothing
             Nothing,
         Left $ UMsgAssignType [pathq|/foo|] [pathq|/foo/type|]]
     expectedMsgs = inMsgs ++ [Right $ UMsgSet (tp Root) z extendedV IConstant Nothing Nothing]
     z = Time 0 0
-    extendedV = [s "auto-generated container", los ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], ClList [cannot, cannot]]
-    s = ClString
-    los = ClList . (map s)
-    lop ps = los $ map toText ps
+    extendedV = [t "auto-generated container", lot ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], low [cannot, cannot]]
+    t = WireValue @Text
+    lot = WireValue @[Text]
+    lop = lot . fmap toText
+    low = WireValue @[Word8]
     tp p = fromJust $ getType baseValuespace p
     (GoodOwnerResponse updates, vs') = handleMessages baseValuespace $ OwnerRequest inMsgs
-    cannot = toClapiValue $ Enumerated Cannot
+    cannot = fromIntegral $ fromEnum Cannot

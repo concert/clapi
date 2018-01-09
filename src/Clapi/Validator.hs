@@ -1,28 +1,36 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Clapi.Validator where
 
+import Prelude hiding (fail)
+import Control.Monad.Fail (MonadFail(..))
 import qualified Data.Text as T
 import Control.Applicative ((<|>), (<*))
 import Control.Error.Util (note)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
-import Data.Word (Word32, Word64)
+import Data.Proxy
+import Data.Word (Word32, Word64, Word8)
 import Data.Int (Int32, Int64)
 import Data.Scientific (toRealFloat)
 import Data.Foldable (toList)
 import qualified Data.Map as Map
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
 import qualified Data.Attoparsec.Text as Dat
 
-import Clapi.Util (duplicates)
+import Clapi.Util (ensureUnique)
 import Clapi.Path (Path, isChildOf, segP, pathP, toText, unSeg)
 import Clapi.Types (
-    CanFail, ClapiValue(..), Time(..), Clapiable, fromClapiValue)
+    CanFail, WireValue(..), Time(..), Wireable, castWireValue)
+import Clapi.Serialisation
+  ( WireType(..), WireConcreteType(..), WireContainerType(..)
+  , withWireTypeProxy)
 
 type NodePath = Path
 type TypePath = Path
@@ -32,8 +40,25 @@ data VType =
     VFloat | VDouble | VString | VRef | VValidator | VList VType | VSet VType
   deriving (Eq, Show, Ord)
 
+vTypeToWireType :: VType -> WireType
+vTypeToWireType vt = case vt of
+  VBool -> WtConc WcWord8
+  VTime -> WtConc WcTime
+  VEnum -> WtConc WcWord8
+  VWord32 -> WtConc WcWord32
+  VWord64 -> WtConc WcWord64
+  VInt32 -> WtConc WcInt32
+  VInt64 -> WtConc WcInt64
+  VFloat -> WtConc WcFloat
+  VDouble -> WtConc WcDouble
+  VString -> WtConc WcString
+  VRef -> WtConc WcString
+  VValidator -> WtConc WcString
+  VList vt' -> WtCont WcList $ vTypeToWireType vt'
+  VSet vt' -> WtCont WcList $ vTypeToWireType vt'
+
 type Validate =
-    (NodePath -> CanFail TypePath) -> ClapiValue -> CanFail [NodePath]
+    (NodePath -> CanFail TypePath) -> WireValue -> CanFail [NodePath]
 
 data Validator = Validator {
     vDesc :: Text.Text,
@@ -110,34 +135,35 @@ enumDesc enum = Text.toLower . Text.pack $ printf "enum[%v]" $
 
 -- FIXME: could use strictzip :-)
 validate ::
-    (NodePath -> CanFail TypePath) -> [Validator] -> [ClapiValue] ->
+    (NodePath -> CanFail TypePath) -> [Validator] -> [WireValue] ->
     CanFail [NodePath]
 validate getTypePath vs cvs
   | length vs > length cvs = Left "Too few values"
   | length vs < length cvs = Left "Too many values"
   | otherwise = softValidate getTypePath vs cvs
 
+toMonadFail :: MonadFail m => CanFail a -> m a
+toMonadFail = either fail return
+
 -- validate where lengths of lists aren't important
 softValidate ::
-    (NodePath -> CanFail TypePath) -> [Validator] -> [ClapiValue] ->
-    CanFail [NodePath]
+    MonadFail m =>
+    (NodePath -> CanFail TypePath) -> [Validator] -> [WireValue] -> m [NodePath]
 softValidate getTypePath vs cvs =
+    toMonadFail $
     fmap mconcat . sequence $
     zipWith ($) [(vValidate v) getTypePath | v <- vs] cvs
 
 timeValidator :: Text.Text -> Validator
 timeValidator t = Validator t doValidate VTime
   where
-    doValidate _ (ClTime (Time _ _)) = success
-    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+    doValidate _ wv = (castWireValue wv :: Either String Time) >> success
 
-getNumValidator :: forall a. (Clapiable a, Ord a, PrintfArg a) =>
+getNumValidator :: forall a. (Wireable a, Ord a, PrintfArg a) =>
     Text.Text -> VType -> Maybe a -> Maybe a -> Validator
 getNumValidator t vtype mMin mMax =
-    Validator t (\_ cv -> checkType cv >>= bound mMin mMax) vtype
+     Validator t (\_ wv -> castWireValue @a wv >>= bound mMin mMax) vtype
   where
-    -- FIXME: should say which type!
-    checkType cv = note "Bad type" (fromClapiValue cv :: Maybe a)
     bound :: (Ord a) => Maybe a -> Maybe a -> a -> CanFail [NodePath]
     bound Nothing Nothing _ = success
     bound (Just theMin) Nothing v
@@ -153,49 +179,57 @@ getNumValidator t vtype mMin mMax =
 getEnumValidator :: Text.Text -> [String] -> Validator
 getEnumValidator t names = Validator t doValidate VEnum
   where
+    theMax :: Word8
     theMax = fromIntegral $ length names - 1
-    doValidate _ (ClEnum x)
-      | x <= theMax = success
-      | otherwise = Left $ printf "Enum value not <= %v" (theMax)
-    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+    doValidate :: a -> WireValue -> CanFail [NodePath]
+    doValidate _ wv = do
+        i <- castWireValue wv
+        if i <= theMax
+          then success
+          else Left $ printf "Enum value not <= %v" (theMax)
 
 getStringValidator :: Text.Text -> Maybe String -> Validator
 getStringValidator desc p = Validator desc (doValidate p) VString
   where
     errStr = printf "did not match '%s'"
-    doValidate Nothing _ (ClString _) = success
-    doValidate (Just pattern) _ (ClString t) = const [] <$>
-        note (errStr pattern) ((Text.unpack t) =~~ pattern :: Maybe ())
-    doValidate _ _ _ = Left "Bad type"  -- FIXME: should say which!
+    doValidate Nothing _ wv = castWireValue @Text wv >> success
+    doValidate (Just pat) _ wv = do
+        t <- castWireValue wv
+        const [] <$>
+            note (errStr pat) ((Text.unpack t) =~~ pat :: Maybe ())
 
 getRefValidator :: Text.Text -> Path -> Validator
 getRefValidator t requiredTypePath = Validator t doValidate VRef
   where
-    doValidate getTypePath (ClString x) =
+    doValidate getTypePath wv =
       do
-        nodePath <- Dat.parseOnly pathP x
+        ptxt <- castWireValue wv
+        nodePath <- Dat.parseOnly pathP ptxt
         typePath <- getTypePath nodePath
         if typePath `isChildOf` requiredTypePath
         then return . pure $ nodePath
         else Left $ printf "%v is of type %v, rather than expected %v"
           (toString nodePath) (toString typePath) (toString requiredTypePath)
-    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
     toString = T.unpack . toText
 
 
 validatorValidator :: Text.Text -> Validator
 validatorValidator t = Validator t doValidate VValidator
   where
-    doValidate _ (ClString x) = fromText x >> success
-    doValidate _ _ = Left "Bad type"  -- FIXME: should say which!
+    doValidate _ wv = castWireValue @Text wv >>= fromText >> success
 
 
 getListValidator :: Text.Text -> Validator -> Validator
 getListValidator t itemValidator =
     Validator t listValidator (VList $ vType itemValidator)
   where
-    listValidator getType (ClList xs) = softValidate getType (repeat itemValidator) xs
-    listValidator _ _ = Left "Bad type"  -- FIXME: should say which!
+    listValidator getType wv =
+        withWireTypeProxy validateItems (vTypeToWireType $ vType itemValidator)
+      where
+        validateItems :: forall a. Wireable a => Proxy a -> CanFail [NodePath]
+        validateItems _ =
+          castWireValue @[a] wv >>=
+          softValidate getType (repeat itemValidator) . fmap WireValue
 
 showJoin :: (Show a, Foldable t) => String -> t a -> String
 showJoin sep as = intercalate sep $ fmap show (toList as)
@@ -204,9 +238,11 @@ getSetValidator :: Text.Text -> Validator -> Validator
 getSetValidator t itemValidator =
     Validator t setValidator (VSet $ vType itemValidator)
   where
-    listValidator = getListValidator "" itemValidator
-    setValidator getType cv@(ClList xs) =
-        let dups = duplicates xs in
-        if null dups then vValidate listValidator getType cv
-        else Left $ printf "Duplicate elements %v" $ showJoin ", " dups
-    setValidator _ _ = Left "Bad type"
+    setValidator getType wv =
+        withWireTypeProxy validateItems (vTypeToWireType $ vType itemValidator)
+      where
+        validateItems :: forall a. Wireable a => Proxy a -> CanFail [NodePath]
+        validateItems _ =
+          castWireValue @[a] wv >>=
+          ensureUnique "items" >>=
+          softValidate getType (repeat itemValidator) . fmap WireValue

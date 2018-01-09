@@ -1,20 +1,24 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Clapi.Relay where
 
 import Control.Monad.Fail (MonadFail)
 import Control.Monad.State (State, state, runState)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void (Void)
+import Data.Word
 import Data.Maybe (mapMaybe)
 import Data.Either (partitionEithers, rights)
 
 import Clapi.Types (
     CanFail, OwnerUpdateMessage(..), TreeUpdateMessage(..),
-    DataUpdateMessage(..), UMsgError(..), UMsg(..), ClapiValue(..), Time(..),
-    Enumerated(..), toClapiValue)
+    DataUpdateMessage(..), UMsgError(..), UMsg(..), WireValue(..),
+    castWireValue, Time(..))
 import Clapi.Path (Path, Seg, toText, unSeg, pattern Root)
 import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
@@ -51,7 +55,7 @@ applyMessages apply1 mvvs = applySuccessful [] mvvs
         (Left es) -> applySuccessful ((uMsgPath m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
 
-treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> OwnerUpdateMessage
+treeDeltaToMsg :: Path -> Tree.TreeDelta [WireValue] -> OwnerUpdateMessage
 treeDeltaToMsg p td = case td of
     Tree.Delete -> Left $ UMsgDelete p
     (Tree.SetChildren c) -> Right $ UMsgSetChildren p c Nothing -- FIXME: attribution!
@@ -163,14 +167,15 @@ nsChange (p, Left tp) = maybeNamespace (flip NsAssign tp) p
 nsChange (p, Right Tree.Delete) = maybeNamespace NsRemove p
 nsChange _ = Nothing
 
-updateRootType :: [ClapiValue] -> NsChange -> [ClapiValue]
-updateRootType [doc, ClList names, ClList types, ClList libs] m = doc:tinfo
+updateRootType :: [WireValue] -> NsChange -> [WireValue]
+updateRootType [doc, names, types, libs] m = doc : case m of
+    NsAssign n tp ->
+      [ WireValue $ (unSeg n:) $ either error id $ castWireValue names
+      , WireValue $ (toText tp:) $ either error id $ castWireValue types
+      , WireValue $ (cannot:) $ either error id $ castWireValue libs]
+    NsRemove n -> undefined
   where
-    tinfo = map ClList $ case m of
-        (NsAssign n tp) -> [c (unSeg n):names, cp tp:types, cannot:libs]
-        (NsRemove n) -> l3 . unzip3 $ filter (nameIsnt $ unSeg n) $ zip3 names types libs
-    l3 (ns, ts, ls) = [ns, ts, ls]
-    nameIsnt n (n', _, _) = n' /= c n
-    c = ClString
-    cp = c . toText
-    cannot = toClapiValue $ Enumerated Cannot
+    l3 :: ([Text], [Text], [Word8]) -> [WireValue]
+    l3 (ns, ts, ls) = [WireValue ns, WireValue ts, WireValue ls]
+    nameIsnt n (n', _, _) = n' /= n
+    cannot = fromIntegral $ fromEnum $ Cannot :: Word8

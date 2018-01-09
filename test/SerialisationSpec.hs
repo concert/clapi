@@ -10,19 +10,18 @@ import Test.QuickCheck.Instances ()
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Either (isLeft)
-import Data.Word (Word16)
 
 import Clapi.Path (Path(..), Seg)
 import Clapi.Types
-  ( CanFail, Time, Attributee, Site, ClapiValue, RequestBundle
+  ( Time, Attributee, Site, WireValue, RequestBundle
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..)
   , TreeUpdateMessage(..), RequestBundle(..)  , UpdateBundle(..)
   , OwnerRequestBundle(..), FromRelayBundle(..)  , ToRelayBundle(..)
   , UMsgError(..))
-import Clapi.Serialisation (Serialisable, encode, decode)
+import Clapi.Serialisation (Encodable, encode', decode')
 
-import TypesSpec (smallListOf, name) -- Incl. Arbitrary instances of ClapiValue
+ -- Incl. Arbitrary instances of WireValue:
+import TypesSpec (smallListOf, name, arbitraryTextNoNull)
 
 
 instance Arbitrary Interpolation where
@@ -36,36 +35,42 @@ instance Arbitrary SubMessage where
       [ UMsgSubscribe <$> arbitrary
       , UMsgUnsubscribe <$> arbitrary]
 
+genAttributee :: Gen (Maybe Attributee)
+genAttributee = oneof [return Nothing, Just <$> arbitraryTextNoNull]
+
+genSite :: Gen (Maybe Site)
+genSite = genAttributee
+
 instance Arbitrary DataUpdateMessage where
   arbitrary = oneof
     [ UMsgAdd
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (smallListOf arbitrary :: Gen [ClapiValue])
+      <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
+      <*> genAttributee
+      <*> genSite
     , UMsgSet
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (smallListOf arbitrary :: Gen [ClapiValue])
+      <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
+      <*> genAttributee
+      <*> genSite
     , UMsgRemove
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
+      <*> genAttributee
+      <*> genSite
     , UMsgClear
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
+      <*> genAttributee
+      <*> genSite
     , UMsgSetChildren
       <$> (arbitrary :: Gen Path)
       <*> (smallListOf name :: Gen [Seg])
-      <*> (arbitrary :: Gen (Maybe Attributee))
+      <*> genAttributee
     ]
   shrink (UMsgAdd (Path []) _ [] _ Nothing Nothing) = []
   shrink (UMsgAdd p t vs i a s) =
@@ -90,7 +95,7 @@ instance Arbitrary TreeUpdateMessage where
     , UMsgDelete <$> (arbitrary :: Gen Path)]
 
 instance Arbitrary UMsgError where
-  arbitrary = UMsgError <$> arbitrary <*> arbitrary
+  arbitrary = UMsgError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary RequestBundle where
   arbitrary = RequestBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
@@ -99,6 +104,8 @@ instance Arbitrary RequestBundle where
 
 instance Arbitrary UpdateBundle where
   arbitrary = UpdateBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
+  shrink (UpdateBundle errs msgs) =
+    [UpdateBundle errs' msgs' | (errs', msgs') <- shrink (errs, msgs)]
 
 instance Arbitrary OwnerRequestBundle where
   arbitrary =
@@ -109,6 +116,8 @@ instance Arbitrary FromRelayBundle where
 
 instance Arbitrary ToRelayBundle where
   arbitrary = oneof [TRBClient <$> arbitrary, TRBOwner <$> arbitrary]
+  shrink (TRBClient b) = TRBClient <$> shrink b
+  shrink (TRBOwner b) = TRBOwner <$> shrink b
 
 
 showBytes :: ByteString -> String
@@ -116,11 +125,11 @@ showBytes = show . BS.unpack
 
 
 propBundleRoundTrip
-  :: forall bundle. (Show bundle, Eq bundle, Serialisable bundle)
+  :: forall bundle. (Show bundle, Eq bundle, Encodable bundle)
   => bundle -> Property
 propBundleRoundTrip b = let
-    mbs = encode b
-    result = mbs >>= decode :: CanFail bundle
+    mbs = encode' b
+    result = mbs >>= decode' :: Either String bundle
   in
     counterexample (show mbs) $
     counterexample (show $ showBytes <$> mbs) $
@@ -130,13 +139,6 @@ propBundleRoundTrip b = let
 
 spec :: Spec
 spec = do
-  it "should fail to encode overly long string" $
-    let
-      n = fromIntegral (maxBound :: Word16)
-      longStr = replicate (n + 1) 'a'
-    in
-      encode longStr `shouldSatisfy` isLeft
-
   describe "ToRelayBundle" $
     it "should survive a round trip via binary" $ property $
       \(b :: ToRelayBundle) -> propBundleRoundTrip b

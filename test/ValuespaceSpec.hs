@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
 module ValuespaceSpec where
 
 import Test.Hspec
@@ -10,8 +11,10 @@ import Test.QuickCheck.Instances ()
 
 import Data.Maybe (fromJust)
 import Data.Either (either)
+import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Word (Word16)
+import Data.Word
+import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Control.Lens (view)
@@ -20,7 +23,7 @@ import Control.Monad.Fail (MonadFail)
 
 import Clapi.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.PathQ
-import Clapi.Types (InterpolationType, Interpolation(..), ClapiValue(..))
+import Clapi.Types (InterpolationType, Interpolation(..), WireValue(..))
 import Clapi.Validator (validate)
 import Clapi.Valuespace
     -- Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
@@ -39,7 +42,7 @@ spec = do
             tupleDef "docs" [[segq|a|], [segq|b|]] ["int32"] mempty `shouldBe` Nothing
         it "Works in the success case" $ do
             def <- tupleDef "docs" [[segq|a|]] ["int32"] mempty
-            validate undefined (view validators def) [ClInt32 42] `shouldBe` Right []
+            validate undefined (view validators def) [WireValue @Int32 42] `shouldBe` Right []
     describe "Validation" $ do
         it "baseValuespace valid" $ (fst $ vsValidate $ ownerUnlock baseValuespace) `shouldBe` mempty
         it "detects child type error" $ do
@@ -47,7 +50,7 @@ spec = do
             -- data for that wrong type:
             badVs <- vsSet
                   anon IConstant
-                  [ClString "doccy", ClList [], ClList [], ClList [ClEnum 0]]
+                  [WireValue @Text "doccy", WireValue @[Text] [], WireValue @[Text] [], WireValue @[Word8] [0]]
                   [pathq|/api/self/version|]
                   globalSite tconst (ownerUnlock baseValuespace) >>=
                 return . vsAssignType [pathq|/api/self/version|]
@@ -67,7 +70,8 @@ spec = do
             -- Change the type of the instance referenced in a cross reference
             vs <- vsWithXRef
             assertValidationErrors [] vs
-            badVs <- vsSet anon IConstant [ClString "/api/types/base/tuple"]
+            badVs <- vsSet anon IConstant
+                [WireValue @Text "/api/types/base/tuple"]
                 [pathq|/api/types/test_value|] globalSite tconst vs
             assertValidationErrors [[pathq|/api/types/test_value|]] badVs
         it "xref revalidation" $ do
@@ -77,7 +81,7 @@ spec = do
             badVs <- vsWithXRef >>=
                 vsSet anon IConstant (defToValues newDef)
                     [pathq|/api/types/containers/self|] globalSite tconst >>=
-                vsSet anon IConstant [ClString "banana", ClList [], ClList [], ClList [ClEnum 0]] [pathq|/api/self/version|]
+                vsSet anon IConstant [WireValue @Text "banana", WireValue @[Text] [], WireValue @[Text] [], WireValue @[Word8] [0]] [pathq|/api/self/version|]
                     globalSite tconst
             assertValidationErrors [[pathq|/api/types/test_value|]] badVs
     it "Array" $ do
@@ -88,7 +92,8 @@ spec = do
         assertValidationErrors [] emptyArrayVs
         missingEntryVs <- vsSetChildren testPath [[segq|a|]] emptyArrayVs
         assertValidationErrors [testPath] missingEntryVs
-        filledEntryVs <- vsAdd anon IConstant [ClWord32 0, ClInt32 12]
+        filledEntryVs <- vsAdd anon IConstant
+            [WireValue @Word32 0, WireValue @Int32 12]
             (testPath :/ [segq|a|]) globalSite tconst missingEntryVs
         assertValidationErrors [] filledEntryVs
     it "Doesn't get stuck with cyclic inference" $ do
@@ -110,7 +115,7 @@ spec = do
             [pathq|/api/cyclic/defs/cyclic|], [pathq|/api/cyclic/defs/defs|],
             [pathq|/api/types/containers/api|]]
             badVs
-    it "Definition <-> ClapiValue round trips" $ property $ \d ->
+    it "Definition <-> WireValue round trips" $ property $ \d ->
         (valuesToDef (metaType d) . defToValues) d == Just d
   where
     assertValidationErrors errPaths vs = let (errs, _vvs) = vsValidate vs in
@@ -140,7 +145,9 @@ vsWithXRef =
     newNodeDef <- tupleDef "for test" [[segq|daRef|]]
         ["ref[/api/types/self/version]"] mempty
     (vs, testPath) <- extendedVs newNodeDef
-    vsAdd anon IConstant [ClString "/api/self/version"] testPath globalSite tconst vs
+    vsAdd
+      anon IConstant [WireValue @Text "/api/self/version"] testPath globalSite
+      tconst vs
 
 
 addDef ::

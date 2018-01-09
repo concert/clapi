@@ -6,8 +6,9 @@ import Test.Hspec
 import Control.Monad (join)
 import Data.Either (isRight, isLeft)
 import qualified Data.Set as Set
+import Data.Text (Text)
 
-import Clapi.Types (ClapiValue(..))
+import Clapi.Types (WireValue(..))
 import Clapi.Tree (treeInitNode)
 import Clapi.Validator (success, fromText, validatorValidator, vValidate)
 
@@ -27,9 +28,9 @@ import Clapi.Validator (success, fromText, validatorValidator, vValidate)
 spec = describe "Validator" $ do
     it "Fails on no description" $ fromText badValue `shouldSatisfy` isLeft
     it "Fails on foo" $ fromText badValue' `shouldSatisfy` isLeft
-    it "Fails from wrapper" $ validate (ClString badValue) `shouldSatisfy` isLeft
-    it "Works in success case" $ validate (ClString "int32") `shouldSatisfy` isRight
+    it "Fails from wrapper" $ validate (WireValue badValue) `shouldSatisfy` isLeft
+    it "Works in success case" $ validate (WireValue ("int32" :: Text)) `shouldSatisfy` isRight
   where
     validate = vValidate (validatorValidator "desk") undefined
-    badValue = "validator[]"
+    badValue = "validator[]" :: Text
     badValue' = "validator[foo]"

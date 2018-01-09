@@ -9,6 +9,7 @@ import Control.Concurrent.MVar (newEmptyMVar, takeMVar)
 
 import Clapi.Types (UMsgError(..))
 import Clapi.Protocol (runProtocolIO, (<<->), sendRev, sendFwd, waitThen)
+import Clapi.Serialisation ()
 import Clapi.SerialisationProtocol (serialiser)
 import Clapi.Path (pattern Root)
 

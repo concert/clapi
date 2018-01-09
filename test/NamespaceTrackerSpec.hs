@@ -23,7 +23,7 @@ import Clapi.Path (Path, Seg, pattern Root)
 import Clapi.PathQ
 import Clapi.Types (
     Time(..), Interpolation(..), DataUpdateMessage(..), TreeUpdateMessage(..),
-    UMsgError(..), OwnerUpdateMessage(..), UMsg(..), ClapiValue(..),
+    UMsgError(..), OwnerUpdateMessage(..), UMsg(..), WireValue(..),
     UpdateBundle(..), RequestBundle(..), ToRelayBundle(..),
     FromRelayBundle(..), SubMessage(..), OwnerRequestBundle(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))

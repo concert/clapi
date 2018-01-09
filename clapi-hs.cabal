@@ -28,12 +28,16 @@ library
                      , Clapi.Relay
                      , Clapi.RelayApi
                      , Clapi.Serialisation
+                     , Clapi.Serialisation.Base
+                     , Clapi.Serialisation.Wire
+                     , Clapi.Serialisation.Messages
                      , Clapi.Server
                      , Clapi.TaggedData
                      , Clapi.TimeDelta
                      , Clapi.Types
                      , Clapi.Types.Base
                      , Clapi.Types.ByteTagQ
+                     , Clapi.Types.Messages
                      , Clapi.Types.Wire
                      , Clapi.Types.UniqList
                      , Clapi.Tree
