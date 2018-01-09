@@ -35,14 +35,14 @@ mapProtocol toA fromA fromB toB p = FreeT $ go <$> runFreeT p
 serialiser
   :: (Encodable a, Encodable b, Monad m)
   => Protocol ByteString a ByteString b m ()
-serialiser = serialiser' $ parse decode
+serialiser = serialiser' $ parse parser
   where
     serialiser' p = waitThen (fwd p) (rev p)
     fwd parseNext bs = case parseNext bs of
         Fail _ _ctxs err -> sendRev $ fromString err
         Partial cont -> serialiser' cont
-        Done unconsumed a -> sendFwd a >> fwd (parse decode) unconsumed
+        Done unconsumed a -> sendFwd a >> fwd (parse parser) unconsumed
     rev p b = either
-        (\s -> error $ "encode failed: " ++ s)
+        (\s -> error $ "builder failed: " ++ s)
         (\bs -> sendRev bs >> serialiser' p)
-        (toByteString <$> encode b)
+        (toByteString <$> builder b)

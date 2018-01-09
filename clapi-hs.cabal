@@ -96,6 +96,7 @@ test-suite clapi-hs-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base
+                     , attoparsec
                      , bytestring
                      , blaze-builder
                      , async

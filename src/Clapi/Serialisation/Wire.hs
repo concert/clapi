@@ -130,19 +130,19 @@ wireValueWireType (WireValue a) = inner $ typeOf a
     listTyCon = typeRepTyCon $ typeRep (Proxy :: Proxy [()])
 
 instance Encodable WireConcreteType where
-  encode = encode . concTag
-  decode = decode >>= tagConc
+  builder = builder . concTag
+  parser = parser >>= tagConc
 
 instance Encodable WireType where
-  encode (WtConc t) = encode t
-  encode (WtCont w s) = (encode $ contTag w) <<>> encode s
-  decode = decode >>= inner
+  builder (WtConc t) = builder t
+  builder (WtCont w s) = (builder $ contTag w) <<>> builder s
+  parser = parser >>= inner
     where
-      inner w = (WtConc <$> tagConc w) <|> (WtCont <$> tagCont w <*> decode)
+      inner w = (WtConc <$> tagConc w) <|> (WtCont <$> tagCont w <*> parser)
 
 instance Encodable WireValue where
-  encode wv@(WireValue a) = (<>) <$> encode (wireValueWireType wv) <*> encode a
-  decode = decode >>= withWireTypeProxy go
+  builder wv@(WireValue a) = (<>) <$> builder (wireValueWireType wv) <*> builder a
+  parser = parser >>= withWireTypeProxy go
     where
       go :: forall a. Wireable a => Proxy a -> Parser WireValue
-      go _ = WireValue <$> decode @a
+      go _ = WireValue <$> parser @a

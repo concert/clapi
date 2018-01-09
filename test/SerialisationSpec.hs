@@ -3,13 +3,18 @@
 
 module SerialisationSpec where
 
+import Prelude hiding (fail)
+import Control.Monad.Fail (MonadFail(..))
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+
 import Test.Hspec
 import Test.QuickCheck
   (property, Property, counterexample, Arbitrary(..), Gen, oneof)
 import Test.QuickCheck.Instances ()
 
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
+import Blaze.ByteString.Builder (toByteString)
+import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
 import Clapi.Path (Path(..), Seg)
 import Clapi.Types
@@ -18,11 +23,16 @@ import Clapi.Types
   , TreeUpdateMessage(..), RequestBundle(..)  , UpdateBundle(..)
   , OwnerRequestBundle(..), FromRelayBundle(..)  , ToRelayBundle(..)
   , UMsgError(..))
-import Clapi.Serialisation (Encodable, encode', decode')
+import Clapi.Serialisation (Encodable(..))
 
  -- Incl. Arbitrary instances of WireValue:
 import TypesSpec (smallListOf, name, arbitraryTextNoNull)
 
+encode :: (MonadFail m, Encodable a) => a -> m ByteString
+encode x = toByteString <$> builder x
+
+decode :: (MonadFail m, Encodable a) => ByteString -> m a
+decode = either fail return . parseOnly (parser <* endOfInput)
 
 instance Arbitrary Interpolation where
   arbitrary = oneof
@@ -128,8 +138,8 @@ propBundleRoundTrip
   :: forall bundle. (Show bundle, Eq bundle, Encodable bundle)
   => bundle -> Property
 propBundleRoundTrip b = let
-    mbs = encode' b
-    result = mbs >>= decode' :: Either String bundle
+    mbs = encode b
+    result = mbs >>= decode :: Either String bundle
   in
     counterexample (show mbs) $
     counterexample (show $ showBytes <$> mbs) $
