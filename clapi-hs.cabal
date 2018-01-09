@@ -30,7 +30,6 @@ library
                      , Clapi.Serialisation
                      , Clapi.Server
                      , Clapi.TaggedData
-                     , Clapi.TextSerialisation
                      , Clapi.TimeDelta
                      , Clapi.Types
                      , Clapi.Types.Base
@@ -118,7 +117,6 @@ test-suite clapi-hs-test
                      , RelaySpec
                      , ServerSpec
                      , SerialisationSpec
-                     , TextSerialisationSpec
                      , TreeSpec
                      , TypesSpec
                      , UtilSpec
