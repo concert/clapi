@@ -22,16 +22,16 @@ spec = describe "Relay" $ do
     it "Extends root struct" $ updates `shouldBe` updates
   where
     inMsgs = [
-        Left $ UMsgAssignType [pathq|/foo/type|] [pathq|/api/types/base/struct|],
-        Right $ UMsgAdd
+        Left $ MsgAssignType [pathq|/foo/type|] [pathq|/api/types/base/struct|],
+        Right $ MsgAdd
             [pathq|/foo/type|]
             z
             [t "atypical", lot ["type"], lop [[pathq|/api/types/base/struct|]], low [cannot]]
             IConstant
             Nothing
             Nothing,
-        Left $ UMsgAssignType [pathq|/foo|] [pathq|/foo/type|]]
-    expectedMsgs = inMsgs ++ [Right $ UMsgSet (tp Root) z extendedV IConstant Nothing Nothing]
+        Left $ MsgAssignType [pathq|/foo|] [pathq|/foo/type|]]
+    expectedMsgs = inMsgs ++ [Right $ MsgSet (tp Root) z extendedV IConstant Nothing Nothing]
     z = Time 0 0
     extendedV = [t "auto-generated container", lot ["foo", "api"], lop [[pathq|/foo/type|], tp [pathq|/api|]], low [cannot, cannot]]
     t = WireValue @Text

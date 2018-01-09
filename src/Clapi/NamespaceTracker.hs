@@ -21,7 +21,7 @@ import Clapi.Types
   ( DataUpdateMessage(..), TreeUpdateMessage(..)
   , OwnerUpdateMessage, ToRelayBundle(..), FromRelayBundle(..)
   , OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..)
-  , UMsgError(..), UMsg(..), SubMessage(..))
+  , MsgError(..), Msg(..), SubMessage(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
@@ -37,8 +37,8 @@ data Request
   | OwnerRequest [OwnerUpdateMessage] deriving (Eq, Show)
 
 data Response
-  = ClientResponse [OwnerUpdateMessage] [UMsgError] [DataUpdateMessage]
-  | BadOwnerResponse [UMsgError]
+  = ClientResponse [OwnerUpdateMessage] [MsgError] [DataUpdateMessage]
+  | BadOwnerResponse [MsgError]
   | GoodOwnerResponse [OwnerUpdateMessage] deriving (Eq, Show)
 
 maybeNamespace :: (Seg -> a) -> Path -> Maybe a
@@ -58,20 +58,20 @@ updateOwnerships ::
 updateOwnerships i = mapM_ $ handle
   where
     handle :: TreeUpdateMessage -> StateT (Owners i) m ()
-    handle (UMsgAssignType path _) =
+    handle (MsgAssignType path _) =
         whenJust (maybeNamespace id path) (\seg -> modify $ Map.insert seg i)
-    handle (UMsgDelete path) =
+    handle (MsgDelete path) =
         whenJust (maybeNamespace id path) (\seg -> modify $ Map.delete seg)
 
 registerSubscription ::
     (Monad m, Ord i) => i -> OwnerUpdateMessage -> StateT (Registered i) m ()
 registerSubscription i m = case m of
-    (Left (UMsgAssignType path _)) -> modify (Mos.insert i path)
+    (Left (MsgAssignType path _)) -> modify (Mos.insert i path)
     _ -> return mempty
 
 handleDeletedNamespace ::
     (Monad m, Ord i) => OwnerUpdateMessage -> StateT (Registered i) m ()
-handleDeletedNamespace (Left (UMsgDelete path)) =
+handleDeletedNamespace (Left (MsgDelete path)) =
     whenJust (maybeNamespace id path) (\_ -> modify $ Mos.remove path)
 handleDeletedNamespace _ = return ()
 
@@ -107,7 +107,7 @@ liftedWaitThen onFwd onRev = do
     Fwd a -> onFwd a
     Rev b -> onRev b
 
-type DownstreamCtx i = (i, Maybe [UMsgError])
+type DownstreamCtx i = (i, Maybe [MsgError])
 
 type NsProtocol m i = Protocol
     (ClientEvent i ToRelayBundle)
@@ -130,7 +130,7 @@ allPaths b = case b of
     (TRBOwner (UpdateBundle errs oums)) -> ps errs ++ ps oums
     (TRBClient (RequestBundle subs dums)) -> ps subs ++ ps dums
   where
-    ps :: (UMsg m) => [m] -> [Path]
+    ps :: (Msg m) => [m] -> [Path]
     ps = map uMsgPath
 
 _namespaceTrackerProtocol ::
@@ -147,11 +147,11 @@ _namespaceTrackerProtocol publish = forever $ do
     when (o /= o') (lift . lift $ publish o')
   where
     sendErrorBundle i s ps = lift . sendRev $ ServerData i $ FRBOwner $
-        OwnerRequestBundle (map (flip UMsgError s) ps) []
+        OwnerRequestBundle (map (flip MsgError s) ps) []
     kick i = do
         lift . sendRev $ ServerDisconnect i
         fwd $ ClientDisconnect i
-    hasOwnership :: (Monad m, UMsg msg, Ord i, Show i) => i -> Ownership -> [msg] -> StateT (Owners i) m [Path]
+    hasOwnership :: (Monad m, Msg msg, Ord i, Show i) => i -> Ownership -> [msg] -> StateT (Owners i) m [Path]
     hasOwnership i eo ms = get >>= \s -> return $ filter (\p -> Just eo == getPathOwnership i s p) $ map uMsgPath ms
     fwd (ClientConnect _i) = return mempty
     fwd (ClientData i b@(TRBOwner (UpdateBundle errs oums))) = do
@@ -159,7 +159,7 @@ _namespaceTrackerProtocol publish = forever $ do
         badOumPaths <- stateFst $ hasOwnership i Client oums
         if not $ null $ badErrPaths ++ badOumPaths
             then lift . sendRev $ ServerData i $ FRBOwner $ OwnerRequestBundle (
-                map (flip UMsgError "Path already has another owner") $ allPaths b) []
+                map (flip MsgError "Path already has another owner") $ allPaths b) []
             else lift $ sendFwd ((i, Just errs), OwnerRequest oums)
     fwd (ClientData i (TRBClient (RequestBundle subs dums))) = do
         badSubPaths <- stateFst $ hasOwnership i Owner subs
@@ -209,7 +209,7 @@ _namespaceTrackerProtocol publish = forever $ do
       where
         sendToSubs ::
             (Monad m, Ord i) =>
-            [UMsgError] ->
+            [MsgError] ->
             [OwnerUpdateMessage] ->
             StateT (Registered i) (NsProtocol m i) ()
         sendToSubs errs oms = do
@@ -219,7 +219,7 @@ _namespaceTrackerProtocol publish = forever $ do
             getSendables ps = map (\(i', paths) -> ServerData i' $
                                     filteredByPath paths) $ Map.toList ps
             filteredByPath paths = FRBClient $ UpdateBundle (filter (inPaths paths) errs) (filter (inPaths paths) oms)
-            inPaths :: UMsg msg => Set.Set Path -> msg -> Bool
+            inPaths :: Msg msg => Set.Set Path -> msg -> Bool
             inPaths paths = flip elem paths . uMsgPath
             nonEmptySendable (ServerData _ (FRBClient (UpdateBundle [] []))) = False
             nonEmptySendable _ = True
@@ -232,8 +232,8 @@ handleUnsubscriptions ::
 handleUnsubscriptions i ms = catMaybes <$> mapM handle ms
   where
     handle :: Monad m => SubMessage -> StateT (Registered i) m (Maybe Path)
-    handle (UMsgSubscribe p) = return $ Just p
-    handle (UMsgUnsubscribe p) = modify (Mos.delete i p) >> return Nothing
+    handle (MsgSubscribe p) = return $ Just p
+    handle (MsgUnsubscribe p) = modify (Mos.delete i p) >> return Nothing
 
 getPathOwnership :: (Ord i) => i -> Owners i -> Path -> Maybe Ownership
 getPathOwnership i owners p = namespaceOf p >>= getNsOwnership
@@ -252,4 +252,4 @@ handleClientDisconnect i =
     stateL _1 (get >>=
         return . fmap namespaceDeleteMsg . Map.keys . Map.filter (== i))
   where
-    namespaceDeleteMsg seg = UMsgDelete $ Root :/ seg
+    namespaceDeleteMsg seg = MsgDelete $ Root :/ seg

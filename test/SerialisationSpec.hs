@@ -22,7 +22,7 @@ import Clapi.Types
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..)
   , TreeUpdateMessage(..), RequestBundle(..)  , UpdateBundle(..)
   , OwnerRequestBundle(..), FromRelayBundle(..)  , ToRelayBundle(..)
-  , UMsgError(..))
+  , MsgError(..))
 import Clapi.Serialisation (Encodable(..))
 
  -- Incl. Arbitrary instances of WireValue:
@@ -42,8 +42,8 @@ instance Arbitrary Interpolation where
 
 instance Arbitrary SubMessage where
   arbitrary = oneof
-      [ UMsgSubscribe <$> arbitrary
-      , UMsgUnsubscribe <$> arbitrary]
+      [ MsgSubscribe <$> arbitrary
+      , MsgUnsubscribe <$> arbitrary]
 
 genAttributee :: Gen (Maybe Attributee)
 genAttributee = oneof [return Nothing, Just <$> arbitraryTextNoNull]
@@ -53,59 +53,59 @@ genSite = genAttributee
 
 instance Arbitrary DataUpdateMessage where
   arbitrary = oneof
-    [ UMsgAdd
+    [ MsgAdd
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
       <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
       <*> genAttributee
       <*> genSite
-    , UMsgSet
+    , MsgSet
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
       <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
       <*> genAttributee
       <*> genSite
-    , UMsgRemove
+    , MsgRemove
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
       <*> genAttributee
       <*> genSite
-    , UMsgClear
+    , MsgClear
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
       <*> genAttributee
       <*> genSite
-    , UMsgSetChildren
+    , MsgSetChildren
       <$> (arbitrary :: Gen Path)
       <*> (smallListOf name :: Gen [Seg])
       <*> genAttributee
     ]
-  shrink (UMsgAdd (Path []) _ [] _ Nothing Nothing) = []
-  shrink (UMsgAdd p t vs i a s) =
-    [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink (UMsgSet (Path []) _ [] _ Nothing Nothing) = []
-  shrink (UMsgSet p t vs i a s) =
-    [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink (UMsgRemove (Path []) _ Nothing Nothing) = []
-  shrink (UMsgRemove p t a s) =
-    [UMsgRemove p' t a' s' | (p', a', s') <- shrink (p, a, s)]
-  shrink (UMsgClear p t a s) =
-    [UMsgClear p' t a' s' | (p', a', s') <- shrink (p, a, s)]
-  shrink (UMsgSetChildren (Path []) [] Nothing) = []
-  shrink (UMsgSetChildren p ns a) =
-    [UMsgSetChildren p' ns' a' | (p', ns', a') <- shrink (p, ns, a)]
+  shrink (MsgAdd (Path []) _ [] _ Nothing Nothing) = []
+  shrink (MsgAdd p t vs i a s) =
+    [MsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
+  shrink (MsgSet (Path []) _ [] _ Nothing Nothing) = []
+  shrink (MsgSet p t vs i a s) =
+    [MsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
+  shrink (MsgRemove (Path []) _ Nothing Nothing) = []
+  shrink (MsgRemove p t a s) =
+    [MsgRemove p' t a' s' | (p', a', s') <- shrink (p, a, s)]
+  shrink (MsgClear p t a s) =
+    [MsgClear p' t a' s' | (p', a', s') <- shrink (p, a, s)]
+  shrink (MsgSetChildren (Path []) [] Nothing) = []
+  shrink (MsgSetChildren p ns a) =
+    [MsgSetChildren p' ns' a' | (p', ns', a') <- shrink (p, ns, a)]
 
 instance Arbitrary TreeUpdateMessage where
   arbitrary = oneof
-    [ UMsgAssignType
+    [ MsgAssignType
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Path)
-    , UMsgDelete <$> (arbitrary :: Gen Path)]
+    , MsgDelete <$> (arbitrary :: Gen Path)]
 
-instance Arbitrary UMsgError where
-  arbitrary = UMsgError <$> arbitrary <*> arbitraryTextNoNull
+instance Arbitrary MsgError where
+  arbitrary = MsgError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary RequestBundle where
   arbitrary = RequestBundle <$> smallListOf arbitrary <*> smallListOf arbitrary

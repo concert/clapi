@@ -23,7 +23,7 @@ import Clapi.Path (Path, Seg, pattern Root)
 import Clapi.PathQ
 import Clapi.Types (
     Time(..), Interpolation(..), DataUpdateMessage(..), TreeUpdateMessage(..),
-    UMsgError(..), OwnerUpdateMessage(..), UMsg(..), WireValue(..),
+    MsgError(..), OwnerUpdateMessage(..), Msg(..), WireValue(..),
     UpdateBundle(..), RequestBundle(..), ToRelayBundle(..),
     FromRelayBundle(..), SubMessage(..), OwnerRequestBundle(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -44,7 +44,7 @@ spec = do
         owners = Map.singleton helloS "relay itself"
         protocol = forTest <<-> namespaceTrackerProtocol noopPub owners mempty <<-> fakeRelay
         forTest = do
-            sendFwd $ ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root]
+            sendFwd $ ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root]
             sendFwd $ ClientDisconnect alice
             resps <- collectAllResponsesUntil alice
             lift $ assertOnlyKeysInMap [alice] resps
@@ -56,7 +56,7 @@ spec = do
         aliceOwns = Map.singleton helloS "alice"
         protocol = forTest <<-> namespaceTrackerProtocol noopPub aliceOwns mempty <<-> fakeRelay
         forTest = do
-          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [UMsgSubscribe helloP] []
+          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgSubscribe helloP] []
           resps <- collectAllResponsesUntil alice
           lift $ assertOnlyKeysInMap [alice] resps
           lift $ assertSingleError alice helloP ["Request", "own"] resps
@@ -68,7 +68,7 @@ spec = do
         owners = Map.singleton [segq|owned|] bob
         protocol = forTest <<-> namespaceTrackerProtocol noopPub owners mempty <<-> fakeRelay
         forTest = do
-          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [UMsgUnsubscribe ownedP] []
+          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgUnsubscribe ownedP] []
           sendFwd $ ClientDisconnect alice
           resps <- collectAllResponsesUntil alice
           lift $ resps `shouldBe` mempty
@@ -80,59 +80,59 @@ spec = do
         -- Can Unsubscribe
       let
         events = [
-            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root],
-            ClientData bob $ TRBClient $ RequestBundle [UMsgSubscribe helloP] [],
+            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
+            ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add],
             ClientDisconnect alice
           ]
       in do
         resps <- gogo events alice nstBounceProto
         resps `shouldBe` [
-            ServerData bob $ FRBClient $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
+            ServerData bob $ FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP],
             ServerData bob $ FRBClient $ UpdateBundle [] [Right $ dum helloP Add],
             ServerDisconnect alice
             ]
     it "Forbids second owner" $ do
         response <- trackerHelper [
-            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root],
-            ClientData bob $ TRBOwner $ UpdateBundle [UMsgError helloP ""] []]
+            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
+            ClientData bob $ TRBOwner $ UpdateBundle [MsgError helloP ""] []]
         Map.size response `shouldBe` 1
         assertSingleError bob helloP ["Path", "another"] response
     it "Supports claiming and unclaiming in same bundle" $ do
         response <- trackerHelper [
-            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root, Left $ UMsgDelete helloP],
-            ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root]]
+            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root, Left $ MsgDelete helloP],
+            ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root]]
         response `shouldBe` mempty
     it "Unsubscribes client on disconnect" $ do
         response <- trackerHelper _disconnectUnsubsBase
         response `shouldBe` (Map.singleton bob $ [
-            FRBClient $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP]])
+            FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP]])
     it "Supports client disconnecting then resubscribing" $ do
         response <- trackerHelper $ _disconnectUnsubsBase ++ [
-            ClientData bob $ TRBClient $ RequestBundle [UMsgSubscribe helloP] [],
+            ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add]]
         response `shouldBe` (Map.singleton bob $ map FRBClient [
-            UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
-            UpdateBundle [] [Left $ UMsgAssignType helloP helloP],
+            UpdateBundle [] [Left $ MsgAssignType helloP helloP],
+            UpdateBundle [] [Left $ MsgAssignType helloP helloP],
             UpdateBundle [] [Right $ dum helloP Add]])
     it "Disowns on owner disconnect" $ do
         -- and unregisters clients
         response <- pubTrackerHelper expectedPubs [
-            ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType [pathq|/fudge|] Root], -- Need something to disconnect at end
-            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root],
-            ClientData bob $ TRBClient $ RequestBundle [UMsgSubscribe helloP] [],
+            ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType [pathq|/fudge|] Root], -- Need something to disconnect at end
+            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
+            ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
             ClientDisconnect alice,
             -- No subscriber => no AssignType msg:
-            ClientData "dave" $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root],
+            ClientData "dave" $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
             -- New subscriber:
-            ClientData "charlie" $ TRBClient $ RequestBundle [UMsgSubscribe helloP] []]
+            ClientData "charlie" $ TRBClient $ RequestBundle [MsgSubscribe helloP] []]
         assertOnlyKeysInMap [bob, "charlie"] response
         assertMapValue bob [
-            FRBClient $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP], FRBClient $ UpdateBundle [] [Left $ UMsgDelete helloP]] response
-        assertMapValue "charlie" [FRBClient $ UpdateBundle [] [Left $ UMsgAssignType helloP helloP]] response
+            FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP], FRBClient $ UpdateBundle [] [Left $ MsgDelete helloP]] response
+        assertMapValue "charlie" [FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP]] response
     it "Forwards client sets" $ do
         response <- trackerHelper [
-            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root],
+            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
             ClientData bob $ TRBClient $ RequestBundle [] [dum helloP Set]]
         assertOnlyKeysInMap [alice] response
         assertMapValue alice [FRBOwner $ OwnerRequestBundle [] [dum helloP Set]] response
@@ -140,7 +140,7 @@ spec = do
       let
         protocol = assertions <<-> namespaceTrackerProtocol noopPub mempty mempty <<-> errorSender
         errorSender = sendRev $ ((alice, Nothing), BadOwnerResponse [err])
-        err = UMsgError [pathq|/bad|] "wrong"
+        err = MsgError [pathq|/bad|] "wrong"
         assertions = do
             d <- wait
             case d of
@@ -164,7 +164,7 @@ spec = do
     assertErrorMsg substrs msg =
         mapM_ (\s -> getString msg `shouldSatisfy` T.isInfixOf s) substrs
       where
-        getString (UMsgError _ str) = str
+        getString (MsgError _ str) = str
     assertMsgPath path msg = uMsgPath msg `shouldBe` path
     expectedPubs = map Map.fromList
       [ [(fudgeS, bob)]
@@ -184,11 +184,11 @@ data DataUpdateMethod
   | Children
 
 dum :: Path -> DataUpdateMethod -> DataUpdateMessage
-dum path Set = UMsgSet path (Time 0 0) [] IConstant Nothing Nothing
-dum path Add = UMsgAdd path (Time 0 0) [] IConstant Nothing Nothing
-dum path Remove = UMsgRemove path (Time 0 0) Nothing Nothing
-dum path Clear = UMsgClear path (Time 0 0) Nothing Nothing
-dum path Children = UMsgSetChildren path [] Nothing
+dum path Set = MsgSet path (Time 0 0) [] IConstant Nothing Nothing
+dum path Add = MsgAdd path (Time 0 0) [] IConstant Nothing Nothing
+dum path Remove = MsgRemove path (Time 0 0) Nothing Nothing
+dum path Clear = MsgClear path (Time 0 0) Nothing Nothing
+dum path Children = MsgSetChildren path [] Nothing
 
 waitN :: (Monad m) => Int -> Protocol a a' b' b m [Directed a b]
 waitN n = inner n mempty
@@ -214,7 +214,7 @@ fakeRelay ::
     Protocol ((c, Request)) Void ((c, Response)) Void m ()
 fakeRelay = forever $ waitThen fwd undefined
   where
-    fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip UMsgAssignType helloP <$> gets) [] updates)
+    fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip MsgAssignType helloP <$> gets) [] updates)
     fwd (ctx, OwnerRequest updates) = sendRev (ctx, GoodOwnerResponse updates)
 
 alice = "alice"
@@ -267,8 +267,8 @@ untilDisconnect i = waitThen fwd next
 nstBounceProto = namespaceTrackerProtocol noopPub mempty mempty <<-> fakeRelay
 
 _disconnectUnsubsBase = [
-    ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ UMsgAssignType helloP Root],
-    ClientData bob $ TRBClient $ RequestBundle [UMsgSubscribe helloP] [],
+    ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
+    ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
     ClientDisconnect bob,
     -- Should miss this message:
     ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Set]

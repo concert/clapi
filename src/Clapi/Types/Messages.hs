@@ -8,34 +8,34 @@ import Clapi.Path (Path, Seg)
 import Clapi.Types.Base (Attributee, Site, Time, Interpolation)
 import Clapi.Types.Wire (WireValue)
 
-class UMsg a where
+class Msg a where
    uMsgPath :: a -> Path
 
-data UMsgError
-  = UMsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
+data MsgError
+  = MsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
 
-instance UMsg UMsgError where
+instance Msg MsgError where
     uMsgPath = errMsgPath
 
 data SubMessage =
-    UMsgSubscribe {subMsgPath :: Path}
-  | UMsgUnsubscribe {subMsgPath :: Path}
+    MsgSubscribe {subMsgPath :: Path}
+  | MsgUnsubscribe {subMsgPath :: Path}
   deriving (Eq, Show)
 
-instance UMsg SubMessage where
+instance Msg SubMessage where
     uMsgPath = subMsgPath
 
 -- Separate because not valid in RequestBundle
 data TreeUpdateMessage =
-    UMsgAssignType {tuMsgPath :: Path, tuMsgTypePath :: Path}
-  | UMsgDelete {tuMsgPath :: Path}
+    MsgAssignType {tuMsgPath :: Path, tuMsgTypePath :: Path}
+  | MsgDelete {tuMsgPath :: Path}
   deriving (Eq, Show)
 
-instance UMsg TreeUpdateMessage where
+instance Msg TreeUpdateMessage where
     uMsgPath = tuMsgPath
 
 data DataUpdateMessage =
-    UMsgAdd
+    MsgAdd
       { duMsgPath :: Path
       , duMsgTime :: Time
       , duMsgArgs :: [WireValue]
@@ -43,7 +43,7 @@ data DataUpdateMessage =
       , duMsgAttributee :: (Maybe Attributee)
       , duMsgSite :: (Maybe Site)
       }
-  | UMsgSet
+  | MsgSet
       { duMsgPath :: Path
       , duMsgTime :: Time
       , duMsgArgs :: [WireValue]
@@ -51,36 +51,36 @@ data DataUpdateMessage =
       , duMsgAttributee :: (Maybe Attributee)
       , duMsgSite :: (Maybe Site)
       }
-  | UMsgRemove
+  | MsgRemove
       { duMsgPath :: Path
       , duMsgTime :: Time
       , duMsgAttributee :: (Maybe Attributee)
       , duMsgSite :: (Maybe Site)
       }
-  | UMsgClear
+  | MsgClear
       { duMsgPath :: Path
       , duMsgTime :: Time
       , duMsgAttributee :: (Maybe Attributee)
       , duMsgSite :: (Maybe Site)
       }
-  | UMsgSetChildren
+  | MsgSetChildren
       { duMsgPath :: Path
       , duMsgNames :: [Seg]
       , duMsgAttributee :: (Maybe Attributee)
       }
    deriving (Eq, Show)
 
-instance UMsg DataUpdateMessage where
+instance Msg DataUpdateMessage where
     uMsgPath = duMsgPath
 
 type OwnerUpdateMessage = Either TreeUpdateMessage DataUpdateMessage
 
-instance (UMsg a, UMsg b) => UMsg (Either a b) where
+instance (Msg a, Msg b) => Msg (Either a b) where
     uMsgPath = either uMsgPath uMsgPath
 
-data UpdateBundle = UpdateBundle {ubErrs :: [UMsgError], ubMsgs :: [OwnerUpdateMessage]} deriving (Eq, Show)
+data UpdateBundle = UpdateBundle {ubErrs :: [MsgError], ubMsgs :: [OwnerUpdateMessage]} deriving (Eq, Show)
 data RequestBundle = RequestBundle {rbSubs :: [SubMessage], rbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
-data OwnerRequestBundle = OwnerRequestBundle {orbErrs :: [UMsgError], orbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
+data OwnerRequestBundle = OwnerRequestBundle {orbErrs :: [MsgError], orbMsgs :: [DataUpdateMessage]} deriving (Eq, Show)
 
 data ToRelayBundle = TRBClient RequestBundle | TRBOwner UpdateBundle deriving (Eq, Show)
 data FromRelayBundle = FRBClient UpdateBundle | FRBOwner OwnerRequestBundle deriving (Eq, Show)

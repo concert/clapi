@@ -55,9 +55,9 @@ tdTaggedBuilder
   :: MonadFail m =>TaggedData e a -> (a -> m Builder) -> a -> m Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
-instance Encodable UMsgError where
-    builder (UMsgError p s) = builder p <<>> builder s
-    parser = UMsgError <$> parser <*> parser
+instance Encodable MsgError where
+    builder (MsgError p s) = builder p <<>> builder s
+    parser = MsgError <$> parser <*> parser
 
 data SubMsgType
   = SubMsgTSub
@@ -68,14 +68,14 @@ subMsgTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (SubMsgTSub) = [btq|S|]
     typeToTag (SubMsgTUnsub) = [btq|U|]
-    msgToType (UMsgSubscribe _) = SubMsgTSub
-    msgToType (UMsgUnsubscribe _) = SubMsgTUnsub
+    msgToType (MsgSubscribe _) = SubMsgTSub
+    msgToType (MsgUnsubscribe _) = SubMsgTUnsub
 
 instance Encodable SubMessage where
     builder = tdTaggedBuilder subMsgTaggedData $ builder . subMsgPath
     parser = tdTaggedParser subMsgTaggedData $ \e -> case e of
-        (SubMsgTSub) -> UMsgSubscribe <$> parser
-        (SubMsgTUnsub) -> UMsgUnsubscribe <$> parser
+        (SubMsgTSub) -> MsgSubscribe <$> parser
+        (SubMsgTUnsub) -> MsgUnsubscribe <$> parser
 
 data DataUpdateMsgType
   = DUMTAdd
@@ -92,19 +92,19 @@ dumtTaggedData = taggedData typeToTag msgToType
     typeToTag (DUMTRemove) = [btq|r|]
     typeToTag (DUMTClear) = [btq|c|]
     typeToTag (DUMTSetChildren) = [btq|C|]
-    msgToType (UMsgAdd _ _ _ _ _ _) = DUMTAdd
-    msgToType (UMsgSet _ _ _ _ _ _) = DUMTSet
-    msgToType (UMsgRemove _ _ _ _) = DUMTRemove
-    msgToType (UMsgClear _ _ _ _) = DUMTClear
-    msgToType (UMsgSetChildren _ _ _) = DUMTSetChildren
+    msgToType (MsgAdd _ _ _ _ _ _) = DUMTAdd
+    msgToType (MsgSet _ _ _ _ _ _) = DUMTSet
+    msgToType (MsgRemove _ _ _ _) = DUMTRemove
+    msgToType (MsgClear _ _ _ _) = DUMTClear
+    msgToType (MsgSetChildren _ _ _) = DUMTSetChildren
 
 dumtParser :: DataUpdateMsgType -> Parser DataUpdateMessage
 dumtParser e = case e of
-    DUMTAdd -> sap UMsgAdd
-    DUMTSet -> sap UMsgSet
-    DUMTRemove -> rcp UMsgRemove
-    DUMTClear -> rcp UMsgClear
-    DUMTSetChildren -> UMsgSetChildren <$> parser <*> parser <*> parser
+    DUMTAdd -> sap MsgAdd
+    DUMTSet -> sap MsgSet
+    DUMTRemove -> rcp MsgRemove
+    DUMTClear -> rcp MsgClear
+    DUMTSetChildren -> MsgSetChildren <$> parser <*> parser <*> parser
   where
     sap mt =
       mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
@@ -112,17 +112,17 @@ dumtParser e = case e of
 
 dumtBuilder :: MonadFail m => DataUpdateMessage -> m Builder
 dumtBuilder m = case m of
-    (UMsgAdd p t v i a s) ->
+    (MsgAdd p t v i a s) ->
       builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
       builder s
-    (UMsgSet p t v i a s) ->
+    (MsgSet p t v i a s) ->
       builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
       builder s
-    (UMsgRemove p t a s) ->
+    (MsgRemove p t a s) ->
       builder p <<>> builder t <<>> builder a <<>> builder s
-    (UMsgClear p t a s) ->
+    (MsgClear p t a s) ->
       builder p <<>> builder t <<>> builder a <<>> builder s
-    (UMsgSetChildren p ns a) ->
+    (MsgSetChildren p ns a) ->
       builder p <<>> builder ns <<>> builder a
 
 instance Encodable DataUpdateMessage where
@@ -138,16 +138,16 @@ tumtTaggedData = taggedData typeToTag msgToType
   where
     typeToTag (TUMTAssignType) = [btq|A|]
     typeToTag (TUMTDelete) = [btq|D|]
-    msgToType (UMsgAssignType _ _) = TUMTAssignType
-    msgToType (UMsgDelete _) = TUMTDelete
+    msgToType (MsgAssignType _ _) = TUMTAssignType
+    msgToType (MsgDelete _) = TUMTDelete
 
 tumtBuilder :: MonadFail m => TreeUpdateMessage -> m Builder
-tumtBuilder (UMsgAssignType p tp) = builder p <<>> builder tp
-tumtBuilder (UMsgDelete p) = builder p
+tumtBuilder (MsgAssignType p tp) = builder p <<>> builder tp
+tumtBuilder (MsgDelete p) = builder p
 
 tumtParser :: TreeUpdateMsgType -> Parser TreeUpdateMessage
-tumtParser (TUMTAssignType) = UMsgAssignType <$> parser <*> parser
-tumtParser (TUMTDelete) = UMsgDelete <$> parser
+tumtParser (TUMTAssignType) = MsgAssignType <$> parser <*> parser
+tumtParser (TUMTDelete) = MsgDelete <$> parser
 
 parseEither
   :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b)
