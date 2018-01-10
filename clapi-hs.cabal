@@ -33,12 +33,14 @@ library
                      , Clapi.Serialisation.Messages
                      , Clapi.Server
                      , Clapi.TaggedData
+                     , Clapi.TextSerialisation
                      , Clapi.TimeDelta
                      , Clapi.Types
                      , Clapi.Types.AssocList
                      , Clapi.Types.Base
                      , Clapi.Types.ByteTagQ
                      , Clapi.Types.Messages
+                     , Clapi.Types.Tree
                      , Clapi.Types.Wire
                      , Clapi.Types.UniqList
                      , Clapi.Tree
