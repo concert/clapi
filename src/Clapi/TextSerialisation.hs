@@ -4,19 +4,23 @@
 
 module Clapi.TextSerialisation where
 
+import Prelude hiding (fail)
+import Control.Monad.Fail (MonadFail(..))
 import Control.Applicative ((<|>))
 import Control.Monad (void)
-import Data.Attoparsec.Text (Parser)
-import qualified Data.Attoparsec.Text as Dat
 import Data.Monoid ((<>))
-import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 
+import Data.Attoparsec.Text (Parser)
+import qualified Data.Attoparsec.Text as Dat
+import Data.Scientific (toRealFloat)
+
 import Clapi.Types.Tree
   ( Bounds(..), TreeConcreteTypeName(..), TreeContainerTypeName(..)
-  , TreeConcreteType(..), TreeContainerType(..), TreeType(..))
-import Clapi.Path (pathP, segP)
+  , TreeConcreteType(..), TreeContainerType(..), TreeType(..), typeEnumOf)
+import Clapi.Path (pathP, segP, unSeg)
+import qualified Clapi.Path as Path
 
 concTNameToText :: TreeConcreteTypeName -> Text
 concTNameToText tc = case tc of
@@ -54,11 +58,10 @@ boundsSep = ':'
 listSep = ','
 
 boundsToText :: (Show a) => Bounds a -> Text
-boundsToText bounds = Text.pack $ case bounds of
-  Bounds Nothing Nothing -> ""
-  Bounds (Just bmin) Nothing -> show bmin ++ [boundsSep]
-  Bounds Nothing (Just bmax) -> boundsSep : show bmax
-  Bounds (Just bmin) (Just bmax) -> show bmin ++ [boundsSep] ++ show bmax
+boundsToText (Bounds Nothing Nothing) = ""
+boundsToText (Bounds bmin bmax) = mShow bmin <> Text.singleton boundsSep <> mShow bmax
+  where
+    mShow = maybe "" (Text.pack . show)
 
 maybeP :: Parser a -> Parser (Maybe a)
 maybeP p = (Just <$> p) <|> return Nothing
@@ -107,7 +110,7 @@ concTParser = concTNameParser >>= getParser
       TcnFloat -> TcFloat <$> bbp (toRealFloat <$> Dat.scientific)
       TcnDouble -> TcDouble <$> bbp (toRealFloat <$> Dat.scientific)
       TcnString -> TcString <$> optionalArgs "" (Dat.takeWhile $ const True)
-      TcnRef -> TcRef <$> pathP
+      TcnRef -> TcRef <$> bracketed pathP
       TcnValidatorDesc -> return TcValidatorDesc
 
 contTParser :: Parser TreeContainerType
@@ -120,3 +123,36 @@ contTParser = contTNameParser >>= getParser
 
 ttParser :: Parser TreeType
 ttParser = (TtConc <$> concTParser) <|> (TtCont <$> contTParser)
+
+ttFromText :: MonadFail m => Text -> m TreeType
+ttFromText = either fail return . Dat.parseOnly (ttParser <* Dat.endOfInput)
+
+bracketText :: Text -> Text
+bracketText t = Text.singleton argsOpen <> t <> Text.singleton argsClose
+
+concTToText :: TreeConcreteType -> Text
+concTToText tct = (concTNameToText $ typeEnumOf tct) <> args
+  where
+    bracketContent = case tct of
+        TcTime -> ""
+        TcEnum segs -> Text.intercalate (Text.singleton listSep) (fmap unSeg segs)
+        TcWord32 bs -> boundsToText bs
+        TcWord64 bs -> boundsToText bs
+        TcInt32 bs -> boundsToText bs
+        TcInt64 bs -> boundsToText bs
+        TcFloat bs -> boundsToText bs
+        TcDouble bs -> boundsToText bs
+        TcString s -> s
+        TcRef p -> Path.toText p
+        TcValidatorDesc -> ""
+    args = case bracketContent of
+        "" -> ""
+        s -> bracketText s
+
+contTToText :: TreeContainerType -> Text
+contTToText tct = (contTNameToText $ typeEnumOf $ tct) <> bracketText (ttToText $ contTContainedType tct)
+
+ttToText :: TreeType -> Text
+ttToText tt = case tt of
+    TtConc tct -> concTToText tct
+    TtCont tct -> contTToText tct

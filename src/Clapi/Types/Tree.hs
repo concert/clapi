@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 module Clapi.Types.Tree where
 
@@ -20,6 +22,10 @@ data Bounds a
 
 unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing
+
+
+class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
+  typeEnumOf :: a -> b
 
 
 data TreeConcreteTypeName
@@ -45,6 +51,24 @@ data TreeConcreteType
   | TcValidatorDesc
   deriving (Show, Eq, Ord)
 
+instance TypeEnumOf TreeConcreteType TreeConcreteTypeName where
+  typeEnumOf tct = case tct of
+      TcTime -> TcnTime
+      TcEnum _ -> TcnEnum
+      TcWord32 _ -> TcnWord32
+      TcWord64 _ -> TcnWord64
+      TcInt32 _ -> TcnInt32
+      TcInt64 _ -> TcnInt64
+      TcFloat _ -> TcnFloat
+      TcDouble _ -> TcnDouble
+      TcString _ -> TcnString
+      TcRef _ -> TcnRef
+      TcValidatorDesc -> TcnValidatorDesc
+
+tcEnum :: forall a. (Enum a, Bounded a, Show a) => Proxy a -> TreeConcreteType
+tcEnum _ = TcEnum $
+  fmap (fromJust . mkSeg . Text.pack . uncamel . show) [minBound :: a..]
+
 data TreeContainerTypeName
   = TcnList
   | TcnSet
@@ -52,10 +76,16 @@ data TreeContainerTypeName
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 data TreeContainerType
-  = TcList TreeType
-  | TcSet TreeType
-  | TcOrdSet TreeType
+  = TcList {contTContainedType :: TreeType}
+  | TcSet {contTContainedType :: TreeType}
+  | TcOrdSet {contTContainedType :: TreeType}
   deriving (Show, Eq, Ord)
+
+instance TypeEnumOf TreeContainerType TreeContainerTypeName where
+  typeEnumOf tct = case tct of
+    TcList _ -> TcnList
+    TcSet _ -> TcnSet
+    TcOrdSet _ -> TcnOrdSet
 
 data TreeType
   = TtConc TreeConcreteType
@@ -63,5 +93,4 @@ data TreeType
   deriving (Show, Eq, Ord)
 
 ttEnum :: forall a. (Enum a, Bounded a, Show a) => Proxy a -> TreeType
-ttEnum _ = TtConc $ TcEnum $
-  fmap (fromJust . mkSeg . Text.pack . uncamel . show) [minBound :: a..]
+ttEnum = TtConc . tcEnum

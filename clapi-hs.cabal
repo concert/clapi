@@ -125,6 +125,7 @@ test-suite clapi-hs-test
                      , RelaySpec
                      , ServerSpec
                      , SerialisationSpec
+                     , TextSerialisationSpec
                      , TreeSpec
                      , TypesSpec
                      , UtilSpec
