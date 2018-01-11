@@ -3,8 +3,16 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 
-module Clapi.Types.Tree where
+module Clapi.Types.Tree
+  ( Bounds, bounds, unbounded, boundsMin, boundsMax
+  , TreeConcreteTypeName(..), TreeConcreteType(..)
+  , TreeContainerTypeName(..), TreeContainerType(..)
+  , TreeType(..), TypeEnumOf(..)
+  , tcEnum, ttEnum
+  ) where
 
+import Prelude hiding (fail)
+import Control.Monad.Fail (MonadFail(..))
 import Data.Int
 import Data.Maybe (fromJust)
 import Data.Proxy
@@ -17,8 +25,18 @@ import Clapi.Util (uncamel)
 
 
 data Bounds a
-  = Bounds {boundsMin :: Maybe a, boundsMax :: Maybe a}
+  = Bounds (Maybe a) (Maybe a)
   deriving (Show, Eq, Ord)
+
+boundsMin, boundsMax :: Bounds a -> Maybe a
+boundsMin (Bounds m _) = m
+boundsMax (Bounds _ m) = m
+
+bounds :: (MonadFail m, Ord a) => Maybe a -> Maybe a -> m (Bounds a)
+bounds m0@(Just bMin) m1@(Just bMax)
+    | bMin <= bMax = return $ Bounds m0 m1
+    | otherwise = fail "minBound > maxBound"
+bounds m0 m1 = return $ Bounds m0 m1
 
 unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing

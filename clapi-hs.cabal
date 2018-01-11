@@ -113,6 +113,7 @@ test-suite clapi-hs-test
                      , network-simple
                      , QuickCheck
                      , quickcheck-instances
+                     , random
                      , text
                      , transformers
                      , unagi-chan

@@ -17,8 +17,9 @@ import qualified Data.Attoparsec.Text as Dat
 import Data.Scientific (toRealFloat)
 
 import Clapi.Types.Tree
-  ( Bounds(..), TreeConcreteTypeName(..), TreeContainerTypeName(..)
-  , TreeConcreteType(..), TreeContainerType(..), TreeType(..), typeEnumOf)
+  ( Bounds, bounds, unbounded, boundsMin, boundsMax, TreeConcreteTypeName(..),
+  TreeContainerTypeName(..) , TreeConcreteType(..), TreeContainerType(..),
+  TreeType(..), typeEnumOf)
 import Clapi.Path (pathP, segP, unSeg)
 import qualified Clapi.Path as Path
 
@@ -58,8 +59,9 @@ boundsSep = ':'
 listSep = ','
 
 boundsToText :: (Show a) => Bounds a -> Text
-boundsToText (Bounds Nothing Nothing) = ""
-boundsToText (Bounds bmin bmax) = mShow bmin <> Text.singleton boundsSep <> mShow bmax
+boundsToText b = case (boundsMin b, boundsMax b) of
+    (Nothing, Nothing) -> ""
+    (bmin, bmax) -> mShow bmin <> Text.singleton boundsSep <> mShow bmax
   where
     mShow = maybe "" (Text.pack . show)
 
@@ -75,12 +77,12 @@ withSpaces p = spaces >> p <* spaces
 sep'd :: Char -> Parser ()
 sep'd c = void $ withSpaces $ Dat.char c
 
-boundsParser :: Parser a -> Parser (Bounds a)
+boundsParser :: Ord a => Parser a -> Parser (Bounds a)
 boundsParser p = do
   a <- maybeP p
   sep'd boundsSep
   b <- maybeP p
-  return $ Bounds a b
+  bounds a b
 
 bracketed :: Parser a -> Parser a
 bracketed p =
@@ -99,7 +101,8 @@ concTParser :: Parser TreeConcreteType
 concTParser = concTNameParser >>= getParser
   where
     optionalArgs def p = bracketed p <|> return def
-    bbp = optionalArgs (Bounds Nothing Nothing) . boundsParser
+    bbp :: Ord a => Parser a -> Parser (Bounds a)
+    bbp = optionalArgs unbounded . boundsParser
     getParser tcn = case tcn of
       TcnTime -> return TcTime
       TcnEnum -> TcEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
