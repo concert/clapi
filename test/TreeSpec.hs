@@ -19,7 +19,7 @@ import qualified Data.Map.Mos as Mos
 import Clapi.Path (Path(..), isChildOfAny, pattern Root)
 import Clapi.PathQ
 import Clapi.Types (
-    CanFail, ClapiValue(..), Time(..), InterpolationType(..), Interpolation(..))
+    CanFail, WireValue(..), Time(..), InterpolationType(..), Interpolation(..))
 import Clapi.Tree (
     ClapiTree, Node(..), treeOrphansAndMissing, treeInitNode, treeDeleteNode
     -- Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),

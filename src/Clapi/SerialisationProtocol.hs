@@ -7,7 +7,10 @@ import Data.Attoparsec.ByteString (parse, IResult(..))
 import Data.ByteString (ByteString)
 import Data.ByteString.UTF8 (fromString)
 
-import Clapi.Serialisation (encode, parser, Serialisable)
+import Blaze.ByteString.Builder (toByteString)
+
+import Clapi.Types ()
+import Clapi.Serialisation.Base (Encodable(..))
 import Clapi.Protocol
   (Protocol, waitThen, sendFwd, sendRev, ProtocolF(..), Directed(..))
 
@@ -30,7 +33,7 @@ mapProtocol toA fromA fromB toB p = FreeT $ go <$> runFreeT p
     wn next = mapProtocol toA fromA fromB toB next
 
 serialiser
-  :: (Serialisable a, Serialisable b, Monad m)
+  :: (Encodable a, Encodable b, Monad m)
   => Protocol ByteString a ByteString b m ()
 serialiser = serialiser' $ parse parser
   where
@@ -40,6 +43,6 @@ serialiser = serialiser' $ parse parser
         Partial cont -> serialiser' cont
         Done unconsumed a -> sendFwd a >> fwd (parse parser) unconsumed
     rev p b = either
-        (const $ error "encode failed")
+        (\s -> error $ "builder failed: " ++ s)
         (\bs -> sendRev bs >> serialiser' p)
-        (encode b)
+        (toByteString <$> builder b)

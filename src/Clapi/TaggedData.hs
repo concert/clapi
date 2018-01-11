@@ -6,31 +6,33 @@ module Clapi.TaggedData
 
 import Data.List (intersect, nub)
 
+import Clapi.Types.Base (Tag)
+
 data TaggedData e a = TaggedData {
-    tdEnumToTag :: e -> Char,
-    tdTagToEnum :: Char -> e,
-    tdAllTags :: [Char],
+    tdEnumToTag :: e -> Tag,
+    tdTagToEnum :: Tag -> e,
+    tdAllTags :: [Tag],
     tdTypeToEnum :: a -> e}
 
-tdInstanceToTag :: TaggedData e a -> a -> Char
+tdInstanceToTag :: TaggedData e a -> a -> Tag
 tdInstanceToTag td = tdEnumToTag td . tdTypeToEnum td
 
-taggedData :: (Enum e, Bounded e) => (e -> Char) -> (a -> e) -> TaggedData e a
+taggedData :: (Enum e, Bounded e) => (e -> Tag) -> (a -> e) -> TaggedData e a
 taggedData toTag typeToEnum = if nub allTags == allTags
     then TaggedData toTag fromTag allTags typeToEnum
-    else error $ "duplicate tag values: " ++ allTags
+    else error $ "duplicate tag values: " ++ (show allTags)
   where
     tagMap = (\ei -> (toTag ei, ei)) <$> [minBound ..]
     allTags = fst <$> tagMap
     fromTag t = maybe (err t) id $ lookup t tagMap
-    err t = error $ "Unrecognised tag: '" ++ [t] ++ "' expecting one of '"
-      ++ allTags ++ "'"
+    err t = error $ "Unrecognised tag: '" ++ show t ++ "' expecting one of '"
+      ++ show allTags ++ "'"
 
 eitherTagged
   :: TaggedData e a -> TaggedData f b -> TaggedData (Either e f) (Either a b)
 eitherTagged a b = case intersect (tdAllTags a) (tdAllTags b) of
     [] -> TaggedData toTag fromTag allTags typeToEnum
-    i -> error $ "Tags overlap: " ++ i
+    i -> error $ "Tags overlap: " ++ show i
   where
     allTags = (tdAllTags a) ++ (tdAllTags b)
     isATag t = t `elem` tdAllTags a

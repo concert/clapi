@@ -3,27 +3,36 @@
 
 module SerialisationSpec where
 
+import Prelude hiding (fail)
+import Control.Monad.Fail (MonadFail(..))
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+
 import Test.Hspec
 import Test.QuickCheck
   (property, Property, counterexample, Arbitrary(..), Gen, oneof)
 import Test.QuickCheck.Instances ()
 
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import Data.Either (isLeft)
-import Data.Word (Word16)
+import Blaze.ByteString.Builder (toByteString)
+import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
 import Clapi.Path (Path(..), Seg)
 import Clapi.Types
-  ( CanFail, Time, Attributee, Site, ClapiValue, RequestBundle
+  ( Time, Attributee, Site, WireValue, RequestBundle
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..)
   , TreeUpdateMessage(..), RequestBundle(..)  , UpdateBundle(..)
   , OwnerRequestBundle(..), FromRelayBundle(..)  , ToRelayBundle(..)
-  , UMsgError(..))
-import Clapi.Serialisation (Serialisable, encode, decode)
+  , MsgError(..))
+import Clapi.Serialisation (Encodable(..))
 
-import TypesSpec (smallListOf, name) -- Incl. Arbitrary instances of ClapiValue
+ -- Incl. Arbitrary instances of WireValue:
+import TypesSpec (smallListOf, name, arbitraryTextNoNull)
 
+encode :: (MonadFail m, Encodable a) => a -> m ByteString
+encode x = toByteString <$> builder x
+
+decode :: (MonadFail m, Encodable a) => ByteString -> m a
+decode = either fail return . parseOnly (parser <* endOfInput)
 
 instance Arbitrary Interpolation where
   arbitrary = oneof
@@ -33,64 +42,70 @@ instance Arbitrary Interpolation where
 
 instance Arbitrary SubMessage where
   arbitrary = oneof
-      [ UMsgSubscribe <$> arbitrary
-      , UMsgUnsubscribe <$> arbitrary]
+      [ MsgSubscribe <$> arbitrary
+      , MsgUnsubscribe <$> arbitrary]
+
+genAttributee :: Gen (Maybe Attributee)
+genAttributee = oneof [return Nothing, Just <$> arbitraryTextNoNull]
+
+genSite :: Gen (Maybe Site)
+genSite = genAttributee
 
 instance Arbitrary DataUpdateMessage where
   arbitrary = oneof
-    [ UMsgAdd
+    [ MsgAdd
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (smallListOf arbitrary :: Gen [ClapiValue])
+      <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
-    , UMsgSet
+      <*> genAttributee
+      <*> genSite
+    , MsgSet
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (smallListOf arbitrary :: Gen [ClapiValue])
+      <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
-    , UMsgRemove
+      <*> genAttributee
+      <*> genSite
+    , MsgRemove
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
-    , UMsgClear
+      <*> genAttributee
+      <*> genSite
+    , MsgClear
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Time)
-      <*> (arbitrary :: Gen (Maybe Attributee))
-      <*> (arbitrary :: Gen (Maybe Site))
-    , UMsgSetChildren
+      <*> genAttributee
+      <*> genSite
+    , MsgSetChildren
       <$> (arbitrary :: Gen Path)
       <*> (smallListOf name :: Gen [Seg])
-      <*> (arbitrary :: Gen (Maybe Attributee))
+      <*> genAttributee
     ]
-  shrink (UMsgAdd (Path []) _ [] _ Nothing Nothing) = []
-  shrink (UMsgAdd p t vs i a s) =
-    [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink (UMsgSet (Path []) _ [] _ Nothing Nothing) = []
-  shrink (UMsgSet p t vs i a s) =
-    [UMsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink (UMsgRemove (Path []) _ Nothing Nothing) = []
-  shrink (UMsgRemove p t a s) =
-    [UMsgRemove p' t a' s' | (p', a', s') <- shrink (p, a, s)]
-  shrink (UMsgClear p t a s) =
-    [UMsgClear p' t a' s' | (p', a', s') <- shrink (p, a, s)]
-  shrink (UMsgSetChildren (Path []) [] Nothing) = []
-  shrink (UMsgSetChildren p ns a) =
-    [UMsgSetChildren p' ns' a' | (p', ns', a') <- shrink (p, ns, a)]
+  shrink (MsgAdd (Path []) _ [] _ Nothing Nothing) = []
+  shrink (MsgAdd p t vs i a s) =
+    [MsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
+  shrink (MsgSet (Path []) _ [] _ Nothing Nothing) = []
+  shrink (MsgSet p t vs i a s) =
+    [MsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
+  shrink (MsgRemove (Path []) _ Nothing Nothing) = []
+  shrink (MsgRemove p t a s) =
+    [MsgRemove p' t a' s' | (p', a', s') <- shrink (p, a, s)]
+  shrink (MsgClear p t a s) =
+    [MsgClear p' t a' s' | (p', a', s') <- shrink (p, a, s)]
+  shrink (MsgSetChildren (Path []) [] Nothing) = []
+  shrink (MsgSetChildren p ns a) =
+    [MsgSetChildren p' ns' a' | (p', ns', a') <- shrink (p, ns, a)]
 
 instance Arbitrary TreeUpdateMessage where
   arbitrary = oneof
-    [ UMsgAssignType
+    [ MsgAssignType
       <$> (arbitrary :: Gen Path)
       <*> (arbitrary :: Gen Path)
-    , UMsgDelete <$> (arbitrary :: Gen Path)]
+    , MsgDelete <$> (arbitrary :: Gen Path)]
 
-instance Arbitrary UMsgError where
-  arbitrary = UMsgError <$> arbitrary <*> arbitrary
+instance Arbitrary MsgError where
+  arbitrary = MsgError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary RequestBundle where
   arbitrary = RequestBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
@@ -99,6 +114,8 @@ instance Arbitrary RequestBundle where
 
 instance Arbitrary UpdateBundle where
   arbitrary = UpdateBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
+  shrink (UpdateBundle errs msgs) =
+    [UpdateBundle errs' msgs' | (errs', msgs') <- shrink (errs, msgs)]
 
 instance Arbitrary OwnerRequestBundle where
   arbitrary =
@@ -109,6 +126,8 @@ instance Arbitrary FromRelayBundle where
 
 instance Arbitrary ToRelayBundle where
   arbitrary = oneof [TRBClient <$> arbitrary, TRBOwner <$> arbitrary]
+  shrink (TRBClient b) = TRBClient <$> shrink b
+  shrink (TRBOwner b) = TRBOwner <$> shrink b
 
 
 showBytes :: ByteString -> String
@@ -116,11 +135,11 @@ showBytes = show . BS.unpack
 
 
 propBundleRoundTrip
-  :: forall bundle. (Show bundle, Eq bundle, Serialisable bundle)
+  :: forall bundle. (Show bundle, Eq bundle, Encodable bundle)
   => bundle -> Property
 propBundleRoundTrip b = let
     mbs = encode b
-    result = mbs >>= decode :: CanFail bundle
+    result = mbs >>= decode :: Either String bundle
   in
     counterexample (show mbs) $
     counterexample (show $ showBytes <$> mbs) $
@@ -130,13 +149,6 @@ propBundleRoundTrip b = let
 
 spec :: Spec
 spec = do
-  it "should fail to encode overly long string" $
-    let
-      n = fromIntegral (maxBound :: Word16)
-      longStr = replicate (n + 1) 'a'
-    in
-      encode longStr `shouldSatisfy` isLeft
-
   describe "ToRelayBundle" $
     it "should survive a round trip via binary" $ property $
       \(b :: ToRelayBundle) -> propBundleRoundTrip b

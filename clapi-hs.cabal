@@ -28,13 +28,16 @@ library
                      , Clapi.Relay
                      , Clapi.RelayApi
                      , Clapi.Serialisation
+                     , Clapi.Serialisation.Base
+                     , Clapi.Serialisation.Wire
+                     , Clapi.Serialisation.Messages
                      , Clapi.Server
                      , Clapi.TaggedData
-                     , Clapi.TextSerialisation
                      , Clapi.TimeDelta
                      , Clapi.Types
                      , Clapi.Types.Base
                      , Clapi.Types.ByteTagQ
+                     , Clapi.Types.Messages
                      , Clapi.Types.Wire
                      , Clapi.Types.UniqList
                      , Clapi.Tree
@@ -93,6 +96,7 @@ test-suite clapi-hs-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base
+                     , attoparsec
                      , bytestring
                      , blaze-builder
                      , async
@@ -118,7 +122,6 @@ test-suite clapi-hs-test
                      , RelaySpec
                      , ServerSpec
                      , SerialisationSpec
-                     , TextSerialisationSpec
                      , TreeSpec
                      , TypesSpec
                      , UtilSpec

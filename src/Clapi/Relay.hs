@@ -1,20 +1,24 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Clapi.Relay where
 
 import Control.Monad.Fail (MonadFail)
 import Control.Monad.State (State, state, runState)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void (Void)
+import Data.Word
 import Data.Maybe (mapMaybe)
 import Data.Either (partitionEithers, rights)
 
 import Clapi.Types (
     CanFail, OwnerUpdateMessage(..), TreeUpdateMessage(..),
-    DataUpdateMessage(..), UMsgError(..), UMsg(..), ClapiValue(..), Time(..),
-    Enumerated(..), toClapiValue)
+    DataUpdateMessage(..), MsgError(..), Msg(..), WireValue(..),
+    castWireValue, Time(..))
 import Clapi.Path (Path, Seg, toText, unSeg, pattern Root)
 import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
@@ -28,20 +32,20 @@ import Clapi.Protocol (Protocol, waitThen, sendRev)
 
 applyDum :: (MonadFail m, HasUvtt v TaintTracker) => Valuespace v -> DataUpdateMessage -> m (Valuespace v)
 applyDum vs msg = case msg of
-    (UMsgSet p t v i a s) -> vsSet a i v p s t vs
-    (UMsgAdd p t v i a s) -> vsAdd a i v p s t vs
-    (UMsgRemove p t a s) -> vsRemove a p s t vs
-    (UMsgClear p t a s) -> vsClear a p s t vs
-    (UMsgSetChildren p c a) -> vsSetChildren p c vs  -- FIXME: lost attributee
+    (MsgSet p t v i a s) -> vsSet a i v p s t vs
+    (MsgAdd p t v i a s) -> vsAdd a i v p s t vs
+    (MsgRemove p t a s) -> vsRemove a p s t vs
+    (MsgClear p t a s) -> vsClear a p s t vs
+    (MsgSetChildren p c a) -> vsSetChildren p c vs  -- FIXME: lost attributee
 
 applyOwnerMessage :: (MonadFail m) => Valuespace OwnerUnvalidated -> OwnerUpdateMessage -> m (Valuespace OwnerUnvalidated)
 applyOwnerMessage vs msg = case msg of
     (Right dum) -> applyDum vs dum
-    (Left (UMsgAssignType p tp)) -> return $ vsAssignType p tp vs
-    (Left (UMsgDelete p)) -> vsDelete p vs
+    (Left (MsgAssignType p tp)) -> return $ vsAssignType p tp vs
+    (Left (MsgDelete p)) -> vsDelete p vs
 
 applyMessages ::
-    (UMsg msg) =>
+    (Msg msg) =>
     (Valuespace v -> msg -> CanFail (Valuespace v)) ->
     Valuespace v -> [msg] -> MonadErrorMap (Valuespace v)
 applyMessages apply1 mvvs = applySuccessful [] mvvs
@@ -51,17 +55,17 @@ applyMessages apply1 mvvs = applySuccessful [] mvvs
         (Left es) -> applySuccessful ((uMsgPath m, es):errs) vs ms
         (Right vs') -> applySuccessful errs vs' ms
 
-treeDeltaToMsg :: Path -> Tree.TreeDelta [ClapiValue] -> OwnerUpdateMessage
+treeDeltaToMsg :: Path -> Tree.TreeDelta [WireValue] -> OwnerUpdateMessage
 treeDeltaToMsg p td = case td of
-    Tree.Delete -> Left $ UMsgDelete p
-    (Tree.SetChildren c) -> Right $ UMsgSetChildren p c Nothing -- FIXME: attribution!
-    (Tree.Clear t s a) -> Right $ UMsgClear p t a s
-    (Tree.Remove t s a) -> Right $ UMsgRemove p t a s
-    (Tree.Add t v i s a) -> Right $ UMsgAdd p t v i s a
-    (Tree.Set t v i s a) -> Right $ UMsgSet p t v i s a
+    Tree.Delete -> Left $ MsgDelete p
+    (Tree.SetChildren c) -> Right $ MsgSetChildren p c Nothing -- FIXME: attribution!
+    (Tree.Clear t s a) -> Right $ MsgClear p t a s
+    (Tree.Remove t s a) -> Right $ MsgRemove p t a s
+    (Tree.Add t v i s a) -> Right $ MsgAdd p t v i s a
+    (Tree.Set t v i s a) -> Right $ MsgSet p t v i s a
 
 deltaToMsg :: VsDelta -> OwnerUpdateMessage
-deltaToMsg (p, d) = either (Left . UMsgAssignType p) (treeDeltaToMsg p) d
+deltaToMsg (p, d) = either (Left . MsgAssignType p) (treeDeltaToMsg p) d
 
 modifyRootTypePath :: Valuespace Validated -> Valuespace OwnerUnvalidated -> Valuespace OwnerUnvalidated
 modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs'''
@@ -77,13 +81,13 @@ modifyRootTypePath vs vs' = if rootType' == rootType then vs' else vs'''
     loe s k m = moe s $ Map.lookup k m
     moe s m = maybe (error s) id m
 
-errMapToErrMsgs :: ErrorMap -> [UMsgError]
-errMapToErrMsgs errs = map (\(p, es) -> UMsgError p (T.pack es)) (Map.assocs errs)
+errMapToErrMsgs :: ErrorMap -> [MsgError]
+errMapToErrMsgs errs = map (\(p, es) -> MsgError p (T.pack es)) (Map.assocs errs)
 
 handleMutationMessages ::
     Valuespace Validated ->
     [OwnerUpdateMessage] ->
-    ([OwnerUpdateMessage], [UMsgError], Valuespace Validated)
+    ([OwnerUpdateMessage], [MsgError], Valuespace Validated)
 handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
   where
     (aErrs, vs') = applyMessages applyOwnerMessage (ownerUnlock vs) msgs
@@ -95,31 +99,31 @@ handleMutationMessages vs msgs = (vcMsgs, errMsgs, vvs)
 handleOwnerMessages ::
     [OwnerUpdateMessage] ->
     Valuespace Validated ->
-    (Either [UMsgError] [OwnerUpdateMessage], Valuespace Validated)
+    (Either [MsgError] [OwnerUpdateMessage], Valuespace Validated)
 handleOwnerMessages msgs vs = (rmsgs, rvs)
   where
     rvs = if errored then vs else vvs
     errored = not $ null errMsgs
     (vcMsgs, errMsgs, vvs) = handleMutationMessages vs msgs
     fillerErrPaths = Set.toList $ let sop ms = Set.fromList $ map uMsgPath ms in Set.difference (sop msgs) (sop errMsgs)
-    fillerErrs = map (flip UMsgError "rejected due to other errors") fillerErrPaths
+    fillerErrs = map (flip MsgError "rejected due to other errors") fillerErrPaths
     rmsgs = case errored of
         True -> Left $ errMsgs ++ fillerErrs
         False -> Right $ vcMsgs
 
-handleOwnerMessagesS :: [OwnerUpdateMessage] -> State (Valuespace Validated) (Either [UMsgError] [OwnerUpdateMessage])
+handleOwnerMessagesS :: [OwnerUpdateMessage] -> State (Valuespace Validated) (Either [MsgError] [OwnerUpdateMessage])
 handleOwnerMessagesS msgs = state (handleOwnerMessages msgs)
 
 handleClientMessages ::
     [Path] ->
     [DataUpdateMessage] ->
     Valuespace Validated ->
-    (([UMsgError], [OwnerUpdateMessage], [DataUpdateMessage]), Valuespace Validated)
+    (([MsgError], [OwnerUpdateMessage], [DataUpdateMessage]), Valuespace Validated)
 handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), vs)
   where
     (subErrs, getMs) = fmap concat $ partitionEithers $ map handleGet $ zip (map nodeInfo getPaths) getPaths
-    handleGet ((Nothing, Nothing), p) = Left $ UMsgError p "Not found"
-    handleGet ((Just tp, Just n), p) = Right $ (Left $ UMsgAssignType p tp) : nodeMsgs p n
+    handleGet ((Nothing, Nothing), p) = Left $ MsgError p "Not found"
+    handleGet ((Just tp, Just n), p) = Right $ (Left $ MsgAssignType p tp) : nodeMsgs p n
     nodeInfo p = (getType vs p, Map.lookup p $ vsGetTree vs)
     nodeMsgs p n = map (treeDeltaToMsg p) $ rightOrDie $ Tree.nodeDiff mempty n
     rightOrDie (Right x) = x
@@ -131,7 +135,7 @@ handleClientMessages getPaths updates vs = ((subErrs ++ vsErrs, getMs, vsMsgs), 
 handleClientMessagesS ::
     [Path] ->
     [DataUpdateMessage] ->
-    State (Valuespace Validated) ([UMsgError], [OwnerUpdateMessage], [DataUpdateMessage])
+    State (Valuespace Validated) ([MsgError], [OwnerUpdateMessage], [DataUpdateMessage])
 handleClientMessagesS paths msgs = state (handleClientMessages paths msgs)
 
 handleMessages :: Valuespace Validated -> Request -> (Response, Valuespace Validated)
@@ -163,14 +167,15 @@ nsChange (p, Left tp) = maybeNamespace (flip NsAssign tp) p
 nsChange (p, Right Tree.Delete) = maybeNamespace NsRemove p
 nsChange _ = Nothing
 
-updateRootType :: [ClapiValue] -> NsChange -> [ClapiValue]
-updateRootType [doc, ClList names, ClList types, ClList libs] m = doc:tinfo
+updateRootType :: [WireValue] -> NsChange -> [WireValue]
+updateRootType [doc, names, types, libs] m = doc : case m of
+    NsAssign n tp ->
+      [ WireValue $ (unSeg n:) $ either error id $ castWireValue names
+      , WireValue $ (toText tp:) $ either error id $ castWireValue types
+      , WireValue $ (cannot:) $ either error id $ castWireValue libs]
+    NsRemove n -> undefined
   where
-    tinfo = map ClList $ case m of
-        (NsAssign n tp) -> [c (unSeg n):names, cp tp:types, cannot:libs]
-        (NsRemove n) -> l3 . unzip3 $ filter (nameIsnt $ unSeg n) $ zip3 names types libs
-    l3 (ns, ts, ls) = [ns, ts, ls]
-    nameIsnt n (n', _, _) = n' /= c n
-    c = ClString
-    cp = c . toText
-    cannot = toClapiValue $ Enumerated Cannot
+    l3 :: ([Text], [Text], [Word8]) -> [WireValue]
+    l3 (ns, ts, ls) = [WireValue ns, WireValue ts, WireValue ls]
+    nameIsnt n (n', _, _) = n' /= n
+    cannot = fromIntegral $ fromEnum $ Cannot :: Word8

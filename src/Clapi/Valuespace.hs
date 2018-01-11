@@ -1,22 +1,33 @@
 {-# OPTIONS_HADDOCK prune #-}
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
-import Control.Monad (liftM, when, (>=>), void)
+import Control.Monad (liftM, when, (>=>), void, join)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Except (throwError, runExceptT)
 import Control.Monad.State (State, modify, get, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
+import Data.Int
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
     merge, zipWithMaybeMatched, dropMissing, preserveMissing)
 import Data.Monoid ((<>))
-import qualified Data.Text as T
+import Data.Text (Text)
+import qualified Data.Text as Text
+import Data.Word
 import Text.Printf (printf)
 
 import Data.Attoparsec.Text (parseOnly)
@@ -30,9 +41,9 @@ import Clapi.Util (duplicates, eitherFail, partitionDifferenceL)
 import Clapi.Path (pattern (:/))
 import qualified Clapi.Path as Path
 import Clapi.Types (
-    CanFail, ClapiValue(..), InterpolationType(..), Interpolation(..), Time(..),
-    Enumerated(..), toClapiValue, fromClapiValue, getEnum, interpolationType,
-    Site, Attributee)
+    CanFail, InterpolationType(..), Interpolation(..), Time(..),
+    interpolationType, Site, Attributee,
+    WireValue(..), (<|$|>), (<|*|>), safeToEnum)
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Attributed,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
@@ -42,7 +53,7 @@ import qualified Clapi.Tree as Tree
 import Clapi.Validator (Validator(..), fromText, enumDesc, validate)
 import Clapi.PathQ
 
-type Node = Tree.Node [ClapiValue]
+type Node = Tree.Node [WireValue]
 
 fromLeft :: Either a b -> a
 fromLeft (Left a) = a
@@ -58,17 +69,17 @@ data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 data MetaType = Tuple | Struct | Array deriving (Eq, Show)
 data Definition =
     TupleDef {
-      _doc :: T.Text,
+      _doc :: Text,
       _valueNames :: [Path.Seg],
       _validators :: [Validator],
       _permittedInterpolations :: Set.Set InterpolationType}
   | StructDef {
-      _doc :: T.Text,
+      _doc :: Text,
       _childNames :: [Path.Seg],
       _childTypes :: [Path.Path],
       _childLiberties :: [Liberty]}
   | ArrayDef {
-      _doc :: T.Text,
+      _doc :: Text,
       _childType :: Path.Path,
       _childLiberty :: Liberty}
   deriving (Show, Eq)
@@ -84,7 +95,7 @@ makeLenses ''Definition
 --         printf "<ArrayDef %s %s %s>" (show l) (show ct) (show cl)
 
 tupleDef ::
-    (MonadFail m) => T.Text -> [Path.Seg] -> [T.Text] ->
+    (MonadFail m) => Text -> [Path.Seg] -> [Text] ->
     Set.Set InterpolationType -> m Definition
 tupleDef doc valueNames validatorDescs permittedInterpolations =
    let
@@ -103,7 +114,7 @@ tupleDef doc valueNames validatorDescs permittedInterpolations =
         permittedInterpolations
 
 structDef ::
-    (MonadFail m) => T.Text -> [Path.Seg] -> [TypePath] ->
+    (MonadFail m) => Text -> [Path.Seg] -> [TypePath] ->
     [Liberty] -> m Definition
 structDef doc childNames childTypes childLiberties =
   let
@@ -118,7 +129,7 @@ structDef doc childNames childTypes childLiberties =
     return $ StructDef doc childNames childTypes childLiberties
 
 arrayDef ::
-    (MonadFail m) => T.Text -> TypePath -> Liberty -> m Definition
+    (MonadFail m) => Text -> TypePath -> Liberty -> m Definition
 arrayDef d ct cl = return $ ArrayDef d ct cl
 
 apiRoot :: Path.Path
@@ -146,8 +157,8 @@ isMetaTypePath = maybe False (const True) . categoriseMetaTypePath
 
 libertyDesc = enumDesc Cannot
 interpolationTypeDesc = enumDesc ITConstant
-listDesc d = T.pack $ printf "list[%v]" d
-setDesc d = T.pack $ printf "set[%v]" d
+listDesc d = Text.pack $ printf "list[%v]" d
+setDesc d = Text.pack $ printf "set[%v]" d
 -- FIXME: would like to include and share a regex for names:
 namesDesc = "set[string[]]"
 typeDesc = "ref[/api/types/base]"
@@ -166,57 +177,55 @@ baseArrayDef = fromJust $ tupleDef
     "a" [[segq|doc|], [segq|childType|], [segq|clib|]]
     ["string", typeDesc, libertyDesc] mempty
 
-defToValues :: Definition -> [ClapiValue]
+defToValues :: Definition -> [WireValue]
 defToValues (TupleDef d ns vs is) =
   [
-    toClapiValue d,
-    toClapiValue $ fmap Path.unSeg ns,
-    toClapiValue $ vDesc <$> vs,
-    toClapiValue $ Enumerated <$> Set.toList is
+    WireValue d,
+    WireValue $ fmap Path.unSeg ns,
+    WireValue $ vDesc <$> vs,
+    WireValue @[Word8] $ fromIntegral . fromEnum <$> Set.toList is
   ]
 defToValues (StructDef d ns ts ls) =
   [
-    toClapiValue d,
-    toClapiValue $ fmap Path.unSeg ns,
-    toClapiValue $ Path.toText <$> ts,
-    toClapiValue $ Enumerated <$> ls
+    WireValue d,
+    WireValue $ fmap Path.unSeg ns,
+    WireValue $ Path.toText <$> ts,
+    WireValue @[Word8] $ fromIntegral . fromEnum <$> ls
   ]
 defToValues (ArrayDef d t cl) =
   [
-    toClapiValue d,
-    toClapiValue $ Path.toText t,
-    toClapiValue $ Enumerated cl
+    WireValue d,
+    WireValue $ Path.toText t,
+    WireValue @Word8 $ fromIntegral $ fromEnum cl
   ]
 
 
-valuesToDef :: (MonadFail m) => MetaType -> [ClapiValue] -> m Definition
-valuesToDef
-    Tuple [ClString d, ns@(ClList _), vds@(ClList _), is@(ClList _)] =
-  do
-    -- FIXME: need to be able to unpack enums
-    ns' <- fromClapiValue ns >>= mapM Path.mkSeg
-    vds' <- fromClapiValue vds
-    is' <- Set.fromList <$> fmap getEnum <$> fromClapiValue is
-    tupleDef d ns' vds' is'
-valuesToDef
-    Struct [ClString d, ns@(ClList _), ts@(ClList _), ls@(ClList _)] =
-  do
-    ns' <- fromClapiValue ns >>= mapM Path.mkSeg
-    ts' <- fromClapiValue ts
-    ts'' <- mapM Path.fromText ts'
-    ls' <- fmap getEnum <$> fromClapiValue ls
-    structDef d ns' ts'' ls'
-valuesToDef
-    Array [ClString d, ClString t, cl@(ClEnum _)] =
-  do
-    t' <- Path.fromText t
-    cl' <- getEnum <$> fromClapiValue cl
-    arrayDef d t' cl'
--- TODO: This error doesn't give you much of a hint
-valuesToDef mt _ = fail $ printf "bad types to define %s" (show mt)
+valuesToDef :: (MonadFail m) => MetaType -> [WireValue] -> m Definition
+valuesToDef Tuple [doc, names, vDescs, interpolations] =
+    join $ td <|$|> doc <|*|> names <|*|> vDescs <|*|> interpolations
+  where
+    td :: MonadFail m => Text -> [Text] -> [Text] -> [Word8] -> m Definition
+    td d ns vs is = join $
+      tupleDef d <$> mapM Path.mkSeg ns <*> pure vs <*> mkIs is
+    mkIs is = Set.fromList <$> mapM (safeToEnum . fromIntegral) is
+valuesToDef Struct [doc, names, types, liberties] =
+    join $ sd <|$|> doc <|*|> names <|*|> types <|*|> liberties
+  where
+    sd :: MonadFail m => Text -> [Text] -> [Text] -> [Word8] -> m Definition
+    sd d ns ts ls = join $
+      structDef d <$> mapM Path.mkSeg ns <*> mapM Path.fromText ts
+      <*> mapM (safeToEnum . fromIntegral) ls
+valuesToDef Array [doc, ty, liberty] =
+    join $ ad <|$|> doc <|*|> ty <|*|> liberty
+  where
+    ad :: MonadFail m => Text -> Text -> Word8 -> m Definition
+    ad d t w = join $
+      arrayDef d <$> Path.fromText t <*> safeToEnum (fromIntegral w)
+valuesToDef mt _ = fail $
+    printf "Wrong number of arguments for %s def" (show mt)
 
 
-type VsTree = ClapiTree [ClapiValue]
+type VsTree = ClapiTree [WireValue]
 type DefMap = Map.Map NodePath Definition
 type Validated = ()
 type TaintTracker = Map.Map NodePath (Maybe (Set.Set (Maybe Site, Time)))
@@ -243,7 +252,7 @@ clientUnlock vs@(Valuespace tr ty x d _) = Valuespace tr ty x d $ ClientUnvalida
 vsGetTree :: Valuespace v -> VsTree
 vsGetTree = view tree
 
-type VsDelta = (NodePath, Either TypePath (TreeDelta [ClapiValue]))
+type VsDelta = (NodePath, Either TypePath (TreeDelta [WireValue]))
 
 vsDiff :: Valuespace v -> Valuespace w -> [VsDelta]
 vsDiff v0 v1 = (map taAsVd typeAssigns) ++ (tdAsVd nd)
@@ -465,7 +474,7 @@ filterSiteMap sm keys = mapFilterJust $
 
 filterNode ::
     Maybe (Set.Set (Maybe Site, Time)) -> Node ->
-    Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue])
+    Map.Map (Maybe Site, Time) (Interpolation, [WireValue])
 filterNode mtps n =
   let
     sites = view getSites n
@@ -476,7 +485,7 @@ filterNode mtps n =
 
 overUnvalidatedNodes ::
     (HasUvtt v TaintTracker) => (
-       NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
+       NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [WireValue]) ->
        CanFail a
     ) -> Valuespace v -> MonadErrorMap (Map.Map NodePath a)
 overUnvalidatedNodes f vs =
@@ -503,7 +512,7 @@ validateInterpolation its i = return ()
 validateNodeData ::
     (MonadFail m) =>
     Valuespace v -> NodePath ->
-    Map.Map (Maybe Site, Time) (Interpolation, [ClapiValue]) ->
+    Map.Map (Maybe Site, Time) (Interpolation, [WireValue]) ->
     m (Map.Map (Maybe Site, Time) [NodePath])
 validateNodeData vs np siteMap = getDef np vs >>= body
   where
@@ -637,7 +646,7 @@ taintImplicitAdditions np vs = let pp = up np in if pp /= np && Map.notMember pp
 
 vsAdd ::
     (MonadFail m, HasUvtt v TaintTracker) =>
-    Maybe Attributee -> Interpolation -> [ClapiValue] -> NodePath ->
+    Maybe Attributee -> Interpolation -> [WireValue] -> NodePath ->
     Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsAdd a i vs np s t =
     tree (treeAdd a i vs np s t) . taintData np s t . taintTypeDependants np . taintImplicitAdditions np
@@ -645,7 +654,7 @@ vsAdd a i vs np s t =
 
 vsSet ::
     (MonadFail m, HasUvtt v TaintTracker) =>
-    Maybe Attributee -> Interpolation -> [ClapiValue] ->
+    Maybe Attributee -> Interpolation -> [WireValue] ->
     NodePath -> Maybe Site -> Time -> Valuespace v -> m (Valuespace v)
 vsSet a i vs np s t =
     tree (treeSet a i vs np s t) . taintData np s t . taintTypeDependants np . taintImplicitAdditions np
@@ -677,7 +686,7 @@ anon = Nothing
 tconst = Time 0 0
 
 addConst ::
-    (MonadFail m) => NodePath -> [ClapiValue] -> Valuespace OwnerUnvalidated ->
+    (MonadFail m) => NodePath -> [WireValue] -> Valuespace OwnerUnvalidated ->
     m (Valuespace OwnerUnvalidated)
 addConst np cvs = vsAdd anon IConstant cvs np globalSite tconst
 
@@ -722,7 +731,7 @@ baseValuespace =
     define (metaTypePath Array) baseArrayDef >>=
     define versionDefPath versionDef >>=
     return . vsAssignType versionPath versionDefPath >>=
-    addConst versionPath [ClWord32 0, ClInt32 (-1023)] >>=
+    addConst versionPath [WireValue @Word32 0, WireValue @Int32 (-1023)] >>=
 
     autoDefineStruct
         [pathq|/api/types/base|]
