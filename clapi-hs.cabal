@@ -35,6 +35,7 @@ library
                      , Clapi.TaggedData
                      , Clapi.TimeDelta
                      , Clapi.Types
+                     , Clapi.Types.AssocList
                      , Clapi.Types.Base
                      , Clapi.Types.ByteTagQ
                      , Clapi.Types.Messages
