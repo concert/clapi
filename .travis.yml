@@ -13,9 +13,8 @@ addons:
 before_install:
   - mkdir -p ~/.local/bin
   - export PATH=$HOME/.local/bin:$PATH
-  - which stack || travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+  - stack upgrade || travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 install:
-  - stack upgrade
   - stack --no-terminal --install-ghc test --only-dependencies
 script:
   - stack --no-terminal test
