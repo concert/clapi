@@ -3,7 +3,6 @@
 module PathSpec where
 
 import Test.Hspec
-import Test.QuickCheck (property)
 
 import Data.Text (Text)
 import Data.Either (isLeft)
