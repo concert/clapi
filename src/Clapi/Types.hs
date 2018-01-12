@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Clapi.Types
-  ( CanFail, safeToEnum
+  ( CanFail
   , module X
   ) where
 
@@ -19,14 +19,3 @@ type CanFail a = Either String a
 
 instance MonadFail (Either String) where
     fail s = Left s
-
--- http://stackoverflow.com/questions/2743858/safe-and-polymorphic-toenum
-safeToEnum :: (MonadFail m, Enum a, Bounded a) => Int -> m a
-safeToEnum i =
-  let
-    r = toEnum i
-    theMax = maxBound `asTypeOf` r
-    theMin = minBound `asTypeOf` r
-  in if fromEnum theMin <= i && i <= fromEnum theMax
-  then return r
-  else fail "enum value out of range"

@@ -41,13 +41,13 @@ import qualified Data.Maybe.Clapi as Maybe
 
 import Clapi.Util
   ( duplicates, eitherFail, partitionDifferenceL, strictZip, strictZipWith
-  , fmtStrictZipError)
+  , fmtStrictZipError, safeToEnum)
 import Clapi.Path (Path, pattern (:/))
 import qualified Clapi.Path as Path
 import Clapi.Types (
     CanFail, InterpolationType(..), Interpolation(..), Time(..),
     interpolationType, Site, Attributee,
-    WireValue(..), Wireable, (<|$|>), (<|*|>), safeToEnum)
+    WireValue(..), Wireable, (<|$|>), (<|*|>))
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Attributed,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,

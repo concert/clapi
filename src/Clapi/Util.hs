@@ -15,7 +15,8 @@ module Clapi.Util (
     composeParsers,
     showItems,
     mkProxy,
-    bound
+    bound,
+    safeToEnum
 ) where
 
 import Prelude hiding (fail)
@@ -177,3 +178,14 @@ bound i =
     if low <= v && v <= high
       then return $ toEnum v
       else fail "out of bounds"
+
+-- http://stackoverflow.com/questions/2743858/safe-and-polymorphic-toenum
+safeToEnum :: (MonadFail m, Enum a, Bounded a) => Int -> m a
+safeToEnum i =
+  let
+    r = toEnum i
+    theMax = maxBound `asTypeOf` r
+    theMin = minBound `asTypeOf` r
+  in if fromEnum theMin <= i && i <= fromEnum theMax
+  then return r
+  else fail "enum value out of range"
