@@ -24,9 +24,11 @@ import Control.Monad.Fail (MonadFail)
 import Clapi.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.PathQ
 import Clapi.Types.AssocList (alFromMap, AssocList, mkAssocList)
-import Clapi.Types (
-  InterpolationType, Interpolation(..), WireValue(..), TreeType(..),
-  TreeConcreteType(..))
+import Clapi.Types
+  ( InterpolationType, Interpolation(..), WireValue(..), TreeType(..)
+  , TreeConcreteType(..), OfMetaType, Liberty(..), Definition(..)
+  , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
+  , toWireValues, valuesToDef, defDispatch, metaType)
 import Clapi.Validator (validate)
 import Clapi.Valuespace
 

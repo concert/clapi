@@ -18,7 +18,7 @@ import Data.Either (partitionEithers, rights)
 import Clapi.Types (
     CanFail, OwnerUpdateMessage(..), TreeUpdateMessage(..),
     DataUpdateMessage(..), MsgError(..), Msg(..), WireValue(..),
-    castWireValue, Time(..))
+    castWireValue, Time(..), Liberty(Cannot))
 import Clapi.Path (Path, Seg, toText, unSeg, pattern Root)
 import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
@@ -26,7 +26,7 @@ import Clapi.Valuespace (
     Valuespace, vsSet, vsAdd, vsRemove, vsClear, vsAssignType,
     vsDelete, OwnerUnvalidated, ownerUnlock, clientUnlock, Validated,
     vsValidate, vsClientValidate, MonadErrorMap, vsGetTree, VsDelta, vsDiff,
-    vsSetChildren, getType, Liberty(Cannot), HasUvtt, TaintTracker, ErrorMap)
+    vsSetChildren, getType, HasUvtt, TaintTracker, ErrorMap)
 import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
 import Clapi.Protocol (Protocol, waitThen, sendRev)
 

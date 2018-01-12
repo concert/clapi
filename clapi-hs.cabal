@@ -39,6 +39,7 @@ library
                      , Clapi.Types.AssocList
                      , Clapi.Types.Base
                      , Clapi.Types.ByteTagQ
+                     , Clapi.Types.Definitions
                      , Clapi.Types.Messages
                      , Clapi.Types.Tree
                      , Clapi.Types.Wire

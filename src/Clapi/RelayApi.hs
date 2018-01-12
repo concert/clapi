@@ -22,9 +22,8 @@ import Clapi.Types (
     OwnerUpdateMessage, Wireable, WireValue(..), castWireValue, Time(..),
     UpdateBundle(..),
     RequestBundle(..), SubMessage(..),
-    TimeStamped(..))
+    TimeStamped(..), Liberty(Cannot))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
