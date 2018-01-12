@@ -6,7 +6,7 @@ module Clapi.Util (
     append, (+|),
     appendIfAbsent, (+|?),
     duplicates, ensureUnique,
-    zipLongest, strictZipWith, strictZip, fmtStrictZipError,
+    strictZipWith, strictZip, fmtStrictZipError,
     partitionDifference, partitionDifferenceL,
     camel,
     uncamel,
@@ -58,12 +58,6 @@ ensureUnique name as =
     if not $ null $ dups
     then fail $ printf "Duplicate %s: %s" name (showItems $ Set.toList dups)
     else return as
-
-zipLongest :: (Monoid a, Monoid b) => [a] -> [b] -> [(a, b)]
-zipLongest [] [] = []
-zipLongest [] (b:bs) = (mempty, b) : zipLongest [] bs
-zipLongest (a:as) [] = (a, mempty) : zipLongest as []
-zipLongest (a:as) (b:bs) = (a, b) : zipLongest as bs
 
 strictZipWith :: forall a b c. (a -> b -> c) -> [a] -> [b] -> Either (Int, Int) [c]
 strictZipWith f = inner (0, 0)
