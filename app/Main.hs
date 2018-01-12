@@ -20,6 +20,7 @@ import Control.Concurrent.MVar
 
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
+import Clapi.Serialisation ()
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)

@@ -28,7 +28,7 @@ import Clapi.Valuespace (Liberty(Cannot))
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
-import Clapi.Util (strictZipWith)
+import Clapi.Util (strictZipWith, fmtStrictZipError)
 
 zt :: Time
 zt = Time 0 0
@@ -189,4 +189,7 @@ relayApiProto ownerMv selfAddr =
 
 transformCvs
   :: (Wireable a, MonadFail m) => [a -> a] -> [WireValue] -> m [WireValue]
-transformCvs ss cvs = strictZipWith (\f wv -> WireValue . f <$> castWireValue wv) ss cvs >>= sequence
+transformCvs ss cvs =
+  fmtStrictZipError "functions" "wire values"
+    (strictZipWith (\f wv -> WireValue . f <$> castWireValue wv) ss cvs)
+  >>= sequence

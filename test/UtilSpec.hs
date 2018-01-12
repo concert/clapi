@@ -20,6 +20,9 @@ spec = do
             [(Just "a", Just "x"), (Nothing, Just "y")]
         it "same length" $ zipLongest ["a"] ["b"] `shouldBe` [("a", "b")]
     describe "strictZip" $ do
-        it "fails when b shorter" $ strictZip ["a", "b"] ["x"] `shouldBe` Nothing
-        it "fails when a shorter" $ strictZip ["a"] ["x", "y"] `shouldBe` Nothing
-        it "zips when same" $ strictZip ["a"] ["x"] `shouldBe` Just [("a", "x")]
+        it "fails when b shorter" $
+          strictZip ["a", "b"] ["x"] `shouldBe` Left (2, 1)
+        it "fails when a shorter" $
+          strictZip ["a"] ["x", "y"] `shouldBe` Left (1, 2)
+        it "zips when same" $
+          strictZip ["a"] ["x"] `shouldBe` Right [("a", "x")]

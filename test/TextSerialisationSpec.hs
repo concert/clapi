@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module TextSerialisationSpec where
 
@@ -54,6 +54,8 @@ instance Arbitrary TreeType where
 
 spec :: Spec
 spec = do
-    describe "Tree type descriptions" $
+    describe "Tree type descriptions" $ do
         it "should survive a round trip to text" $ property $
             \tt -> either error id (ttFromText (ttToText tt)) `shouldBe` tt
+        it "should fail to deserialise nonsense" $
+          ttFromText "this is not a type" `shouldBe` Nothing

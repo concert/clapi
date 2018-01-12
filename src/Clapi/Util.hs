@@ -7,7 +7,7 @@ module Clapi.Util (
     append, (+|),
     appendIfAbsent, (+|?),
     duplicates, ensureUnique,
-    zipLongest, strictZipWith, strictZip,
+    zipLongest, strictZipWith, strictZip, fmtStrictZipError,
     partitionDifference, partitionDifferenceL,
     camel,
     uncamel,
@@ -76,15 +76,23 @@ zipLongest [] (b:bs) = (mempty, b) : zipLongest [] bs
 zipLongest (a:as) [] = (a, mempty) : zipLongest as []
 zipLongest (a:as) (b:bs) = (a, b) : zipLongest as bs
 
+strictZipWith :: forall a b c. (a -> b -> c) -> [a] -> [b] -> Either (Int, Int) [c]
+strictZipWith f = inner (0, 0)
+  where
+    inner _ [] [] = return []
+    inner (i, j) [] bs = Left (i, j + length bs)
+    inner (i, j) as [] = Left (i + length as, j)
+    inner (i, j) (a:as) (b:bs) = (f a b:) <$> inner (i + 1, j + 1) as bs
 
-strictZipWith :: (MonadFail m) => (a -> b -> c) -> [a] -> [b] -> m [c]
-strictZipWith _ [] [] = return []
-strictZipWith _ [] (_b:_bs) = fail "ran out of a's"
-strictZipWith _ (_a:_as) [] = fail "ran out of b's"
-strictZipWith f (a:as) (b:bs) = (:) (f a b) <$> strictZipWith f as bs
-
-strictZip :: (MonadFail m) => [a] -> [b] -> m [(a, b)]
+strictZip :: [a] -> [b] -> Either (Int, Int) [(a, b)]
 strictZip = strictZipWith (,)
+
+fmtStrictZipError
+  :: MonadFail m => String -> String -> Either (Int, Int) a -> m a
+fmtStrictZipError n0 n1 = either fmt return
+  where
+    fmt (i, j) = fail $
+      printf "Mismatched numbers of %v (%i) and %v (%i)" n0 i n1 j
 
 
 partitionDifference ::
