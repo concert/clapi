@@ -20,7 +20,7 @@ import Control.Monad.State (State, modify, get, runState)
 import Control.Lens ((&), makeLenses, makeFields, view, at, over, set, non, _Just, _1, _2)
 import Data.Either (isLeft)
 import Data.Int
-import Data.Maybe (isJust, fromJust, mapMaybe)
+import Data.Maybe (isJust, fromJust, mapMaybe, catMaybes)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
@@ -47,7 +47,7 @@ import qualified Clapi.Path as Path
 import Clapi.Types (
     CanFail, InterpolationType(..), Interpolation(..), Time(..),
     interpolationType, Site, Attributee,
-    WireValue(..), (<|$|>), (<|*|>), safeToEnum)
+    WireValue(..), Wireable, (<|$|>), (<|*|>), safeToEnum)
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Attributed,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,
@@ -57,10 +57,10 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types.AssocList
   (mkAssocList, alFromZip, unAssocList, alKeys, alValues, alLookup)
 import Clapi.Types.Tree
-  ( TreeType(..), TreeConcreteType(..), TreeContainerType(..), ttEnum
-  , unbounded)
+  ( TreeType(..), TreeConcreteType(..), TreeContainerType(..)
+  , TreeContainerTypeName, ttEnum , unbounded)
 import Clapi.TextSerialisation (ttFromText, ttToText)
-import Clapi.Validator (validate)
+import Clapi.Validator (validate, unpackTreeType)
 import Clapi.PathQ
 import Clapi.Types.AssocList (AssocList)
 
@@ -295,6 +295,7 @@ instance Monoid v => Monoid (Valuespace v) where
     mappend (Valuespace a1 b1 c1 d1 e1) (Valuespace a2 b2 c2 d2 e2) =
         Valuespace (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2) (e1 <> e2)
 
+-- FIXME: This thing's args are backwards
 getType :: (MonadFail m) => Valuespace v -> NodePath -> m TypePath
 getType vs np = note f . Mos.getDependency np . view types $ vs
   where
@@ -328,7 +329,7 @@ eitherErrorMap =
 
 vsValidate :: Valuespace OwnerUnvalidated -> MonadErrorMap (Valuespace Validated)
 vsValidate vs =
-    rectifyTypes vs (view (unvalidated . etas) vs) >>= validateChildren >>= validateData >>= markValid
+    rectifyTypes vs (view (unvalidated . etas) vs) >>= validateChildren >>= validateData >>= validateXRefs >>= markValid
   where
     markValid = return . set unvalidated ()
 
@@ -474,6 +475,49 @@ validateData vs =
   do
     overUnvalidatedNodes (validateNodeData vs) vs
     return vs
+
+validateXRefs ::
+    (HasUvtt v TaintTracker) => Valuespace v -> MonadErrorMap (Valuespace v)
+validateXRefs vs =
+  do
+    newXRefDeps <- overUnvalidatedNodes validateXrefsMappy vs
+    return $ over xrefs (f newXRefDeps) vs
+  where
+    f newXRefDeps unv =
+        Map.foldrWithKey Mos.setDependencies' unv
+        (flattenNestedMaps newXRefDeps)
+    validateXrefsMappy :: NodePath -> Map.Map (Maybe Site, Time) (Interpolation, [WireValue]) ->
+       CanFail (Map.Map (Maybe Site, Time) [NodePath])
+    -- pure below is a fudge to get the values into the (potentially more
+    -- efficient) signature of validateXrefsAtPath
+    validateXrefsMappy np m = mapM (validateXrefsAtPath np . pure . snd) m
+    validateXrefsAtPath :: MonadFail m => NodePath -> [[WireValue]] -> m [NodePath]
+    validateXrefsAtPath p wvss = do
+      let tts = treeTypesFor p
+      mtlonp <- mapM (fmtStrictZipError "types" "values" . strictZipWith extractRefs tts) wvss
+      let rvTups = catMaybes $ mconcat mtlonp
+      mapM validateRefValues rvTups
+      return $ mconcat $ snd <$> rvTups
+    treeTypesFor :: NodePath -> [TreeType]
+    treeTypesFor p = case getDef p vs of
+      Just (TupleDef (TupleDefinition _ al _)) -> alValues al
+      _ -> []
+    extractRefs :: TreeType -> WireValue -> Maybe (TypePath, [NodePath])
+    extractRefs tt wv = let (concT, contTs) = unpackTreeType tt in
+      case concT of
+        TcRef p -> Just (p, maybe
+          (error "Expected ref did not parse second time") id $
+            collectRefs contTs (fmap pure . Path.fromText) wv)
+        _ -> Nothing
+    collectRefs :: (MonadFail m, Wireable a) => [TreeContainerTypeName] -> (a -> m [NodePath]) -> WireValue -> m [NodePath]
+    collectRefs [] f wv = join $ f <|$|> wv
+    collectRefs (_:cts) f wv = collectRefs cts (fmap mconcat . mapM f) wv
+    validateRefValues :: MonadFail m => (TypePath, [NodePath]) -> m ()
+    validateRefValues (tp, nps) = do
+      ntps <- mapM (getType vs) nps
+      case filter (not . Path.isParentOf tp) ntps of
+        [] -> return ()
+        badNtps -> fail $ "format the argument better " ++ show badNtps
 
 -- This doesn't need to repack the values back into a full SiteMap :-)
 -- ... but that does make the abstraction leaky, which is more clear with

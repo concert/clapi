@@ -106,7 +106,8 @@ spec = do
             addDef [pathq|/api/cyclic/defs/defs|] innerType
         assertValidationErrors [
             [pathq|/api/cyclic|], [pathq|/api/cyclic/defs|],
-            [pathq|/api/cyclic/defs/cyclic|], [pathq|/api/cyclic/defs/defs|]]
+            [pathq|/api/cyclic/defs/cyclic|], [pathq|/api/cyclic/defs/defs|],
+            [pathq|/api/types/containers/api|]]
             badVs
     it "Definition <-> WireValue round trips" $ property $ \d ->
         (valuesToDef (defDispatch metaType d) . defDispatch toWireValues) d == Just d
