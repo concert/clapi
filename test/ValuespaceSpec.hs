@@ -21,7 +21,7 @@ import Control.Lens (view)
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types.AssocList (alFromMap, AssocList, mkAssocList)
 import Clapi.Types
   ( InterpolationType, Interpolation(..), WireValue(..), TreeType(..)

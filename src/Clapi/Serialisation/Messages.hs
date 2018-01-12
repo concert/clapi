@@ -14,7 +14,7 @@ import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
 import Clapi.Types.Base (InterpolationType(..), Interpolation(..), interpolationType)
-import Clapi.Types.ByteTagQ (btq)
+import Clapi.TH (btq)
 import Clapi.Types.Messages
 import qualified Clapi.Types.Path as Path
 import Clapi.TaggedData (TaggedData, taggedData, tdInstanceToTag, eitherTagged, tdAllTags, tdTagToEnum)

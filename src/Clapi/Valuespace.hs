@@ -65,7 +65,7 @@ import Clapi.Types.Tree
   , TreeContainerTypeName, ttEnum , unbounded)
 import Clapi.TextSerialisation (ttFromText, ttToText)
 import Clapi.Validator (validate, unpackTreeType)
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types.AssocList (AssocList)
 
 type Node = Tree.Node [WireValue]

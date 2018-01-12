@@ -8,7 +8,7 @@ import Data.Text (Text)
 import Data.Word
 import Test.Hspec
 
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types (
     DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
     Interpolation(IConstant), Time(..), WireValue(..), Liberty(..))

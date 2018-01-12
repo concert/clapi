@@ -28,7 +28,7 @@ import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import Data.Text.Encoding (decodeUtf8With)
 
 import Clapi.Types.Base (Time(..), TimeStamped(..), Tag(..), mkTag)
-import Clapi.Types.ByteTagQ (btq)
+import Clapi.TH (btq)
 import Clapi.Util (bound)
 
 class Encodable a where

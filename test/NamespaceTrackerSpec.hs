@@ -19,7 +19,7 @@ import Control.Concurrent.MVar
 
 import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types (
     Time(..), Interpolation(..), DataUpdateMessage(..), TreeUpdateMessage(..),
     MsgError(..), OwnerUpdateMessage(..), Msg(..), WireValue(..),

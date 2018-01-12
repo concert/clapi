@@ -16,7 +16,7 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 
 import qualified Data.Map.Mos as Mos
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types (
     CanFail, WireValue(..), Time(..), InterpolationType(..), Interpolation(..))
 import Clapi.Types.Path (Path(..), isChildOfAny, pattern Root)

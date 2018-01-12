@@ -22,7 +22,6 @@ library
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
-                     , Clapi.PathQ
                      , Clapi.PerClientProto
                      , Clapi.Relay
                      , Clapi.RelayApi
@@ -33,11 +32,11 @@ library
                      , Clapi.Server
                      , Clapi.TaggedData
                      , Clapi.TextSerialisation
+                     , Clapi.TH
                      , Clapi.TimeDelta
                      , Clapi.Types
                      , Clapi.Types.AssocList
                      , Clapi.Types.Base
-                     , Clapi.Types.ByteTagQ
                      , Clapi.Types.Definitions
                      , Clapi.Types.Messages
                      , Clapi.Types.Path

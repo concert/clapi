@@ -24,7 +24,7 @@ import Clapi.Types (
     TimeStamped(..), Liberty(Cannot))
 import Clapi.Types.Path (Path, Seg, pattern Root, pattern (:/), toText)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.PathQ (pathq)
+import Clapi.TH (pathq)
 import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 import Clapi.Util (strictZipWith, fmtStrictZipError)
