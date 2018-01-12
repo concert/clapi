@@ -40,7 +40,7 @@ import Data.Maybe.Clapi (note)
 import qualified Data.Maybe.Clapi as Maybe
 
 import Clapi.Util
-  ( duplicates, eitherFail, partitionDifferenceL, strictZip, strictZipWith
+  ( duplicates, partitionDifferenceL, strictZip, strictZipWith
   , fmtStrictZipError)
 import Clapi.Path (Path, pattern (:/))
 import qualified Clapi.Path as Path
@@ -78,10 +78,6 @@ fromRight (Right b) = b
 
 mapFilterJust :: Map.Map k (Maybe a) -> Map.Map k a
 mapFilterJust = fmap fromJust . Map.filter isJust
-
-
-apiRoot :: Path
-apiRoot = [pathq|/api|]
 
 metaTypePath :: MetaType -> Path
 metaTypePath Tuple = [pathq|/api/types/base/tuple|]
