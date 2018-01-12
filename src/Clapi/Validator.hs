@@ -14,9 +14,9 @@ import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
-import Clapi.Path (Seg)
-import qualified Clapi.Path as Path
 import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>))
+import Clapi.Types.Path (Seg)
+import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( TreeType(..), TreeConcreteType(..), TreeContainerTypeName(..), typeEnumOf
   , contTContainedType, Bounds, boundsMin, boundsMax)

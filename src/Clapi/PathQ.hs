@@ -11,7 +11,7 @@ import Data.Text (pack)
 import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
-import Clapi.Path (fromText, mkSeg)
+import Clapi.Types.Path (fromText, mkSeg)
 
 pathq :: QuasiQuoter
 pathq = QuasiQuoter {

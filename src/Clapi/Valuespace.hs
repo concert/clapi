@@ -42,12 +42,12 @@ import qualified Data.Maybe.Clapi as Maybe
 import Clapi.Util
   ( duplicates, partitionDifferenceL, strictZip, strictZipWith
   , fmtStrictZipError)
-import Clapi.Path (Path, pattern (:/))
-import qualified Clapi.Path as Path
 import Clapi.Types (
     CanFail, InterpolationType(..), Interpolation(..), Time(..),
     interpolationType, Site, Attributee,
     WireValue(..), Wireable, (<|$|>), (<|*|>))
+import Clapi.Types.Path (Path, pattern (:/))
+import qualified Clapi.Types.Path as Path
 import Clapi.Tree (
     ClapiTree, NodePath, TypePath, Attributed,
     TimePoint, SiteMap, treeInitNode, treeDeleteNode, treeAdd, treeSet,

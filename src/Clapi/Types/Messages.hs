@@ -4,8 +4,8 @@ module Clapi.Types.Messages where
 
 import qualified Data.Text as T
 
-import Clapi.Path (Path, Seg)
 import Clapi.Types.Base (Attributee, Site, Time, Interpolation)
+import Clapi.Types.Path (Path, Seg)
 import Clapi.Types.Wire (WireValue)
 
 class Msg a where

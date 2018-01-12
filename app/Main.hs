@@ -27,7 +27,7 @@ import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Path (mkSeg)
+import Clapi.Types.Path (mkSeg)
 import Clapi.PathQ (segq)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()

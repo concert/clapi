@@ -20,8 +20,8 @@ import Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax, TreeConcreteTypeName(..),
   TreeContainerTypeName(..) , TreeConcreteType(..), TreeContainerType(..),
   TreeType(..), typeEnumOf)
-import Clapi.Path (pathP, segP, unSeg)
-import qualified Clapi.Path as Path
+import Clapi.Types.Path (pathP, segP, unSeg)
+import qualified Clapi.Types.Path as Path
 
 concTNameToText :: TreeConcreteTypeName -> Text
 concTNameToText tc = case tc of

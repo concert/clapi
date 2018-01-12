@@ -11,7 +11,7 @@ import Clapi.Types (MsgError(..))
 import Clapi.Protocol (runProtocolIO, (<<->), sendRev, sendFwd, waitThen)
 import Clapi.Serialisation ()
 import Clapi.SerialisationProtocol (serialiser)
-import Clapi.Path (pattern Root)
+import Clapi.Types.Path (pattern Root)
 
 spec :: Spec
 spec = it "Packetised round trip" $ do

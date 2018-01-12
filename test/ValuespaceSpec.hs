@@ -21,7 +21,6 @@ import Control.Lens (view)
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import Clapi.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.PathQ
 import Clapi.Types.AssocList (alFromMap, AssocList, mkAssocList)
 import Clapi.Types
@@ -29,6 +28,7 @@ import Clapi.Types
   , TreeConcreteType(..), OfMetaType, Liberty(..), Definition(..)
   , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
   , toWireValues, valuesToDef, defDispatch, metaType)
+import Clapi.Types.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.Validator (validate)
 import Clapi.Valuespace
 

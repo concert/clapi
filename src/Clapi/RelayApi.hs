@@ -14,7 +14,6 @@ import Control.Concurrent.MVar
 import Control.Monad.Trans (lift)
 import qualified Data.Map as Map
 
-import Clapi.Path (Path, Seg, pattern Root, pattern (:/), toText)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (
     ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationType(ITConstant),
@@ -23,6 +22,7 @@ import Clapi.Types (
     UpdateBundle(..),
     RequestBundle(..), SubMessage(..),
     TimeStamped(..), Liberty(Cannot))
+import Clapi.Types.Path (Path, Seg, pattern Root, pattern (:/), toText)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.PathQ (pathq)
 import Clapi.NamespaceTracker (Owners)

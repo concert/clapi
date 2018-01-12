@@ -16,13 +16,13 @@ import Test.QuickCheck.Instances ()
 import Blaze.ByteString.Builder (toByteString)
 import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
-import Clapi.Path (Path(..), Seg)
 import Clapi.Types
   ( Time, Attributee, Site, WireValue, RequestBundle
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..)
   , TreeUpdateMessage(..), RequestBundle(..)  , UpdateBundle(..)
   , OwnerRequestBundle(..), FromRelayBundle(..)  , ToRelayBundle(..)
   , MsgError(..))
+import Clapi.Types.Path (Path(..), Seg)
 import Clapi.Serialisation (Encodable(..))
 
  -- Incl. Arbitrary instances of WireValue:

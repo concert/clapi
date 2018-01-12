@@ -20,7 +20,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.Path (Path, Seg, mkSeg)
+import Clapi.Types.Path (Path, Seg, mkSeg)
 import Clapi.Util (uncamel)
 
 

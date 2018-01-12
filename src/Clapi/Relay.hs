@@ -19,7 +19,7 @@ import Clapi.Types (
     CanFail, OwnerUpdateMessage(..), TreeUpdateMessage(..),
     DataUpdateMessage(..), MsgError(..), Msg(..), WireValue(..),
     castWireValue, Time(..), Liberty(Cannot))
-import Clapi.Path (Path, Seg, toText, unSeg, pattern Root)
+import Clapi.Types.Path (Path, Seg, toText, unSeg, pattern Root)
 import qualified Clapi.Tree as Tree
 import Clapi.Tree (_getSites)
 import Clapi.Valuespace (

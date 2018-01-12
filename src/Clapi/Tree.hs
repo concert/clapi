@@ -38,11 +38,11 @@ import Control.Monad.Fail (MonadFail, fail)
 import Text.Printf (printf)
 
 import Clapi.Util (duplicates, partitionDifferenceL, (+|?))
-import Clapi.Path (
-    Seg, Path, pattern Root, childPaths, pattern (:/), pattern (:</),
-    isParentOf, unSeg, unPath)
 import Clapi.Types
   (CanFail, Time, Interpolation(..), Attributee, Site)
+import Clapi.Types.Path (
+    Seg, Path, pattern Root, childPaths, pattern (:/), pattern (:</),
+    isParentOf, unSeg, unPath)
 import Data.Maybe.Clapi (note)
 
 import qualified Data.Maybe.Clapi as Maybe

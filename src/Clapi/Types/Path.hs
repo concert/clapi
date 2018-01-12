@@ -2,7 +2,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveLift #-}
-module Clapi.Path (
+module Clapi.Types.Path (
     Path(..), Seg, mkSeg, unSeg,
     pathP, segP, toText, fromText,
     pattern Root, pattern (:</), pattern (:/),
@@ -45,7 +45,7 @@ sepText = Text.singleton sepChar
 
 instance Show Path where
     show = Text.unpack . toText
-    
+
 toText :: Path -> Text
 toText (Path segs) = sepText <> Text.intercalate sepText (fmap unSeg segs)
 

@@ -12,11 +12,11 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Word
 
-import Clapi.Path (Path)
-import qualified Clapi.Path as Path
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationType(..))
+import Clapi.Types.Path (Path)
+import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType)
 import Clapi.Types.Wire (WireValue(..), (<|$|>), (<|*|>))
 import Clapi.Util (strictZip, fmtStrictZipError, safeToEnum)
