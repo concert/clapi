@@ -14,7 +14,6 @@ import Control.Concurrent.MVar
 import Control.Monad.Trans (lift)
 import qualified Data.Map as Map
 
-import Clapi.Path (Path, Seg, pattern Root, pattern (:/), toText)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (
     ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationType(ITConstant),
@@ -22,13 +21,13 @@ import Clapi.Types (
     OwnerUpdateMessage, Wireable, WireValue(..), castWireValue, Time(..),
     UpdateBundle(..),
     RequestBundle(..), SubMessage(..),
-    TimeStamped(..))
+    TimeStamped(..), Liberty(Cannot))
+import Clapi.Types.Path (Path, Seg, pattern Root, pattern (:/), toText)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Valuespace (Liberty(Cannot))
-import Clapi.PathQ (pathq)
+import Clapi.TH (pathq)
 import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
-import Clapi.Util (strictZipWith)
+import Clapi.Util (strictZipWith, fmtStrictZipError)
 
 zt :: Time
 zt = Time 0 0
@@ -189,4 +188,7 @@ relayApiProto ownerMv selfAddr =
 
 transformCvs
   :: (Wireable a, MonadFail m) => [a -> a] -> [WireValue] -> m [WireValue]
-transformCvs ss cvs = strictZipWith (\f wv -> WireValue . f <$> castWireValue wv) ss cvs >>= sequence
+transformCvs ss cvs =
+  fmtStrictZipError "functions" "wire values"
+    (strictZipWith (\f wv -> WireValue . f <$> castWireValue wv) ss cvs)
+  >>= sequence

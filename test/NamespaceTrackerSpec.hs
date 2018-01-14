@@ -19,13 +19,13 @@ import Control.Concurrent.MVar
 
 import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
-import Clapi.Path (Path, Seg, pattern Root)
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types (
     Time(..), Interpolation(..), DataUpdateMessage(..), TreeUpdateMessage(..),
     MsgError(..), OwnerUpdateMessage(..), Msg(..), WireValue(..),
     UpdateBundle(..), RequestBundle(..), ToRelayBundle(..),
     FromRelayBundle(..), SubMessage(..), OwnerRequestBundle(..))
+import Clapi.Types.Path (Path, Seg, pattern Root)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Request(..), Response(..))

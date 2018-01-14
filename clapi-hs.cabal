@@ -22,8 +22,6 @@ library
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
-                     , Clapi.Path
-                     , Clapi.PathQ
                      , Clapi.PerClientProto
                      , Clapi.Relay
                      , Clapi.RelayApi
@@ -33,11 +31,16 @@ library
                      , Clapi.Serialisation.Messages
                      , Clapi.Server
                      , Clapi.TaggedData
+                     , Clapi.TextSerialisation
+                     , Clapi.TH
                      , Clapi.TimeDelta
                      , Clapi.Types
+                     , Clapi.Types.AssocList
                      , Clapi.Types.Base
-                     , Clapi.Types.ByteTagQ
+                     , Clapi.Types.Definitions
                      , Clapi.Types.Messages
+                     , Clapi.Types.Path
+                     , Clapi.Types.Tree
                      , Clapi.Types.Wire
                      , Clapi.Types.UniqList
                      , Clapi.Tree
@@ -110,6 +113,7 @@ test-suite clapi-hs-test
                      , network-simple
                      , QuickCheck
                      , quickcheck-instances
+                     , random
                      , text
                      , transformers
                      , unagi-chan
@@ -122,6 +126,7 @@ test-suite clapi-hs-test
                      , RelaySpec
                      , ServerSpec
                      , SerialisationSpec
+                     , TextSerialisationSpec
                      , TreeSpec
                      , TypesSpec
                      , UtilSpec

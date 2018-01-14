@@ -3,14 +3,14 @@
 module PathSpec where
 
 import Test.Hspec
-import Test.QuickCheck (property)
 
 import Data.Text (Text)
 import Data.Either (isLeft)
 
-import Clapi.Path (Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText)
-import Clapi.PathQ (pathq, segq)
+import Clapi.TH (pathq, segq)
 import Clapi.Types (CanFail)
+import Clapi.Types.Path
+  (Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText)
 
 
 spec :: Spec

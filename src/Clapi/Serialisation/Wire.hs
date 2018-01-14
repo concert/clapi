@@ -24,7 +24,7 @@ import Data.Attoparsec.ByteString (Parser)
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
 import Clapi.Types.Base (Tag, Time)
 import Clapi.Types.Wire (WireValue(..), Wireable)
-import Clapi.Types.ByteTagQ (btq)
+import Clapi.TH (btq)
 
 -- Wireable serialisation:
 

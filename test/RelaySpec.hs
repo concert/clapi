@@ -8,12 +8,12 @@ import Data.Text (Text)
 import Data.Word
 import Test.Hspec
 
-import Clapi.Path (pattern Root, toText)
-import Clapi.PathQ
+import Clapi.TH
 import Clapi.Types (
     DataUpdateMessage(..), TreeUpdateMessage(..), OwnerUpdateMessage(..),
-    Interpolation(IConstant), Time(..), WireValue(..))
-import Clapi.Valuespace (getType, baseValuespace, Liberty(..))
+    Interpolation(IConstant), Time(..), WireValue(..), Liberty(..))
+import Clapi.Types.Path (pattern Root, toText)
+import Clapi.Valuespace (getType, baseValuespace)
 import Clapi.Relay (handleMessages)
 import Clapi.NamespaceTracker (Request(..), Response(..))
 

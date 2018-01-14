@@ -10,7 +10,8 @@ import Control.Monad.Fail (MonadFail)
 
 import Clapi.Util (ensureUnique)
 
-newtype UniqList a = UniqList {unUniqList :: [a]} deriving (Show, Eq, Functor)
+newtype UniqList a
+  = UniqList {unUniqList :: [a]} deriving (Show, Eq, Ord, Functor)
 
 mkUniqList :: (Ord a, Show a, MonadFail m) => [a] -> m (UniqList a)
 mkUniqList as = UniqList <$> ensureUnique "items" as

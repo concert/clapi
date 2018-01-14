@@ -7,30 +7,41 @@ import Control.Monad (join)
 import Data.Either (isRight, isLeft)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import Data.Int
 
-import Clapi.Types (WireValue(..))
+import Clapi.Types
+  ( Time(..), WireValue(..), TreeType(..), TreeConcreteType(..)
+  , TreeContainerType(..))
 import Clapi.Tree (treeInitNode)
-import Clapi.Validator (success, fromText, validatorValidator, vValidate)
-
--- testRefValidator =
---   do
---     assertEqual "success case" success $ result (ClString "/test/good_value/")
---     assertFailed "failure case" $ result (ClString "/test/bad_value")
---   where
---     tree =
---         treeInitNode ["test", "good_value"] ["test", "target_type"] $
---         treeInitNode ["test", "bad_value"] ["test", "wrong_type"]
---         mempty
---     fv = fromText "ref[/test/target_type]"
---     result cv = join (fv <*> pure tree <*> pure cv)
-
+import Clapi.Validator (validate)
 
 spec = describe "Validator" $ do
-    it "Fails on no description" $ fromText badValue `shouldSatisfy` isLeft
-    it "Fails on foo" $ fromText badValue' `shouldSatisfy` isLeft
-    it "Fails from wrapper" $ validate (WireValue badValue) `shouldSatisfy` isLeft
-    it "Works in success case" $ validate (WireValue ("int32" :: Text)) `shouldSatisfy` isRight
-  where
-    validate = vValidate (validatorValidator "desk") undefined
-    badValue = "validator[]" :: Text
-    badValue' = "validator[foo]"
+  describe "time" $ do
+    it "should verify a valid value" $
+      validate (TtConc TcTime) (WireValue $ Time 2 3) `shouldBe` Just ()
+    it "should reject an invalid value" $
+      validate (TtConc TcTime) (WireValue (3 :: Int32)) `shouldBe` Nothing
+  -- describe "enum" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "number" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "string" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "ref" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "validator description" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "list" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "set" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()
+  -- describe "ordered set" $ do
+  --   it "should verify a valid value" $  return ()
+  --   it "should reject an invalid value" $  return ()

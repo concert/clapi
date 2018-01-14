@@ -20,14 +20,15 @@ import Control.Concurrent.MVar
 
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser)
+import Clapi.Serialisation ()
 import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Path (mkSeg)
-import Clapi.PathQ (segq)
+import Clapi.Types.Path (mkSeg)
+import Clapi.TH (segq)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
 shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)

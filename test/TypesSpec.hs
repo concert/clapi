@@ -20,11 +20,11 @@ import qualified Data.Text as Text
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 
-import Clapi.Path (Seg, Path(..), mkSeg)
 import Clapi.Serialisation
   ( WireContainerType(..), WireConcreteType(..), wireValueWireType
   , withWireTypeProxy, unpackWireType)
 import Clapi.Types (Time(..), WireValue(..), Wireable, castWireValue)
+import Clapi.Types.Path (Seg, Path(..), mkSeg)
 
 smallListOf :: Gen a -> Gen [a]
 smallListOf g = do

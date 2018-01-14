@@ -21,28 +21,22 @@ import Control.Lens (view)
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import Clapi.Path (Path(..), pattern (:/), mkSeg, Seg)
-import Clapi.PathQ
-import Clapi.Types (InterpolationType, Interpolation(..), WireValue(..))
+import Clapi.TH
+import Clapi.Types.AssocList (alFromMap, AssocList, mkAssocList)
+import Clapi.Types
+  ( InterpolationType, Interpolation(..), WireValue(..), TreeType(..)
+  , TreeConcreteType(..), OfMetaType, Liberty(..), Definition(..)
+  , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
+  , toWireValues, valuesToDef, defDispatch, metaType)
+import Clapi.Types.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.Validator (validate)
 import Clapi.Valuespace
-    -- Definition(..), Liberty(..), tupleDef, structDef, arrayDef, validators,
-    -- metaType, defToValues, valuesToDef, vsValidate, baseValuespace,
-    -- vsAssignType, vsSet, anon, tconst, globalSite)
 
 import TypesSpec () -- For Arbitrary instances
+import TextSerialisationSpec ()
 
 spec :: Spec
 spec = do
-    describe "tupleDef" $ do
-        it "Rejects duplicate names" $
-            tupleDef "docs" [[segq|hi|], [segq|hi|]] ["string", "int32"] mempty `shouldBe`
-            Nothing
-        it "Rejects mismatched names and types" $
-            tupleDef "docs" [[segq|a|], [segq|b|]] ["int32"] mempty `shouldBe` Nothing
-        it "Works in the success case" $ do
-            def <- tupleDef "docs" [[segq|a|]] ["int32"] mempty
-            validate undefined (view validators def) [WireValue @Int32 42] `shouldBe` Right []
     describe "Validation" $ do
         it "baseValuespace valid" $ (fst $ vsValidate $ ownerUnlock baseValuespace) `shouldBe` mempty
         it "detects child type error" $ do
@@ -60,9 +54,10 @@ spec = do
           do
             -- Make sure changing /api/types/self/version goes and checks things defined
             -- to have that type:
-            newDef <- tupleDef "for test" [[segq|versionString|]] ["string[apple]"]
-                mempty
-            badVs <- vsSet anon IConstant (defToValues newDef)
+            newDef <- TupleDefinition "for test" <$>
+              mkAssocList [([segq|versionString|], TtConc $ TcString "apple")]
+              <*> pure mempty
+            badVs <- vsSet anon IConstant (toWireValues newDef)
                 [pathq|/api/types/self/version|] globalSite tconst
                 (ownerUnlock baseValuespace)
             assertValidationErrors [[pathq|/api/self/version|]] badVs
@@ -75,17 +70,16 @@ spec = do
                 [pathq|/api/types/test_value|] globalSite tconst vs
             assertValidationErrors [[pathq|/api/types/test_value|]] badVs
         it "xref revalidation" $ do
-            newDef <- structDef "for test" [[segq|version|]]
-                [[pathq|/api/types/base/tuple|]]
-                [Cannot]
+            newDef <- StructDefinition "for test" <$> mkAssocList
+              [ ([segq|version|], ([pathq|/api/types/base/tuple|], Cannot)) ]
             badVs <- vsWithXRef >>=
-                vsSet anon IConstant (defToValues newDef)
+                vsSet anon IConstant (toWireValues newDef)
                     [pathq|/api/types/containers/self|] globalSite tconst >>=
                 vsSet anon IConstant [WireValue @Text "banana", WireValue @[Text] [], WireValue @[Text] [], WireValue @[Word8] [0]] [pathq|/api/self/version|]
                     globalSite tconst
             assertValidationErrors [[pathq|/api/types/test_value|]] badVs
     it "Array" $ do
-        newDef <- arrayDef "for test" [pathq|/api/types/self/version|] Cannot
+        let newDef = ArrayDefinition "for test" [pathq|/api/types/self/version|] Cannot
         (evs, testPath) <- extendedVs newDef
         assertValidationErrors [[pathq|/api/types|]] evs
         emptyArrayVs <- vsSetChildren testPath [] evs
@@ -97,15 +91,17 @@ spec = do
             (testPath :/ [segq|a|]) globalSite tconst missingEntryVs
         assertValidationErrors [] filledEntryVs
     it "Doesn't get stuck with cyclic inference" $ do
-        outerType <- structDef "outer" [[segq|defs|]] [[pathq|/api/cyclic/defs/cyclic|]] [Cannot]
-        innerType <- structDef "inner" [[segq|cyclic|], [segq|defs|]] [[pathq|/api/types/base/struct|], [pathq|/api/types/base/struct|]] [Cannot, Cannot]
-        newCDef <- structDef "updated for test"
-            [[segq|self|], [segq|types|], [segq|cyclic|]] [
-              [pathq|/api/types/containers/self|],
-              [pathq|/api/types/containers/types|],
-              [pathq|/api/cyclic/defs/cyclic|]]
-            [Cannot, Cannot, Cannot]
-        badVs <- vsSet anon IConstant (defToValues newCDef)
+        outerType <- StructDefinition "outer" <$> mkAssocList
+            [ ([segq|defs|], ([pathq|/api/cyclic/defs/cyclic|], Cannot)) ]
+        innerType <- StructDefinition "inner" <$> mkAssocList
+            [ ([segq|cyclic|], ([pathq|/api/types/base/struct|], Cannot))
+            , ([segq|defs|], ([pathq|/api/types/base/struct|], Cannot))]
+        newCDef <- StructDefinition "updated for test" <$> mkAssocList
+            [ ([segq|self|], ([pathq|/api/types/containers/self|], Cannot))
+            , ([segq|types|], ([pathq|/api/types/containers/types|], Cannot))
+            , ([segq|cyclic|], ([pathq|/api/cyclic/defs/cyclic|], Cannot))
+            ]
+        badVs <- vsSet anon IConstant (toWireValues newCDef)
               [pathq|/api/types/containers/api|] globalSite tconst
               (ownerUnlock baseValuespace) >>=
             addDef [pathq|/api/cyclic/defs/cyclic|] outerType >>=
@@ -116,25 +112,23 @@ spec = do
             [pathq|/api/types/containers/api|]]
             badVs
     it "Definition <-> WireValue round trips" $ property $ \d ->
-        (valuesToDef (metaType d) . defToValues) d == Just d
+        (valuesToDef (defDispatch metaType d) . defDispatch toWireValues) d == Just d
   where
     assertValidationErrors errPaths vs = let (errs, _vvs) = vsValidate vs in
         Map.keysSet errs `shouldBe` Set.fromList errPaths
 
 
-extendedVs :: (MonadFail m) => Definition -> m (Valuespace OwnerUnvalidated, Path)
+extendedVs :: (MonadFail m, OfMetaType def) => def -> m (Valuespace OwnerUnvalidated, Path)
 extendedVs def = do
-    newCDef <- structDef "updated for test"
-        [[segq|base|], [segq|self|], [segq|containers|], [segq|test_type|], [segq|test_value|]] [
-          [pathq|/api/types/containers/base|],
-          [pathq|/api/types/containers/types_self|],
-          [pathq|/api/types/containers/containers|],
-          (metaTypePath $ metaType def),
-          [pathq|/api/types/test_type|]]
-        [Cannot, Cannot, Cannot, Cannot, Cannot]
-    vs <- vsAdd anon IConstant (defToValues def) [pathq|/api/types/test_type|]
+    newCDef <- StructDefinition "updated for test" <$> mkAssocList
+        [ ([segq|base|], ([pathq|/api/types/containers/base|], Cannot))
+        , ([segq|self|], ([pathq|/api/types/containers/types_self|], Cannot))
+        , ([segq|containers|], ([pathq|/api/types/containers/containers|], Cannot))
+        , ([segq|test_type|], (metaTypePath $ metaType def, Cannot))
+        , ([segq|test_value|], ([pathq|/api/types/test_type|], Cannot))]
+    vs <- vsAdd anon IConstant (toWireValues def) [pathq|/api/types/test_type|]
           globalSite tconst (ownerUnlock baseValuespace) >>=
-        vsSet anon IConstant (defToValues newCDef)
+        vsSet anon IConstant (toWireValues newCDef)
           [pathq|/api/types/containers/types|] globalSite tconst
     return (vs, [pathq|/api/types/test_value|])
 
@@ -142,8 +136,10 @@ extendedVs def = do
 vsWithXRef :: (MonadFail m) => m (Valuespace OwnerUnvalidated)
 vsWithXRef =
   do
-    newNodeDef <- tupleDef "for test" [[segq|daRef|]]
-        ["ref[/api/types/self/version]"] mempty
+    newNodeDef <- TupleDefinition "for test" <$>
+      mkAssocList [
+        ([segq|daRef|], TtConc $ TcRef [pathq|/api/types/self/version|])] <*>
+      pure mempty
     (vs, testPath) <- extendedVs newNodeDef
     vsAdd
       anon IConstant [WireValue @Text "/api/self/version"] testPath globalSite
@@ -151,9 +147,9 @@ vsWithXRef =
 
 
 addDef ::
-    MonadFail m => Path -> Definition -> Valuespace OwnerUnvalidated ->
-    m (Valuespace OwnerUnvalidated)
-addDef p d = vsAdd anon IConstant (defToValues d) p globalSite tconst
+    (MonadFail m, OfMetaType def) => Path -> def ->
+    Valuespace OwnerUnvalidated -> m (Valuespace OwnerUnvalidated)
+addDef p d = vsAdd anon IConstant (toWireValues d) p globalSite tconst
 
 instance Arbitrary Liberty where
     arbitrary = arbitraryBoundedEnum
@@ -168,15 +164,17 @@ infiniteStrings minLen = [minLen..] >>= (`replicateM` ['a'..'z'])
 uniqueSegs :: Int -> [Seg]
 uniqueSegs n = take n $ fromJust . mkSeg . T.pack <$> infiniteStrings 4
 
+instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
+  arbitrary = alFromMap <$> arbitrary
+
 instance Arbitrary Definition where
     arbitrary =
       do
-        n <- arbitrary
-        fDef <- oneof [
-            tupleDef <$> arbitrary <*>
-                (pure $ uniqueSegs n) <*>
-                pure (replicate n "int32") <*> arbitrary,
-            structDef <$> arbitrary <*> pure (uniqueSegs n) <*>
-                vectorOf n (arbitrary :: Gen Path) <*> vector n,
-            arrayDef <$> arbitrary <*> (arbitrary :: Gen Path) <*> arbitrary]
-        either error return fDef
+        oneof
+          [ TupleDef <$>
+              (TupleDefinition <$> arbitrary <*> arbitrary <*> arbitrary)
+          , StructDef <$>
+              (StructDefinition <$> arbitrary <*> arbitrary)
+          , ArrayDef <$>
+              (ArrayDefinition <$> arbitrary <*> arbitrary <*> arbitrary)
+          ]

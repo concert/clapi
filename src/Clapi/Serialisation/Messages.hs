@@ -12,11 +12,11 @@ import Blaze.ByteString.Builder (Builder, fromWord32be)
 
 import Data.Attoparsec.ByteString (Parser)
 
-import qualified Clapi.Path as Path
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
 import Clapi.Types.Base (InterpolationType(..), Interpolation(..), interpolationType)
-import Clapi.Types.ByteTagQ (btq)
+import Clapi.TH (btq)
 import Clapi.Types.Messages
+import qualified Clapi.Types.Path as Path
 import Clapi.TaggedData (TaggedData, taggedData, tdInstanceToTag, eitherTagged, tdAllTags, tdTagToEnum)
 import Clapi.Serialisation.Wire ()
 

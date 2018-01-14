@@ -16,12 +16,12 @@ import Data.Either (lefts)
 import Control.Lens (view, set, Lens', _1, _2)
 
 import qualified Data.Map.Mos as Mos
-import Clapi.Path (Seg, Path, pattern Root, pattern (:</), pattern (:/))
 import Clapi.Types
   ( DataUpdateMessage(..), TreeUpdateMessage(..)
   , OwnerUpdateMessage, ToRelayBundle(..), FromRelayBundle(..)
   , OwnerRequestBundle(..), UpdateBundle(..), RequestBundle(..)
   , MsgError(..), Msg(..), SubMessage(..))
+import Clapi.Types.Path (Seg, Path, pattern Root, pattern (:</), pattern (:/))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 
