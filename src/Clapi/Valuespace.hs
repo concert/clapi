@@ -437,6 +437,10 @@ validateInterpolation ::
     (MonadFail m) => Set.Set InterpolationType -> Interpolation -> m ()
 validateInterpolation its i = return ()
 -- FIXME: temporarily disabled because of structural inadequacy in tree!
+-- That is: we can specify no valid interpolation types => only a single, global
+-- value is allowed at a path. However, we can't represent that due to the fact
+-- that we always represent nodes as time series, which have time points that
+-- must always say how they are to be interpolated.
 -- validateInterpolation its i | it `elem` its = return ()
 --                             | otherwise = fail f
 --   where
