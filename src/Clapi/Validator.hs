@@ -6,7 +6,7 @@ module Clapi.Validator where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Control.Monad (void)
+import Control.Monad (void, join)
 import Data.Word (Word8)
 import qualified Data.Set as Set
 import qualified Data.Text as Text
@@ -63,7 +63,7 @@ validate tt wv =
   where
     recy :: (Show b, Ord b, Wireable a) =>
       (a -> m b) -> [TreeContainerTypeName]-> m ()
-    recy f [] = void $ f <|$|> wv
+    recy f [] = void $ join $ f <|$|> wv
     recy f (ct:cts) = case ct of
       TcnList -> recy (checkList f) cts
       TcnSet -> recy (checkSet f) cts

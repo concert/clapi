@@ -1,4 +1,7 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
+
 module ValidatorSpec where
 
 import Test.Hspec
@@ -27,9 +30,15 @@ spec = describe "Validator" $ do
   -- describe "number" $ do
   --   it "should verify a valid value" $  return ()
   --   it "should reject an invalid value" $  return ()
-  -- describe "string" $ do
-  --   it "should verify a valid value" $  return ()
-  --   it "should reject an invalid value" $  return ()
+  describe "string" $ do
+    it "should verify a valid value" $ do
+      validate (TtConc $ TcString "") (WireValue @Text "banana")
+        `shouldBe` Just ()
+      validate (TtConc $ TcString "b[an]*") (WireValue @Text "banana")
+        `shouldBe` Just ()
+    it "should reject an invalid value" $
+      validate (TtConc $ TcString "b[an]*") (WireValue @Text "apple")
+        `shouldBe` Nothing
   -- describe "ref" $ do
   --   it "should verify a valid value" $  return ()
   --   it "should reject an invalid value" $  return ()
