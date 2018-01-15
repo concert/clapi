@@ -8,6 +8,7 @@ module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 import Data.Monoid
 import Control.Monad (when)
 import Control.Monad.Fail (MonadFail)
+import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Data.Word
 import Control.Concurrent.MVar
@@ -16,7 +17,7 @@ import qualified Data.Map as Map
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (
-    ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationType(ITConstant),
+    ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationLimit(ILConstant),
     Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..),
     OwnerUpdateMessage, Wireable, WireValue(..), castWireValue, Time(..),
     UpdateBundle(..),
@@ -24,10 +25,14 @@ import Clapi.Types (
     TimeStamped(..), Liberty(Cannot))
 import Clapi.Types.Path (Path, Seg, pattern Root, pattern (:/), toText)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.TH (pathq)
+import Clapi.TH (pathq, segq)
 import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 import Clapi.Util (strictZipWith, fmtStrictZipError)
+import Clapi.Types.AssocList (mkAssocList)
+import Clapi.Types.Definitions
+  (TupleDefinition(..), StructDefinition(..), ArrayDefinition(..), toWireValues)
+import Clapi.TextSerialisation (ttFromText)
 
 zt :: Time
 zt = Time 0 0
@@ -43,33 +48,22 @@ staticAdd p vs = Right $ MsgAdd p zt vs IConstant Nothing Nothing
 staticSet :: Path -> [WireValue] -> OwnerUpdateMessage
 staticSet p vs = Right $ MsgSet p zt vs IConstant Nothing Nothing
 
-structDefMsg :: Path -> Text -> [(Text, Path)]-> OwnerUpdateMessage
-structDefMsg sp doc tm = let
-    liberties = replicate (length tm) Cannot
-    targs =
-      [ WireValue doc
-      , WireValue $ map fst tm
-      , WireValue $ map (toText . snd) tm
-      , WireValue @[Word8] $ fmap (fromIntegral . fromEnum) liberties]
+staticStructDefMsg :: Path -> Text -> [(Seg, Path)]-> OwnerUpdateMessage
+staticStructDefMsg sp doc tm =
+  let
+    al = fromJust $ mkAssocList (fmap (\(n, p) -> (n, (p, Cannot))) tm)
   in
-    staticAdd sp targs
+    staticAdd sp $ toWireValues $ StructDefinition doc al
 
-tupleDefMsg :: Path -> Text -> [(Text, Text)] -> OwnerUpdateMessage
-tupleDefMsg p d fm = let
-    targs =
-      [ WireValue d
-      , WireValue $ map fst fm
-      , WireValue $ map snd fm
-      , WireValue @[Word8] $ fmap (fromIntegral . fromEnum) [ITConstant]]
-  in
-    staticAdd p targs
+staticTupleDefMsg :: Path -> Text -> [(Seg, Text)] -> OwnerUpdateMessage
+staticTupleDefMsg p d fm = let al = fromJust $ mkAssocList $ fmap (fromJust . ttFromText) <$> fm in
+    staticAdd p $ toWireValues $ TupleDefinition d al ILConstant
 
 clRef :: Path -> WireValue
 clRef = WireValue . toText
 
-arrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
-arrayDefMsg p d ct = staticAdd p
-  [WireValue d, clRef ct, WireValue @Word8 $ fromIntegral $ fromEnum $ Cannot]
+staticArrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
+staticArrayDefMsg p d ct = staticAdd p $ toWireValues $ ArrayDefinition d ct Cannot
 
 class PathSegable a where
     pathNameFor :: a -> Seg
@@ -90,27 +84,27 @@ relayApiProto ownerMv selfAddr =
     pubUpdate = toNST . TRBOwner . UpdateBundle []
     publishRelayApi = pubUpdate
       [ Left $ MsgAssignType [pathq|/relay|] rtp
-      , structDefMsg rtp "topdoc" [
-        ("build", btp), ("self", selfTP), ("clients", catp), ("types", ttp),
-        ("owners", odp)]
+      , staticStructDefMsg rtp "topdoc" [
+        ([segq|build|], btp), ([segq|self|], selfTP), ([segq|clients|], catp), ([segq|types|], ttp),
+        ([segq|owners|], odp)]
       , Left $ MsgAssignType [pathq|/relay/types/types|] sdp
       , Left $ MsgAssignType [pathq|/relay/types|] ttp
-      , structDefMsg ttp "typedoc" [
-        ("relay", sdp), ("types", sdp), ("self", tdp), ("clients", adp),
-        ("client_info", tdp), ("owner_info", tdp), ("owners", adp),
-        ("build", tdp)]
-      , arrayDefMsg catp "clientsdoc" citp
+      , staticStructDefMsg ttp "typedoc" [
+        ([segq|relay|], sdp), ([segq|types|], sdp), ([segq|self|], tdp), ([segq|clients|], adp),
+        ([segq|client_info|], tdp), ([segq|owner_info|], tdp), ([segq|owners|], adp),
+        ([segq|build|], tdp)]
+      , staticArrayDefMsg catp "clientsdoc" citp
       , Right $ MsgSetChildren cap [ownSeg] Nothing
       , staticAdd (cap :/ ownSeg) [WireValue $ unTimeDelta tdZero]
-      , tupleDefMsg citp
+      , staticTupleDefMsg citp
         "Info about connected clients (clock_diff is in seconds)"
-        [("clock_diff", "float")]
-      , arrayDefMsg odp "ownersdoc" oidp
-      , tupleDefMsg oidp "owner info" [("owner", refOf citp)]
+        [([segq|clock_diff|], "float")]
+      , staticArrayDefMsg odp "ownersdoc" oidp
+      , staticTupleDefMsg oidp "owner info" [([segq|owner|], refOf citp)]
       , Right $ MsgSetChildren oap [] Nothing
-      , tupleDefMsg selfTP "Which client are you" [("info", refOf citp)]
+      , staticTupleDefMsg selfTP "Which client are you" [([segq|info|], refOf citp)]
       , staticAdd selfP [clRef $ cap :/ ownSeg]
-      , tupleDefMsg btp "builddoc" [("commit_hash", "string[banana]")]
+      , staticTupleDefMsg btp "builddoc" [([segq|commit_hash|], "string[banana]")]
       , staticAdd [pathq|/relay/build|] [WireValue @Text "banana"]
       ]
     rtp = [pathq|/relay/types/relay|]

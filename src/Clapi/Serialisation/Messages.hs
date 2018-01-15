@@ -13,28 +13,30 @@ import Blaze.ByteString.Builder (Builder, fromWord32be)
 import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
-import Clapi.Types.Base (InterpolationType(..), Interpolation(..), interpolationType)
+import Clapi.Types.Base (InterpolationLimit(..), Interpolation(..), interpolationType)
 import Clapi.TH (btq)
 import Clapi.Types.Messages
 import qualified Clapi.Types.Path as Path
 import Clapi.TaggedData (TaggedData, taggedData, tdInstanceToTag, eitherTagged, tdAllTags, tdTagToEnum)
 import Clapi.Serialisation.Wire ()
 
-interpolationTaggedData :: TaggedData InterpolationType Interpolation
+interpolationTaggedData :: TaggedData InterpolationLimit Interpolation
 interpolationTaggedData = taggedData toTag interpolationType
   where
-    toTag (ITConstant) = [btq|C|]
-    toTag (ITLinear) = [btq|L|]
-    toTag (ITBezier) = [btq|B|]
+    toTag (ILUninterpolated) = [btq|U|]
+    toTag (ILConstant) = [btq|C|]
+    toTag (ILLinear) = [btq|L|]
+    toTag (ILBezier) = [btq|B|]
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
         (IBezier a b) -> fromWord32be a <> fromWord32be b
         _ -> mempty
     parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
-        (ITConstant) -> return IConstant
-        (ITLinear) -> return ILinear
-        (ITBezier) -> IBezier <$> parser <*> parser
+        ILUninterpolated -> fail "Not allowed to specify uninterpolated time point"
+        ILConstant -> return IConstant
+        ILLinear -> return ILinear
+        ILBezier -> IBezier <$> parser <*> parser
 
 instance Encodable Path.Seg where
     builder = builder . Path.unSeg

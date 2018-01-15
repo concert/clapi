@@ -7,7 +7,7 @@ module Clapi.Types.Base
   , Time(..), TimeStamped(..)
   , Attributee
   , Site
-  , InterpolationType(..), Interpolation(..), interpolationType
+  , InterpolationLimit(..), Interpolation(..), interpolationType
   ) where
 
 import Prelude hiding (fail)
@@ -37,12 +37,12 @@ newtype TimeStamped a = TimeStamped (Time, a) deriving (Show, Functor)
 type Attributee = Text
 type Site = Text
 
-data InterpolationType = ITConstant | ITLinear | ITBezier
+data InterpolationLimit = ILUninterpolated | ILConstant | ILLinear | ILBezier
   deriving (Show, Eq, Ord, Enum, Bounded)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Show, Eq, Ord)
 
-interpolationType :: Interpolation -> InterpolationType
-interpolationType IConstant = ITConstant
-interpolationType ILinear = ITLinear
-interpolationType (IBezier _ _) = ITBezier
+interpolationType :: Interpolation -> InterpolationLimit
+interpolationType IConstant = ILConstant
+interpolationType ILinear = ILLinear
+interpolationType (IBezier _ _) = ILBezier
