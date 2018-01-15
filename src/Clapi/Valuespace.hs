@@ -43,7 +43,7 @@ import Clapi.Util
   ( duplicates, partitionDifferenceL, strictZip, strictZipWith
   , fmtStrictZipError)
 import Clapi.Types (
-    CanFail, InterpolationType(..), Interpolation(..), Time(..),
+    CanFail, InterpolationLimit(..), Interpolation(..), Time(..),
     interpolationType, Site, Attributee,
     WireValue(..), Wireable, (<|$|>), (<|*|>))
 import Clapi.Types.Path (Path, pattern (:/))
@@ -106,8 +106,8 @@ baseTupleDef = TupleDefinition
         ([segq|doc|], docTt),
         ([segq|valueNames|], TtCont $ TcOrdSet segTt),
         ([segq|validators|], TtCont $ TcList $ TtConc TcValidatorDesc),
-        ([segq|interpolationTypes|], TtCont $ TcSet $ ttEnum (Proxy :: Proxy InterpolationType))])
-    mempty
+        ([segq|interpolationLimit|], ttEnum (Proxy :: Proxy InterpolationLimit))])
+    ILUninterpolated
 baseStructDef = TupleDefinition
     "Base struct definition"
     (fromJust $ mkAssocList
@@ -115,14 +115,14 @@ baseStructDef = TupleDefinition
       , ([segq|childNames|], TtCont $ TcOrdSet segTt)
       , ([segq|childTypes|], TtCont $ TcList defTt)
       , ([segq|clibs|], TtCont $ TcList libTt)])
-    mempty
+    ILUninterpolated
 baseArrayDef = TupleDefinition
     "Base array definition"
     (fromJust $ mkAssocList
       [ ([segq|doc|], docTt)
       , ([segq|childType|], defTt)
       , ([segq|clib|], libTt)])
-    mempty
+    ILUninterpolated
 
 
 type VsTree = ClapiTree [WireValue]
@@ -434,7 +434,7 @@ overUnvalidatedNodes f vs =
 
 
 validateInterpolation ::
-    (MonadFail m) => Set.Set InterpolationType -> Interpolation -> m ()
+    (MonadFail m) => InterpolationLimit -> Interpolation -> m ()
 validateInterpolation its i = return ()
 -- FIXME: temporarily disabled because of structural inadequacy in tree!
 -- That is: we can specify no valid interpolation types => only a single, global
@@ -461,8 +461,8 @@ validateNodeData vs np siteMap = getDef np vs >>= body
     -- error with one specific string.
     -- Right now, however, we just fail fast because we've got too much WIP.
     body (TupleDef def) = do
-        let its = tupDefInterpTypes def
-        mapM_ (validateInterpolation its . fst) siteMap
+        let il = tupDefInterpLimit def
+        mapM_ (validateInterpolation il . fst) siteMap
         let treeTypes = alValues $ tupDefTypes def
         fnarf <- mapM (fmtStrictZipError "types" "values" . strictZipWith validate treeTypes . snd) $ Map.elems siteMap
         void $ sequence $ join fnarf
@@ -722,4 +722,4 @@ baseValuespace =
         (fromJust $ mkAssocList
           [ ([segq|maj|], TtConc $ TcWord32 unbounded)
           , ([segq|min|], TtConc $ TcInt32 unbounded)])
-        mempty
+        ILUninterpolated

@@ -24,10 +24,10 @@ import Control.Monad.Fail (MonadFail)
 import Clapi.TH
 import Clapi.Types.AssocList (alFromMap, AssocList, mkAssocList)
 import Clapi.Types
-  ( InterpolationType, Interpolation(..), WireValue(..), TreeType(..)
-  , TreeConcreteType(..), OfMetaType, Liberty(..), Definition(..)
-  , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
-  , toWireValues, valuesToDef, defDispatch, metaType)
+  ( InterpolationLimit(ILUninterpolated), Interpolation(..), WireValue(..)
+  , TreeType(..) , TreeConcreteType(..), OfMetaType, Liberty(..)
+  , Definition(..) , TupleDefinition(..), StructDefinition(..)
+  , ArrayDefinition(..) , toWireValues, valuesToDef, defDispatch, metaType)
 import Clapi.Types.Path (Path(..), pattern (:/), mkSeg, Seg)
 import Clapi.Validator (validate)
 import Clapi.Valuespace
@@ -44,7 +44,7 @@ spec = do
             -- data for that wrong type:
             badVs <- vsSet
                   anon IConstant
-                  [WireValue @Text "doccy", WireValue @[Text] [], WireValue @[Text] [], WireValue @[Word8] [0]]
+                  [WireValue @Text "doccy", WireValue @[Text] [], WireValue @[Text] [], WireValue @Word8 0]
                   [pathq|/api/self/version|]
                   globalSite tconst (ownerUnlock baseValuespace) >>=
                 return . vsAssignType [pathq|/api/self/version|]
@@ -56,7 +56,7 @@ spec = do
             -- to have that type:
             newDef <- TupleDefinition "for test" <$>
               mkAssocList [([segq|versionString|], TtConc $ TcString "apple")]
-              <*> pure mempty
+              <*> pure ILUninterpolated
             badVs <- vsSet anon IConstant (toWireValues newDef)
                 [pathq|/api/types/self/version|] globalSite tconst
                 (ownerUnlock baseValuespace)
@@ -75,7 +75,7 @@ spec = do
             badVs <- vsWithXRef >>=
                 vsSet anon IConstant (toWireValues newDef)
                     [pathq|/api/types/containers/self|] globalSite tconst >>=
-                vsSet anon IConstant [WireValue @Text "banana", WireValue @[Text] [], WireValue @[Text] [], WireValue @[Word8] [0]] [pathq|/api/self/version|]
+                vsSet anon IConstant [WireValue @Text "banana", WireValue @[Text] [], WireValue @[Text] [], WireValue @Word8 0] [pathq|/api/self/version|]
                     globalSite tconst
             assertValidationErrors [[pathq|/api/types/test_value|]] badVs
     it "Array" $ do
@@ -139,7 +139,7 @@ vsWithXRef =
     newNodeDef <- TupleDefinition "for test" <$>
       mkAssocList [
         ([segq|daRef|], TtConc $ TcRef [pathq|/api/types/self/version|])] <*>
-      pure mempty
+      pure ILUninterpolated
     (vs, testPath) <- extendedVs newNodeDef
     vsAdd
       anon IConstant [WireValue @Text "/api/self/version"] testPath globalSite
@@ -154,7 +154,7 @@ addDef p d = vsAdd anon IConstant (toWireValues d) p globalSite tconst
 instance Arbitrary Liberty where
     arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary InterpolationType where
+instance Arbitrary InterpolationLimit where
     arbitrary = arbitraryBoundedEnum
 
 -- http://stackoverflow.com/questions/9542313/

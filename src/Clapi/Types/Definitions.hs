@@ -7,14 +7,12 @@ module Clapi.Types.Definitions where
 import Prelude hiding (fail)
 import Control.Monad (join)
 import Control.Monad.Fail (MonadFail(..))
-import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Word
 
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
-import Clapi.Types.Base (InterpolationType(..))
+import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Path (Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType)
@@ -37,33 +35,33 @@ class OfMetaType metaType where
 data TupleDefinition = TupleDefinition
   { tupDefDoc :: Text
   , tupDefTypes :: AssocList Path.Seg TreeType
-  , tupDefInterpTypes :: Set InterpolationType
+  , tupDefInterpLimit :: InterpolationLimit
   } deriving (Show, Eq)
 
 instance OfMetaType TupleDefinition where
   metaType _ = Tuple
-  toWireValues (TupleDefinition d tys is) =
+  toWireValues (TupleDefinition d tys il) =
     let
       (names, treeTypes) = unzip $ unAssocList tys
     in
       [ WireValue d
       , WireValue $ Path.unSeg <$> names
       , WireValue $ ttToText <$> treeTypes
-      , WireValue @[Word8] $ fromIntegral . fromEnum <$> Set.toList is
+      , WireValue @Word8 $ fromIntegral $ fromEnum il
       ]
 
-  fromWireValues [doc, names, vDescs, interps] =
-      join $ mkDef <|$|> doc <|*|> names <|*|> vDescs <|*|> interps
+  fromWireValues [txt, txts0, txts1, w8] =
+      join $ mkDef <|$|> txt <|*|> txts0 <|*|> txts1 <|*|> w8
     where
       mkDef
-        :: MonadFail m => Text -> [Text] -> [Text] -> [Word8]
+        :: MonadFail m => Text -> [Text] -> [Text] -> Word8
         -> m TupleDefinition
-      mkDef d ns ts is = do
+      mkDef d ns ts il = do
         names <- mapM Path.mkSeg ns
         types <- mapM ttFromText ts
         al <- alFromZip names types
-        interps <- Set.fromList <$> mapM (safeToEnum . fromIntegral) is
-        return $ TupleDefinition d al interps
+        interp <- safeToEnum $ fromIntegral il
+        return $ TupleDefinition d al interp
   fromWireValues _ = fail "Wrong number of arguments for tuple def"
 
   childTypeFor _ _ = Nothing
@@ -86,8 +84,8 @@ instance OfMetaType StructDefinition where
       , WireValue @[Word8] $ fromIntegral . fromEnum <$> libs
       ]
 
-  fromWireValues [doc, names, types, liberties] =
-      join $ mkDef <|$|> doc <|*|> names <|*|> types <|*|> liberties
+  fromWireValues [txt, txts0, txts1, w8s] =
+      join $ mkDef <|$|> txt <|*|> txts0 <|*|> txts1 <|*|> w8s
     where
       mkDef
         :: MonadFail m => Text -> [Text] -> [Text] -> [Word8]
