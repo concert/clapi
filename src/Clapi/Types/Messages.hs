@@ -2,7 +2,7 @@
 
 module Clapi.Types.Messages where
 
-import qualified Data.Text as T
+import qualified Data.Text as Text
 
 import Clapi.Types.Base (Attributee, Site, Time, Interpolation)
 import Clapi.Types.Path (Path, Seg)
@@ -12,7 +12,7 @@ class Msg a where
    uMsgPath :: a -> Path
 
 data MsgError
-  = MsgError {errMsgPath :: Path, errMsgTxt :: T.Text} deriving (Eq, Show)
+  = MsgError {errMsgPath :: Path, errMsgTxt :: Text} deriving (Eq, Show)
 
 instance Msg MsgError where
     uMsgPath = errMsgPath
