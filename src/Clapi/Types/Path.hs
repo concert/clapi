@@ -6,8 +6,8 @@ module Clapi.Types.Path (
     Path(..), Seg, mkSeg, unSeg,
     pathP, segP, toText, fromText,
     pattern Root, pattern (:</), pattern (:/),
-    isParentOf, isChildOf, isParentOfAny, isChildOfAny,
-    childPaths) where
+    isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
+    NodePath, TypePath) where
 
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
@@ -89,3 +89,6 @@ isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
 childPaths :: Path -> [Seg] -> [Path]
 childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
+
+type NodePath = Path
+type TypePath = Path
