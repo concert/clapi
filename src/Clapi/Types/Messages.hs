@@ -5,21 +5,21 @@ module Clapi.Types.Messages where
 import qualified Data.Text as Text
 
 import Clapi.Types.Base (Attributee, Site, Time, Interpolation)
-import Clapi.Types.Path (Path, Seg)
+import Clapi.Types.Path (Seg, NodePath, TypePath, isParentOf)
 import Clapi.Types.Wire (WireValue)
 
 class Msg a where
-   uMsgPath :: a -> Path
+   uMsgPath :: a -> NodePath
 
 data MsgError
-  = MsgError {errMsgPath :: Path, errMsgTxt :: Text} deriving (Eq, Show)
+  = MsgError {errMsgPath :: NodePath, errMsgTxt :: Text} deriving (Eq, Show)
 
 instance Msg MsgError where
     uMsgPath = errMsgPath
 
 data SubMessage =
-    MsgSubscribe {subMsgPath :: Path}
-  | MsgUnsubscribe {subMsgPath :: Path}
+    MsgSubscribe {subMsgPath :: NodePath}
+  | MsgUnsubscribe {subMsgPath :: NodePath}
   deriving (Eq, Show)
 
 instance Msg SubMessage where
@@ -27,46 +27,50 @@ instance Msg SubMessage where
 
 -- Separate because not valid in RequestBundle
 data TreeUpdateMessage =
-    MsgAssignType {tuMsgPath :: Path, tuMsgTypePath :: Path}
-  | MsgDelete {tuMsgPath :: Path}
+    MsgAssignType {tuMsgPath :: NodePath, tuMsgTypePath :: TypePath}
+  | MsgDelete {tuMsgPath :: NodePath}
   deriving (Eq, Show)
 
 instance Msg TreeUpdateMessage where
     uMsgPath = tuMsgPath
 
-data DataUpdateMessage =
-    MsgAdd
-      { duMsgPath :: Path
-      , duMsgTime :: Time
+data DataUpdateMessage
+  = MsgConstSet
+      { duMsgPath :: NodePath
       , duMsgArgs :: [WireValue]
-      , duMsgInterpolation :: Interpolation
-      , duMsgAttributee :: (Maybe Attributee)
-      , duMsgSite :: (Maybe Site)
+      , duMsgAttributee :: Maybe Attributee
+      , duMsgSite :: Maybe Site
+      }
+  | MsgConstClear
+      { duMsgPath :: NodePath
+      , duMsgAttributee :: Maybe Attributee
+      , duMsgSite :: Maybe Site
       }
   | MsgSet
-      { duMsgPath :: Path
+      { duMsgPath :: NodePath
+      , duMsgTsUuid :: Word32
       , duMsgTime :: Time
       , duMsgArgs :: [WireValue]
       , duMsgInterpolation :: Interpolation
-      , duMsgAttributee :: (Maybe Attributee)
-      , duMsgSite :: (Maybe Site)
+      , duMsgAttributee :: Maybe Attributee
+      , duMsgSite :: Maybe Site
       }
   | MsgRemove
-      { duMsgPath :: Path
-      , duMsgTime :: Time
-      , duMsgAttributee :: (Maybe Attributee)
-      , duMsgSite :: (Maybe Site)
+      { duMsgPath :: NodePath
+      , duMsgTsUuid :: Word32
+      , duMsgAttributee :: Maybe Attributee
+      , duMsgSite :: Maybe Site
       }
   | MsgClear
-      { duMsgPath :: Path
-      , duMsgTime :: Time
-      , duMsgAttributee :: (Maybe Attributee)
-      , duMsgSite :: (Maybe Site)
+      { duMsgPath :: NodePath
+      , duMsgTsUuid :: Word32
+      , duMsgAttributee :: Maybe Attributee
+      , duMsgSite :: Maybe Site
       }
   | MsgSetChildren
-      { duMsgPath :: Path
-      , duMsgNames :: [Seg]
-      , duMsgAttributee :: (Maybe Attributee)
+      { duMsgPath :: NodePath
+      , duMsgNames :: UniqList Seg
+      , duMsgAttributee :: Maybe Attributee
       }
    deriving (Eq, Show)
 

@@ -80,7 +80,8 @@ instance Encodable SubMessage where
         (SubMsgTUnsub) -> MsgUnsubscribe <$> parser
 
 data DataUpdateMsgType
-  = DUMTAdd
+  = DUMTConstSet
+  | DUMTConstClear
   | DUMTSet
   | DUMTRemove
   | DUMTClear
@@ -89,42 +90,43 @@ data DataUpdateMsgType
 dumtTaggedData :: TaggedData DataUpdateMsgType DataUpdateMessage
 dumtTaggedData = taggedData typeToTag msgToType
   where
-    typeToTag (DUMTAdd) = [btq|a|]
+    typeToTag (DUMTConstSet) = [btq|S|]
+    typeToTag (DUMTConstClear) = [btq|C|]
     typeToTag (DUMTSet) = [btq|s|]
     typeToTag (DUMTRemove) = [btq|r|]
     typeToTag (DUMTClear) = [btq|c|]
-    typeToTag (DUMTSetChildren) = [btq|C|]
-    msgToType (MsgAdd _ _ _ _ _ _) = DUMTAdd
-    msgToType (MsgSet _ _ _ _ _ _) = DUMTSet
+    typeToTag (DUMTSetChildren) = [btq|k|]
+    msgToType (MsgConstSet _ _ _ _) = DUMTConstSet
+    msgToType (MsgConstClear _ _ _) = DUMTConstClear
+    msgToType (MsgSet _ _ _ _ _ _ _) = DUMTSet
     msgToType (MsgRemove _ _ _ _) = DUMTRemove
     msgToType (MsgClear _ _ _ _) = DUMTClear
     msgToType (MsgSetChildren _ _ _) = DUMTSetChildren
 
 dumtParser :: DataUpdateMsgType -> Parser DataUpdateMessage
 dumtParser e = case e of
-    DUMTAdd -> sap MsgAdd
-    DUMTSet -> sap MsgSet
+    DUMTConstSet -> MsgConstSet <$> parser <*> parser <*> parser <*> parser
+    DUMTConstClear -> MsgConstClear <$> parser <*> parser <*> parser
+    DUMTSet -> MsgSet <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     DUMTRemove -> rcp MsgRemove
     DUMTClear -> rcp MsgClear
     DUMTSetChildren -> MsgSetChildren <$> parser <*> parser <*> parser
   where
-    sap mt =
-      mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     rcp mt = mt <$> parser <*> parser <*> parser <*> parser
 
 dumtBuilder :: MonadFail m => DataUpdateMessage -> m Builder
 dumtBuilder m = case m of
-    (MsgAdd p t v i a s) ->
-      builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
-      builder s
-    (MsgSet p t v i a s) ->
-      builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
-      builder s
-    (MsgRemove p t a s) ->
+    MsgConstSet p v a s ->
+      builder p <<>> builder v <<>> builder a <<>> builder s
+    MsgConstClear p a s -> builder p <<>> builder a <<>> builder s
+    MsgSet p ptId t v i a s ->
+      builder p <<>> builder ptId <<>> builder t <<>> builder v <<>> builder i
+      <<>> builder a <<>> builder s
+    MsgRemove p t a s ->
       builder p <<>> builder t <<>> builder a <<>> builder s
-    (MsgClear p t a s) ->
+    MsgClear p t a s ->
       builder p <<>> builder t <<>> builder a <<>> builder s
-    (MsgSetChildren p ns a) ->
+    MsgSetChildren p ns a ->
       builder p <<>> builder ns <<>> builder a
 
 instance Encodable DataUpdateMessage where

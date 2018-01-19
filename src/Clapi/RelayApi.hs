@@ -32,6 +32,7 @@ import Clapi.Util (strictZipWith, fmtStrictZipError)
 import Clapi.Types.AssocList (mkAssocList)
 import Clapi.Types.Definitions
   (TupleDefinition(..), StructDefinition(..), ArrayDefinition(..), toWireValues)
+import Clapi.Types.UniqList (ulFromSet, ulSingle, ulEmpty)
 import Clapi.TextSerialisation (ttFromText)
 
 zt :: Time
@@ -42,28 +43,25 @@ sdp = [pathq|/api/types/base/struct|]
 tdp = [pathq|/api/types/base/tuple|]
 adp = [pathq|/api/types/base/array|]
 
-staticAdd :: Path -> [WireValue] -> OwnerUpdateMessage
-staticAdd p vs = Right $ MsgAdd p zt vs IConstant Nothing Nothing
-
 staticSet :: Path -> [WireValue] -> OwnerUpdateMessage
-staticSet p vs = Right $ MsgSet p zt vs IConstant Nothing Nothing
+staticSet p vs = Right $ MsgConstSet p vs Nothing Nothing
 
 staticStructDefMsg :: Path -> Text -> [(Seg, Path)]-> OwnerUpdateMessage
 staticStructDefMsg sp doc tm =
   let
     al = fromJust $ mkAssocList (fmap (\(n, p) -> (n, (p, Cannot))) tm)
   in
-    staticAdd sp $ toWireValues $ StructDefinition doc al
+    staticSet sp $ toWireValues $ StructDefinition doc al
 
 staticTupleDefMsg :: Path -> Text -> [(Seg, Text)] -> OwnerUpdateMessage
 staticTupleDefMsg p d fm = let al = fromJust $ mkAssocList $ fmap (fromJust . ttFromText) <$> fm in
-    staticAdd p $ toWireValues $ TupleDefinition d al ILConstant
+    staticSet p $ toWireValues $ TupleDefinition d al ILConstant
 
 clRef :: Path -> WireValue
 clRef = WireValue . toText
 
 staticArrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
-staticArrayDefMsg p d ct = staticAdd p $ toWireValues $ ArrayDefinition d ct Cannot
+staticArrayDefMsg p d ct = staticSet p $ toWireValues $ ArrayDefinition d ct Cannot
 
 class PathSegable a where
     pathNameFor :: a -> Seg
@@ -94,18 +92,18 @@ relayApiProto ownerMv selfAddr =
         ([segq|client_info|], tdp), ([segq|owner_info|], tdp), ([segq|owners|], adp),
         ([segq|build|], tdp)]
       , staticArrayDefMsg catp "clientsdoc" citp
-      , Right $ MsgSetChildren cap [ownSeg] Nothing
-      , staticAdd (cap :/ ownSeg) [WireValue $ unTimeDelta tdZero]
+      , Right $ MsgSetChildren cap (ulSingle ownSeg) Nothing
+      , staticSet (cap :/ ownSeg) [WireValue $ unTimeDelta tdZero]
       , staticTupleDefMsg citp
         "Info about connected clients (clock_diff is in seconds)"
         [([segq|clock_diff|], "float")]
       , staticArrayDefMsg odp "ownersdoc" oidp
       , staticTupleDefMsg oidp "owner info" [([segq|owner|], refOf citp)]
-      , Right $ MsgSetChildren oap [] Nothing
+      , Right $ MsgSetChildren oap ulEmpty Nothing
       , staticTupleDefMsg selfTP "Which client are you" [([segq|info|], refOf citp)]
-      , staticAdd selfP [clRef $ cap :/ ownSeg]
+      , staticSet selfP [clRef $ cap :/ ownSeg]
       , staticTupleDefMsg btp "builddoc" [([segq|commit_hash|], "string[banana]")]
-      , staticAdd [pathq|/relay/build|] [WireValue @Text "banana"]
+      , staticSet [pathq|/relay/build|] [WireValue @Text "banana"]
       ]
     rtp = [pathq|/relay/types/relay|]
     btp = [pathq|/relay/types/build|]
@@ -123,9 +121,9 @@ relayApiProto ownerMv selfAddr =
     subRoot = toNST $ TRBClient $ RequestBundle [MsgSubscribe Root] []
     steadyState oldOwnerMap ci = waitThen (fwd oldOwnerMap ci) (rev oldOwnerMap ci)
     pubOwnerMap old new = when (Map.keys old /= Map.keys new) $ do
-        let scm = Right $ MsgSetChildren oap (Map.keys new) Nothing
+        let scm = Right $ MsgSetChildren oap (ulFromSet $ Map.keysSet new) Nothing
         let om = (cap :/) . pathNameFor <$> Map.difference new old
-        pubUpdate $ scm : ((\(ownerN, refP) -> staticAdd (oap :/ ownerN) [clRef refP]) <$> Map.toList om)
+        pubUpdate $ scm : ((\(ownerN, refP) -> staticSet (oap :/ ownerN) [clRef refP]) <$> Map.toList om)
     handleOwnTat oldOwnerMap _ = do
         newOwnerMap <- lift (readMVar ownerMv)
         pubOwnerMap oldOwnerMap newOwnerMap
@@ -145,8 +143,7 @@ relayApiProto ownerMv selfAddr =
                     then either error id . transformCvs [subtract theirTime]
                     else id
                 _ -> id
-        mkRelative (Right (MsgAdd p t v i' a s)) = Right $ MsgAdd p t (relClientInfo p v) i' a s
-        mkRelative (Right (MsgSet p t v i' a s)) = Right $ MsgSet p t (relClientInfo p v) i' a s
+        mkRelative (Right (MsgConstSet p v a s)) = Right $ MsgConstSet p (relClientInfo p v) a s
         mkRelative m = m
         oums' = mkRelative <$> oums
       in
@@ -157,8 +154,8 @@ relayApiProto ownerMv selfAddr =
         cSeg = pathNameFor cid
         ci' = Map.insert cSeg tdZero ci
         uMsgs =
-          [ Right $ MsgSetChildren cap (Map.keys ci') Nothing
-          , staticAdd (cap :/ cSeg) [WireValue $ unTimeDelta tdZero]
+          [ Right $ MsgSetChildren cap (ulFromSet $ Map.keysSet ci') Nothing
+          , staticSet (cap :/ cSeg) [WireValue $ unTimeDelta tdZero]
           ]
     fwd oldOwnerMap ci (ClientData cid (TimeStamped (theirTime, trb))) = do
         let cSeg = pathNameFor cid
@@ -175,7 +172,7 @@ relayApiProto ownerMv selfAddr =
         steadyState newOwnerMap ci
     rev oldOwnerMap ci b@(ServerDisconnect cid) = sendRev b >> removeClient oldOwnerMap ci cid
     removeClient oldOwnerMap ci cid =
-        pubUpdate [ Right $ MsgSetChildren cap (Map.keys ci') Nothing ] >>
+        pubUpdate [ Right $ MsgSetChildren cap (ulFromSet $ Map.keysSet ci') Nothing ] >>
         steadyState oldOwnerMap ci'
       where
         ci' = Map.delete (pathNameFor cid) ci

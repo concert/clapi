@@ -32,8 +32,7 @@ import Clapi.Protocol (Protocol, waitThen, sendRev)
 
 applyDum :: (MonadFail m, HasUvtt v TaintTracker) => Valuespace v -> DataUpdateMessage -> m (Valuespace v)
 applyDum vs msg = case msg of
-    (MsgSet p t v i a s) -> vsSet a i v p s t vs
-    (MsgAdd p t v i a s) -> vsAdd a i v p s t vs
+    (MsgSet p ptId t v i a s) -> vsSet a i v p s t vs
     (MsgRemove p t a s) -> vsRemove a p s t vs
     (MsgClear p t a s) -> vsClear a p s t vs
     (MsgSetChildren p c a) -> vsSetChildren p c vs  -- FIXME: lost attributee
