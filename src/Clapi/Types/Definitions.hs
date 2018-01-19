@@ -13,14 +13,11 @@ import Data.Word
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationLimit(..))
-import Clapi.Types.Path (Path)
+import Clapi.Types.Path (Path, NodePath, TypePath)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType)
 import Clapi.Types.Wire (WireValue(..), (<|$|>), (<|*|>))
 import Clapi.Util (strictZip, fmtStrictZipError, safeToEnum)
-
-type NodePath = Path
-type TypePath = Path
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 
