@@ -28,6 +28,7 @@ import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import Data.Text.Encoding (decodeUtf8With)
 
 import Clapi.Types.Base (Time(..), TimeStamped(..), Tag(..), mkTag)
+import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
 import Clapi.Util (bound)
 
@@ -85,6 +86,10 @@ listParser :: Parser a -> Parser [a]
 listParser dec = do
     len <- anyWord16be
     count (fromIntegral len) dec
+
+instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
+  builder = builder . unUniqList
+  parser = parser >>= mkUniqList
 
 -- ALINEALINEALINEALINEALINE
 
