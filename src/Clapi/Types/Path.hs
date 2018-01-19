@@ -81,13 +81,13 @@ isParentOf (Path a) (Path b) = isPrefixOf a b
 isChildOf :: Path -> Path -> Bool
 isChildOf = flip isParentOf
 
-isParentOfAny :: Path -> [Path] -> Bool
+isParentOfAny :: (Functor f, Foldable f) => Path -> f Path -> Bool
 isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
 
-isChildOfAny :: Path -> [Path] -> Bool
+isChildOfAny :: (Functor f, Foldable f) => Path -> f Path -> Bool
 isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
-childPaths :: Path -> [Seg] -> [Path]
+childPaths :: Functor f => Path -> f Seg -> f Path
 childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
 
 type NodePath = Path
