@@ -67,11 +67,11 @@ library
                      , regex-pcre
                      , scientific
                      , split
+                     , stm
                      , template-haskell
                      , th-lift
                      , th-lift-instances
                      , text
-                     , stm
                      , unagi-chan
                      , utf8-string
   default-language:    Haskell2010
