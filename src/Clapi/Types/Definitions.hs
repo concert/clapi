@@ -13,8 +13,8 @@ import Data.Word
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationLimit(..))
-import Clapi.Types.Path (Path, NodePath, TypePath)
-import qualified Clapi.Types.Path as Path
+import Clapi.Types.Path
+  (Seg, mkSeg, unSeg, TypeName, typeNameToText, typeNameFromText)
 import Clapi.Types.Tree (TreeType)
 import Clapi.Types.Wire (WireValue(..), (<|$|>), (<|*|>))
 import Clapi.Util (strictZip, fmtStrictZipError, safeToEnum)
@@ -27,11 +27,11 @@ class OfMetaType metaType where
   metaType :: metaType -> MetaType
   toWireValues :: metaType -> [WireValue]
   fromWireValues :: MonadFail m => [WireValue] -> m metaType
-  childTypeFor :: metaType -> Path.Seg -> Maybe TypePath
+  childTypeFor :: metaType -> Seg -> Maybe TypeName
 
 data TupleDefinition = TupleDefinition
   { tupDefDoc :: Text
-  , tupDefTypes :: AssocList Path.Seg TreeType
+  , tupDefTypes :: AssocList Seg TreeType
   , tupDefInterpLimit :: InterpolationLimit
   } deriving (Show, Eq)
 
@@ -42,7 +42,7 @@ instance OfMetaType TupleDefinition where
       (names, treeTypes) = unzip $ unAssocList tys
     in
       [ WireValue d
-      , WireValue $ Path.unSeg <$> names
+      , WireValue $ unSeg <$> names
       , WireValue $ ttToText <$> treeTypes
       , WireValue @Word8 $ fromIntegral $ fromEnum il
       ]
@@ -54,7 +54,7 @@ instance OfMetaType TupleDefinition where
         :: MonadFail m => Text -> [Text] -> [Text] -> Word8
         -> m TupleDefinition
       mkDef d ns ts il = do
-        names <- mapM Path.mkSeg ns
+        names <- mapM mkSeg ns
         types <- mapM ttFromText ts
         al <- alFromZip names types
         interp <- safeToEnum $ fromIntegral il
@@ -65,7 +65,7 @@ instance OfMetaType TupleDefinition where
 
 data StructDefinition = StructDefinition
   { strDefDoc :: Text
-  , strDefTypes :: AssocList Path.Seg (Path, Liberty)
+  , strDefTypes :: AssocList Seg (TypeName, Liberty)
   } deriving (Show, Eq)
 
 instance OfMetaType StructDefinition where
@@ -76,8 +76,8 @@ instance OfMetaType StructDefinition where
       (tps, libs) = unzip tys'
     in
       [ WireValue d
-      , WireValue $ Path.unSeg <$> names
-      , WireValue $ Path.toText <$> tps
+      , WireValue $ unSeg <$> names
+      , WireValue $ typeNameToText <$> tps
       , WireValue @[Word8] $ fromIntegral . fromEnum <$> libs
       ]
 
@@ -87,13 +87,13 @@ instance OfMetaType StructDefinition where
       mkDef
         :: MonadFail m => Text -> [Text] -> [Text] -> [Word8]
         -> m StructDefinition
-      mkDef d ns tps ls = do
-        names <- mapM Path.mkSeg ns
-        typePaths <- mapM Path.fromText tps
+      mkDef d ns tns ls = do
+        names <- mapM mkSeg ns
+        typeNames <- mapM typeNameFromText tns
         clibs <- mapM (safeToEnum . fromIntegral) ls
         StructDefinition d <$>
-          (fmtStrictZipError "paths" "liberties" (strictZip typePaths clibs)
-           >>= alFromZip names)
+          (fmtStrictZipError "type names" "liberties"
+             (strictZip typeNames clibs) >>= alFromZip names)
   fromWireValues _ = fail "Wrong number of arguments for struct def"
 
   childTypeFor (StructDefinition _ tyInfo) seg =
@@ -101,7 +101,7 @@ instance OfMetaType StructDefinition where
 
 data ArrayDefinition = ArrayDefinition
   { arrDefDoc :: Text
-  , arrDefChildType :: Path
+  , arrDefChildType :: TypeName
   , arrDefChildLiberty :: Liberty
   } deriving (Show, Eq)
 
@@ -109,7 +109,7 @@ instance OfMetaType ArrayDefinition where
   metaType _ = Array
   toWireValues (ArrayDefinition d ct cl) =
     [ WireValue d
-    , WireValue $ Path.toText ct
+    , WireValue $ typeNameToText ct
     , WireValue @Word8 $ fromIntegral $ fromEnum cl
     ]
 
@@ -117,8 +117,8 @@ instance OfMetaType ArrayDefinition where
       join $ mkDef <|$|> doc <|*|> ty <|*|> liberty
     where
       mkDef :: MonadFail m => Text -> Text -> Word8 -> m ArrayDefinition
-      mkDef d tp l =
-        ArrayDefinition d <$> Path.fromText tp <*> safeToEnum (fromIntegral l)
+      mkDef d tn l = ArrayDefinition d
+        <$> typeNameFromText tn <*> safeToEnum (fromIntegral l)
   fromWireValues _ = fail "Wrong number of arguments for array def"
 
   childTypeFor (ArrayDefinition _ tp _) _ = Just tp
