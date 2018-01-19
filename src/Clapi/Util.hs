@@ -7,7 +7,7 @@ module Clapi.Util (
     appendIfAbsent, (+|?),
     duplicates, ensureUnique,
     strictZipWith, strictZip, fmtStrictZipError,
-    partitionDifference, partitionDifferenceL,
+    partitionDifference, partitionDifferenceF,
     camel,
     uncamel,
     showItems,
@@ -19,10 +19,13 @@ module Clapi.Util (
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
+import Data.Foldable (Foldable)
+import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
 import Data.Proxy
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Printf (printf)
 
@@ -78,9 +81,9 @@ fmtStrictZipError n0 n1 = either fmt return
       printf "Mismatched numbers of %v (%i) and %v (%i)" n0 i n1 j
 
 
-partitionDifference ::
-    (Ord a) => Set.Set a -> Set.Set a -> (Set.Set a, Set.Set a)
-partitionDifference sa sb = (Set.difference sa sb, Set.difference sb sa)
+partitionDifference
+  :: (Ord a) => Set.Set a -> Set.Set a -> (Set.Set a, Set.Set a)
+partitionDifference as bs = (Set.difference as bs, Set.difference bs as)
 
 partitionDifferenceL :: (Ord a) => [a] -> [a] -> ([a], [a])
 partitionDifferenceL as bs =
@@ -89,6 +92,18 @@ partitionDifferenceL as bs =
   in
     (Set.toList added, Set.toList removed)
 
+partitionDifferenceF
+  :: (Ord a, Foldable f, Foldable g, Applicative m, Monoid (m a))
+  => f a -> g a -> (m a, m a)
+partitionDifferenceF as bs =
+  let
+    (l, r) = partitionDifference (toSet as) (toSet bs)
+  in
+    (fromSet l, fromSet r)
+  where
+    toSet :: (Foldable f, Ord a) => f a -> Set a
+    toSet = Set.fromList . Foldable.toList
+    fromSet = foldMap pure
 
 uncamel :: String -> String
 uncamel [] = []
