@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 
 module Clapi.Types.UniqList
-  ( UniqList, unUniqList
+  ( UniqList, unUniqList, unsafeMkUniqList
   , mkUniqList, ulFromSet, ulEmpty, ulSingle
   , ulDelete
   ) where
@@ -19,6 +19,9 @@ newtype UniqList a
 
 mkUniqList :: (Ord a, Show a, MonadFail m) => [a] -> m (UniqList a)
 mkUniqList as = UniqList <$> ensureUnique "items" as
+
+unsafeMkUniqList :: [a] -> UniqList a
+unsafeMkUniqList = UniqList
 
 ulFromSet :: Ord a => Set a -> UniqList a
 ulFromSet = UniqList . Set.toList

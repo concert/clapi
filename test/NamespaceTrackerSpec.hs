@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables, QuasiQuotes #-}
 {-# LANGUAGE PatternSynonyms #-}
 module NamespaceTrackerSpec where
@@ -7,6 +8,7 @@ import Test.Hspec
 import qualified Control.Concurrent.Chan.Unagi as U
 import Control.Monad (forever, join, void)
 import Control.Monad.Trans (lift)
+import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Map.Mol as Mol
 import qualified Data.Set as Set
@@ -20,19 +22,30 @@ import Control.Concurrent.MVar
 import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
 import Clapi.TH
-import Clapi.Types (
-    Time(..), Interpolation(..), DataUpdateMessage(..), TreeUpdateMessage(..),
-    MsgError(..), OwnerUpdateMessage(..), Msg(..), WireValue(..),
-    UpdateBundle(..), RequestBundle(..), ToRelayBundle(..),
-    FromRelayBundle(..), SubMessage(..), OwnerRequestBundle(..))
+import Clapi.Types
+    ( Time(..), Interpolation(..), WireValue(..)
+    , FromRelayBundle(..), ToRelayBundle(..)
+    , DataUpdateMessage(..)
+    , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
+    , TrDigest(..), TrpDigest(..), TrprDigest(..)
+    , ErrorIndex(..)
+    , DataChange(..)
+    , digestToRelayBundle, produceFromRelayBundle)
 import Clapi.Types.Path (Path, Seg, pattern Root)
+import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
-import Clapi.NamespaceTracker (namespaceTrackerProtocol, Ownership(..), Owners, Registered, Request(..), Response(..))
+import Clapi.NamespaceTracker
+  (nstProtocol, NstState(..), Ownership(..), Originator(..))
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
-  send, (<<->), runEffect, runProtocolIO)
+  send, (<<->), runEffect, runProtocolIO, mapProtocol)
+import Clapi.Relay
+  ( OutboundDigest(..), InboundDigest(..), InboundClientDigest(..)
+  , OutboundProviderDigest(..))
+
+type Owners i = Map Seg i
 
 helloS :: Seg
 helloS = [segq|hello|]
@@ -42,7 +55,7 @@ spec = do
     it "Rejects ownership claim on pre-owned path" $
       let
         owners = Map.singleton helloS "relay itself"
-        protocol = forTest <<-> namespaceTrackerProtocol noopPub owners mempty <<-> fakeRelay
+        protocol = forTest <<-> nstProtocol noopPub <<-> fakeRelay
         forTest = do
             sendFwd $ ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root]
             sendFwd $ ClientDisconnect alice
@@ -54,7 +67,7 @@ spec = do
     it "Rejects owner subscription" $
       let
         aliceOwns = Map.singleton helloS "alice"
-        protocol = forTest <<-> namespaceTrackerProtocol noopPub aliceOwns mempty <<-> fakeRelay
+        protocol = forTest <<-> nstProtocol noopPub <<-> fakeRelay
         forTest = do
           sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgSubscribe helloP] []
           resps <- collectAllResponsesUntil alice
@@ -66,7 +79,7 @@ spec = do
       let
         ownedP = [pathq|/owned|]
         owners = Map.singleton [segq|owned|] bob
-        protocol = forTest <<-> namespaceTrackerProtocol noopPub owners mempty <<-> fakeRelay
+        protocol = forTest <<-> nstProtocol noopPub <<-> fakeRelay
         forTest = do
           sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgUnsubscribe ownedP] []
           sendFwd $ ClientDisconnect alice
@@ -130,42 +143,66 @@ spec = do
         assertMapValue bob [
             FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP], FRBClient $ UpdateBundle [] [Left $ MsgDelete helloP]] response
         assertMapValue "charlie" [FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP]] response
-    it "Forwards client sets" $ do
-        response <- trackerHelper [
-            ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
-            ClientData bob $ TRBClient $ RequestBundle [] [dum helloP Set]]
-        assertOnlyKeysInMap [alice] response
-        assertMapValue alice [FRBOwner $ OwnerRequestBundle [] [dum helloP Set]] response
+    it "Forwards client mutations to provider" $
+      let
+        shouldBe' a = lift . shouldBe a
+        protocol = clientSide <<-> nstProtocol noopPub <<-> fauxRelay
+        clientSide = do
+          sendFwd $ ClientData alice $ Trpd $ TrpDigest [segq|alician|] mempty mempty mempty mempty
+          sendFwd $ ClientData bob $ Trpd $ TrpDigest [segq|bobian|] mempty mempty mempty mempty
+          waitThen undefined $ \d -> d `shouldBe'` (ServerData alice $ Frpd $ FrpDigest
+            [segq|alician|]
+            (Map.singleton [pathq|/a|] (Nothing, ulSingle [segq|aseg|]))
+            (Map.singleton [pathq|/aa|] $ ConstChange Nothing []))
+          waitThen undefined $ \d -> d `shouldBe'` (ServerData bob $ Frpd $ FrpDigest
+            [segq|bobian|]
+            (Map.singleton [pathq|/b|] (Nothing, ulSingle [segq|bseg|]))
+            (Map.singleton [pathq|/bb|] $ ConstChange Nothing []))
+        kiddy = Map.fromList
+          [ ([pathq|/alician/a|], (Nothing, ulSingle [segq|aseg|]))
+          , ([pathq|/bobian/b|], (Nothing, ulSingle [segq|bseg|]))
+          ]
+        daty = Map.fromList
+          [ ([pathq|/alician/aa|], ConstChange Nothing [])
+          , ([pathq|/bobian/bb|], ConstChange Nothing [])
+          ]
+        fauxRelay = do
+          waitThen (const $ return ()) undefined
+          waitThen (const $ return ()) undefined
+          sendRev (
+            Originator undefined, Opd $ OutboundProviderDigest kiddy daty)
+      in runEffect protocol
     it "Returns validation errors" $
       let
-        protocol = assertions <<-> namespaceTrackerProtocol noopPub mempty mempty <<-> errorSender
-        errorSender = sendRev $ ((alice, Nothing), BadOwnerResponse [err])
-        err = MsgError [pathq|/bad|] "wrong"
+        protocol = assertions <<-> nstProtocol noopPub <<-> errorSender
+        errorSender = sendRev (Originator alice, Ope errDig)
+        errDig = FrpErrorDigest [segq|myApi|]
+          $ Map.singleton GlobalError ["some error message"]
         assertions = do
             d <- wait
             case d of
                 (Rev (ServerData i ms)) -> lift $ do
                     i `shouldBe` alice
-                    ms `shouldBe` (FRBOwner $ OwnerRequestBundle [err] [])
+                    ms `shouldBe` (Frped errDig)
       in
         runEffect protocol
   where
     assertOnlyKeysInMap expected m = Map.keysSet m `shouldBe` Set.fromList expected
-    assertSingleError i path errStrings response =
-        let bundles = (fromJust $ Map.lookup i response) :: [FromRelayBundle] in do
-        length bundles `shouldBe` 1
-        let (errs, ul) = ulae $ head bundles
-        ul `shouldBe` 0
-        length errs `shouldBe` 1
-        mapM_ (assertErrorMsg errStrings) errs
-        mapM_ (assertMsgPath path) errs
+    assertSingleError i path errStrings response = undefined
+        -- let bundles = (fromJust $ Map.lookup i response) :: [FromRelayBundle] in do
+        -- length bundles `shouldBe` 1
+        -- let (errs, ul) = ulae $ head bundles
+        -- ul `shouldBe` 0
+        -- length errs `shouldBe` 1
+        -- mapM_ (assertErrorMsg errStrings) errs
+        -- mapM_ (assertMsgPath path) errs
       where
-        ulae (FRBOwner (OwnerRequestBundle errs dums)) = (errs, length dums)
-    assertErrorMsg substrs msg =
-        mapM_ (\s -> getString msg `shouldSatisfy` T.isInfixOf s) substrs
-      where
-        getString (MsgError _ str) = str
-    assertMsgPath path msg = uMsgPath msg `shouldBe` path
+        -- ulae (FRBOwner (OwnerRequestBundle errs dums)) = (errs, length dums)
+    assertErrorMsg substrs msg = undefined
+      --   mapM_ (\s -> getString msg `shouldSatisfy` T.isInfixOf s) substrs
+      -- where
+      --   getString (MsgError _ str) = str
+    assertMsgPath path msg = undefined -- uMsgPath msg `shouldBe` path
     expectedPubs = map Map.fromList
       [ [(fudgeS, bob)]
       , [(fudgeS, bob), (helloS, alice)]
@@ -176,19 +213,25 @@ spec = do
     assertMapValue k a m = Map.lookup k m `shouldBe` Just a
     fudgeS = [segq|fudge|]
 
+_disconnectUnsubsBase = undefined -- [
+    -- ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
+    -- ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
+    -- ClientDisconnect bob,
+    -- -- Should miss this message:
+    -- ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Set]
+    -- ]
+
 data DataUpdateMethod
-  = Set
-  | Add
+  = ConstSet
+  | Set
   | Remove
-  | Clear
   | Children
 
 dum :: Path -> DataUpdateMethod -> DataUpdateMessage
-dum path Set = MsgSet path (Time 0 0) [] IConstant Nothing Nothing
-dum path Add = MsgAdd path (Time 0 0) [] IConstant Nothing Nothing
-dum path Remove = MsgRemove path (Time 0 0) Nothing Nothing
-dum path Clear = MsgClear path (Time 0 0) Nothing Nothing
-dum path Children = MsgSetChildren path [] Nothing
+dum path ConstSet = MsgConstSet path [] Nothing
+dum path Set = MsgSet path 14 (Time 0 0) [] IConstant Nothing
+dum path Remove = MsgRemove path 14 Nothing
+dum path Children = MsgSetChildren path ulEmpty Nothing
 
 waitN :: (Monad m) => Int -> Protocol a a' b' b m [Directed a b]
 waitN n = inner n mempty
@@ -211,11 +254,15 @@ collectAllResponsesUntil i = inner mempty
 
 fakeRelay ::
     (Monad m, Show c) =>
-    Protocol ((c, Request)) Void ((c, Response)) Void m ()
+    Protocol ((c, InboundDigest)) Void ((c, OutboundDigest)) Void m ()
 fakeRelay = forever $ waitThen fwd undefined
   where
-    fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip MsgAssignType helloP <$> gets) [] updates)
-    fwd (ctx, OwnerRequest updates) = sendRev (ctx, GoodOwnerResponse updates)
+    fwd (ctx, inDig) = case inDig of
+      Icd (InboundClientDigest _ _ _ _) -> undefined
+      Ipd (TrpDigest {}) -> undefined
+      Iprd (TrprDigest ns) -> undefined
+    -- fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip MsgAssignType helloP <$> gets) [] updates)
+    -- fwd (ctx, OwnerRequest updates) = sendRev (ctx, GoodOwnerResponse updates)
 
 alice = "alice"
 bob = "bob"
@@ -264,15 +311,7 @@ untilDisconnect i = waitThen fwd next
         | i == i' = sendRev e
         | otherwise = sendRev e >> untilDisconnect i
 
-nstBounceProto = namespaceTrackerProtocol noopPub mempty mempty <<-> fakeRelay
-
-_disconnectUnsubsBase = [
-    ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
-    ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
-    ClientDisconnect bob,
-    -- Should miss this message:
-    ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Set]
-    ]
+nstBounceProto = nstProtocol noopPub <<-> fakeRelay
 
 pubTrackerHelper ::
     (Ord i, Show i) =>
@@ -280,24 +319,26 @@ pubTrackerHelper ::
     IO (Map.Map i [FromRelayBundle])
 pubTrackerHelper expectedPubs inMsgs = do
     pubList <- newMVar []
-    rv <- trackerHelper' (listPub pubList) mempty mempty inMsgs
+    rv <- trackerHelper' (listPub pubList) inMsgs
     actualPubs <- takeMVar pubList
     reverse actualPubs `shouldBe` expectedPubs
     return rv
   where
     listPub mv o = modifyMVar_ mv (\l -> return $ o : l)
 
-trackerHelper = trackerHelper' noopPub mempty mempty
+trackerHelper = trackerHelper' noopPub
 
 trackerHelper' ::
     forall i.  (Ord i, Show i) =>
     (Owners i -> IO ()) ->
-    Owners i -> Registered i -> [ClientEvent i ToRelayBundle] ->
+    [ClientEvent i ToRelayBundle] ->
     IO (Map.Map i [FromRelayBundle])
-trackerHelper' pub owners registered as =
-    mapPack <$> gogo as' i (trackerProto <<-> fakeRelay)
+trackerHelper' pub as =
+    mapPack <$> gogo as' i (digester <<-> trackerProto <<-> fakeRelay)
   where
-    trackerProto = namespaceTrackerProtocol pub owners registered
+    digester = mapProtocol
+      (fmap digestToRelayBundle) (fmap produceFromRelayBundle)
+    trackerProto = nstProtocol pub
     i = i' $ head as
     i' :: ClientEvent i ToRelayBundle -> i
     i' (ClientData i _) = i

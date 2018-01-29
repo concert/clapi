@@ -17,13 +17,6 @@ import Data.Void
 
 data Directed a b = Fwd a | Rev b deriving (Show, Eq)
 
--- isFwd :: Directed a b -> Bool
--- isFwd (Fwd a) = True
--- isFwd _ = False
-
--- isRev :: Directed a b -> Bool
--- isRev = not . isFwd
-
 fromDirected :: (a -> c) -> (b -> c) -> Directed a b -> c
 fromDirected f _ (Fwd a) = f a
 fromDirected _ g (Rev b) = g b
@@ -138,8 +131,23 @@ waitThen onFwd onRev = do
       Fwd a -> onFwd a
       Rev b -> onRev b
 
-map :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
-map f g = waitThen (sendFwd . f) (sendRev . g)
+waitThenFwdOnly
+  :: Monad m
+  => (a -> Protocol a a' b' Void m r)
+  -> Protocol a a' b' Void m r
+waitThenFwdOnly f = waitThen f (const $ error "Message from the void right")
+
+waitThenRevOnly
+  :: Monad m
+  => (b -> Protocol Void a' b' b m r)
+  -> Protocol Void a' b' b m r
+waitThenRevOnly f = waitThen (const $ error "Message from the void left") f
+
+mapProtocol :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
+mapProtocol f g = waitThen (sendFwd . f) (sendRev . g)
+
+idProtocol :: Monad m => Protocol a a b b m ()
+idProtocol = forever $ waitThen sendFwd sendRev
 
 waitEitherForever :: IO a -> IO b -> (Either a b -> IO r) -> IO ()
 waitEitherForever ioa iob f = do

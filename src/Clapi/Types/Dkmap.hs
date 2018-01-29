@@ -15,22 +15,13 @@ import Control.Monad (when)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Bimap (Bimap)
 import qualified Data.Bimap as Bimap
+import Data.Maybe (fromJust)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
 data Dkmap k0 k1 v
   = Dkmap {_keyMap :: (Bimap k1 k0), _valueMap :: (Map k0 v)}
   deriving (Show, Eq, Functor, Foldable)
--- makeLenses ''Dkmap
-
--- type instance Index (Dkmap k0 k1 v) = k0
--- type instance IxValue (Dkmap k0 k1 v) = v
-
--- instance Ord k0 => Ixed (Dkmap k0 k1 v) where
---   ix k0 = valueMap . (ix k0)
-
--- instance Ord k0 => At (Dkmap k0 k1 v) where
---   at k0 = valueMap . (at k0)
 
 empty :: (Ord k0, Ord k1) => Dkmap k0 k1 v
 empty = Dkmap Bimap.empty mempty
@@ -84,3 +75,7 @@ rekey
 rekey k0 k1' (Dkmap km vm) = do
   k1 <- maybe (fail "missing") return $ Bimap.lookupR k0 km
   return $ Dkmap (Bimap.insert k1' k0 $ Bimap.delete k1 km) vm
+
+flatten :: (Ord k0, Ord k1) => (k1 -> v -> a) -> Dkmap k0 k1 v -> Map k0 a
+flatten f (Dkmap km vm) =
+  Map.mapWithKey (\k0 v -> f (fromJust $ Bimap.lookupR k0 km) v) vm

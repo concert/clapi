@@ -10,6 +10,8 @@ import Control.Monad.Fail (MonadFail(..))
 import Data.Text (Text)
 import Data.Word
 
+import Data.Maybe.Clapi (note)
+
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationLimit(..))
@@ -28,6 +30,7 @@ class OfMetaType metaType where
   toWireValues :: metaType -> [WireValue]
   fromWireValues :: MonadFail m => [WireValue] -> m metaType
   childTypeFor :: metaType -> Seg -> Maybe TypeName
+  childLibertyFor :: MonadFail m => metaType -> Seg -> m Liberty
 
 data TupleDefinition = TupleDefinition
   { tupDefDoc :: Text
@@ -62,6 +65,7 @@ instance OfMetaType TupleDefinition where
   fromWireValues _ = fail "Wrong number of arguments for tuple def"
 
   childTypeFor _ _ = Nothing
+  childLibertyFor _ _ = fail "Tuples have no children"
 
 data StructDefinition = StructDefinition
   { strDefDoc :: Text
@@ -98,6 +102,8 @@ instance OfMetaType StructDefinition where
 
   childTypeFor (StructDefinition _ tyInfo) seg =
     fst <$> lookup seg (unAssocList tyInfo)
+  childLibertyFor (StructDefinition _ tyInfo) seg = note "No such child" $
+    snd <$> lookup seg (unAssocList tyInfo)
 
 data ArrayDefinition = ArrayDefinition
   { arrDefDoc :: Text
@@ -122,6 +128,7 @@ instance OfMetaType ArrayDefinition where
   fromWireValues _ = fail "Wrong number of arguments for array def"
 
   childTypeFor (ArrayDefinition _ tp _) _ = Just tp
+  childLibertyFor (ArrayDefinition _ _ l) _ = return l
 
 
 data Definition
@@ -129,6 +136,15 @@ data Definition
   | StructDef StructDefinition
   | ArrayDef ArrayDefinition
   deriving (Show, Eq)
+
+tupleDef :: Text -> AssocList Seg TreeType -> InterpolationLimit -> Definition
+tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
+
+structDef :: Text -> AssocList Seg (TypeName, Liberty) -> Definition
+structDef doc types = StructDef $ StructDefinition doc types
+
+arrayDef :: Text -> TypeName -> Liberty -> Definition
+arrayDef doc tn lib = ArrayDef $ ArrayDefinition doc tn lib
 
 defDispatch :: (forall a. OfMetaType a => a -> r) -> Definition -> r
 defDispatch f (TupleDef d) = f d

@@ -20,7 +20,7 @@ import Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax, TreeConcreteTypeName(..),
   TreeContainerTypeName(..) , TreeConcreteType(..), TreeContainerType(..),
   TreeType(..), typeEnumOf)
-import Clapi.Types.Path (pathP, segP, unSeg)
+import Clapi.Types.Path (segP, unSeg)
 import qualified Clapi.Types.Path as Path
 
 concTNameToText :: TreeConcreteTypeName -> Text
@@ -113,7 +113,7 @@ concTParser = concTNameParser >>= getParser
       TcnFloat -> TcFloat <$> bbp (toRealFloat <$> Dat.scientific)
       TcnDouble -> TcDouble <$> bbp (toRealFloat <$> Dat.scientific)
       TcnString -> TcString <$> optionalArgs "" (Dat.takeWhile $ const True)
-      TcnRef -> TcRef <$> bracketed pathP
+      TcnRef -> TcRef <$> bracketed Path.typeNameP
       TcnValidatorDesc -> return TcValidatorDesc
 
 contTParser :: Parser TreeContainerType
@@ -146,7 +146,7 @@ concTToText tct = (concTNameToText $ typeEnumOf tct) <> args
         TcFloat bs -> boundsToText bs
         TcDouble bs -> boundsToText bs
         TcString s -> s
-        TcRef p -> Path.toText p
+        TcRef tn -> Path.typeNameToText tn
         TcValidatorDesc -> ""
     args = case bracketContent of
         "" -> ""

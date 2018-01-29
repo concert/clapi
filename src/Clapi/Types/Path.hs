@@ -2,16 +2,17 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveLift #-}
+
 module Clapi.Types.Path (
     Path(..), Seg, mkSeg, unSeg,
     pathP, segP, toText, fromText,
+    splitHead, splitTail,
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
     NodePath, TypePath,
-    TypeName, typeNameToText, typeNameFromText) where
+    TypeName(..), typeNameP, typeNameToText, typeNameFromText) where
 
 import Prelude hiding (fail)
-import Control.Applicative ((<|>))
 import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
@@ -95,24 +96,20 @@ childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
 type NodePath = Path
 type TypePath = Path
 
+data TypeName = TypeName {tnNamespace :: Seg, tnName :: Seg} deriving (Eq, Ord)
+
 qualSepChar :: Char
 qualSepChar = ':'
 
-data TypeName = Unqualified Seg | Qualified Seg Seg deriving Eq
-
 typeNameToText :: TypeName -> Text
-typeNameToText (Unqualified s) = unSeg s
-typeNameToText (Qualified s0 s1) =
-  unSeg s0 <> Text.singleton qualSepChar <> unSeg s1
+typeNameToText (TypeName ns s) =
+  unSeg ns <> Text.singleton qualSepChar <> unSeg s
 
 instance Show TypeName where
   show = Text.unpack . typeNameToText
 
 typeNameP :: Parser TypeName
-typeNameP = do
-  seg <- segP
-  (DAT.char qualSepChar >> segP >>= return . Qualified seg)
-    <|> return (Unqualified seg)
+typeNameP = TypeName <$> segP <*> (DAT.char qualSepChar >> segP)
 
 typeNameFromText :: MonadFail m => Text -> m TypeName
 typeNameFromText =

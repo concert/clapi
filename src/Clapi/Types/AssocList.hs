@@ -16,7 +16,7 @@ import Data.Functor.Identity (Identity(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Clapi.Types.UniqList (UniqList, unUniqList)
+import Clapi.Types.UniqList (UniqList, unUniqList, unsafeMkUniqList)
 import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
 
 newtype AssocList a b
@@ -40,8 +40,8 @@ alFromZip as bs = fmtStrictZipError "keys" "values" (strictZip as bs) >>= mkAsso
 alLookup :: (MonadFail m, Eq a, Show a) => a -> AssocList a b -> m b
 alLookup a l = maybe (fail $ "Missing " ++ show a) return $ lookup a $ unAssocList l
 
-alKeys :: AssocList a b -> [a]
-alKeys = fmap fst . unAssocList
+alKeys :: AssocList a b -> UniqList a
+alKeys = unsafeMkUniqList . fmap fst . unAssocList
 
 alValues :: AssocList a b -> [b]
 alValues = fmap snd . unAssocList

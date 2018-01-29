@@ -27,8 +27,10 @@ library
                      , Clapi.RelayApi
                      , Clapi.Serialisation
                      , Clapi.Serialisation.Base
-                     , Clapi.Serialisation.Wire
+                     , Clapi.Serialisation.Definitions
                      , Clapi.Serialisation.Messages
+                     , Clapi.Serialisation.Path
+                     , Clapi.Serialisation.Wire
                      , Clapi.Server
                      , Clapi.TaggedData
                      , Clapi.TextSerialisation

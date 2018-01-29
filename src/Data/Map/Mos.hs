@@ -43,11 +43,14 @@ concat = foldr union mempty
 
 type Dependencies k a = (Map.Map k a, Mos a k)
 
+dependenciesFromMap :: (Ord k, Ord a) => Map.Map k a -> Dependencies k a
+dependenciesFromMap m = (m, invertMap m)
+
 getDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
 getDependency k = Map.lookup k . fst
 
-getDependants :: (Ord k, Ord a) => a -> Dependencies k a -> Maybe (Set.Set k)
-getDependants a = Map.lookup a . snd
+getDependants :: (Ord k, Ord a) => a -> Dependencies k a -> Set.Set k
+getDependants a = maybe mempty id . Map.lookup a . snd
 
 allDependencies :: Dependencies k a -> Set.Set a
 allDependencies = Map.keysSet . snd
@@ -79,6 +82,22 @@ delDependency k (deps, revDeps) = (deps', revDeps' ma)
 delDependencies ::
     (Ord k, Ord a, Foldable f) => f k -> Dependencies k a -> Dependencies k a
 delDependencies ks ds = foldr delDependency ds ks
+
+filterDeps
+  :: (Ord k, Ord a) => (k -> a -> Bool) -> Dependencies k a -> Dependencies k a
+filterDeps f (deps, revDeps) =
+  let
+    (toKeep, toDrop) = Map.partitionWithKey f deps
+  in
+    (toKeep, flip Set.difference (Map.keysSet toDrop) <$> revDeps)
+
+filterDependencies
+  :: (Ord k, Ord a) => (k -> Bool) -> Dependencies k a -> Dependencies k a
+filterDependencies f = filterDeps (\k _ -> f k)
+
+filterDependents
+  :: (Ord k, Ord a) => (a -> Bool) -> Dependencies k a -> Dependencies k a
+filterDependents f = filterDeps (const f)
 
 
 type Dependencies' k a = (Mos k a, Mos a k)

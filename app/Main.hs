@@ -1,7 +1,9 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 module Main where
 
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Control.Monad
@@ -19,15 +21,15 @@ import qualified Data.ByteString.Base16 as B16
 import Control.Concurrent.MVar
 
 import Clapi.Server (protocolServer, withListen)
-import Clapi.SerialisationProtocol (serialiser)
+import Clapi.SerialisationProtocol (serialiser, digester)
 import Clapi.Serialisation ()
-import Clapi.NamespaceTracker (namespaceTrackerProtocol, Owners(..))
+import Clapi.NamespaceTracker (nstProtocol)
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Types.Path (mkSeg)
+import Clapi.Types.Path (Seg, mkSeg)
 import Clapi.TH (segq)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
@@ -37,22 +39,26 @@ shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
 
 -- FIXME: This is owned by something unsendable and we should reflect that
 internalAddr = SockAddrCan 12
-apiClaimed :: Owners SockAddr
-apiClaimed = Map.singleton [segq|api|] internalAddr
 
 instance PathSegable SockAddr where
     pathNameFor (SockAddrCan _) = [segq|relay|]
     -- NOTE: Do not persist this as it depends on the form of show
-    pathNameFor clientAddr = fromJust $ mkSeg $ T.pack $ take 8 $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
+    pathNameFor clientAddr = fromJust $ mkSeg $ T.pack $ take 8
+      $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
 
 main :: IO ()
 main =
   do
-    ownershipMvar <- newMVar apiClaimed
+    ownershipMvar <- newEmptyMVar
     tid <- myThreadId
     installHandler keyboardSignal (Catch $ killThread tid) Nothing
     withListen HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto (totalProto ownershipMvar) (return ())
   where
-    perClientProto addr = (addr, serialiser <<-> attributor "someone")
-    totalProto ownershipMvar = shower "total" <<-> relayApiProto ownershipMvar internalAddr <<-> shower "nt" <<-> namespaceTrackerProtocol (void . swapMVar ownershipMvar) apiClaimed mempty <<-> relay baseValuespace
+    perClientProto addr = (addr, serialiser <<-> digester <<-> attributor "someone")
+    totalProto ownershipMvar = shower "total"
+      <<-> relayApiProto (readMVar ownershipMvar) internalAddr
+      <<-> shower "nt"
+      <<-> nstProtocol
+        (void . swapMVar ownershipMvar)
+      <<-> relay baseValuespace
