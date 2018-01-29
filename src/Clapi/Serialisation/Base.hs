@@ -142,13 +142,23 @@ tdTaggedBuilder
   :: MonadFail m =>TaggedData e a -> (a -> m Builder) -> a -> m Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
+
+ilToTag :: InterpolationLimit -> Tag
+ilToTag il = case il of
+    ILUninterpolated -> [btq|U|]
+    ILConstant -> [btq|C|]
+    ILLinear -> [btq|L|]
+    ILBezier -> [btq|B|]
+
+ilTaggedData :: TaggedData InterpolationLimit InterpolationLimit
+ilTaggedData = taggedData ilToTag id
+
+instance Encodable InterpolationLimit where
+  builder = tdTaggedBuilder ilTaggedData $ const $ return mempty
+  parser = tdTaggedParser ilTaggedData return
+
 interpolationTaggedData :: TaggedData InterpolationLimit Interpolation
-interpolationTaggedData = taggedData toTag interpolationType
-  where
-    toTag (ILUninterpolated) = [btq|U|]
-    toTag (ILConstant) = [btq|C|]
-    toTag (ILLinear) = [btq|L|]
-    toTag (ILBezier) = [btq|B|]
+interpolationTaggedData = taggedData ilToTag interpolationType
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
