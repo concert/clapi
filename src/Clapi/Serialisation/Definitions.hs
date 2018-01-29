@@ -4,7 +4,13 @@ module Clapi.Serialisation.Definitions where
 
 import Clapi.Serialisation.Base (Encodable(..))
 import Clapi.Types.Definitions
-  (TupleDefinition(..), StructDefinition(..), ArrayDefinition(..))
+  ( Liberty(..)
+  , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
+  , Definition(..))
+
+instance Encodable Liberty where
+  builder = undefined
+  parser = undefined
 
 instance Encodable TupleDefinition where
   builder = undefined
@@ -15,5 +21,9 @@ instance Encodable StructDefinition where
   parser = undefined
 
 instance Encodable ArrayDefinition where
+  builder = undefined
+  parser = undefined
+
+instance Encodable Definition where
   builder = undefined
   parser = undefined
