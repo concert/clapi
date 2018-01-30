@@ -18,7 +18,7 @@ import Clapi.Types
 import Clapi.Types.AssocList (alSingleton, alFromMap)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
-import Clapi.Types.Messages
+import Clapi.Types.Digests
   (DefOp(OpDefine), DataChange(..), TrcDigest(..), SubOp(..), FrcDigest(..))
 import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/))
 import qualified Clapi.Types.Path as Path

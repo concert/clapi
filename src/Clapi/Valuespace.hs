@@ -38,7 +38,7 @@ import Clapi.Types.AssocList (alKeys, alValues, alLookup, alFromMap)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor)
-import Clapi.Types.Messages
+import Clapi.Types.Digests
   (DefOp(..), TrpDigest(..), ChildAssignments, DataDigest)
 import Clapi.Types.Tree (TreeType(..))
 import Clapi.Validator (validate)

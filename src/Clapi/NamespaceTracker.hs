@@ -19,10 +19,11 @@ import qualified Data.Text as Text
 
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
-import Clapi.Types.Messages
+import Clapi.Types.Messages (ErrorIndex(..))
+import Clapi.Types.Digests
   ( TrDigest(..), TrcDigest(..), TrpDigest(..), TrprDigest(..)
   , FrDigest(..), FrcDigest(..), FrpDigest(..), FrpErrorDigest(..)
-  , ErrorIndex(..), DefOp(..), SubOp(..), frcdNull, trcdNamespaces)
+  , DefOp(..), SubOp(..), frcdNull, trcdNamespaces)
 import Clapi.Types.Path (Seg, Path, TypeName(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))

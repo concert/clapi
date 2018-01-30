@@ -30,7 +30,7 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</),
     NodePath)
-import Clapi.Types.Messages
+import Clapi.Types.Digests
   ( DataDigest, ChildAssignments, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.UniqList (UniqList)
 

@@ -17,10 +17,11 @@ import qualified Data.Text as Text
 import Data.Void (Void)
 
 import qualified Clapi.Types.Dkmap as Dkmap
-import Clapi.Types.Messages
+import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
+import Clapi.Types.Digests
   ( ChildAssignments, DataDigest, TrpDigest(..), TrprDigest(..)
   , FrpErrorDigest(..), DataChange(..)
-  , TimeSeriesDataOp(..), ErrorIndex(..), namespaceErrIdx)
+  , TimeSeriesDataOp(..))
 import Clapi.Types.Path (Path, TypeName(..))
 import Clapi.Types.Definitions (Liberty, Definition)
 import Clapi.Types.Wire (WireValue)
