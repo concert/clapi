@@ -30,8 +30,7 @@ import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupDef
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
   , getLiberty)
--- import Clapi.NamespaceTracker (maybeNamespace, Request(..), Response(..))
-import Clapi.Protocol (Protocol, waitThen, sendRev)
+import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
 
 data InboundClientDigest = InboundClientDigest
   { icdGets :: Set Path
@@ -118,7 +117,7 @@ genInitDigest ps tns vs =
 relay
   :: Monad m => Valuespace
   -> Protocol (i, InboundDigest) Void (i, OutboundDigest) Void m ()
-relay vs = waitThen fwd (const $ error "message from the void")
+relay vs = waitThenFwdOnly fwd
   where
     fwd (i, dig) = case dig of
         Ipd d -> either
