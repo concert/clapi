@@ -62,7 +62,7 @@ data DataUpdateMessage
       }
   | MsgSet
       { duMsgPath :: Path
-      , duMsgTsUuid :: TpId
+      , duMsgTpId :: TpId
       , duMsgTime :: Time
       , duMsgArgs :: [WireValue]
       , duMsgInterpolation :: Interpolation
@@ -70,7 +70,7 @@ data DataUpdateMessage
       }
   | MsgRemove
       { duMsgPath :: Path
-      , duMsgTsUuid :: Word32
+      , duMsgTpId :: Word32
       , duMsgAttributee :: Maybe Attributee
       }
   | MsgSetChildren
@@ -106,7 +106,7 @@ data ToRelayClientBundle = ToRelayClientBundle
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
-  { frcbErrors :: [MsgError Path]
+  { frcbErrors :: [MsgError TypeName]
   , frcbDefinitions :: [DefMessage TypeName]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]

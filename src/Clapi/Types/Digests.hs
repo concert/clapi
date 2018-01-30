@@ -111,7 +111,18 @@ digestDataUpdateMessages msgs =
 
 produceDataUpdateMessages
   :: ChildAssignments -> DataDigest -> [DataUpdateMessage]
-produceDataUpdateMessages = undefined
+produceDataUpdateMessages cas dd = casMsgs ++ ddMsgs
+  where
+    casMsgs = Map.foldlWithKey
+      (\msgs p (att, segs) -> MsgSetChildren p segs att : msgs) [] cas
+    ddMsgs = Map.foldlWithKey (\msgs p dc -> procDc p dc ++ msgs) [] dd
+    procDc :: Path -> DataChange -> [DataUpdateMessage]
+    procDc p dc = case dc of
+      ConstChange att wvs -> [MsgConstSet p wvs att]
+      TimeChange m -> Map.foldlWithKey (\msgs tpid (att, op) -> (case op of
+        OpSet t wvs i -> MsgSet p tpid t wvs i att
+        OpRemove -> MsgRemove p tpid att) : msgs) [] m
+
 
 qualifyDefMessage :: Seg -> DefMessage Seg -> DefMessage TypeName
 qualifyDefMessage ns dm = case dm of
@@ -126,7 +137,10 @@ digestDefMessages = Map.fromList . fmap procMsg
       MsgUndefine a -> (a, OpUndefine)
 
 produceDefMessages :: Map a DefOp -> [DefMessage a]
-produceDefMessages = undefined
+produceDefMessages = Map.elems . Map.mapWithKey
+  (\a op -> case op of
+     OpDefine def -> MsgDefine a def
+     OpUndefine -> MsgUndefine a)
 
 digestSubMessages :: [SubMessage] -> (Map TypeName SubOp, Map Path SubOp)
 digestSubMessages msgs =
@@ -140,15 +154,24 @@ digestSubMessages msgs =
       MsgTypeUnsubscribe tn -> Left $ (tn, OpUnsubscribe)
 
 produceSubMessages :: Map TypeName SubOp -> Map Path SubOp -> [SubMessage]
-produceSubMessages = undefined
+produceSubMessages tySubs datSubs = tySubMsgs ++ datSubMsgs
+  where
+    tySubMsgs = Map.elems $ Map.mapWithKey (\tn op -> case op of
+      OpSubscribe -> MsgTypeSubscribe tn
+      OpUnsubscribe -> MsgTypeUnsubscribe tn) tySubs
+    datSubMsgs = Map.elems $ Map.mapWithKey (\p op -> case op of
+      OpSubscribe -> MsgSubscribe p
+      OpUnsubscribe -> MsgUnsubscribe p) datSubs
+
 
 digestTypeMessages :: [TypeMessage] -> Map Path (TypeName, Liberty)
 digestTypeMessages = Map.fromList . fmap procMsg
   where
     procMsg (MsgAssignType p tn lib) = (p, (tn, lib))
 
-produceTypeMessages :: Map Path TypeName -> [TypeMessage]
-produceTypeMessages = undefined
+produceTypeMessages :: Map Path (TypeName, Liberty) -> [TypeMessage]
+produceTypeMessages = Map.elems . Map.mapWithKey
+  (\p (tn, l) -> MsgAssignType p tn l)
 
 digestErrMessages :: Ord a => [MsgError a] -> Map (ErrorIndex a) [Text]
 digestErrMessages = foldl (Map.unionWith (<>)) mempty . fmap procMsg
@@ -156,34 +179,49 @@ digestErrMessages = foldl (Map.unionWith (<>)) mempty . fmap procMsg
     procMsg (MsgError ei t) = Map.singleton ei [t]
 
 produceErrMessages :: Map (ErrorIndex a) [Text] -> [MsgError a]
-produceErrMessages = undefined
-
-digestToRelayProviderBundle :: ToRelayProviderBundle -> TrpDigest
-digestToRelayProviderBundle = undefined
-
-produceToRelayProviderBundle :: TrpDigest -> ToRelayProviderBundle
-produceToRelayProviderBundle = undefined
-
-digestFromRelayProviderBundle :: FromRelayProviderBundle -> FrpDigest
-digestFromRelayProviderBundle = undefined
-
-produceFromRelayProviderBundle :: FrpDigest -> FromRelayProviderBundle
-produceFromRelayProviderBundle = undefined
-
-digestToRelayClientBundle :: ToRelayClientBundle -> TrcDigest
-digestToRelayClientBundle = undefined
-
-produceToRelayClientBundle :: TrcDigest -> ToRelayClientBundle
-produceToRelayClientBundle = undefined
-
-digestFromRelayClientBundle :: FromRelayClientBundle -> FrcDigest
-digestFromRelayClientBundle = undefined
-
-produceFromRelayClientBundle :: FrcDigest -> FromRelayClientBundle
-produceFromRelayClientBundle = undefined
+produceErrMessages =
+  mconcat . Map.elems . Map.mapWithKey (\ei errs -> MsgError ei <$> errs)
 
 digestToRelayBundle :: ToRelayBundle -> TrDigest
-digestToRelayBundle = undefined
+digestToRelayBundle trb = case trb of
+    Trpb b -> Trpd $ digestToRelayProviderBundle b
+    Trpr b -> Trprd $ digestToRelayProviderRelinquish b
+    Trcb b -> Trcd $ digestToRelayClientBundle b
+  where
+    digestToRelayProviderBundle :: ToRelayProviderBundle -> TrpDigest
+    digestToRelayProviderBundle (ToRelayProviderBundle ns errs defs dat) =
+      let (cas, dd) = digestDataUpdateMessages dat in
+        TrpDigest ns cas (digestDefMessages defs) dd (digestErrMessages errs)
+
+    digestToRelayProviderRelinquish :: ToRelayProviderRelinquish -> TrprDigest
+    digestToRelayProviderRelinquish (ToRelayProviderRelinquish ns) =
+      TrprDigest ns
+
+    digestToRelayClientBundle :: ToRelayClientBundle -> TrcDigest
+    digestToRelayClientBundle (ToRelayClientBundle subs dat) =
+      let
+        (tySubs, datSubs) = digestSubMessages subs
+        (cas, dd) = digestDataUpdateMessages dat
+      in
+        TrcDigest tySubs datSubs cas dd
+
 
 produceFromRelayBundle :: FrDigest -> FromRelayBundle
-produceFromRelayBundle = undefined
+produceFromRelayBundle frd = case frd of
+    Frpd d -> Frpb $ produceFromRelayProviderBundle d
+    Frped d -> Frpeb $ produceFromRelayProviderErrorBundle d
+    Frcd d -> Frcb $ produceFromRelayClientBundle d
+  where
+    produceFromRelayProviderBundle :: FrpDigest -> FromRelayProviderBundle
+    produceFromRelayProviderBundle (FrpDigest ns cas dd) =
+      FromRelayProviderBundle ns $ produceDataUpdateMessages cas dd
+
+    produceFromRelayProviderErrorBundle
+      :: FrpErrorDigest -> FromRelayProviderErrorBundle
+    produceFromRelayProviderErrorBundle (FrpErrorDigest ns errs) =
+      FromRelayProviderErrorBundle ns $ produceErrMessages errs
+
+    produceFromRelayClientBundle :: FrcDigest -> FromRelayClientBundle
+    produceFromRelayClientBundle (FrcDigest cas defs tas dd errs) =
+      FromRelayClientBundle (produceErrMessages errs) (produceDefMessages defs)
+      (produceTypeMessages tas) (produceDataUpdateMessages cas dd)
