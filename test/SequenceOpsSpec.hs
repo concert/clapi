@@ -2,14 +2,28 @@
 
 module SequenceOpsSpec (spec) where
 
-import Clapi.Types.UniqList (mkUniqList)
+import Data.Int (Int32)
 import Data.Maybe (fromJust)
 import Test.Hspec
+
+import Clapi.Types.UniqList (mkUniqList)
 import Clapi.Types ()  -- MonadFail instance (Either String)
 import Clapi.Types.SequenceOps
+import Clapi.Serialisation.SequenceOps ()
+import SerialisationSpec (encode, decode)
 
 spec :: Spec
 spec = do
+  describe "Serialisation" $ do
+    it "Round trips" $
+      let
+        sd :: ReorderBundle Int32
+        sd = ReorderBundle [
+            (1, MoveAfter Nothing), (2, AddAfter $ Just 4), (3, DelElem)]
+      in
+        (encode sd >>= decode) `shouldBe`
+        (Right sd :: Either String (ReorderBundle Int32))
+  describe "Applying" $ do
     it "No changes is noop" $ shouldApplyAs [] [1..4] $ Right [1..4]
     it "Basic add" $
         shouldApplyAs [(6, AddAfter $ Just 2)] [1..3] $ Right [1,2,6,3]

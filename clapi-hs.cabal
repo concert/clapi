@@ -29,6 +29,7 @@ library
                      , Clapi.Serialisation.Base
                      , Clapi.Serialisation.Wire
                      , Clapi.Serialisation.Messages
+                     , Clapi.Serialisation.SequenceOps
                      , Clapi.Server
                      , Clapi.TaggedData
                      , Clapi.TextSerialisation

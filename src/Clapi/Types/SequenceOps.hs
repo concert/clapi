@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
+
 module Clapi.Types.SequenceOps
   ( ReorderBundle(..), SequenceOp(..)
   , digest, applyDigest
@@ -16,8 +17,9 @@ data SequenceOp i
   = AddAfter (Maybe i)
   | MoveAfter (Maybe i)
   | DelElem
+  deriving (Eq, Show)
 
-newtype ReorderBundle i = ReorderBundle [(i, SequenceOp i)]
+newtype ReorderBundle i = ReorderBundle [(i, SequenceOp i)] deriving (Eq, Show)
 newtype SequenceDigest i = SequenceDigest (Map.Map i (SequenceOp i))
 
 sdEmpty :: SequenceDigest i -> Bool
