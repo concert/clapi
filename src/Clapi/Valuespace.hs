@@ -93,9 +93,9 @@ defForPath p (Valuespace _ defs tas) =
   lookupTypeName p tas >>= flip lookupDef defs
 
 getLiberty :: MonadFail m => Path -> Valuespace -> m Liberty
-getLiberty p vs = case p of
+getLiberty path vs = case path of
   Root :/ _ -> return Cannot
-  _ :/ s -> defForPath p vs >>= defDispatch (flip childLibertyFor s)
+  p :/ s -> defForPath p vs >>= defDispatch (flip childLibertyFor s)
   _ -> return Cannot
 
 valuespaceGet
