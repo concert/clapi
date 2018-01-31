@@ -97,6 +97,9 @@ treeRemove tpId rt = case rt of
 treeLookup :: Path -> RoseTree a -> Maybe (RoseTree a)
 treeLookup p = getConst . treeAlterF Const p
 
+treeInsert :: Path -> RoseTree a -> RoseTree a -> RoseTree a
+treeInsert p t = treeAlter (const $ Just t) p
+
 treeDelete :: Path -> RoseTree a -> RoseTree a
 treeDelete p = treeAlter (const Nothing) p
 
