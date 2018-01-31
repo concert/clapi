@@ -53,6 +53,9 @@ data OutboundClientDigest = OutboundClientDigest
   , ocdErrors :: Map (ErrorIndex TypeName) [Text]
   } deriving (Show, Eq)
 
+outboundClientDigest :: OutboundClientDigest
+outboundClientDigest = OutboundClientDigest mempty mempty mempty mempty mempty
+
 type OutboundClientInitialisationDigest = OutboundClientDigest
 
 data OutboundProviderDigest = OutboundProviderDigest

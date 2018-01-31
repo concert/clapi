@@ -41,6 +41,9 @@ data TrpDigest = TrpDigest
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
   } deriving (Show, Eq)
 
+trpDigest :: Seg -> TrpDigest
+trpDigest ns = TrpDigest ns mempty mempty mempty mempty
+
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
   , frpdChildAssignments :: ChildAssignments
