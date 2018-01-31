@@ -20,15 +20,15 @@ import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.UniqList (UniqList)
 
-data SubOp = OpSubscribe | OpUnsubscribe deriving Show
-data DefOp = OpDefine {odDef :: Definition} | OpUndefine deriving Show
+data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq)
+data DefOp = OpDefine {odDef :: Definition} | OpUndefine deriving (Show, Eq)
 
 data TimeSeriesDataOp =
-  OpSet Time [WireValue] Interpolation | OpRemove deriving (Show)
+  OpSet Time [WireValue] Interpolation | OpRemove deriving (Show, Eq)
 data DataChange
   = ConstChange (Maybe Attributee) [WireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))
-  deriving (Show)
+  deriving (Show, Eq)
 type DataDigest = Map Path DataChange
 
 type ChildAssignments = Map Path (Maybe Attributee, UniqList Seg)
@@ -39,25 +39,25 @@ data TrpDigest = TrpDigest
   , trpdDefinitions :: Map Seg DefOp
   , trpdData :: DataDigest
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
-  } deriving Show
+  } deriving (Show, Eq)
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
   , frpdChildAssignments :: ChildAssignments
   , frpdData :: DataDigest
-  } deriving Show
+  } deriving (Show, Eq)
 
 data FrpErrorDigest = FrpErrorDigest
   { frpedNamespace :: Seg
   , frpedErrors :: Map (ErrorIndex Seg) [Text]
-  } deriving Show
+  } deriving (Show, Eq)
 
 data TrcDigest = TrcDigest
   { trcdTypeSubs :: Map TypeName SubOp
   , trcdDataSubs :: Map Path SubOp
   , trcdChildAssignments :: ChildAssignments
   , trcdData :: DataDigest
-  } deriving Show
+  } deriving (Show, Eq)
 
 data FrcDigest = FrcDigest
   { frcdChildAssignments :: ChildAssignments
@@ -65,21 +65,21 @@ data FrcDigest = FrcDigest
   , frcdTypeAssignments :: Map Path (TypeName, Liberty)
   , frcdData :: DataDigest
   , frcdErrors :: Map (ErrorIndex TypeName) [Text]
-  } deriving Show
+  } deriving (Show, Eq)
 
-newtype TrprDigest = TrprDigest {trprdNamespace :: Seg} deriving Show
+newtype TrprDigest = TrprDigest {trprdNamespace :: Seg} deriving (Show, Eq)
 
 data TrDigest
   = Trpd TrpDigest
   | Trprd TrprDigest
   | Trcd TrcDigest
-  deriving Show
+  deriving (Show, Eq)
 
 data FrDigest
   = Frpd FrpDigest
   | Frped FrpErrorDigest
   | Frcd FrcDigest
-  deriving Show
+  deriving (Show, Eq)
 
 trcdNamespaces :: TrcDigest -> Set Seg
 trcdNamespaces (TrcDigest ts ds cas dd) =

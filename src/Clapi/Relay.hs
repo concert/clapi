@@ -37,12 +37,13 @@ data InboundClientDigest = InboundClientDigest
   , icdTypeGets :: Set TypeName
   , icdChildAssignments :: ChildAssignments
   , icdData :: DataDigest
-  } deriving Show
+  } deriving (Show, Eq)
 
 data InboundDigest
   = Icd InboundClientDigest
   | Ipd TrpDigest
   | Iprd TrprDigest
+  deriving (Show, Eq)
 
 data OutboundClientDigest = OutboundClientDigest
   { ocdChildAssignments :: ChildAssignments
@@ -50,21 +51,21 @@ data OutboundClientDigest = OutboundClientDigest
   , ocdTypeAssignments :: Map Path (TypeName, Liberty)
   , ocdData :: DataDigest
   , ocdErrors :: Map (ErrorIndex TypeName) [Text]
-  } deriving Show
+  } deriving (Show, Eq)
 
 type OutboundClientInitialisationDigest = OutboundClientDigest
 
 data OutboundProviderDigest = OutboundProviderDigest
   { opdChildAssignments :: ChildAssignments
   , opddData :: DataDigest
-  } deriving Show
+  } deriving (Show, Eq)
 
 data OutboundDigest
   = Ocid OutboundClientInitialisationDigest
   | Ocd OutboundClientDigest
   | Opd OutboundProviderDigest
   | Ope FrpErrorDigest
-  deriving Show
+  deriving (Show, Eq)
 
 mapPartitionJust :: Map k (Maybe a) -> (Map k a, Set k)
 mapPartitionJust m = let (js, ns) = Map.partition isJust m in
