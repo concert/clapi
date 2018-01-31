@@ -58,19 +58,20 @@ applyOp :: (MonadFail m, Ord i, Show i) => [i] -> (i, SequenceOp i) -> m [i]
 applyOp l (i, op) = case op of
     AddAfter mi -> if i `elem` l
         then fail "Cannot add element twice"
-        else insertAfter i mi l
+        else insertAfter "Preceeding element not found for add" i mi l
     MoveAfter mi ->
-        removeElem "Element was not present to move" i l >>= insertAfter i mi
+        removeElem "Element was not present to move" i l
+        >>= insertAfter "Preceeding element not found for move" i mi
     DelElem -> removeElem "Element not present to remove" i l
   where
-    insertAfter v mAfter ol = case mAfter of
+    insertAfter msg v mAfter ol = case mAfter of
         Nothing -> return $ v : ol
         Just after ->
           let
             (bl, al) = span (/= after) ol
           in case al of
             (a:rl) -> return $ bl ++ [a, v] ++ rl
-            [] -> fail "Cannot add after non-existant element"
+            [] -> fail $ msg ++ ": " ++ show v
     removeElem msg v ol =
       let
         (ds, ol') = List.partition (== v) ol

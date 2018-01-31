@@ -39,7 +39,7 @@ spec = do
             Left "Element was not present to move: 3"
     it "Fails moving non-existant reference" $
         shouldApplyAs [(2, MoveAfter $ Just 3)] [1..2] $
-            Left "Cannot add after non-existant element"
+            Left "Preceeding element not found for move: 2"
     it "Fails deleting absentee" $
         shouldApplyAs [(3, DelElem)] [1..2] $
             Left "Element not present to remove: 3"
@@ -55,7 +55,7 @@ spec = do
         shouldApplyAs (reverse ops) [1..4] expected
     it "Fails when using deleted reference" $
         shouldApplyAs [(2, MoveAfter $ Just 3), (3, DelElem)] [1..3] $
-            Left "Cannot add after non-existant element"
+            Left "Preceeding element not found for move: 2"
     it "Fails on cyclic input" $ shouldApplyAs
         [(1, MoveAfter $ Just 2), (2, MoveAfter $ Just 1)] [0..3] $
         Left "Unresolvable order dependencies"
