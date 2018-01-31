@@ -98,7 +98,7 @@ treeLookup :: Path -> RoseTree a -> Maybe (RoseTree a)
 treeLookup p = getConst . treeAlterF Const p
 
 treeDelete :: Path -> RoseTree a -> RoseTree a
-treeDelete p = runIdentity . treeAlterF (const $ Identity Nothing) p
+treeDelete p = treeAlter (const Nothing) p
 
 treeAdjust :: (RoseTree a -> RoseTree a) -> Path -> RoseTree a -> RoseTree a
 treeAdjust f p = runIdentity . treeAdjustF (Identity . f) p
@@ -112,6 +112,11 @@ treeAdjustF f (s :</ p) (RtContainer al) =
   RtContainer <$> alAlterF (fmap Just . treeAdjustF f p . maybe RtEmpty id) s al
 treeAdjustF f (s :</ p) _ =
   RtContainer . alSingleton s <$> treeAdjustF f p RtEmpty
+
+treeAlter
+  :: (Maybe (RoseTree a) -> Maybe (RoseTree a)) -> Path -> RoseTree a
+  -> RoseTree a
+treeAlter f path = runIdentity . treeAlterF (Identity . f) path
 
 treeAlterF
   :: forall f a. Functor f
