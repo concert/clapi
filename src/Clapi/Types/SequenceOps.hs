@@ -2,7 +2,7 @@
 
 module Clapi.Types.SequenceOps
   ( ReorderBundle(..), SequenceOp(..)
-  , digest, applyDigest
+  , digest, produce, applyDigest
   ) where
 
 import Prelude hiding (fail)
@@ -27,6 +27,9 @@ sdEmpty (SequenceDigest m) = null m
 
 digest :: Ord i => ReorderBundle i -> SequenceDigest i
 digest (ReorderBundle ops) = SequenceDigest $ Map.fromList ops
+
+produce :: SequenceDigest i -> ReorderBundle i
+produce (SequenceDigest m) = ReorderBundle $ Map.toList m
 
 getChainStarts ::
     Ord i => SequenceDigest i -> ([(i, SequenceOp i)], SequenceDigest i)
