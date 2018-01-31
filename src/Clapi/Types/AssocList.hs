@@ -4,9 +4,10 @@
 {-# LANGUAGE TupleSections #-}
 
 module Clapi.Types.AssocList
-  ( mkAssocList, unAssocList, AssocList, alSingleton, alFromKeys, alFromMap
-  , alFromZip, alLookup, alKeys, alValues, alFmapWithKey, alAlterF, alAlter
-  , alAdjust
+  ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList
+  , alEmpty, alSingleton, alFromKeys, alFromMap, alFromZip
+  , alCons, alLookup, alKeys, alValues
+  , alFmapWithKey, alAlterF, alAlter, alAdjust
   ) where
 
 import Prelude hiding (fail)
@@ -25,6 +26,12 @@ newtype AssocList a b
 mkAssocList :: (MonadFail m, Ord a, Show a) => [(a, b)] -> m (AssocList a b)
 mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocList abPairs)
 
+unsafeMkAssocList :: [(a, b)] -> AssocList a b
+unsafeMkAssocList = AssocList
+
+alEmpty :: AssocList a b
+alEmpty = AssocList []
+
 alSingleton :: a -> b -> AssocList a b
 alSingleton a b = AssocList [(a, b)]
 
@@ -36,6 +43,11 @@ alFromMap = AssocList . Map.toList
 
 alFromZip :: (MonadFail m, Ord a, Show a) => [a] -> [b] -> m (AssocList a b)
 alFromZip as bs = fmtStrictZipError "keys" "values" (strictZip as bs) >>= mkAssocList
+
+alCons
+  :: (MonadFail m, Ord a, Show a)
+  => a -> b -> AssocList a b -> m (AssocList a b)
+alCons a b = mkAssocList . ((a, b) :) . unAssocList
 
 alLookup :: (MonadFail m, Eq a, Show a) => a -> AssocList a b -> m b
 alLookup a l = maybe (fail $ "Missing " ++ show a) return $ lookup a $ unAssocList l
