@@ -18,7 +18,7 @@ import Clapi.TextSerialisation (ttToText)
 import Clapi.TH
 import Clapi.Types
   ( Time(..), WireValue(..), TreeType(..), ttEnum, TreeConcreteType(..)
-  , TreeContainerType(..), bounds, unbounded)
+  , TreeContainerType(..), bounds, unbounded, TypeName(..))
 import Clapi.Validator (validate)
 
 spec :: Spec
@@ -54,7 +54,7 @@ spec = describe "validation" $ do
   describeTreeType (TtConc $ TcString "b[an]*") $ do
     successCase (WireValue @Text "banana")
     failureCase (WireValue @Text "apple")
-  describeTreeType (TtConc $ TcRef [pathq|/a/b|]) $ do
+  describeTreeType (TtConc $ TcRef $ TypeName [segq|a|] [segq|b|]) $ do
     successCase (WireValue @Text "/x/y")
     failureCase (WireValue @Text "not a path")
   describeTreeType (TtConc TcValidatorDesc) $ do
