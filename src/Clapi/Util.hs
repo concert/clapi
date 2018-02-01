@@ -19,7 +19,7 @@ module Clapi.Util (
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
-import Data.Foldable (Foldable)
+import Data.Foldable (Foldable, toList)
 import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
@@ -119,8 +119,8 @@ camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
     initCap [] = []
     initCap (c:cs) = toUpper c : cs
 
-showItems :: (Show a) => [a] -> String
-showItems = intercalate ", " . fmap show
+showItems :: (Foldable f, Show a) => f a -> String
+showItems = intercalate ", " . fmap show . toList
 
 mkProxy :: a -> Proxy a
 mkProxy _ = Proxy
