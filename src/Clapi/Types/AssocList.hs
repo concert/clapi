@@ -6,7 +6,7 @@
 module Clapi.Types.AssocList
   ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList
   , alEmpty, alSingleton, alFromKeys, alFromMap, alFromZip
-  , alCons, alLookup, alKeys, alValues
+  , alCons, alLookup, alKeys, alKeysSet, alValues
   , alFmapWithKey, alAlterF, alAlter, alAdjust
   ) where
 
@@ -16,6 +16,8 @@ import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 import Clapi.Types.UniqList (UniqList, unUniqList, unsafeMkUniqList)
 import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
@@ -54,6 +56,9 @@ alLookup a l = maybe (fail $ "Missing " ++ show a) return $ lookup a $ unAssocLi
 
 alKeys :: AssocList a b -> UniqList a
 alKeys = unsafeMkUniqList . fmap fst . unAssocList
+
+alKeysSet :: Ord a => AssocList a b -> Set a
+alKeysSet = Set.fromList . fmap fst . unAssocList
 
 alValues :: AssocList a b -> [b]
 alValues = fmap snd . unAssocList
