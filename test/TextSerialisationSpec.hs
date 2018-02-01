@@ -13,9 +13,13 @@ import System.Random (Random)
 import Clapi.TextSerialisation (ttFromText, ttToText)
 import Clapi.Types.Tree (TreeConcreteType(..), tcEnum, TreeContainerType(..), TreeType(..), Bounds, bounds)
 import Clapi.Types ()
+import Clapi.Types.Path (TypeName(..))
 import TypesSpec ()
 
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
+
+instance Arbitrary TypeName where
+  arbitrary = TypeName <$> arbitrary <*> arbitrary
 
 instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
     arbitrary = do
