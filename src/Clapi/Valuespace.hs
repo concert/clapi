@@ -14,33 +14,45 @@
 module Clapi.Valuespace where
 
 import Prelude hiding (fail)
+import Control.Applicative ((<|>))
 import Control.Monad (when, unless, void)
 import Control.Monad.Fail (MonadFail(..))
-import qualified Data.Set as Set
+import Data.Either (isLeft, fromLeft, fromRight)
+import Data.Int
+import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid ((<>))
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Word
 
 import qualified Data.Map.Mos as Mos
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.Util (strictZipWith, fmtStrictZipError, partitionDifference)
-import Clapi.Types (WireValue(..))
-import Clapi.Types.Path
-  (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
-import qualified Clapi.Types.Path as Path
-import Clapi.Tree (RoseTree(..), RoseTreeNode)
+import Clapi.TH
+import Clapi.Util
+  (strictZipWith, fmtStrictZipError, partitionDifference, showItems)
+import Clapi.Tree (RoseTree(..), RoseTreeNode, treeInsert)
 import qualified Clapi.Tree as Tree
-import Clapi.Types.AssocList (alKeys, alValues, alLookup, alFromMap)
+import Clapi.Types (WireValue(..))
+import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
+import Clapi.Types.AssocList
+  (alKeys, alKeysSet, alValues, alLookup, alFromMap, alSingleton, alCons
+  , unsafeMkAssocList)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor)
 import Clapi.Types.Digests
   (DefOp(..), TrpDigest(..), ChildAssignments, DataDigest)
-import Clapi.Types.Tree (TreeType(..))
+import Clapi.Types.Messages (ErrorIndex(..))
+import Clapi.Types.Path
+  (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
+import qualified Clapi.Types.Path as Path
+import Clapi.Types.Tree (TreeType(..), ttWord32, ttInt32, unbounded)
 import Clapi.Validator (validate)
 
 
@@ -56,31 +68,71 @@ data Valuespace = Valuespace
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
 removeTamSubtree tam p = Mos.filterDependencies (`Path.isChildOf` p) tam
 
+apiNs :: Seg
+apiNs = [segq|api|]
+
+rootTypeName, apiTypeName :: TypeName
+rootTypeName = TypeName apiNs [segq|root|]
+apiTypeName = TypeName apiNs apiNs
+
+apiDef :: StructDefinition
+apiDef = StructDefinition "Information about CLAPI itself" $
+  alSingleton [segq|version|] (TypeName apiNs [segq|version|], Cannot)
+
+versionDef :: TupleDefinition
+versionDef = TupleDefinition "The version of CLAPI" (unsafeMkAssocList
+  [ ([segq|major|], ttWord32 unbounded)
+  , ([segq|minor|], ttWord32 unbounded)
+  , ([segq|revision|], ttInt32 unbounded)
+  ]) ILUninterpolated
+
+rootDefAddChild :: MonadFail m => Seg -> StructDefinition -> m StructDefinition
+rootDefAddChild ns sd = do
+  newTys <- alCons ns (TypeName ns ns, Cannot) $ strDefTypes sd
+  return $ sd {strDefTypes = newTys}
+
 baseValuespace :: Valuespace
-baseValuespace = Valuespace Tree.RtEmpty mempty mempty
+baseValuespace = Valuespace baseTree baseDefs baseTas
+  where
+    vseg = [segq|version|]
+    version = RtConstData Nothing
+      [WireValue @Word32 0, WireValue @Word32 1, WireValue @Int32 (-1023)]
+    baseTree =
+      treeInsert (Root :/ apiNs :/ vseg) version Tree.RtEmpty
+    baseDefs = Map.singleton apiNs $ Map.fromList
+      [ (apiNs, StructDef apiDef)
+      , (vseg, TupleDef versionDef)
+      ]
+    baseTas = Mos.dependenciesFromMap $ Map.fromList
+      [ (Root, rootTypeName)
+      , (Root :/ apiNs, apiTypeName)
+      , (Root :/ apiNs :/ vseg, TypeName apiNs vseg)
+      ]
 
 getTypeAssignment :: MonadFail m => DefMap -> Path -> m TypeName
-getTypeAssignment defs thePath = go rootDef thePath
+getTypeAssignment defs thePath = lookupDef rootTypeName defs >>= go thePath
   where
-    rootDef = StructDef $ StructDefinition "root def doc" $ alFromMap $
-      Map.mapWithKey (\k _ -> (TypeName k k, Cannot)) defs
-    getDef (TypeName ns tseg) = maybe (fail "Missing type name") return $
-      Map.lookup ns defs >>= Map.lookup tseg
-    go def path = case path of
+    go path def = case path of
       seg :</ p -> do
         tn <- tnForChild def seg
-        def' <- getDef tn
+        def' <- lookupDef tn defs
         case p of
           Root -> return tn
-          _ -> go def' p
-      _ -> fail "Dunno what to do about root"
+          _ -> go p def'
+      _ -> return rootTypeName
     tnForChild def seg = case def of
       TupleDef _ -> fail "Tuples have no children"
       StructDef (StructDefinition _ tal) -> fst <$> alLookup seg tal
       ArrayDef (ArrayDefinition _ tn _) -> return tn
 
 lookupDef :: MonadFail m => TypeName -> DefMap -> m Definition
-lookupDef (TypeName ns s) defs = note "Missing def" $ Map.lookup ns defs >>= Map.lookup s
+lookupDef tn@(TypeName ns s) defs = note "Missing def" $
+    (Map.lookup ns defs >>= Map.lookup s) <|>
+    if tn == rootTypeName then Just rootDef else Nothing
+  where
+    -- NB: We generate the root def on the fly when people ask about it
+    rootDef = StructDef $ StructDefinition "root def doc" $ alFromMap $
+      Map.mapWithKey (\k _ -> (TypeName k k, Cannot)) defs
 
 vsLookupDef :: MonadFail m => TypeName -> Valuespace -> m Definition
 vsLookupDef tn (Valuespace _ defs _) = lookupDef tn defs
@@ -130,8 +182,11 @@ processToRelayProviderDigest trpd vs =
       in
         Map.alter updateNsDefs ns (vsTyDefs vs)
     changedTns = Set.map (TypeName ns) $ Map.keysSet $ trpdDefinitions trpd
+    -- FIXME: do I need to sneak root in here?
     possiblyChangedTypePaths = mconcat $
       flip Mos.getDependants (vsTyAssns vs) <$> Set.toList changedTns
+      -- flip Mos.getDependants (vsTyAssns vs) <$> (rootTypeName : Set.toList changedTns)
+    --                                            ^^ Wedged in!
     -- ftam: the type assignments we know can't have changed
     ftam = foldl removeTamSubtree (vsTyAssns vs) possiblyChangedTypePaths
     dataPathsRequiringValidation = Set.union
