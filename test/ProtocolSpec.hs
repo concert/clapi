@@ -20,7 +20,7 @@ spec = do
     basicResult = runState (runEffect $ source <<-> cat <<-> sink) []
     source = (mapM_ sendFwd $ fmap Just "abc") >> sendFwd Nothing
     sink = forever $ wait >>= \(Fwd a) -> (lift $ modify (a:))
-    cat = waitThen (maybe (return ()) (\a -> sendFwd a >> cat)) undefined
+    cat = waitThenFwdOnly (maybe (return ()) (\a -> sendFwd a >> cat))
     blk = (replicateM 2 $ wait >>= send) >> return "done!"
     rpioResult = do
         am <- newMVar 'a'
