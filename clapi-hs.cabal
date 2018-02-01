@@ -31,7 +31,6 @@ library
                      , Clapi.Serialisation.Messages
                      , Clapi.Serialisation.Path
                      , Clapi.Serialisation.Wire
-                     , Clapi.Serialisation.SequenceOps
                      , Clapi.Server
                      , Clapi.TaggedData
                      , Clapi.TextSerialisation
@@ -127,7 +126,6 @@ test-suite clapi-hs-test
   other-modules:       Helpers
                      , Data.Map.MosSpec
                      , SerialisationProtocolSpec
-                     , SequenceOpsSpec
                      , PathSpec
                      , ProtocolSpec
                      , NamespaceTrackerSpec
