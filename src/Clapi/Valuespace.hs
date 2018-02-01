@@ -205,7 +205,17 @@ validateRoseTree def t = case t of
   RtContainer alCont -> case def of
     TupleDef _ -> fail "Y'all have a container where you wanted data"
     StructDef (StructDefinition _ alDef) ->
-      when (alKeys alDef /= alKeys alCont) $ fail "bad struct keys"
+      let
+        defKeys = alKeysSet alDef
+        contKeys = alKeysSet alCont
+        (missing, added) = partitionDifference defKeys contKeys
+        missingStr = if null missing then ""
+          else " missing " ++ showItems (Set.toList missing)
+        addedStr = if null added then ""
+          else " extraneous " ++ showItems (Set.toList added)
+      in
+        when (defKeys /= contKeys) $ fail $ "bad struct keys:" ++
+          intercalate "; " (filter (not . null) [missingStr, addedStr])
     ArrayDef _ -> return ()
 
 validateWireValues :: MonadFail m => [TreeType] -> [WireValue] -> m ()
