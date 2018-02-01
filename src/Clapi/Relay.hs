@@ -125,7 +125,7 @@ relay vs = waitThenFwdOnly fwd
   where
     fwd (i, dig) = case dig of
         Ipd d -> either
-          (terminalError $ trpdNamespace d)
+          (terminalErrors $ trpdNamespace d)
           (handleOwnerSuccess d) $ processToRelayProviderDigest d vs
         Icd d -> handleClientDigest d
           $ processToRelayClientDigest (icdChildAssignments d) (icdData d) vs
@@ -160,6 +160,9 @@ relay vs = waitThenFwdOnly fwd
             sendRev (i, Ocid $ cid')
             sendRev (i, Opd $ OutboundProviderDigest cas'' dd'')
             relay vs
+        terminalErrors ns errMap = do
+          sendRev (i, Ope $ FrpErrorDigest ns errMap)
+          relay vs
         terminalError ns str = do
           sendRev
             ( i, Ope $ FrpErrorDigest ns

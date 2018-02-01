@@ -115,14 +115,20 @@ validatePath vs p = do
     validateRoseTree def t
 
 processToRelayProviderDigest
-  :: MonadFail m => TrpDigest -> Valuespace -> m Valuespace
+  :: (Ord a)
+  => TrpDigest -> Valuespace -> Either (Map (ErrorIndex a) [Text]) Valuespace
 processToRelayProviderDigest trpd vs =
   let
     ns = trpdNamespace trpd
-    (undefs, defs) = Map.partition isUndef (trpdDefinitions trpd)
-    defs' = Map.adjust updateDefs ns (vsTyDefs vs)
-    updateDefs existingDefs = Map.union (odDef <$> defs) $
-      Map.withoutKeys existingDefs (Map.keysSet undefs)
+    (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
+    defs' =
+      let
+        newDefs = odDef <$> defOps
+        updateNsDefs Nothing = Just newDefs
+        updateNsDefs (Just existingDefs) = Just $ Map.union (odDef <$> defOps) $
+          Map.withoutKeys existingDefs (Map.keysSet undefOps)
+      in
+        Map.alter updateNsDefs ns (vsTyDefs vs)
     changedTns = Set.map (TypeName ns) $ Map.keysSet $ trpdDefinitions trpd
     possiblyChangedTypePaths = mconcat $
       flip Mos.getDependants (vsTyAssns vs) <$> Set.toList changedTns
@@ -139,19 +145,31 @@ processToRelayProviderDigest trpd vs =
           `partitionDifference`
           Mos.allDependants ftam
   in do
-    unless (null updateErrs) (fail "We threw all your errors away")
+    unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
     -- Fill in ones from pathsOfUnknownType with function that works type from defs
-    newTaMap <- sequence $
-      Map.fromSet (getTypeAssignment defs') pathsOfUnknownType
+    newTaMap <- mapFromSetWErr (getTypeAssignment defs') pathsOfUnknownType
     let tam' = Mos.dependenciesFromMap $ Map.union newTaMap $ fst ftam
     let vs' = Valuespace tree' defs' tam'
-    unless (null missingPaths) $ fail "Some expected paths missing"
-    mapM_ (validatePath vs') dataPathsRequiringValidation
+    unless (null missingPaths) $ Left $ Map.mapKeys PathError $
+      Map.fromSet (const $ ["missing"]) missingPaths
+    mapFromSetWErr (validatePath vs') dataPathsRequiringValidation
     return vs'
   where
     isUndef :: DefOp -> Bool
     isUndef OpUndefine = True
     isUndef _ = False
+    fromLeft' = fromLeft $ error "expecting Left"
+    fromRight' = fromRight $ error "expecting Right"
+    mapFromSetWErr
+      :: (Ord a)
+      => (Path -> Either String y) -> Set Path
+      -> Either (Map (ErrorIndex a) [Text]) (Map Path y)
+    mapFromSetWErr f s =
+      let (lmap, rmap) = Map.partition isLeft $ Map.fromSet f s in
+        if null lmap
+          then return $ fromRight' <$> rmap
+          else Left $ Map.mapKeys PathError $
+               pure . Text.pack . fromLeft' <$> lmap
 
 processToRelayClientDigest
   :: ChildAssignments -> DataDigest -> Valuespace -> Map Path [Text]
