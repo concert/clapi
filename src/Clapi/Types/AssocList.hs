@@ -6,7 +6,7 @@
 module Clapi.Types.AssocList
   ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList
   , alEmpty, alSingleton, alFromKeys, alFromMap, alFromZip
-  , alCons, alLookup, alKeys, alKeysSet, alValues
+  , alCons, alLookup, alInsert, alDelete, alKeys, alKeysSet, alValues
   , alFmapWithKey, alAlterF, alAlter, alAdjust
   ) where
 
@@ -53,6 +53,12 @@ alCons a b = mkAssocList . ((a, b) :) . unAssocList
 
 alLookup :: (MonadFail m, Eq a, Show a) => a -> AssocList a b -> m b
 alLookup a l = maybe (fail $ "Missing " ++ show a) return $ lookup a $ unAssocList l
+
+alInsert :: Eq k => k -> a -> AssocList k a -> AssocList k a
+alInsert k a = alAlter (const $ Just a) k
+
+alDelete :: Eq k => k -> AssocList k a -> AssocList k a
+alDelete k = alAlter (const Nothing) k
 
 alKeys :: AssocList a b -> UniqList a
 alKeys = unsafeMkUniqList . fmap fst . unAssocList
