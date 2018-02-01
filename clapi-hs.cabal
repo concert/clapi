@@ -29,6 +29,7 @@ library
                      , Clapi.Serialisation.Base
                      , Clapi.Serialisation.Wire
                      , Clapi.Serialisation.Messages
+                     , Clapi.Serialisation.SequenceOps
                      , Clapi.Server
                      , Clapi.TaggedData
                      , Clapi.TextSerialisation
@@ -39,6 +40,7 @@ library
                      , Clapi.Types.Base
                      , Clapi.Types.Definitions
                      , Clapi.Types.Messages
+                     , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
                      , Clapi.Types.Tree
                      , Clapi.Types.Wire
@@ -120,6 +122,7 @@ test-suite clapi-hs-test
   other-modules:       Helpers
                      , Data.Map.MosSpec
                      , SerialisationProtocolSpec
+                     , SequenceOpsSpec
                      , PathSpec
                      , ProtocolSpec
                      , NamespaceTrackerSpec
