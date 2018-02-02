@@ -8,8 +8,10 @@ module Clapi.Types.AssocList
   ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList
   , alEmpty, alSingleton, alFromKeys, alFromList, alFromMap, alPickFromMap
   , alToMap, alFromZip
-  , alCons, alLookup, alInsert, alDelete, alKeys, alKeysSet, alValues
-  , alFmapWithKey, alAlterF, alAlter, alAdjust
+  , alCons, alLookup, alInsert, alSetDefault, alDelete
+  , alKeys, alKeysSet, alValues
+  , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
+  , alAlterF, alAlter, alAdjust
   ) where
 
 import Prelude hiding (fail)
@@ -73,6 +75,9 @@ alLookup a l = maybe (fail $ "Missing " ++ show a) return $ lookup a $ unAssocLi
 alInsert :: Eq k => k -> a -> AssocList k a -> AssocList k a
 alInsert k a = alAlter (const $ Just a) k
 
+alSetDefault :: Eq k => k -> a -> AssocList k a -> AssocList k a
+alSetDefault k a = alAlter (Just . maybe a id) k
+
 alDelete :: Eq k => k -> AssocList k a -> AssocList k a
 alDelete k = alAlter (const Nothing) k
 
@@ -87,6 +92,20 @@ alValues = fmap snd . unAssocList
 
 alFmapWithKey :: (k -> b -> c) -> AssocList k b -> AssocList k c
 alFmapWithKey f (AssocList kbs) = AssocList $ (\(k, b) -> (k, f k b)) <$> kbs
+
+alMapKeys
+  :: (Ord k1, Show k1, MonadFail m)
+  => (k0 -> k1) -> AssocList k0 b -> m (AssocList k1 b)
+alMapKeys f = mkAssocList . fmap (\(a, b) -> (f a, b)) . unAssocList
+
+alFoldlWithKey :: (acc -> k -> b -> acc) -> acc -> AssocList k b -> acc
+alFoldlWithKey f acc = foldl (\acc' (k, b) -> f acc' k b) acc . unAssocList
+
+alFilterWithKey :: (k -> b -> Bool) -> AssocList k b -> AssocList k b
+alFilterWithKey f = AssocList . filter (uncurry f) . unAssocList
+
+alFilterKey :: (k -> Bool) -> AssocList k b -> AssocList k b
+alFilterKey f = alFilterWithKey $ \k _ -> f k
 
 alAlterF
   :: (Eq k, Functor f) => (Maybe b -> f (Maybe b)) -> k -> AssocList k b
