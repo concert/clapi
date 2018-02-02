@@ -17,12 +17,16 @@ import qualified Data.Text as Text
 import Data.Void (Void)
 
 import qualified Clapi.Types.Dkmap as Dkmap
+import Clapi.Types.AssocList (alEmpty, alInsert, alFilterKey, alSetDefault)
 import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
 import Clapi.Types.Digests
-  ( ChildAssignments, DataDigest, TrpDigest(..), TrprDigest(..)
+  ( Reorderings, DataDigest, TrpDigest(..), TrprDigest(..)
   , FrpErrorDigest(..), DataChange(..)
-  , TimeSeriesDataOp(..))
-import Clapi.Types.Path (Path, TypeName(..))
+  , TimeSeriesDataOp(..), DefOp
+  , OutboundDigest(..), InboundDigest(..)
+  , OutboundClientDigest(..), OutboundClientInitialisationDigest(..)
+  , InboundClientDigest(..), OutboundProviderDigest(..))
+import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern (:/))
 import Clapi.Types.Definitions (Liberty, Definition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
@@ -31,44 +35,6 @@ import Clapi.Valuespace
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
   , getLiberty)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
-
-data InboundClientDigest = InboundClientDigest
-  { icdGets :: Set Path
-  , icdTypeGets :: Set TypeName
-  , icdChildAssignments :: ChildAssignments
-  , icdData :: DataDigest
-  } deriving (Show, Eq)
-
-data InboundDigest
-  = Icd InboundClientDigest
-  | Ipd TrpDigest
-  | Iprd TrprDigest
-  deriving (Show, Eq)
-
-data OutboundClientDigest = OutboundClientDigest
-  { ocdChildAssignments :: ChildAssignments
-  , ocdDefinitions :: Map TypeName Definition
-  , ocdTypeAssignments :: Map Path (TypeName, Liberty)
-  , ocdData :: DataDigest
-  , ocdErrors :: Map (ErrorIndex TypeName) [Text]
-  } deriving (Show, Eq)
-
-outboundClientDigest :: OutboundClientDigest
-outboundClientDigest = OutboundClientDigest mempty mempty mempty mempty mempty
-
-type OutboundClientInitialisationDigest = OutboundClientDigest
-
-data OutboundProviderDigest = OutboundProviderDigest
-  { opdChildAssignments :: ChildAssignments
-  , opddData :: DataDigest
-  } deriving (Show, Eq)
-
-data OutboundDigest
-  = Ocid OutboundClientInitialisationDigest
-  | Ocd OutboundClientDigest
-  | Opd OutboundProviderDigest
-  | Ope FrpErrorDigest
-  deriving (Show, Eq)
 
 mapPartitionJust :: Map k (Maybe a) -> (Map k a, Set k)
 mapPartitionJust m = let (js, ns) = Map.partition isJust m in
@@ -97,7 +63,7 @@ genInitDigest ps tns vs =
     rtns = Map.fromSet (flip valuespaceGet vs) ps
     (tnErrs, defs) = mapPartitionEither $ Map.fromSet (flip vsLookupDef vs) tns
     initialOcd = OutboundClientDigest
-      mempty defs mempty mempty (pure . Text.pack <$> Map.mapKeys TypeNameError tnErrs)
+      mempty defs mempty alEmpty (pure . Text.pack <$> Map.mapKeys TypeNameError tnErrs)
   in
     Map.foldlWithKey go initialOcd rtns
   where
@@ -111,12 +77,13 @@ genInitDigest ps tns vs =
           ocdTypeAssignments = Map.insert p (tn, lib) (ocdTypeAssignments d)}
       in case rtn of
         RtnEmpty -> error "Valid tree should not contain empty nodes, but did"
-        RtnChildren att kids -> d'{ocdChildAssignments =
-          Map.insert p (att, kids) $ ocdChildAssignments d}
+        RtnChildren att kids -> d'{ocdData = foldl
+          (\acc s -> alSetDefault (p :/ s) (InitChange att) acc)
+          (ocdData d) kids}
         RtnConstData att vals -> d'{ocdData =
-          Map.insert p (ConstChange att vals) $ ocdData d}
+          alInsert p (ConstChange att vals) $ ocdData d}
         RtnDataSeries ts ->
-          d'{ocdData = Map.insert p (oppifyTimeSeries ts) $ ocdData d}
+          d'{ocdData = alInsert p (oppifyTimeSeries ts) $ ocdData d}
 
 relay
   :: Monad m => Valuespace
@@ -128,29 +95,29 @@ relay vs = waitThenFwdOnly fwd
           (terminalErrors $ trpdNamespace d)
           (handleOwnerSuccess d) $ processToRelayProviderDigest d vs
         Icd d -> handleClientDigest d
-          $ processToRelayClientDigest (icdChildAssignments d) (icdData d) vs
+          $ processToRelayClientDigest (icdReorderings d) (icdData d) vs
         Iprd (TrprDigest ns) -> relay $ vsRelinquish ns vs
       where
         handleOwnerSuccess
-            (TrpDigest ns cas _ dd errs) vs'@(Valuespace _ defs tas) =
+            (TrpDigest ns reords _ dd errs) vs'@(Valuespace _ defs tas) =
           let
             dd' = vsMinimiseDataDigest dd vs
-            cas' = vsMinimiseCas cas vs
+            reords' = vsMinimiseReords reords vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
           in do
             sendRev (i,
-              Ocd $ OutboundClientDigest cas'
+              Ocd $ OutboundClientDigest reords'
                 (flattenNestedMaps TypeName defs) (mungedTas vs) dd' errs')
             relay vs'
         mungedTas vs = Map.mapWithKey
           (\p tn -> (tn, either error id $ getLiberty p vs))
           $ fst (vsTyAssns vs)
-        handleClientDigest (InboundClientDigest gets typeGets cas dd) errMap =
+        handleClientDigest (InboundClientDigest gets typeGets reords dd) errMap =
           let
-            dd' = Map.filterWithKey (\k _ -> not $ Map.member k errMap) dd
-            cas' = Map.filterWithKey (\k _ -> not $ Map.member k errMap) cas
+            dd' = alFilterKey (\k -> not $ Map.member k errMap) dd
+            reords' = Map.filterWithKey (\k _ -> not $ Map.member k errMap) reords
             dd'' = vsMinimiseDataDigest dd' vs
-            cas'' = vsMinimiseCas cas' vs
+            reords'' = vsMinimiseReords reords' vs
             -- FIXME: above uses errors semantically and shouldn't (thus throws
             -- away valid time point changes)
             cid = genInitDigest gets typeGets vs
@@ -158,7 +125,7 @@ relay vs = waitThenFwdOnly fwd
               Map.unionWith (<>) (ocdErrors cid) (Map.mapKeys PathError errMap)}
           in do
             sendRev (i, Ocid $ cid')
-            sendRev (i, Opd $ OutboundProviderDigest cas'' dd'')
+            sendRev (i, Opd $ OutboundProviderDigest reords'' dd'')
             relay vs
         terminalErrors ns errMap = do
           sendRev (i, Ope $ FrpErrorDigest ns errMap)
@@ -171,4 +138,4 @@ relay vs = waitThenFwdOnly fwd
 
 -- FIXME: these are worst case implementations right now!
 vsMinimiseDataDigest dd _ = dd
-vsMinimiseCas cas _ = cas
+vsMinimiseReords reords _ = reords

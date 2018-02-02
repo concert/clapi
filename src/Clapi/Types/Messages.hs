@@ -11,7 +11,6 @@ import Clapi.Types.Definitions (Definition, Liberty)
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Wire (WireValue)
-import Clapi.Types.UniqList (UniqList)
 
 -- FIXME: redefinition
 type TpId = Word32
@@ -55,7 +54,15 @@ data SubMessage
 data TypeMessage = MsgAssignType Path TypeName Liberty deriving (Show, Eq)
 
 data DataUpdateMessage
-  = MsgConstSet
+  = MsgInit
+      { duMsgPath :: Path
+      , duMsgAttributee :: Maybe Attributee
+      }
+  | MsgDelete
+      { duMsgPath :: Path
+      , duMsgAttributee :: Maybe Attributee
+      }
+  | MsgConstSet
       { duMsgPath :: Path
       , duMsgArgs :: [WireValue]
       , duMsgAttributee :: Maybe Attributee
@@ -73,9 +80,10 @@ data DataUpdateMessage
       , duMsgTpId :: Word32
       , duMsgAttributee :: Maybe Attributee
       }
-  | MsgSetChildren
+  | MsgReorder
       { duMsgPath :: Path
-      , duMsgNames :: UniqList Seg
+      , duMsgReorderings :: Seg
+      , duMsgReorderReference :: Maybe Seg
       , duMsgAttributee :: Maybe Attributee
       }
    deriving (Eq, Show)

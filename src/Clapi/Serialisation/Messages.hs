@@ -112,40 +112,50 @@ instance Encodable TypeMessage where
     parser = MsgAssignType <$> parser <*> parser <*> parser
 
 data DataUpdateMsgType
-  = DUMTConstSet
+  = DUMTInit
+  | DUMTDelete
+  | DUMTConstSet
   | DUMTSet
   | DUMTRemove
-  | DUMTSetChildren deriving (Enum, Bounded)
+  | DUMTReorder deriving (Enum, Bounded)
 
 dumtTaggedData :: TaggedData DataUpdateMsgType DataUpdateMessage
 dumtTaggedData = taggedData typeToTag msgToType
   where
-    typeToTag (DUMTConstSet) = [btq|S|]
-    typeToTag (DUMTSet) = [btq|s|]
-    typeToTag (DUMTRemove) = [btq|r|]
-    typeToTag (DUMTSetChildren) = [btq|c|]
+    typeToTag DUMTInit = [btq|i|]
+    typeToTag DUMTDelete = [btq|d|]
+    typeToTag DUMTConstSet = [btq|S|]
+    typeToTag DUMTSet = [btq|s|]
+    typeToTag DUMTRemove = [btq|r|]
+    typeToTag DUMTReorder = [btq|R|]
+    msgToType (MsgInit _ _) = DUMTInit
+    msgToType (MsgDelete _ _) = DUMTDelete
     msgToType (MsgConstSet _ _ _) = DUMTConstSet
     msgToType (MsgSet _ _ _ _ _ _) = DUMTSet
     msgToType (MsgRemove _ _ _) = DUMTRemove
-    msgToType (MsgSetChildren _ _ _) = DUMTSetChildren
+    msgToType (MsgReorder _ _ _ _) = DUMTReorder
 
 dumtParser :: DataUpdateMsgType -> Parser DataUpdateMessage
 dumtParser e = case e of
+    DUMTInit -> MsgInit <$> parser <*> parser
+    DUMTDelete -> MsgDelete <$> parser <*> parser
     DUMTConstSet -> MsgConstSet <$> parser <*> parser <*> parser
     DUMTSet -> MsgSet <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
     DUMTRemove -> MsgRemove <$> parser <*> parser <*> parser
-    DUMTSetChildren -> MsgSetChildren <$> parser <*> parser <*> parser
+    DUMTReorder -> MsgReorder <$> parser <*> parser <*> parser <*> parser
 
 dumtBuilder :: MonadFail m => DataUpdateMessage -> m Builder
 dumtBuilder m = case m of
+    MsgInit p a -> builder p <<>> builder a
+    MsgDelete p a -> builder p <<>> builder a
     MsgConstSet p v a -> builder p <<>> builder v <<>> builder a
     MsgSet p ptId t v i a ->
       builder p <<>> builder ptId <<>> builder t <<>> builder v <<>> builder i
       <<>> builder a
     MsgRemove p t a ->
       builder p <<>> builder t <<>> builder a
-    MsgSetChildren p ns a ->
-      builder p <<>> builder ns <<>> builder a
+    MsgReorder p targ ref a ->
+      builder p <<>> builder targ <<>> builder ref <<>> builder a
 
 instance Encodable DataUpdateMessage where
     builder = tdTaggedBuilder dumtTaggedData dumtBuilder

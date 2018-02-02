@@ -22,6 +22,7 @@ import Data.Int
 import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -41,13 +42,13 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
-  (alKeys, alKeysSet, alValues, alLookup, alFromMap, alSingleton, alCons
-  , unsafeMkAssocList)
+  (alKeysSet, alValues, alLookup, alFromMap, alEmpty, alSingleton, alCons
+  , unsafeMkAssocList, alFoldlWithKey, alInsert, alMapKeys)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor)
 import Clapi.Types.Digests
-  (DefOp(..), TrpDigest(..), ChildAssignments, DataDigest)
+  (DefOp(..), Reorderings, DataDigest, TrpDigest(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
@@ -98,7 +99,7 @@ baseValuespace = Valuespace baseTree baseDefs baseTas
     version = RtConstData Nothing
       [WireValue @Word32 0, WireValue @Word32 1, WireValue @Int32 (-1023)]
     baseTree =
-      treeInsert (Root :/ apiNs :/ vseg) version Tree.RtEmpty
+      treeInsert Nothing (Root :/ apiNs :/ vseg) version Tree.RtEmpty
     baseDefs = Map.singleton apiNs $ Map.fromList
       [ (apiNs, StructDef apiDef)
       , (vseg, TupleDef versionDef)
@@ -138,7 +139,7 @@ vsLookupDef :: MonadFail m => TypeName -> Valuespace -> m Definition
 vsLookupDef tn (Valuespace _ defs _) = lookupDef tn defs
 
 lookupTypeName :: MonadFail m => Path -> TypeAssignmentMap -> m TypeName
-lookupTypeName p = note "Path not found" . Mos.getDependency p
+lookupTypeName p = note "Type name not found" . Mos.getDependency p
 
 defForPath :: MonadFail m => Path -> Valuespace -> m Definition
 defForPath p (Valuespace _ defs tas) =
@@ -167,11 +168,13 @@ validatePath vs p = do
     validateRoseTree def t
 
 processToRelayProviderDigest
-  :: (Ord a)
-  => TrpDigest -> Valuespace -> Either (Map (ErrorIndex a) [Text]) Valuespace
+  :: Ord a => TrpDigest -> Valuespace
+  -> Either (Map (ErrorIndex a) [Text]) Valuespace
 processToRelayProviderDigest trpd vs =
   let
     ns = trpdNamespace trpd
+    qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
+    qDefs = Map.mapKeys (TypeName ns) $ trpdDefinitions trpd
     (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
     defs' =
       let
@@ -181,18 +184,15 @@ processToRelayProviderDigest trpd vs =
           Map.withoutKeys existingDefs (Map.keysSet undefOps)
       in
         Map.alter updateNsDefs ns (vsTyDefs vs)
-    changedTns = Set.map (TypeName ns) $ Map.keysSet $ trpdDefinitions trpd
     -- FIXME: do I need to sneak root in here?
     possiblyChangedTypePaths = mconcat $
-      flip Mos.getDependants (vsTyAssns vs) <$> Set.toList changedTns
-      -- flip Mos.getDependants (vsTyAssns vs) <$> (rootTypeName : Set.toList changedTns)
-    --                                            ^^ Wedged in!
+      flip Mos.getDependants (vsTyAssns vs) <$> Map.keys qDefs
     -- ftam: the type assignments we know can't have changed
     ftam = foldl removeTamSubtree (vsTyAssns vs) possiblyChangedTypePaths
     dataPathsRequiringValidation = Set.union
-      (Map.keysSet (trpdData trpd)) possiblyChangedTypePaths
+      (alKeysSet qData) possiblyChangedTypePaths
     (updateErrs, tree') = Tree.updateTreeWithDigest
-      (trpdChildAssignments trpd) (trpdData trpd) (vsTree vs)
+      (trpdReorderings trpd) qData (vsTree vs)
     -- FIXME: creating a set of all the paths in the tree might not be the
     -- best idea...
     (pathsOfUnknownType, missingPaths) =
@@ -207,7 +207,7 @@ processToRelayProviderDigest trpd vs =
     let vs' = Valuespace tree' defs' tam'
     unless (null missingPaths) $ Left $ Map.mapKeys PathError $
       Map.fromSet (const $ ["missing"]) missingPaths
-    mapFromSetWErr (validatePath vs') dataPathsRequiringValidation
+    _ <- mapFromSetWErr (validatePath vs') dataPathsRequiringValidation
     return vs'
   where
     isUndef :: DefOp -> Bool
@@ -227,12 +227,12 @@ processToRelayProviderDigest trpd vs =
                pure . Text.pack . fromLeft' <$> lmap
 
 processToRelayClientDigest
-  :: ChildAssignments -> DataDigest -> Valuespace -> Map Path [Text]
-processToRelayClientDigest cas dd vs =
+  :: Reorderings -> DataDigest -> Valuespace -> Map Path [Text]
+processToRelayClientDigest reords dd vs =
   let
-    (updateErrs, tree') = Tree.updateTreeWithDigest cas dd (vsTree vs)
+    (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
     vs' = vs {vsTree = tree'}
-    touchedPaths = Set.union (Map.keysSet dd) (Map.keysSet cas)
+    touchedPaths = Set.union (alKeysSet dd) (Map.keysSet reords)
     touchedLiberties = Map.fromSet (flip getLiberty vs) touchedPaths
     cannotErrs = const ["You touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties

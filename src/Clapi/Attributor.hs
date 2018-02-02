@@ -13,10 +13,13 @@ attributor
 attributor u = forever $ waitThen (sendFwd . fmap attributeClient) sendRev
   where
     attributeClient (Trcd d) = Trcd $ d{
-      trcdChildAssignments = modPairFst <$> trcdChildAssignments d,
+      trcdReorderings = fmap modPairFst <$> trcdReorderings d,
       trcdData = attributeDc <$> trcdData d}
     attributeClient d = d
-    attributeDc (ConstChange ma vs) = ConstChange (modAttr ma) vs
-    attributeDc (TimeChange m) = TimeChange $ modPairFst <$> m
+    attributeDc dc = case dc of
+      InitChange ma -> InitChange $ modAttr ma
+      DeleteChange ma -> DeleteChange $ modAttr ma
+      ConstChange ma vs -> ConstChange (modAttr ma) vs
+      TimeChange m -> TimeChange $ modPairFst <$> m
     modPairFst (ma, x) = (modAttr ma, x)
     modAttr = Just . maybe u id

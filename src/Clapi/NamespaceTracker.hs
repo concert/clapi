@@ -19,19 +19,21 @@ import qualified Data.Text as Text
 
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
+import Clapi.Types.AssocList
+  (AssocList, alEmpty,  alFilterKey, alInsert, alFoldlWithKey, alKeysSet)
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Digests
   ( TrDigest(..), TrcDigest(..), TrpDigest(..), TrprDigest(..)
   , FrDigest(..), FrcDigest(..), FrpDigest(..), FrpErrorDigest(..)
-  , DefOp(..), SubOp(..), frcdNull, trcdNamespaces)
+  , DefOp(..), SubOp(..), frcdNull, trcdNamespaces
+  , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
+  , OutboundClientDigest(..), OutboundClientInitialisationDigest
+  , OutboundProviderDigest(..))
+import Clapi.Types () -- Either String a MonadFail instance
 import Clapi.Types.Path (Seg, Path, TypeName(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
-import Clapi.Relay
-  ( InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
-  , OutboundClientDigest(..), OutboundClientInitialisationDigest
-  , OutboundProviderDigest(..))
 
 data Ownership = Owner | Client deriving (Eq, Show)
 
@@ -173,7 +175,7 @@ toInboundClientDigest i trcd =
         Map.findWithDefault mempty i $ nstDataRegistrations nsts)
       (Set.difference tSubs $
         Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
-      (trcdChildAssignments trcd)
+      (trcdReorderings trcd)
       (trcdData trcd)
   where
     mapPair f (a, b) = (f a, f b)
@@ -193,7 +195,7 @@ registerSubs
   => i -> OutboundClientInitialisationDigest -> StateT (NstState i) m ()
 registerSubs i (OutboundClientDigest cas defs _tas dd _errs) = modify go
   where
-    newDRegsForI = Set.union (Map.keysSet cas) (Map.keysSet dd)
+    newDRegsForI = Set.union (Map.keysSet cas) (alKeysSet dd)
     go (NstState owners tRegs dRegs) = NstState owners
       (Map.insertWith (<>) i (Map.keysSet defs) tRegs)
       (Map.insertWith (<>) i newDRegsForI dRegs)
@@ -229,15 +231,15 @@ dispatchProviderDigest d =
     void $ sequence $ Map.mapWithKey dispatch $ frpdsByNamespace d
 
 frpdsByNamespace :: OutboundProviderDigest -> Map Seg FrpDigest
-frpdsByNamespace (OutboundProviderDigest cas dd) =
+frpdsByNamespace (OutboundProviderDigest reords dd) =
   let
-    (casRoots, casByNs) = nestMapsByKey Path.splitHead cas
-    (ddRoots, ddByNs) = nestMapsByKey Path.splitHead dd
+    (casRoots, casByNs) = nestMapsByKey Path.splitHead reords
+    (_, ddByNs) = nestAlByKey Path.splitHead dd
     -- FIXME: whacking the global stuff to everybody isn't quite right - we need
     -- to know who originated the opd?
-    f ns cas' dd' = FrpDigest ns (cas' <> casRoots) (dd' <> ddRoots)
+    f ns reords' dd' = FrpDigest ns (reords' <> casRoots) dd'
   in
-    pairMapsWithKey f casByNs ddByNs
+    pairMapsWithKey mempty alEmpty f casByNs ddByNs
 
 produceFromRelayClientDigest
   :: OutboundClientDigest -> Set Path -> Set TypeName -> FrcDigest
@@ -246,7 +248,7 @@ produceFromRelayClientDigest
     (Map.restrictKeys cas ps)
     (OpDefine <$> Map.restrictKeys defs tns)
     (Map.restrictKeys tas ps)
-    (Map.restrictKeys dd ps)
+    (alFilterKey (`Set.member` ps) dd)
     (Map.filterWithKey relevantErr errs)
   where
     relevantErr ei _ = case ei of
@@ -267,17 +269,17 @@ liftedWaitThen onFwd onRev = do
     Rev b -> onRev b
 
 pairMapsWithKey
-  :: (Ord k, Monoid a, Monoid b)
-  => (k -> a -> b -> c) -> Map k a -> Map k b -> Map k c
-pairMapsWithKey f = merge
-  (mapMissing $ \k a -> f k a mempty)
-  (mapMissing $ \k b -> f k mempty b)
+  :: Ord k
+  => a -> b -> (k -> a -> b -> c) -> Map k a -> Map k b -> Map k c
+pairMapsWithKey defaultA defaultB f = merge
+  (mapMissing $ \k a -> f k a defaultB)
+  (mapMissing $ \k b -> f k defaultA b)
   (zipWithMatched f)
 
 pairMaps
   :: (Ord k, Monoid a, Monoid b)
   => (a -> b -> c) -> Map k a -> Map k b -> Map k c
-pairMaps f = pairMapsWithKey $ const f
+pairMaps f = pairMapsWithKey mempty mempty $ const f
 
 nestMapsByKey
   :: (Ord k, Ord k0, Ord k1)
@@ -289,3 +291,14 @@ nestMapsByKey f = Map.foldlWithKey g mempty
         ( unsplit
         , Map.alter (Just . Map.insert k1 val . maybe mempty id) k0 nested)
       Nothing -> (Map.insert k val unsplit, nested)
+
+nestAlByKey
+  :: (Ord k, Ord k0, Ord k1)
+  => (k -> Maybe (k0, k1)) -> AssocList k a -> (AssocList k a, Map k0 (AssocList k1 a))
+nestAlByKey f = alFoldlWithKey g (alEmpty, mempty)
+  where
+    g (unsplit, nested) k val = case f k of
+      Just (k0, k1) ->
+        ( unsplit
+        , Map.alter (Just . alInsert k1 val . maybe alEmpty id) k0 nested)
+      Nothing -> (alInsert k val unsplit, nested)
