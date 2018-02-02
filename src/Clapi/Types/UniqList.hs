@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
 
 module Clapi.Types.UniqList
   ( UniqList, unUniqList, unsafeMkUniqList
@@ -15,7 +15,7 @@ import qualified Data.Set as Set
 import Clapi.Util (ensureUnique)
 
 newtype UniqList a
-  = UniqList {unUniqList :: [a]} deriving (Show, Eq, Ord, Functor)
+  = UniqList {unUniqList :: [a]} deriving (Show, Eq, Ord, Foldable)
 
 mkUniqList :: (Ord a, Show a, MonadFail m) => [a] -> m (UniqList a)
 mkUniqList as = UniqList <$> ensureUnique "items" as
@@ -31,9 +31,6 @@ ulEmpty = UniqList []
 
 ulSingle :: a -> UniqList a
 ulSingle a = UniqList [a]
-
-instance Foldable UniqList where
-  foldMap f = foldMap f . unUniqList
 
 ulDelete :: Eq a => a -> UniqList a -> UniqList a
 ulDelete a (UniqList as) = UniqList $ List.delete a as
