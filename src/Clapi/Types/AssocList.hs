@@ -1,11 +1,13 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE TupleSections #-}
 
 module Clapi.Types.AssocList
   ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList
-  , alEmpty, alSingleton, alFromKeys, alFromMap, alFromZip
+  , alEmpty, alSingleton, alFromKeys, alFromList, alFromMap, alPickFromMap
+  , alToMap, alFromZip
   , alCons, alLookup, alInsert, alDelete, alKeys, alKeysSet, alValues
   , alFmapWithKey, alAlterF, alAlter, alAdjust
   ) where
@@ -16,6 +18,7 @@ import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -23,7 +26,8 @@ import Clapi.Types.UniqList (UniqList, unUniqList, unsafeMkUniqList)
 import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
 
 newtype AssocList a b
-  = AssocList {unAssocList :: [(a, b)]} deriving (Show, Eq, Functor, Foldable)
+  = AssocList {unAssocList :: [(a, b)]}
+  deriving (Show, Eq, Functor, Foldable, Traversable)
 
 mkAssocList :: (MonadFail m, Ord a, Show a) => [(a, b)] -> m (AssocList a b)
 mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocList abPairs)
@@ -37,11 +41,23 @@ alEmpty = AssocList []
 alSingleton :: a -> b -> AssocList a b
 alSingleton a b = AssocList [(a, b)]
 
-alFromKeys :: b -> UniqList a -> AssocList a b
-alFromKeys b as = AssocList $ zip (unUniqList as) $ repeat b
+alFromKeys :: (a -> b) -> UniqList a -> AssocList a b
+alFromKeys f as = AssocList $ (\a -> (a, f a)) <$> unUniqList as
+
+-- | Like `Map.fromList`, in that it doesn't fail but takes the final value for
+--   any duplicated key. Use `mkAssocList` to check for uniqueness.
+alFromList :: Eq a => [(a, b)] -> AssocList a b
+alFromList = foldl (\acc (k, a) -> alInsert k a acc) alEmpty
 
 alFromMap :: Map a b -> AssocList a b
 alFromMap = AssocList . Map.toList
+
+alPickFromMap :: Ord a => Map a b -> UniqList a -> AssocList a b
+alPickFromMap m ul = AssocList $ catMaybes $
+  (\a -> (a,) <$> Map.lookup a m) <$> unUniqList ul
+
+alToMap :: Ord a => AssocList a b -> Map a b
+alToMap = Map.fromList . unAssocList
 
 alFromZip :: (MonadFail m, Ord a, Show a) => [a] -> [b] -> m (AssocList a b)
 alFromZip as bs = fmtStrictZipError "keys" "values" (strictZip as bs) >>= mkAssocList
