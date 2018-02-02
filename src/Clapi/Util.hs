@@ -13,7 +13,8 @@ module Clapi.Util (
     showItems,
     mkProxy,
     bound,
-    safeToEnum
+    safeToEnum,
+    foldlNestedMaps
 ) where
 
 import Prelude hiding (fail)
@@ -24,6 +25,7 @@ import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
 import Data.Proxy
+import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -146,3 +148,9 @@ safeToEnum i =
   in if fromEnum theMin <= i && i <= fromEnum theMax
   then return r
   else fail "enum value out of range"
+
+foldlNestedMaps
+  :: (acc -> k0 -> k1 -> v -> acc) -> acc -> Map k0 (Map k1 v) -> acc
+foldlNestedMaps f = Map.foldlWithKey g
+  where
+    g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
