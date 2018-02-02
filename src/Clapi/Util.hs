@@ -87,13 +87,6 @@ partitionDifference
   :: (Ord a) => Set.Set a -> Set.Set a -> (Set.Set a, Set.Set a)
 partitionDifference as bs = (Set.difference as bs, Set.difference bs as)
 
-partitionDifferenceL :: (Ord a) => [a] -> [a] -> ([a], [a])
-partitionDifferenceL as bs =
-  let
-    (added, removed) = partitionDifference (Set.fromList as) (Set.fromList bs)
-  in
-    (Set.toList added, Set.toList removed)
-
 partitionDifferenceF
   :: (Ord a, Foldable f, Foldable g, Applicative m, Monoid (m a))
   => f a -> g a -> (m a, m a)
