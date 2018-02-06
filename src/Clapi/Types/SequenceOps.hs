@@ -1,15 +1,38 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 
-module Clapi.Types.SequenceOps (reorderFromDeps) where
+module Clapi.Types.SequenceOps (SequenceOp(..), updateUniqList) where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (fromJust, isJust)
 import qualified Data.List as List
 import Data.Foldable (foldlM)
 
-import Clapi.Types.UniqList (UniqList, unUniqList, mkUniqList)
+import Clapi.Types.UniqList
+  (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
+import Clapi.Util (ensureUnique)
+
+data SequenceOp i
+  = SoPresentAfter (Maybe i)
+  | SoAbsent
+  deriving (Show, Eq)
+
+updateUniqList
+  :: (Eq i, Ord i, Show i, MonadFail m)
+  => Map i (SequenceOp i) -> UniqList i -> m (UniqList i)
+updateUniqList ops ul = do
+    ensureUnique "flange" $ Map.elems reorders
+    reorderFromDeps reorders $ Map.foldlWithKey foo ul ops
+  where
+    foo ul' i op = case op of
+      SoPresentAfter _ -> ulInsert i ul'
+      SoAbsent -> ulDelete i ul'
+    reorders = Map.foldlWithKey bar mempty ops
+    bar acc i op = case op of
+      SoPresentAfter mi -> Map.insert i mi acc
+      SoAbsent -> acc
 
 getChainStarts ::
     Ord i => Map i (Maybe i) -> ([(i, Maybe i)], Map i (Maybe i))
@@ -23,16 +46,16 @@ reorderFromDeps
     :: (MonadFail m, Ord i, Show i)
     => Map i (Maybe i) -> UniqList i -> m (UniqList i)
 reorderFromDeps m ul =
-    resolveDigest m >>= applyOps (unUniqList ul) >>= mkUniqList
+    resolveDigest m >>= applyMoves (unUniqList ul) >>= mkUniqList
   where
     resolveDigest m' = if null m' then return []
         else case getChainStarts m' of
             ([], _) -> fail "Unresolvable order dependencies"
             (starts, remainder) -> (starts ++) <$> resolveDigest remainder
-    applyOps l starts = foldlM applyOp l starts
+    applyMoves l starts = foldlM applyMove l starts
 
-applyOp :: (MonadFail m, Ord i, Show i) => [i] -> (i, Maybe i) -> m [i]
-applyOp l (i, mi) =
+applyMove :: (MonadFail m, Ord i, Show i) => [i] -> (i, Maybe i) -> m [i]
+applyMove l (i, mi) =
     removeElem "Element was not present to move" i l
     >>= insertAfter "Preceeding element not found for move" i mi
   where
@@ -43,7 +66,7 @@ applyOp l (i, mi) =
             (bl, al) = span (/= after) ol
           in case al of
             (a:rl) -> return $ bl ++ [a, v] ++ rl
-            [] -> fail $ msg ++ ": " ++ show v
+            [] -> fail $ msg ++ ": " ++ show after
     removeElem msg v ol =
       let
         (ds, ol') = List.partition (== v) ol

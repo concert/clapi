@@ -40,6 +40,15 @@ union = Map.unionM
 concat :: (Ord k, Ord a) => [Mos k a] -> Mos k a
 concat = foldr union mempty
 
+partition :: Ord k => (a -> Bool) -> Mos k a -> (Mos k a, Mos k a)
+partition f =
+    Map.foldlWithKey
+      (\(tmos, fmos) k (tset, fset) -> (ins k tset tmos, ins k fset fmos))
+      mempty
+    . fmap (Set.partition f)
+  where
+    ins k s mos = if null s then mos else Map.insert k s mos
+
 
 type Dependencies k a = (Map.Map k a, Mos a k)
 

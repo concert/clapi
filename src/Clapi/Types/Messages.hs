@@ -54,15 +54,7 @@ data SubMessage
 data TypeMessage = MsgAssignType Path TypeName Liberty deriving (Show, Eq)
 
 data DataUpdateMessage
-  = MsgInit
-      { duMsgPath :: Path
-      , duMsgAttributee :: Maybe Attributee
-      }
-  | MsgDelete
-      { duMsgPath :: Path
-      , duMsgAttributee :: Maybe Attributee
-      }
-  | MsgConstSet
+  = MsgConstSet
       { duMsgPath :: Path
       , duMsgArgs :: [WireValue]
       , duMsgAttributee :: Maybe Attributee
@@ -80,19 +72,28 @@ data DataUpdateMessage
       , duMsgTpId :: Word32
       , duMsgAttributee :: Maybe Attributee
       }
-  | MsgReorder
-      { duMsgPath :: Path
-      , duMsgReorderings :: Seg
-      , duMsgReorderReference :: Maybe Seg
-      , duMsgAttributee :: Maybe Attributee
-      }
    deriving (Eq, Show)
+
+data ContainerUpdateMessage
+  = MsgPresentAfter
+      { cuMsgPath :: Path
+      , cuMsgTarg :: Seg
+      , cuMsgRef :: Maybe Seg
+      , cuMsgAttributee :: Maybe Attributee
+      }
+  | MsgAbsent
+      { cuMsgPath :: Path
+      , cuMsgTarg :: Seg
+      , cuMsgAttributee :: Maybe Attributee
+      }
+  deriving (Eq, Show)
 
 data ToRelayProviderBundle = ToRelayProviderBundle
   { trpbNamespace :: Seg
   , trpbErrors :: [MsgError Seg]
   , trpbDefinitions :: [DefMessage Seg]
   , trpbData :: [DataUpdateMessage]
+  , trpbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)
 
 data ToRelayProviderRelinquish
@@ -101,6 +102,7 @@ data ToRelayProviderRelinquish
 data FromRelayProviderBundle = FromRelayProviderBundle
   { frpbNamespace :: Seg
   , frpbData :: [DataUpdateMessage]
+  , frpbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)
 
 data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
@@ -111,23 +113,27 @@ data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
 data ToRelayClientBundle = ToRelayClientBundle
   { trcbSubs :: [SubMessage]
   , trcbData :: [DataUpdateMessage]
+  , trcbContMsgs :: [ContainerUpdateMessage]
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
-  { frcbErrors :: [MsgError TypeName]
+  { frcbTypeUnsubs :: [TypeName]
+  , frcbDataUnsubs :: [Path]
+  , frcbErrors :: [MsgError TypeName]
   , frcbDefinitions :: [DefMessage TypeName]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]
+  , frcbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)
 
 data ToRelayBundle
   = Trpb ToRelayProviderBundle
   | Trpr ToRelayProviderRelinquish
   | Trcb ToRelayClientBundle
-  deriving Show
+  deriving (Show, Eq)
 
 data FromRelayBundle
   = Frpb FromRelayProviderBundle
   | Frpeb FromRelayProviderErrorBundle
   | Frcb FromRelayClientBundle
-  deriving Show
+  deriving (Show, Eq)

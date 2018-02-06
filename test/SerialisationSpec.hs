@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module SerialisationSpec where
 
@@ -17,15 +18,18 @@ import Blaze.ByteString.Builder (toByteString)
 import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
 import Clapi.Types
-  ( Time, Attributee, Site, WireValue, RequestBundle
-  , Interpolation(..), SubMessage(..), DataUpdateMessage(..)
-  , TreeUpdateMessage(..), RequestBundle(..)  , UpdateBundle(..)
-  , OwnerRequestBundle(..), FromRelayBundle(..)  , ToRelayBundle(..)
-  , MsgError(..))
-import Clapi.Types.Path (Path(..), Seg)
+  ( Time, Attributee, Site, WireValue
+  , Interpolation(..), SubMessage(..), DataUpdateMessage(..), TypeMessage(..)
+  , MsgError(..), TpId, DefMessage(..), ContainerUpdateMessage(..)
+  , ToRelayClientBundle(..), ToRelayProviderBundle(..)
+  , FromRelayClientBundle(..), FromRelayProviderBundle(..)
+  , FromRelayProviderErrorBundle(..), ToRelayProviderRelinquish(..)
+  , ToRelayBundle(..), FromRelayBundle(..)
+  , ErrorIndex(..))
+import Clapi.Types.Path (Path(..), Seg, pattern Root)
 import Clapi.Serialisation (Encodable(..))
 
- -- Incl. Arbitrary instances of WireValue:
+-- Incl. Arbitrary instances of WireValue:
 import TypesSpec (smallListOf, name, arbitraryTextNoNull)
 
 encode :: (MonadFail m, Encodable a) => a -> m ByteString
@@ -40,94 +44,102 @@ instance Arbitrary Interpolation where
       , return ILinear
       , IBezier <$> arbitrary <*> arbitrary]
 
+instance Arbitrary a => Arbitrary (DefMessage a) where
+  arbitrary = oneof
+    [ MsgDefine <$> arbitrary <*> arbitrary
+    , MsgUndefine <$> arbitrary
+    ]
+
 instance Arbitrary SubMessage where
   arbitrary = oneof
-      [ MsgSubscribe <$> arbitrary
+      [ MsgTypeSubscribe <$> arbitrary
+      , MsgSubscribe <$> arbitrary
+      , MsgTypeUnsubscribe <$> arbitrary
       , MsgUnsubscribe <$> arbitrary]
+
+instance Arbitrary TypeMessage where
+  arbitrary = MsgAssignType <$> arbitrary <*> arbitrary <*> arbitrary
 
 genAttributee :: Gen (Maybe Attributee)
 genAttributee = oneof [return Nothing, Just <$> arbitraryTextNoNull]
 
-genSite :: Gen (Maybe Site)
-genSite = genAttributee
-
 instance Arbitrary DataUpdateMessage where
   arbitrary = oneof
-    [ MsgAdd
+    [ MsgConstSet
       <$> (arbitrary :: Gen Path)
-      <*> (arbitrary :: Gen Time)
       <*> (smallListOf arbitrary :: Gen [WireValue])
-      <*> (arbitrary :: Gen Interpolation)
       <*> genAttributee
-      <*> genSite
     , MsgSet
       <$> (arbitrary :: Gen Path)
+      <*> (arbitrary :: Gen TpId)
       <*> (arbitrary :: Gen Time)
       <*> (smallListOf arbitrary :: Gen [WireValue])
       <*> (arbitrary :: Gen Interpolation)
       <*> genAttributee
-      <*> genSite
     , MsgRemove
       <$> (arbitrary :: Gen Path)
-      <*> (arbitrary :: Gen Time)
-      <*> genAttributee
-      <*> genSite
-    , MsgClear
-      <$> (arbitrary :: Gen Path)
-      <*> (arbitrary :: Gen Time)
-      <*> genAttributee
-      <*> genSite
-    , MsgSetChildren
-      <$> (arbitrary :: Gen Path)
-      <*> (smallListOf name :: Gen [Seg])
+      <*> (arbitrary :: Gen TpId)
       <*> genAttributee
     ]
-  shrink (MsgAdd (Path []) _ [] _ Nothing Nothing) = []
-  shrink (MsgAdd p t vs i a s) =
-    [MsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink (MsgSet (Path []) _ [] _ Nothing Nothing) = []
-  shrink (MsgSet p t vs i a s) =
-    [MsgSet p' t vs' i a' s' | (p', vs', a', s') <- shrink (p, vs, a, s)]
-  shrink (MsgRemove (Path []) _ Nothing Nothing) = []
-  shrink (MsgRemove p t a s) =
-    [MsgRemove p' t a' s' | (p', a', s') <- shrink (p, a, s)]
-  shrink (MsgClear p t a s) =
-    [MsgClear p' t a' s' | (p', a', s') <- shrink (p, a, s)]
-  shrink (MsgSetChildren (Path []) [] Nothing) = []
-  shrink (MsgSetChildren p ns a) =
-    [MsgSetChildren p' ns' a' | (p', ns', a') <- shrink (p, ns, a)]
+  shrink (MsgConstSet Root [] Nothing) = []
+  shrink (MsgConstSet p vs a) =
+    [MsgConstSet p' vs' a' | (p', vs', a') <- shrink (p, vs, a)]
+  shrink (MsgSet (Path []) _ _ [] _ Nothing) = []
+  shrink (MsgSet p tpid t vs i a) =
+    [MsgSet p' tpid t vs' i a' | (p', vs', a') <- shrink (p, vs, a)]
+  shrink (MsgRemove (Path []) _ Nothing) = []
+  shrink (MsgRemove p t a) = [MsgRemove p' t a' | (p', a') <- shrink (p, a)]
 
-instance Arbitrary TreeUpdateMessage where
+
+instance Arbitrary ContainerUpdateMessage where
+  arbitrary = undefined
+
+instance Arbitrary a => Arbitrary (ErrorIndex a) where
   arbitrary = oneof
-    [ MsgAssignType
-      <$> (arbitrary :: Gen Path)
-      <*> (arbitrary :: Gen Path)
-    , MsgDelete <$> (arbitrary :: Gen Path)]
+    [ return GlobalError
+    , PathError <$> arbitrary
+    , TimePointError <$> arbitrary <*> arbitrary
+    , TypeNameError <$> arbitrary
+    ]
 
-instance Arbitrary MsgError where
+instance Arbitrary a => Arbitrary (MsgError a) where
   arbitrary = MsgError <$> arbitrary <*> arbitraryTextNoNull
 
-instance Arbitrary RequestBundle where
-  arbitrary = RequestBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
-  shrink (RequestBundle subs msgs) =
-    [RequestBundle subs' msgs' | (subs', msgs') <- shrink (subs, msgs)]
 
-instance Arbitrary UpdateBundle where
-  arbitrary = UpdateBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
-  shrink (UpdateBundle errs msgs) =
-    [UpdateBundle errs' msgs' | (errs', msgs') <- shrink (errs, msgs)]
+instance Arbitrary ToRelayProviderBundle where
+  arbitrary = ToRelayProviderBundle <$> arbitrary <*> arbitrary <*> arbitrary
+    <*> arbitrary <*> arbitrary
 
-instance Arbitrary OwnerRequestBundle where
-  arbitrary =
-    OwnerRequestBundle <$> smallListOf arbitrary <*> smallListOf arbitrary
+instance Arbitrary FromRelayProviderBundle where
+  arbitrary = FromRelayProviderBundle <$> arbitrary <*> arbitrary <*> arbitrary
 
-instance Arbitrary FromRelayBundle where
-  arbitrary = oneof [FRBClient <$> arbitrary, FRBOwner <$> arbitrary]
+instance Arbitrary ToRelayProviderRelinquish where
+  arbitrary = ToRelayProviderRelinquish <$> arbitrary
+
+instance Arbitrary FromRelayProviderErrorBundle where
+  arbitrary = FromRelayProviderErrorBundle <$> arbitrary <*> arbitrary
+
+instance Arbitrary ToRelayClientBundle where
+  arbitrary = ToRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary FromRelayClientBundle where
+  arbitrary = FromRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary
+    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+
 
 instance Arbitrary ToRelayBundle where
-  arbitrary = oneof [TRBClient <$> arbitrary, TRBOwner <$> arbitrary]
-  shrink (TRBClient b) = TRBClient <$> shrink b
-  shrink (TRBOwner b) = TRBOwner <$> shrink b
+  arbitrary = oneof
+    [ Trpb <$> arbitrary
+    , Trpr <$> arbitrary
+    , Trcb <$> arbitrary
+    ]
+
+instance Arbitrary FromRelayBundle where
+  arbitrary = oneof
+    [ Frpb <$> arbitrary
+    , Frpeb <$> arbitrary
+    , Frcb <$> arbitrary
+    ]
 
 
 showBytes :: ByteString -> String

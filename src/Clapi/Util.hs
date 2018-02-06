@@ -14,7 +14,7 @@ module Clapi.Util (
     mkProxy,
     bound,
     safeToEnum,
-    foldlNestedMaps
+    flattenNestedMaps, foldlNestedMaps
 ) where
 
 import Prelude hiding (fail)
@@ -141,6 +141,13 @@ safeToEnum i =
   in if fromEnum theMin <= i && i <= fromEnum theMax
   then return r
   else fail "enum value out of range"
+
+flattenNestedMaps
+  :: (Ord k0, Ord k1, Ord k2)
+  => (k0 -> k1 -> k2) -> Map k0 (Map k1 v) -> Map k2 v
+flattenNestedMaps f = Map.foldlWithKey inner mempty
+  where
+    inner acc k0 m = Map.union acc $ Map.mapKeys (\k1 -> f k0 k1) m
 
 foldlNestedMaps
   :: (acc -> k0 -> k1 -> v -> acc) -> acc -> Map k0 (Map k1 v) -> acc

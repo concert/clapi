@@ -4,7 +4,7 @@
 module Clapi.Types.UniqList
   ( UniqList, unUniqList, unsafeMkUniqList
   , mkUniqList, ulFromSet, ulEmpty, ulSingle
-  , ulDelete
+  , ulDelete, ulInsert
   ) where
 
 import Control.Monad.Fail (MonadFail)
@@ -34,3 +34,10 @@ ulSingle a = UniqList [a]
 
 ulDelete :: Eq a => a -> UniqList a -> UniqList a
 ulDelete a (UniqList as) = UniqList $ List.delete a as
+
+ulInsert :: Eq a => a -> UniqList a -> UniqList a
+ulInsert a' = UniqList . inner . unUniqList
+  where
+    inner [] = [a']
+    inner l@(a:as) | a' == a = l
+                   | otherwise = a : inner as

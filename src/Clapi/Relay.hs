@@ -17,24 +17,27 @@ import qualified Data.Text as Text
 import Data.Void (Void)
 
 import qualified Clapi.Types.Dkmap as Dkmap
-import Clapi.Types.AssocList (alEmpty, alInsert, alFilterKey, alSetDefault)
+import Clapi.Types.AssocList
+  (alEmpty, alInsert, alFilterKey, alSetDefault, unAssocList)
 import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
 import Clapi.Types.Digests
-  ( Reorderings, DataDigest, TrpDigest(..), TrprDigest(..)
+  ( ContainerOps, DataDigest, TrpDigest(..), TrprDigest(..)
   , FrpErrorDigest(..), DataChange(..)
-  , TimeSeriesDataOp(..), DefOp
+  , TimeSeriesDataOp(..), DefOp(..)
   , OutboundDigest(..), InboundDigest(..)
   , OutboundClientDigest(..), OutboundClientInitialisationDigest(..)
   , InboundClientDigest(..), OutboundProviderDigest(..))
 import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern (:/))
 import Clapi.Types.Definitions (Liberty, Definition)
 import Clapi.Types.Wire (WireValue)
+import Clapi.Types.SequenceOps (SequenceOp(SoPresentAfter))
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupDef
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
   , getLiberty)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
+import Clapi.Util (flattenNestedMaps)
 
 mapPartitionJust :: Map k (Maybe a) -> (Map k a, Set k)
 mapPartitionJust m = let (js, ns) = Map.partition isJust m in
@@ -43,13 +46,6 @@ mapPartitionJust m = let (js, ns) = Map.partition isJust m in
 mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
 mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
   (fromLeft undefined <$> ls, fromRight undefined <$> rs)
-
-flattenNestedMaps
-  :: (Ord k0, Ord k1, Ord k2)
-  => (k0 -> k1 -> k2) -> Map k0 (Map k1 v) -> Map k2 v
-flattenNestedMaps f = Map.foldlWithKey inner mempty
-  where
-    inner acc k0 m = Map.union acc $ Map.mapKeys (\k1 -> f k0 k1) m
 
 oppifyTimeSeries :: TimeSeries [WireValue] -> DataChange
 oppifyTimeSeries ts = TimeChange $
@@ -63,7 +59,7 @@ genInitDigest ps tns vs =
     rtns = Map.fromSet (flip valuespaceGet vs) ps
     (tnErrs, defs) = mapPartitionEither $ Map.fromSet (flip vsLookupDef vs) tns
     initialOcd = OutboundClientDigest
-      mempty defs mempty alEmpty (pure . Text.pack <$> Map.mapKeys TypeNameError tnErrs)
+      mempty (OpDefine <$> defs) mempty alEmpty (pure . Text.pack <$> Map.mapKeys TypeNameError tnErrs)
   in
     Map.foldlWithKey go initialOcd rtns
   where
@@ -73,13 +69,16 @@ genInitDigest ps tns vs =
     go d p (Right (def, tn, lib, rtn)) =
       let
         d' = d{
-          ocdDefinitions = Map.insert tn def (ocdDefinitions d),
+          ocdDefinitions = Map.insert tn (OpDefine def) (ocdDefinitions d),
           ocdTypeAssignments = Map.insert p (tn, lib) (ocdTypeAssignments d)}
       in case rtn of
         RtnEmpty -> error "Valid tree should not contain empty nodes, but did"
-        RtnChildren att kids -> d'{ocdData = foldl
-          (\acc s -> alSetDefault (p :/ s) (InitChange att) acc)
-          (ocdData d) kids}
+        RtnChildren kidsAl -> let (kidSegs, kidAtts) = unzip $ unAssocList kidsAl in
+          d'{ocdContainerOps = Map.insert p
+            (Map.fromList $ zipWith3 (\s a att -> (s, (att, SoPresentAfter a))) kidSegs
+               (Nothing : (Just <$> kidSegs)) kidAtts)
+            (ocdContainerOps d')
+          }
         RtnConstData att vals -> d'{ocdData =
           alInsert p (ConstChange att vals) $ ocdData d}
         RtnDataSeries ts ->
@@ -95,19 +94,22 @@ relay vs = waitThenFwdOnly fwd
           (terminalErrors $ trpdNamespace d)
           (handleOwnerSuccess d) $ processToRelayProviderDigest d vs
         Icd d -> handleClientDigest d
-          $ processToRelayClientDigest (icdReorderings d) (icdData d) vs
+          $ processToRelayClientDigest (icdContainerOps d) (icdData d) vs
         Iprd (TrprDigest ns) -> relay $ vsRelinquish ns vs
       where
         handleOwnerSuccess
-            (TrpDigest ns reords _ dd errs) vs'@(Valuespace _ defs tas) =
+            (TrpDigest ns defs dd contOps errs) vs'@(Valuespace _ _ tas) =
           let
+            defs' = vsMinimiseDefinitions defs vs
             dd' = vsMinimiseDataDigest dd vs
-            reords' = vsMinimiseReords reords vs
+            contOps' = vsMinimiseReords contOps vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
           in do
             sendRev (i,
-              Ocd $ OutboundClientDigest reords'
-                (flattenNestedMaps TypeName defs) (mungedTas vs) dd' errs')
+              Ocd $ OutboundClientDigest contOps'
+                -- FIXME: we need to provide defs for type assignments too.
+                (Map.mapKeys (TypeName ns) defs')
+                (mungedTas vs) dd' errs')
             relay vs'
         mungedTas vs = Map.mapWithKey
           (\p tn -> (tn, either error id $ getLiberty p vs))
@@ -137,5 +139,6 @@ relay vs = waitThenFwdOnly fwd
           relay vs
 
 -- FIXME: these are worst case implementations right now!
+vsMinimiseDefinitions defs _ = defs
 vsMinimiseDataDigest dd _ = dd
 vsMinimiseReords reords _ = reords

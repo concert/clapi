@@ -21,6 +21,7 @@ import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   (DefOp(OpDefine), DataChange(..), TrcDigest(..), SubOp(..), FrcDigest(..))
+import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
@@ -34,18 +35,16 @@ class PathSegable a where
 
 relayApiProto ::
     (Ord i, PathSegable i) =>
-    IO (Map Seg i) ->
     i ->
     Protocol
         (ClientEvent i (TimeStamped TrDigest)) (ClientEvent i TrDigest)
-        (ServerEvent i FrDigest) (ServerEvent i FrDigest)
+        (ServerEvent i FrDigest) (Either (Map Seg i) (ServerEvent i FrDigest))
         IO ()
-relayApiProto getOwners selfAddr =
-    publishRelayApi >> subRoot >> steadyState mempty
+relayApiProto selfAddr =
+    publishRelayApi >> steadyState mempty mempty
   where
     publishRelayApi = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
       rns
-      mempty
       (Map.fromList $ fmap OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
              (alSingleton [segq|commit_hash|] $ ttString "banana")
@@ -77,16 +76,15 @@ relayApiProto getOwners selfAddr =
         , ([pathq|/self|], ConstChange Nothing [
              WireValue $ Path.toText selfClientPath])
         , (selfClientPath, ConstChange Nothing [WireValue @Float 0.0])
-        , ([pathq|/owners|], InitChange Nothing)
         ])
+      (Map.singleton Root $ Map.singleton [segq|owners|] $
+        (Nothing, SoPresentAfter $ Just [segq|clients|]))
       mempty
     rns = [segq|relay|]
     selfSeg = pathNameFor selfAddr
     selfClientPath = Root :/ [segq|clients|] :/ selfSeg
     staticAl = alFromMap . Map.fromList
-    subRoot = sendFwd $ ClientData selfAddr $ Trcd $ TrcDigest
-      mempty (Map.singleton [pathq|/|] OpSubscribe) mempty alEmpty
-    steadyState timingMap = waitThen fwd rev
+    steadyState timingMap ownerMap = waitThen fwd rev
       where
         fwd ce = case ce of
           ClientConnect cAddr ->
@@ -98,7 +96,8 @@ relayApiProto getOwners selfAddr =
               pubUpdate
                 (alSingleton ([pathq|/clients|] :/ cSeg)
                   $ ConstChange Nothing [WireValue $ unTimeDelta tdZero])
-              steadyState timingMap'
+                mempty
+              steadyState timingMap' ownerMap
           ClientData cAddr (TimeStamped (theirTime, d)) -> do
             let cSeg = pathNameFor cAddr
             -- FIXME: this delta thing should probably be in the per client
@@ -107,36 +106,39 @@ relayApiProto getOwners selfAddr =
             let timingMap' = Map.insert cSeg delta timingMap
             pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg)
               $ ConstChange Nothing [WireValue $ unTimeDelta delta])
+              mempty
             sendFwd $ ClientData cAddr d
-            steadyState timingMap'
+            steadyState timingMap' ownerMap
           ClientDisconnect cAddr ->
             sendFwd (ClientDisconnect cAddr) >> removeClient cAddr
         removeClient cAddr =
           let
-            cseg = pathNameFor cAddr
-            timingMap' = Map.delete cseg timingMap
+            cSeg = pathNameFor cAddr
+            timingMap' = Map.delete cSeg timingMap
           in do
-            pubUpdate
-              (alSingleton ([pathq|/clients|] :/ cseg) $ DeleteChange Nothing)
-            steadyState timingMap'
-        pubUpdate dd = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
-          rns mempty mempty dd mempty
-        rev se = case se of
-          ServerData cAddr d -> if cAddr == selfAddr
-            then handleNsChange
-            else do
-              case d of
-                Frcd (FrcDigest reords defs tas dd errs) ->
-                  sendRev $ ServerData cAddr $ Frcd
-                  $ FrcDigest reords defs tas (viewAs cAddr dd) errs
-                _ -> sendRev se
-              steadyState timingMap
-          ServerDisconnect cAddr ->
-            sendRev (ServerDisconnect cAddr) >> removeClient cAddr
-        handleNsChange = do
-          owners <- fmap pathNameFor <$> lift getOwners
+            pubUpdate alEmpty $ Map.singleton [pathq|/clients|] $
+              Map.singleton cSeg (Nothing, SoAbsent)
+            steadyState timingMap' ownerMap
+        pubUpdate dd co = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
+          rns mempty dd co mempty
+        rev (Left ownerAddrs) = do
+          let ownerMap' = pathNameFor <$> ownerAddrs
           pubUpdate
-            (alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> owners)
+            (alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap')
+            (Map.singleton [pathq|/owners|] $
+              (const (Nothing, SoAbsent)) <$>
+                ownerMap `Map.difference` ownerMap')
+          steadyState timingMap ownerMap'
+        rev (Right se) = do
+          case se of
+            ServerData cAddr d ->
+              case d of
+                Frcd frcd ->
+                  sendRev $ ServerData cAddr $ Frcd
+                  $ frcd {frcdData = viewAs cAddr $ frcdData frcd}
+                _ -> sendRev se
+            _ -> sendRev se
+          steadyState timingMap ownerMap
         toOwnerPath s = [pathq|/owners|] :/ s
         toSetRefOp ns = ConstChange Nothing [
           WireValue $ Path.toText $ [pathq|/clients|] :/ ns]

@@ -14,14 +14,13 @@ import Data.Text (Text)
 import Data.Word (Word32)
 
 import Clapi.Types.AssocList
-  ( AssocList, alEmpty, alFromList, alFmapWithKey, alValues, alKeysSet
-  , alMapKeys)
+  (AssocList, alEmpty, alFromList, alFmapWithKey, alValues, alKeysSet)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty)
 import Clapi.Types.Messages
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
+import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Wire (WireValue)
-import Clapi.Util (foldlNestedMaps)
 
 data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq)
 data DefOp = OpDefine {odDef :: Definition} | OpUndefine deriving (Show, Eq)
@@ -29,30 +28,28 @@ data DefOp = OpDefine {odDef :: Definition} | OpUndefine deriving (Show, Eq)
 data TimeSeriesDataOp =
   OpSet Time [WireValue] Interpolation | OpRemove deriving (Show, Eq)
 data DataChange
-  = InitChange (Maybe Attributee) -- Basically for empty array?
-  | DeleteChange (Maybe Attributee)
-  | ConstChange (Maybe Attributee) [WireValue]
+  = ConstChange (Maybe Attributee) [WireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))
   deriving (Show, Eq)
 type DataDigest = AssocList Path DataChange
 
-type Reorderings = Map Path (Map Seg (Maybe Attributee, Maybe Seg))
+type ContainerOps = Map Path (Map Seg (Maybe Attributee, SequenceOp Seg))
 
 data TrpDigest = TrpDigest
   { trpdNamespace :: Seg
-  , trpdReorderings :: Reorderings
   , trpdDefinitions :: Map Seg DefOp
   , trpdData :: DataDigest
+  , trpdContainerOps :: ContainerOps
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
   } deriving (Show, Eq)
 
 trpDigest :: Seg -> TrpDigest
-trpDigest ns = TrpDigest ns mempty mempty alEmpty mempty
+trpDigest ns = TrpDigest ns mempty alEmpty mempty mempty
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
-  , frpdReorderings :: Reorderings
   , frpdData :: DataDigest
+  , frpdContainerOps :: ContainerOps
   } deriving (Show, Eq)
 
 data FrpErrorDigest = FrpErrorDigest
@@ -63,17 +60,22 @@ data FrpErrorDigest = FrpErrorDigest
 data TrcDigest = TrcDigest
   { trcdTypeSubs :: Map TypeName SubOp
   , trcdDataSubs :: Map Path SubOp
-  , trcdReorderings :: Reorderings
   , trcdData :: DataDigest
+  , trcdContainerOps :: ContainerOps
   } deriving (Show, Eq)
 
 data FrcDigest = FrcDigest
-  { frcdReorderings :: Reorderings
+  { frcdTypeUnsubs :: Set TypeName
+  , frcdDataUnsubs :: Set Path
   , frcdDefinitions :: Map TypeName DefOp
   , frcdTypeAssignments :: Map Path (TypeName, Liberty)
   , frcdData :: DataDigest
+  , frcdContainerOps :: ContainerOps
   , frcdErrors :: Map (ErrorIndex TypeName) [Text]
   } deriving (Show, Eq)
+
+frcdEmpty :: FrcDigest
+frcdEmpty = FrcDigest mempty mempty mempty mempty alEmpty mempty mempty
 
 newtype TrprDigest = TrprDigest {trprdNamespace :: Seg} deriving (Show, Eq)
 
@@ -90,10 +92,10 @@ data FrDigest
   deriving (Show, Eq)
 
 trcdNamespaces :: TrcDigest -> Set Seg
-trcdNamespaces (TrcDigest ts ds cas dd) =
+trcdNamespaces (TrcDigest ts ds dd co) =
     (Set.map tnNamespace $ Map.keysSet ts)
-    <> pathKeyNss (Map.keysSet ds) <> pathKeyNss (Map.keysSet cas)
-    <> pathKeyNss (alKeysSet dd)
+    <> pathKeyNss (Map.keysSet ds) <> pathKeyNss (alKeysSet dd)
+    <> pathKeyNss (Map.keysSet co)
   where
     pathKeyNss = onlyJusts . Set.map pNs
     onlyJusts = Set.map fromJust . Set.delete Nothing
@@ -101,47 +103,51 @@ trcdNamespaces (TrcDigest ts ds cas dd) =
     pNs _ = Nothing
 
 frcdNull :: FrcDigest -> Bool
-frcdNull (FrcDigest cas defs tas dd errs) =
-  null cas && null defs && null tas && null dd && null errs
+frcdNull (FrcDigest tyUns datUns defs tas dd cops errs) =
+  null tyUns && null datUns && null defs && null tas && null dd && null cops
+  && null errs
 
 -- | "Split" because kinda like :: Map k1 a -> Map k2 (Map k3 a)
-splitMaps :: (Ord a, Ord b) => [(a, (b, c))] -> Map a (Map b c)
-splitMaps = foldl mush mempty
+splitMap :: (Ord a, Ord b) => [(a, (b, c))] -> Map a (Map b c)
+splitMap = foldl mush mempty
   where
     mush m (a, bc) = Map.alter (mush' bc) a m
     mush' (b, c) = Just . Map.insert b c . maybe mempty id
 
-digestDataUpdateMessages
-  :: [DataUpdateMessage] -> (Reorderings, DataDigest)
-digestDataUpdateMessages msgs =
-  let (reords, dds) = partitionEithers $ fmap procMsg msgs in
-    (splitMaps reords, alFromList dds)
+digestDataUpdateMessages :: [DataUpdateMessage] -> DataDigest
+digestDataUpdateMessages = alFromList . fmap procMsg
   where
     procMsg msg = case msg of
-      MsgInit np att -> Right $ (np, InitChange att)
-      MsgDelete np att -> Right $ (np, DeleteChange att)
-      MsgConstSet np args att -> Right $ (np, ConstChange att args)
-      MsgSet np uuid t args i att -> Right $
+      MsgConstSet np args att -> (np, ConstChange att args)
+      MsgSet np uuid t args i att ->
         (np, TimeChange (Map.singleton uuid (att, OpSet t args i)))
-      MsgRemove np uuid att -> Right $
+      MsgRemove np uuid att ->
         (np, TimeChange (Map.singleton uuid (att, OpRemove)))
-      MsgReorder np targ ref att -> Left $ (np, (targ, (att, ref)))
 
-produceDataUpdateMessages
-  :: Reorderings -> DataDigest -> [DataUpdateMessage]
-produceDataUpdateMessages reords dd = reordMsgs ++ ddMsgs
+produceDataUpdateMessages :: DataDigest -> [DataUpdateMessage]
+produceDataUpdateMessages = mconcat . alValues . alFmapWithKey procDc
   where
-    reordMsgs = foldlNestedMaps
-      (\msgs p targ (att, ref) -> MsgReorder p targ ref att : msgs) [] reords
-    ddMsgs = mconcat $ alValues $ alFmapWithKey procDc dd
     procDc :: Path -> DataChange -> [DataUpdateMessage]
     procDc p dc = case dc of
-      InitChange att -> [MsgInit p att]
-      DeleteChange att -> [MsgDelete p att]
       ConstChange att wvs -> [MsgConstSet p wvs att]
       TimeChange m -> Map.foldlWithKey (\msgs tpid (att, op) -> (case op of
         OpSet t wvs i -> MsgSet p tpid t wvs i att
         OpRemove -> MsgRemove p tpid att) : msgs) [] m
+
+digestContOpMessages :: [ContainerUpdateMessage] -> ContainerOps
+digestContOpMessages = splitMap . fmap procMsg
+  where
+    procMsg msg = case msg of
+      MsgPresentAfter p targ ref att -> (p, (targ, (att, SoPresentAfter ref)))
+      MsgAbsent p targ att -> (p, (targ, (att, SoAbsent)))
+
+produceContOpMessages :: ContainerOps -> [ContainerUpdateMessage]
+produceContOpMessages = mconcat . Map.elems . Map.mapWithKey
+    (\p -> Map.elems . Map.mapWithKey (procCo p))
+  where
+    procCo p targ (att, co) = case co of
+      SoPresentAfter ref -> MsgPresentAfter p targ ref att
+      SoAbsent -> MsgAbsent p targ att
 
 
 qualifyDefMessage :: Seg -> DefMessage Seg -> DefMessage TypeName
@@ -209,21 +215,25 @@ digestToRelayBundle trb = case trb of
     Trcb b -> Trcd $ digestToRelayClientBundle b
   where
     digestToRelayProviderBundle :: ToRelayProviderBundle -> TrpDigest
-    digestToRelayProviderBundle (ToRelayProviderBundle ns errs defs dat) =
-      let (cas, dd) = digestDataUpdateMessages dat in
-        TrpDigest ns cas (digestDefMessages defs) dd (digestErrMessages errs)
+    digestToRelayProviderBundle (ToRelayProviderBundle ns errs defs dat cont) =
+      TrpDigest ns
+        (digestDefMessages defs)
+        (digestDataUpdateMessages dat)
+        (digestContOpMessages cont)
+        (digestErrMessages errs)
 
     digestToRelayProviderRelinquish :: ToRelayProviderRelinquish -> TrprDigest
     digestToRelayProviderRelinquish (ToRelayProviderRelinquish ns) =
       TrprDigest ns
 
     digestToRelayClientBundle :: ToRelayClientBundle -> TrcDigest
-    digestToRelayClientBundle (ToRelayClientBundle subs dat) =
+    digestToRelayClientBundle (ToRelayClientBundle subs dat cont) =
       let
         (tySubs, datSubs) = digestSubMessages subs
-        (cas, dd) = digestDataUpdateMessages dat
+        dd = digestDataUpdateMessages dat
+        co = digestContOpMessages cont
       in
-        TrcDigest tySubs datSubs cas dd
+        TrcDigest tySubs datSubs dd co
 
 
 produceFromRelayBundle :: FrDigest -> FromRelayBundle
@@ -233,8 +243,9 @@ produceFromRelayBundle frd = case frd of
     Frcd d -> Frcb $ produceFromRelayClientBundle d
   where
     produceFromRelayProviderBundle :: FrpDigest -> FromRelayProviderBundle
-    produceFromRelayProviderBundle (FrpDigest ns cas dd) =
-      FromRelayProviderBundle ns $ produceDataUpdateMessages cas dd
+    produceFromRelayProviderBundle (FrpDigest ns dd co) =
+      FromRelayProviderBundle ns (produceDataUpdateMessages dd)
+      (produceContOpMessages co)
 
     produceFromRelayProviderErrorBundle
       :: FrpErrorDigest -> FromRelayProviderErrorBundle
@@ -242,9 +253,11 @@ produceFromRelayBundle frd = case frd of
       FromRelayProviderErrorBundle ns $ produceErrMessages errs
 
     produceFromRelayClientBundle :: FrcDigest -> FromRelayClientBundle
-    produceFromRelayClientBundle (FrcDigest cas defs tas dd errs) =
-      FromRelayClientBundle (produceErrMessages errs) (produceDefMessages defs)
-      (produceTypeMessages tas) (produceDataUpdateMessages cas dd)
+    produceFromRelayClientBundle (FrcDigest tyUns datUns defs tas dd co errs) =
+      FromRelayClientBundle (Set.toList tyUns) (Set.toList datUns)
+      (produceErrMessages errs) (produceDefMessages defs)
+      (produceTypeMessages tas) (produceDataUpdateMessages dd)
+      (produceContOpMessages co)
 
 -- The following are slightly different (and more internal to the relay), they
 -- are not neccessarily intended for a single recipient
@@ -252,13 +265,13 @@ produceFromRelayBundle frd = case frd of
 data InboundClientDigest = InboundClientDigest
   { icdGets :: Set Path
   , icdTypeGets :: Set TypeName
-  , icdReorderings :: Reorderings
+  , icdContainerOps :: ContainerOps
   , icdData :: DataDigest
   } deriving (Show, Eq)
 
 -- -- | This is basically a TrpDigest with the namespace expanded out
 -- data InboundProviderDigest = InboundProviderDigest
---   { ipdReorderings :: Reorderings
+--   { ipdContainerOps :: ContainerOps
 --   , ipdDefinitions :: Map TypeName DefOp
 --   , ipdData :: DataDigest
 --   } deriving (Show, Eq)
@@ -278,8 +291,8 @@ data InboundDigest
   deriving (Show, Eq)
 
 data OutboundClientDigest = OutboundClientDigest
-  { ocdReorderings :: Reorderings
-  , ocdDefinitions :: Map TypeName Definition
+  { ocdContainerOps :: ContainerOps
+  , ocdDefinitions :: Map TypeName DefOp
   , ocdTypeAssignments :: Map Path (TypeName, Liberty)
   , ocdData :: DataDigest
   , ocdErrors :: Map (ErrorIndex TypeName) [Text]
@@ -291,7 +304,7 @@ outboundClientDigest = OutboundClientDigest mempty mempty mempty alEmpty mempty
 type OutboundClientInitialisationDigest = OutboundClientDigest
 
 data OutboundProviderDigest = OutboundProviderDigest
-  { opdReorderings :: Reorderings
+  { opdContainerOps :: ContainerOps
   , opddData :: DataDigest
   } deriving (Show, Eq)
 

@@ -32,8 +32,8 @@ import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</),
     NodePath)
 import Clapi.Types.Digests
-  ( DataDigest, Reorderings, DataChange(..), TimeSeriesDataOp(..))
-import Clapi.Types.SequenceOps (reorderFromDeps)
+  ( DataDigest, ContainerOps, DataChange(..), TimeSeriesDataOp(..))
+import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
 import Clapi.Types.UniqList (UniqList)
 
 type TpId = Word32
@@ -66,15 +66,15 @@ treePaths p t = case t of
     p : (mconcat $ (\(s, (_, t')) -> treePaths (p :/ s) t') <$> unAssocList al)
 
 treeApplyReorderings
-  :: MonadFail m => Map Seg (Maybe Attributee, Maybe Seg) -> RoseTree a
-  -> m (RoseTree a)
-treeApplyReorderings rom (RtContainer children) =
+  :: MonadFail m
+  => Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a -> m (RoseTree a)
+treeApplyReorderings contOps (RtContainer children) =
   let
-    attMap = fst <$> rom
+    attMap = fst <$> contOps
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
     RtContainer . alFmapWithKey reattribute . alPickFromMap (alToMap children)
-    <$> (reorderFromDeps (snd <$> rom) $ alKeys children)
+    <$> (updateUniqList (snd <$> contOps) $ alKeys children)
 treeApplyReorderings _ _ = fail "Not a container"
 
 treeConstSet :: Maybe Attributee -> a -> RoseTree a -> RoseTree a
@@ -126,7 +126,7 @@ treeAlterF
   :: forall f a. Functor f
   => Maybe Attributee -> (Maybe (RoseTree a) -> f (Maybe (RoseTree a))) -> Path
   -> RoseTree a -> f (RoseTree a)
-treeAlterF att f path tree = maybe RtEmpty snd <$> inner path (Just (att, tree))
+treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
   where
     inner
       :: Path -> Maybe (Maybe Attributee, RoseTree a)
@@ -139,31 +139,25 @@ treeAlterF att f path tree = maybe RtEmpty snd <$> inner path (Just (att, tree))
     buildChildTree s p =
       fmap ((att,) . RtContainer . alSingleton s) <$> inner p Nothing
 
-
+-- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
-  :: Reorderings -> DataDigest -> RoseTree [WireValue]
+  :: ContainerOps -> DataDigest -> RoseTree [WireValue]
   -> (Map Path [Text], RoseTree [WireValue])
-updateTreeWithDigest reords dd = runState $ do
-    errs <- sequence $ Map.mapWithKey applyReord reords
-    errs' <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
+updateTreeWithDigest contOps dd = runState $ do
+    errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
+    errs' <- sequence $ Map.mapWithKey applyContOp contOps
     return $ Map.filter (not . null) $ Map.unionWith (<>) errs errs'
   where
-    applyReord
-      :: NodePath -> Map Seg (Maybe Attributee, Maybe Seg)
+    applyContOp
+      :: NodePath -> Map Seg (Maybe Attributee, SequenceOp Seg)
       -> State (RoseTree [WireValue]) [Text]
-    applyReord np m = do
+    applyContOp np m = do
       eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
       either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
     applyDd
       :: NodePath -> DataChange
       -> State (RoseTree [WireValue]) [Text]
     applyDd np dc = case dc of
-      InitChange att -> do
-        modify $ (treeInsert att np $ RtContainer alEmpty)
-        return []
-      DeleteChange _ -> do
-        modify $ treeDelete np
-        return []
       ConstChange att wv -> do
         modify $ treeAdjust Nothing (treeConstSet att wv) np
         return []
@@ -182,7 +176,7 @@ updateTreeWithDigest reords dd = runState $ do
 
 data RoseTreeNode a
   = RtnEmpty
-  | RtnChildren (Maybe Attributee) (UniqList Seg)
+  | RtnChildren (AssocList Seg (Maybe Attributee))
   | RtnConstData (Maybe Attributee) a
   | RtnDataSeries (TimeSeries a)
   deriving (Show, Eq)
@@ -190,7 +184,7 @@ data RoseTreeNode a
 roseTreeNode :: RoseTree a -> RoseTreeNode a
 roseTreeNode t = case t of
   RtEmpty -> RtnEmpty
-  RtContainer al -> RtnChildren Nothing $ alKeys al
+  RtContainer al -> RtnChildren $ fmap fst al
   RtConstData att a -> RtnConstData att a
   RtDataSeries m -> RtnDataSeries m
 

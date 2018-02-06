@@ -42,13 +42,13 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
-  (alKeysSet, alValues, alLookup, alFromMap, alEmpty, alSingleton, alCons
-  , unsafeMkAssocList, alFoldlWithKey, alInsert, alMapKeys)
+  ( alKeysSet, alValues, alLookup, alFromMap, alSingleton, alCons
+  , unsafeMkAssocList, alMapKeys)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor)
 import Clapi.Types.Digests
-  (DefOp(..), Reorderings, DataDigest, TrpDigest(..))
+  (DefOp(..), ContainerOps, DataDigest, TrpDigest(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
@@ -175,6 +175,7 @@ processToRelayProviderDigest trpd vs =
     ns = trpdNamespace trpd
     qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
     qDefs = Map.mapKeys (TypeName ns) $ trpdDefinitions trpd
+    qCops = Map.mapKeys (ns :</) $ trpdContainerOps trpd
     (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
     defs' =
       let
@@ -191,8 +192,7 @@ processToRelayProviderDigest trpd vs =
     ftam = foldl removeTamSubtree (vsTyAssns vs) possiblyChangedTypePaths
     dataPathsRequiringValidation = Set.union
       (alKeysSet qData) possiblyChangedTypePaths
-    (updateErrs, tree') = Tree.updateTreeWithDigest
-      (trpdReorderings trpd) qData (vsTree vs)
+    (updateErrs, tree') = Tree.updateTreeWithDigest qCops qData (vsTree vs)
     -- FIXME: creating a set of all the paths in the tree might not be the
     -- best idea...
     (pathsOfUnknownType, missingPaths) =
@@ -227,7 +227,7 @@ processToRelayProviderDigest trpd vs =
                pure . Text.pack . fromLeft' <$> lmap
 
 processToRelayClientDigest
-  :: Reorderings -> DataDigest -> Valuespace -> Map Path [Text]
+  :: ContainerOps -> DataDigest -> Valuespace -> Map Path [Text]
 processToRelayClientDigest reords dd vs =
   let
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)

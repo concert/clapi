@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Clapi.NamespaceTracker where
 
@@ -24,16 +25,18 @@ import Clapi.Types.AssocList
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Digests
   ( TrDigest(..), TrcDigest(..), TrpDigest(..), TrprDigest(..)
-  , FrDigest(..), FrcDigest(..), FrpDigest(..), FrpErrorDigest(..)
+  , FrDigest(..), FrcDigest(..), frcdEmpty, FrpDigest(..), FrpErrorDigest(..)
   , DefOp(..), SubOp(..), frcdNull, trcdNamespaces
   , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
   , OutboundClientDigest(..), OutboundClientInitialisationDigest
   , OutboundProviderDigest(..))
 import Clapi.Types () -- Either String a MonadFail instance
-import Clapi.Types.Path (Seg, Path, TypeName(..))
+import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:/))
 import qualified Clapi.Types.Path as Path
+import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
+import Clapi.Util (flattenNestedMaps)
 
 data Ownership = Owner | Client deriving (Eq, Show)
 
@@ -42,7 +45,7 @@ newtype Originator i = Originator i
 type NstProtocol m i = Protocol
     (ClientEvent i TrDigest)
     ((Originator i, InboundDigest))
-    (ServerEvent i FrDigest)
+    (Either (Map Seg i) (ServerEvent i FrDigest))
     ((Originator i, OutboundDigest))
     m
 
@@ -54,55 +57,54 @@ data NstState i
   } deriving Show
 
 
-nstProtocol
-  :: (Monad m, Ord i)
-  => (Map Seg i -> m ())
-  -> NstProtocol m i ()
-nstProtocol publish =
-  evalStateT (nstProtocol_ publish) $ NstState mempty mempty mempty
+nstProtocol :: (Monad m, Ord i) => NstProtocol m i ()
+nstProtocol = evalStateT nstProtocol_ $ NstState mempty mempty mempty
 
-nstProtocol_
-  :: (Monad m, Ord i)
-  => (Map Seg i -> m ())
-  -> StateT (NstState i) (NstProtocol m i) ()
-nstProtocol_ publish = forever $ liftedWaitThen fwd rev
+nstProtocol_ :: (Monad m, Ord i) => StateT (NstState i) (NstProtocol m i) ()
+nstProtocol_ = forever $ liftedWaitThen fwd rev
   where
     sendFwd' i d = lift $ sendFwd (Originator i, d)
     fwd (ClientConnect _) = return ()
     fwd (ClientData i trd) =
       case trd of
-        Trpd d -> eitherState
+        Trpd d -> claimNamespace i (trpdNamespace d)
           (throwOutProvider i (Set.singleton $ trpdNamespace d))
-          (const $ sendFwd' i (Ipd d))
-          (claimNamespace i (trpdNamespace d))
-        Trprd d -> eitherState
+          (sendFwd' i (Ipd d))
+        Trprd d -> relinquishNamespace i (trprdNamespace d)
           (throwOutProvider i (Set.singleton $ trprdNamespace d))
-          (const $ sendFwd' i (Iprd d))
-          (relinquishNamespace i (trprdNamespace d))
+          (sendFwd' i (Iprd d))
         Trcd d -> eitherState
           (uncurry $ throwOutProvider i)
-          (const $ toInboundClientDigest i d >>= sendFwd' i . Icd)
+          (const $ do
+              (icd, frcd) <- toInboundClientDigest i d
+              unless (frcdNull frcd) $
+                lift $ sendRev $ Right $ ServerData i $ Frcd frcd
+              sendFwd' i $ Icd icd
+          )
           (guardNsClientDigest i d)
     fwd (ClientDisconnect i) = handleDisconnect i
     rev (Originator i, od) = case od of
       Ocid d -> registerSubs i d
-        >> lift (sendRev $ ServerData i $ Frcd $ subResponse d)
-      Ocd d -> broadcastClientDigest d
+        >> lift (sendRev $ Right $ ServerData i $ Frcd $ subResponse d)
+      Ocd d -> unsubDeleted d >>= lift . broadcastClientDigest d
       Opd d -> dispatchProviderDigest d
-      Ope d -> (lift $ sendRev $ ServerData i $ Frped d)
-        >> (lift $ sendRev $ ServerDisconnect i) >> handleDisconnect i
+      Ope d -> (lift $ sendRev $ Right $ ServerData i $ Frped d)
+        >> (lift $ sendRev $ Right $ ServerDisconnect i) >> handleDisconnect i
+
+updateOwners
+  :: Monad m => Map Seg i ->  StateT (NstState i) (NstProtocol m i) ()
+updateOwners owners = do
+  modify $ \nsts -> nsts {nstOwners = owners}
+  lift $ sendRev $ Left owners
 
 throwOutProvider
   :: (Ord i, Monad m)
   => i -> Set Seg -> String -> StateT (NstState i) (NstProtocol m i) ()
 throwOutProvider i nss msg = do
-  mapM_ (\ns -> lift $ sendRev $ ServerData i $ Frped $ FrpErrorDigest ns $
-    Map.singleton GlobalError [Text.pack msg]) nss
-  lift $ sendRev $ ServerDisconnect i
+  mapM_ (\ns -> lift $ sendRev $ Right $ ServerData i $ Frped $
+    FrpErrorDigest ns $ Map.singleton GlobalError [Text.pack msg]) nss
+  lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
-
-modify' :: MonadFail m => (s -> m s) -> StateT s m ()
-modify' f = get >>= lift . f >>= put
 
 eitherState
   :: Monad m
@@ -113,33 +115,48 @@ eitherState onFail onSuccess m = StateT $ \s -> either
     (\(a, s') -> runStateT (onSuccess a) s')
     (runStateT m s)
 
-claimNamespace :: (Eq i, MonadFail m) => i -> Seg -> StateT (NstState i) m ()
-claimNamespace i ns = modify' go
+claimNamespace
+  :: (Eq i, Monad m)
+  => i -> Seg
+  -> (String -> StateT (NstState i) (NstProtocol m i) ())
+  -> StateT (NstState i) (NstProtocol m i) ()
+  -> StateT (NstState i) (NstProtocol m i) ()
+claimNamespace i ns failureAction successAction = get >>= either
+    failureAction
+    (\owners' -> updateOwners owners' >> successAction)
+    . go . nstOwners
   where
-    go nst =
+    go owners =
       let
         (existing, owners') = Map.insertLookupWithKey
-          (\_ _ _ -> i) ns i (nstOwners nst)
+          (\_ _ _ -> i) ns i owners
       in
         case existing of
-          Nothing -> return nst{nstOwners = owners'}
+          Nothing -> return owners'
           Just i' -> if (i' == i)
-            then return nst
+            then return owners
             else fail "Already owned by someone else guv"
 
 relinquishNamespace
-  :: (Eq i, MonadFail m) => i -> Seg -> StateT (NstState i) m ()
-relinquishNamespace i ns = modify' go
+  :: (Eq i, Monad m)
+  => i -> Seg
+  -> (String -> StateT (NstState i) (NstProtocol m i) ())
+  -> StateT (NstState i) (NstProtocol m i) ()
+  -> StateT (NstState i) (NstProtocol m i) ()
+relinquishNamespace i ns failureAction successAction = get >>= either
+    failureAction
+    (\owners' -> updateOwners owners' >> successAction)
+    . go . nstOwners
   where
-    go nst =
+    go owners =
       let
         (existing, owners') = Map.updateLookupWithKey
-          (\_ _ -> Nothing) ns (nstOwners nst)
+          (\_ _ -> Nothing) ns owners
       in
         case existing of
           Nothing -> fail "You're not the owner"
           Just i' -> if (i' == i)
-            then return nst{nstOwners = owners'}
+            then return owners'
             else fail "You're not the owner"
 
 guardNsClientDigest
@@ -156,7 +173,7 @@ guardNsClientDigest i d =
 
 toInboundClientDigest
   :: (Ord i, Monad m)
-  => i -> TrcDigest -> StateT (NstState i) m InboundClientDigest
+  => i -> TrcDigest -> StateT (NstState i) m (InboundClientDigest, FrcDigest)
 toInboundClientDigest i trcd =
   let
     isSub OpSubscribe = True
@@ -170,13 +187,15 @@ toInboundClientDigest i trcd =
         (nstDataRegistrations nsts) (Map.singleton i dUnsubs),
       nstTypeRegistrations = Mos.difference
         (nstTypeRegistrations nsts) (Map.singleton i tUnsubs)}
-    return $ InboundClientDigest
-      (Set.difference dSubs $
-        Map.findWithDefault mempty i $ nstDataRegistrations nsts)
-      (Set.difference tSubs $
-        Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
-      (trcdReorderings trcd)
-      (trcdData trcd)
+    let icd = InboundClientDigest
+          (Set.difference dSubs $
+            Map.findWithDefault mempty i $ nstDataRegistrations nsts)
+          (Set.difference tSubs $
+            Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
+          (trcdContainerOps trcd)
+          (trcdData trcd)
+    let frcd = frcdEmpty {frcdTypeUnsubs = tUnsubs, frcdDataUnsubs = dUnsubs}
+    return (icd, frcd)
   where
     mapPair f (a, b) = (f a, f b)
 
@@ -185,7 +204,7 @@ handleDisconnect
 handleDisconnect i = do
     nsts <- get
     let (removed, remaining) = Map.partition (== i) $ nstOwners nsts
-    put $ nsts{nstOwners = remaining}
+    updateOwners remaining
     mapM_ send $ Map.keys removed
   where
     send ns = lift $ sendFwd (Originator i, Iprd $ TrprDigest ns)
@@ -201,28 +220,53 @@ registerSubs i (OutboundClientDigest cas defs _tas dd _errs) = modify go
       (Map.insertWith (<>) i newDRegsForI dRegs)
 
 subResponse :: OutboundClientInitialisationDigest -> FrcDigest
-subResponse (OutboundClientDigest cas defs tas dd errs) =
-  FrcDigest cas (OpDefine <$> defs) tas dd errs
+subResponse (OutboundClientDigest cOps defs tas dd errs) =
+  FrcDigest mempty mempty defs tas dd cOps errs
+
+
+unsubDeleted
+  :: (Monad m, Ord i) => OutboundClientDigest
+  -> StateT (NstState i) m
+       (Mos i TypeName, Mos i TypeName, Mos i Path, Mos i Path)
+unsubDeleted d = do
+    nsts <- get
+    let (tUnsubs, tRemainingSubs) = Mos.partition
+          (`Set.member` allUndefTys) $ nstTypeRegistrations nsts
+    let (dUnsubs, dRemainingSubs) = Mos.partition
+          (`Path.isChildOfAny` allDeletePaths) $ nstDataRegistrations nsts
+    put $ nsts
+      { nstDataRegistrations = dRemainingSubs
+      , nstTypeRegistrations = tRemainingSubs}
+    return (tUnsubs, tRemainingSubs, dUnsubs, dRemainingSubs)
+  where
+    allUndefTys = Map.keysSet $ Map.filter isUndefTy $ ocdDefinitions d
+    isUndefTy defOp = case defOp of
+      OpUndefine -> True
+      _ -> False
+    allDeletePaths = Map.keys $ flattenNestedMaps (:/) $
+      Map.filter isDeleteCo . fmap snd <$> ocdContainerOps d
+    isDeleteCo co = case co of
+      SoAbsent -> True
+      _ -> False
 
 broadcastClientDigest
   :: (Ord i, Monad m)
-  => OutboundClientDigest -> StateT (NstState i) (NstProtocol m i) ()
-broadcastClientDigest d = do
-    nsts <- get
-    let fromRelayClientDigests =
-          Map.filter (not . frcdNull)
-          $ uncurry (produceFromRelayClientDigest d)
-          <$> pairMaps (,) (nstDataRegistrations nsts) (nstTypeRegistrations nsts)
+  => OutboundClientDigest
+  -> (Mos i TypeName, Mos i TypeName, Mos i Path, Mos i Path)
+  -> NstProtocol m i ()
+broadcastClientDigest d (tUnsubs, tRemSubs, dUnsubs, dRemSubs) = do
+    let fromRelayClientDigests = Map.filter (not . frcdNull) $ zipMaps4
+          (produceFromRelayClientDigest d) dUnsubs tUnsubs dRemSubs tRemSubs
     void $ sequence $ Map.mapWithKey sendRevWithI fromRelayClientDigests
   where
-    sendRevWithI i frcd = lift $ sendRev $ ServerData i $ Frcd frcd
+    sendRevWithI i frcd = sendRev $ Right $ ServerData i $ Frcd frcd
 
 dispatchProviderDigest
   :: Monad m
   => OutboundProviderDigest -> StateT (NstState i) (NstProtocol m i) ()
 dispatchProviderDigest d =
   let
-    send i = lift . sendRev . ServerData i . Frpd
+    send i = lift . sendRev . Right . ServerData i . Frpd
   in do
     nsts <- get
     let dispatch ns =
@@ -231,24 +275,26 @@ dispatchProviderDigest d =
     void $ sequence $ Map.mapWithKey dispatch $ frpdsByNamespace d
 
 frpdsByNamespace :: OutboundProviderDigest -> Map Seg FrpDigest
-frpdsByNamespace (OutboundProviderDigest reords dd) =
+frpdsByNamespace (OutboundProviderDigest contOps dd) =
   let
-    (casRoots, casByNs) = nestMapsByKey Path.splitHead reords
+    (rootCOps, casByNs) = nestMapsByKey Path.splitHead contOps
     (_, ddByNs) = nestAlByKey Path.splitHead dd
     -- FIXME: whacking the global stuff to everybody isn't quite right - we need
     -- to know who originated the opd?
-    f ns reords' dd' = FrpDigest ns (reords' <> casRoots) dd'
+    f ns contOps' dd' = FrpDigest ns dd' (contOps' <> rootCOps)
   in
-    pairMapsWithKey mempty alEmpty f casByNs ddByNs
+    zipMapsWithKey mempty alEmpty f casByNs ddByNs
 
 produceFromRelayClientDigest
-  :: OutboundClientDigest -> Set Path -> Set TypeName -> FrcDigest
+  :: OutboundClientDigest -> Set Path -> Set TypeName
+  -> Set Path -> Set TypeName -> FrcDigest
 produceFromRelayClientDigest
-  (OutboundClientDigest cas defs tas dd errs) ps tns = FrcDigest
-    (Map.restrictKeys cas ps)
-    (OpDefine <$> Map.restrictKeys defs tns)
+  (OutboundClientDigest cOps defs tas dd errs) pUsubs tUsubs ps tns = FrcDigest
+    tUsubs pUsubs
+    (Map.restrictKeys defs tns)
     (Map.restrictKeys tas ps)
     (alFilterKey (`Set.member` ps) dd)
+    (Map.restrictKeys cOps ps)
     (Map.filterWithKey relevantErr errs)
   where
     relevantErr ei _ = case ei of
@@ -268,18 +314,25 @@ liftedWaitThen onFwd onRev = do
     Fwd a -> onFwd a
     Rev b -> onRev b
 
-pairMapsWithKey
+zipMapsWithKey
   :: Ord k
   => a -> b -> (k -> a -> b -> c) -> Map k a -> Map k b -> Map k c
-pairMapsWithKey defaultA defaultB f = merge
+zipMapsWithKey defaultA defaultB f = merge
   (mapMissing $ \k a -> f k a defaultB)
   (mapMissing $ \k b -> f k defaultA b)
   (zipWithMatched f)
 
-pairMaps
+zipMaps
   :: (Ord k, Monoid a, Monoid b)
   => (a -> b -> c) -> Map k a -> Map k b -> Map k c
-pairMaps f = pairMapsWithKey mempty mempty $ const f
+zipMaps f = zipMapsWithKey mempty mempty $ const f
+
+zipMaps4
+  :: (Ord k, Monoid a, Monoid b, Monoid c, Monoid d)
+  => (a -> b -> c -> d -> e) -> Map k a -> Map k b -> Map k c -> Map k d
+  -> Map k e
+zipMaps4 f ma mb mc md = zipMaps (\(a, b) (c, d) -> f a b c d)
+  (zipMaps (,) ma mb) (zipMaps (,) mc md)
 
 nestMapsByKey
   :: (Ord k, Ord k0, Ord k1)
