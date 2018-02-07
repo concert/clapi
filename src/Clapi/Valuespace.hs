@@ -64,7 +64,7 @@ data Valuespace = Valuespace
   { vsTree :: RoseTree [WireValue]
   , vsTyDefs :: DefMap
   , vsTyAssns :: TypeAssignmentMap
-  } deriving Eq
+  } deriving (Eq, Show)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
 removeTamSubtree tam p = Mos.filterDependencies (`Path.isChildOf` p) tam
