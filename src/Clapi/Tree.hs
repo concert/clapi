@@ -132,9 +132,9 @@ treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
       :: Path -> Maybe (Maybe Attributee, RoseTree a)
       -> f (Maybe (Maybe Attributee, RoseTree a))
     inner Root mat = fmap (att,) <$> f (snd <$> mat)
-    inner (s :</ p) (Just (att', t)) = case t of
+    inner (s :</ p) existingChild@(Just (att', t)) = case t of
       RtContainer al -> Just . (att',) . RtContainer <$> alAlterF (inner p) s al
-      _ -> buildChildTree s p
+      _ -> maybe existingChild Just <$> buildChildTree s p
     inner (s :</ p) Nothing = buildChildTree s p
     buildChildTree s p =
       fmap ((att,) . RtContainer . alSingleton s) <$> inner p Nothing
