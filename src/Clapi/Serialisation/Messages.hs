@@ -100,7 +100,11 @@ subMsgTaggedData = taggedData typeToTag msgToType
     msgToType (MsgTypeUnsubscribe _) = SubMsgTTypeUnsub
 
 instance Encodable SubMessage where
-    builder = tdTaggedBuilder subMsgTaggedData $ builder . subMsgPath
+    builder = tdTaggedBuilder subMsgTaggedData $ \m -> case m of
+        MsgSubscribe p -> builder p
+        MsgUnsubscribe p -> builder p
+        MsgTypeSubscribe t -> builder t
+        MsgTypeUnsubscribe t -> builder t
     parser = tdTaggedParser subMsgTaggedData $ \e -> case e of
         (SubMsgTSub) -> MsgSubscribe <$> parser
         (SubMsgTTypeSub) -> MsgTypeSubscribe <$> parser
