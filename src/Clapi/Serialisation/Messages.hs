@@ -178,6 +178,7 @@ cumtBuilder msg = case msg of
     builder p <<>> builder t <<>> builder a
 
 instance Encodable ContainerUpdateMessage where
+    parser = tdTaggedParser cumtTaggedData cumtParser
     builder = tdTaggedBuilder cumtTaggedData cumtBuilder
 
 data TrBundleType
