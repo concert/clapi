@@ -92,7 +92,10 @@ instance Arbitrary DataUpdateMessage where
 
 
 instance Arbitrary ContainerUpdateMessage where
-  arbitrary = undefined
+  arbitrary = oneof
+    [ MsgPresentAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
+    , MsgAbsent <$> arbitrary <*> arbitrary <*> genAttributee
+    ]
 
 instance Arbitrary a => Arbitrary (ErrorIndex a) where
   arbitrary = oneof
@@ -109,6 +112,8 @@ instance Arbitrary a => Arbitrary (MsgError a) where
 instance Arbitrary ToRelayProviderBundle where
   arbitrary = ToRelayProviderBundle <$> arbitrary <*> arbitrary <*> arbitrary
     <*> arbitrary <*> arbitrary
+  shrink (ToRelayProviderBundle n e t d c) =
+    [ToRelayProviderBundle n e' t' d' c' | (e', t', d', c') <- shrink (e, t, d, c)]
 
 instance Arbitrary FromRelayProviderBundle where
   arbitrary = FromRelayProviderBundle <$> arbitrary <*> arbitrary <*> arbitrary
@@ -121,10 +126,16 @@ instance Arbitrary FromRelayProviderErrorBundle where
 
 instance Arbitrary ToRelayClientBundle where
   arbitrary = ToRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary
+  shrink (ToRelayClientBundle s d c) =
+    [ToRelayClientBundle s' d' c' | (s', d', c') <- shrink (s, d, c)]
 
 instance Arbitrary FromRelayClientBundle where
   arbitrary = FromRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary
     <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (FromRelayClientBundle tu du e defs tas dd c) =
+    [FromRelayClientBundle tu' du' e' defs' tas' dd' c'
+    | (tu', du', e', defs', tas', dd', c')
+    <- shrink (tu, du, e, defs, tas, dd, c)]
 
 
 instance Arbitrary ToRelayBundle where
@@ -133,6 +144,9 @@ instance Arbitrary ToRelayBundle where
     , Trpr <$> arbitrary
     , Trcb <$> arbitrary
     ]
+  shrink (Trpb b) = Trpb <$> shrink b
+  shrink (Trpr b) = Trpr <$> shrink b
+  shrink (Trcb b) = Trcb <$> shrink b
 
 instance Arbitrary FromRelayBundle where
   arbitrary = oneof
@@ -140,6 +154,9 @@ instance Arbitrary FromRelayBundle where
     , Frpeb <$> arbitrary
     , Frcb <$> arbitrary
     ]
+  shrink (Frpb b) = Frpb <$> shrink b
+  shrink (Frpeb b) = Frpeb <$> shrink b
+  shrink (Frcb b) = Frcb <$> shrink b
 
 
 showBytes :: ByteString -> String

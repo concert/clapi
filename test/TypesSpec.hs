@@ -128,11 +128,11 @@ instance Arbitrary Definition where
       do
         oneof
           [ TupleDef <$>
-              (TupleDefinition <$> arbitrary <*> arbitrary <*> arbitrary)
+              (TupleDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary)
           , StructDef <$>
-              (StructDefinition <$> arbitrary <*> arbitrary)
+              (StructDefinition <$> arbitraryTextNoNull <*> arbitrary)
           , ArrayDef <$>
-              (ArrayDefinition <$> arbitrary <*> arbitrary <*> arbitrary)
+              (ArrayDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary)
           ]
 
 instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
@@ -156,7 +156,7 @@ instance Arbitrary TreeConcreteType where
         arbInt64 = TcInt64 <$> arbitrary
         arbFloat = TcFloat <$> arbitrary
         arbDouble = TcDouble <$> arbitrary
-        arbString = TcString <$> arbitrary
+        arbString = TcString <$> arbitraryTextNoNull
         arbRef = TcRef <$> arbitrary
         arbValidatorDesc = return TcValidatorDesc
 
