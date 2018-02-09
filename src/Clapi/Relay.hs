@@ -18,7 +18,7 @@ import Data.Void (Void)
 
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
-  (alEmpty, alInsert, alFilterKey, alSetDefault, unAssocList)
+  (alEmpty, alInsert, alFilterKey, alSetDefault, unAssocList, alKeys)
 import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
 import Clapi.Types.Digests
   ( ContainerOps, DataDigest, TrpDigest(..), TrprDigest(..)
@@ -27,15 +27,15 @@ import Clapi.Types.Digests
   , OutboundDigest(..), InboundDigest(..)
   , OutboundClientDigest(..), OutboundClientInitialisationDigest(..)
   , InboundClientDigest(..), OutboundProviderDigest(..))
-import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern (:/))
-import Clapi.Types.Definitions (Liberty, Definition)
+import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern (:/), pattern Root)
+import Clapi.Types.Definitions (Liberty, Definition(StructDef), StructDefinition(..))
 import Clapi.Types.Wire (WireValue)
-import Clapi.Types.SequenceOps (SequenceOp(SoPresentAfter))
+import Clapi.Types.SequenceOps (SequenceOp(..), presentAfter)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupDef
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
-  , getLiberty)
+  , getLiberty, rootTypeName, lookupDef)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
 import Clapi.Util (flattenNestedMaps)
 
@@ -63,7 +63,10 @@ genInitDigest ps tns vs =
   in
     Map.foldlWithKey go initialOcd rtns
   where
-    go :: OutboundClientInitialisationDigest -> Path -> Either String (Definition, TypeName, Liberty, RoseTreeNode [WireValue]) -> OutboundClientInitialisationDigest
+    go
+      :: OutboundClientInitialisationDigest -> Path
+      -> Either String (Definition, TypeName, Liberty, RoseTreeNode [WireValue])
+      -> OutboundClientInitialisationDigest
     go d p (Left errStr) = d{ocdErrors =
       Map.unionWith (<>) (ocdErrors d) (Map.singleton (PathError p) [Text.pack errStr])}
     go d p (Right (def, tn, lib, rtn)) =
@@ -95,21 +98,42 @@ relay vs = waitThenFwdOnly fwd
           (handleOwnerSuccess d) $ processToRelayProviderDigest d vs
         Icd d -> handleClientDigest d
           $ processToRelayClientDigest (icdContainerOps d) (icdData d) vs
-        Iprd (TrprDigest ns) -> relay $ vsRelinquish ns vs
+        Iprd (TrprDigest ns) -> do
+          let vs' = vsRelinquish ns vs
+          sendRev (i, Ocd $ OutboundClientDigest
+            -- FIXME: Attributing revocation to nobody!
+            (Map.singleton Root $ Map.singleton ns (Nothing, SoAbsent))
+            (Map.insert
+              rootTypeName (OpDefine $ fromJust $ lookupDef rootTypeName $ vsTyDefs vs') $
+              (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $ Map.findWithDefault mempty ns $ vsTyDefs vs))
+            mempty alEmpty mempty)
+          relay vs'
       where
         handleOwnerSuccess
             (TrpDigest ns defs dd contOps errs) vs'@(Valuespace _ _ tas) =
           let
+            shouldPubRoot =
+              Map.member ns defs &&
+              Map.notMember ns (vsTyDefs vs)
+            rootDef = fromJust $ lookupDef rootTypeName $ vsTyDefs vs'
+            nsContOp (StructDef (StructDefinition _ kids)) = Map.singleton ns
+              (Nothing, SoPresentAfter $ presentAfter ns $ alKeys kids)
+            nsContOp _ = error "Root def not a struct WTAF"
             defs' = vsMinimiseDefinitions defs vs
             dd' = vsMinimiseDataDigest dd vs
             contOps' = vsMinimiseReords contOps vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
+            qDefs = Map.mapKeys (TypeName ns) defs'
+            qDefs' = if shouldPubRoot then Map.insert rootTypeName (OpDefine rootDef) qDefs else qDefs
+            qContOps = Map.mapKeys (ns :</) contOps'
+            qContOps' = if shouldPubRoot then Map.insert Root (nsContOp rootDef) qContOps else qContOps
           in do
             sendRev (i,
-              Ocd $ OutboundClientDigest contOps'
+              Ocd $ OutboundClientDigest
+                qContOps'
                 -- FIXME: we need to provide defs for type assignments too.
-                (Map.mapKeys (TypeName ns) defs')
-                (mungedTas vs) dd' errs')
+                qDefs'
+                (mungedTas vs') dd' errs')
             relay vs'
         mungedTas vs = Map.mapWithKey
           (\p tn -> (tn, either error id $ getLiberty p vs))

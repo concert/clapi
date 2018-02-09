@@ -27,7 +27,7 @@ import Clapi.Types
     , FromRelayBundle(..), ToRelayBundle(..)
     , DataUpdateMessage(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
-    , TrDigest(..), TrpDigest(..), TrprDigest(..)
+    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..)
     , ErrorIndex(..)
     , DataChange(..)
     , digestToRelayBundle, produceFromRelayBundle)
@@ -43,38 +43,64 @@ import Clapi.NamespaceTracker
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol (
   Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
-  send, (<<->), runEffect, runProtocolIO, mapProtocol)
+  send, (<<->), runEffect, runProtocolIO, mapProtocol, waitThenFwdOnly, waitThenRevOnly)
 
 type Owners i = Map Seg i
+
+alice, bob :: T.Text
+alice = "alice"
+bob = "bob"
 
 helloS :: Seg
 helloS = [segq|hello|]
 
+helloP = [pathq|/hello|]
+
+-- Collects responses until the identified client disconnects
+collectAllResponsesUntil ::
+    (Monad m, Ord i) =>
+    i -> Protocol Void a Void (ServerEvent i b) m (Mol.Mol i b)
+collectAllResponsesUntil i = inner mempty
+  where
+    inner bs = Protocol.waitThenRevOnly $ rev bs
+    rev bs (ServerData i' b) = inner (Mol.append i' b bs)
+    rev bs (ServerDisconnect i')
+      | i' == i = return bs
+      | otherwise = inner bs
+
 spec :: Spec
-spec = do it "is not done yet" $ pending
---     it "Rejects ownership claim on pre-owned path" $
---       let
---         owners = Map.singleton helloS "relay itself"
---         protocol = forTest <<-> nstProtocol noopPub <<-> fakeRelay
---         forTest = do
---             sendFwd $ ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root]
---             sendFwd $ ClientDisconnect alice
---             resps <- collectAllResponsesUntil alice
---             lift $ assertOnlyKeysInMap [alice] resps
---             lift $ assertSingleError alice helloP ["Path", "another"] resps
---       in
---         runEffect protocol
---     it "Rejects owner subscription" $
---       let
---         aliceOwns = Map.singleton helloS "alice"
---         protocol = forTest <<-> nstProtocol noopPub <<-> fakeRelay
---         forTest = do
---           sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgSubscribe helloP] []
---           resps <- collectAllResponsesUntil alice
---           lift $ assertOnlyKeysInMap [alice] resps
---           lift $ assertSingleError alice helloP ["Request", "own"] resps
---       in
---         runEffect protocol
+spec = do
+    it "Rejects ownership claim on pre-owned path" $
+      let
+        expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
+        protocol = forTest <<-> nstProtocol <<-> fauxRelay
+        forTest = do
+            claimHello alice
+            expectRev $ Left $ Map.fromList
+              [ (helloS, alice)
+              ] -- FIXME: should API be owned?
+            claimHello bob
+            expectRev $ Right $ ServerData bob (
+              Frped $ FrpErrorDigest $
+              Map.singleton (PathError helloP) ["Already owned by someone else guv"])
+            expectRev $ Right $ ServerDisconnect bob
+        fauxRelay = waitThenFwdOnly $ const fauxRelay
+      in runEffect protocol
+    it "Rejects empty claim" pending
+--    it "Rejects owner subscription" $
+--      let
+--        aliceOwns = Map.singleton helloS "alice"
+--        protocol = forTest <<-> nstProtocol <<-> fauxRelay
+--        forTest = do
+--          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgSubscribe helloP] []
+--          resps <- collectAllResponsesUntil alice
+--          lift $ assertOnlyKeysInMap [alice] resps
+--          lift $ assertSingleError alice helloP ["Request", "own"] resps
+--      in
+--        runEffect protocol
+  where
+    claimHello addr = sendFwd $ ClientData addr $ Trpd $ trpDigest helloS
+
 --     it "Is idempotent when unsubscribing" $
 --       let
 --         ownedP = [pathq|/owned|]
@@ -186,7 +212,7 @@ spec = do it "is not done yet" $ pending
 --                     ms `shouldBe` (Frped errDig)
 --       in
 --         runEffect protocol
---   where
+--  where
 --     assertOnlyKeysInMap expected m = Map.keysSet m `shouldBe` Set.fromList expected
 --     assertSingleError i path errStrings response = undefined
 --         -- let bundles = (fromJust $ Map.lookup i response) :: [FromRelayBundle] in do
@@ -240,18 +266,6 @@ spec = do it "is not done yet" $ pending
 --     inner n ds = wait >>= \d -> inner (n - 1) (d:ds)
 
 
--- -- Collects responses until the identified client disconnects
--- collectAllResponsesUntil ::
---     (Monad m, Ord i) =>
---     i -> Protocol Void a Void (ServerEvent i b) m (Mol.Mol i b)
--- collectAllResponsesUntil i = inner mempty
---   where
---     inner bs = waitThen undefined (rev bs)
---     rev bs (ServerData i' b) = inner (Mol.append i' b bs)
---     rev bs (ServerDisconnect i')
---       | i' == i = return bs
---       | otherwise = inner bs
-
 -- fakeRelay ::
 --     (Monad m, Show c) =>
 --     Protocol ((c, InboundDigest)) Void ((c, OutboundDigest)) Void m ()
@@ -263,11 +277,6 @@ spec = do it "is not done yet" $ pending
 --       Iprd (TrprDigest ns) -> undefined
 --     -- fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip MsgAssignType helloP <$> gets) [] updates)
 --     -- fwd (ctx, OwnerRequest updates) = sendRev (ctx, GoodOwnerResponse updates)
-
--- alice = "alice"
--- bob = "bob"
-
--- helloP = [pathq|/hello|]
 
 -- noopPub :: Monad m => Owners i -> m ()
 -- noopPub = void . return
