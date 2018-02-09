@@ -57,6 +57,12 @@ treeMissing = inner Root
       mconcat $ (\(s, (_, rt)) -> inner (p :/ s) rt) <$> unAssocList al
     inner _ _ = []
 
+treeChildren :: RoseTree a -> AssocList Seg (RoseTree a)
+treeChildren t = case t of
+    RtContainer al -> snd <$> al
+    _ -> alEmpty
+
+-- FIXME: define in terms of treeChildren (if even used)
 treePaths :: Path -> RoseTree a -> [Path]
 treePaths p t = case t of
   RtEmpty -> [p]
