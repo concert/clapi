@@ -29,7 +29,7 @@ class OfMetaType metaType where
   metaType :: metaType -> MetaType
   toWireValues :: metaType -> [WireValue]
   fromWireValues :: MonadFail m => [WireValue] -> m metaType
-  childTypeFor :: metaType -> Seg -> Maybe TypeName
+  childTypeFor :: Seg -> metaType -> Maybe TypeName
   childLibertyFor :: MonadFail m => metaType -> Seg -> m Liberty
 
 data TupleDefinition = TupleDefinition
@@ -100,7 +100,7 @@ instance OfMetaType StructDefinition where
              (strictZip typeNames clibs) >>= alFromZip names)
   fromWireValues _ = fail "Wrong number of arguments for struct def"
 
-  childTypeFor (StructDefinition _ tyInfo) seg =
+  childTypeFor seg (StructDefinition _ tyInfo) =
     fst <$> lookup seg (unAssocList tyInfo)
   childLibertyFor (StructDefinition _ tyInfo) seg = note "No such child" $
     snd <$> lookup seg (unAssocList tyInfo)
@@ -127,7 +127,7 @@ instance OfMetaType ArrayDefinition where
         <$> typeNameFromText tn <*> safeToEnum (fromIntegral l)
   fromWireValues _ = fail "Wrong number of arguments for array def"
 
-  childTypeFor (ArrayDefinition _ tp _) _ = Just tp
+  childTypeFor _ (ArrayDefinition _ tp _) = Just tp
   childLibertyFor (ArrayDefinition _ _ l) _ = return l
 
 
