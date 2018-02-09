@@ -231,8 +231,7 @@ instance Encodable FromRelayBundle where
     builder = tdTaggedBuilder frBundleTaggedData $ \bund -> case bund of
       Frpb (FromRelayProviderBundle ns dat contMsgs) ->
         builder ns <<>> builder dat <<>> builder contMsgs
-      Frpeb (FromRelayProviderErrorBundle ns errs) ->
-        builder ns <<>> builder errs
+      Frpeb (FromRelayProviderErrorBundle errs) -> builder errs
       Frcb (FromRelayClientBundle tyUns datUns errs defs tas dat contMsgs) ->
         builder tyUns <<>> builder datUns <<>> builder errs <<>> builder defs
         <<>> builder tas <<>> builder dat <<>> builder contMsgs
@@ -240,7 +239,7 @@ instance Encodable FromRelayBundle where
       FrbtProvider -> Frpb <$>
         (FromRelayProviderBundle <$> parser <*> parser <*> parser)
       FrbtProviderError ->
-        Frpeb <$> (FromRelayProviderErrorBundle <$> parser <*> parser)
+        Frpeb . FromRelayProviderErrorBundle <$> parser
       FrbtClient -> Frcb <$>
         (FromRelayClientBundle <$> parser <*> parser <*>  parser <*> parser
         <*> parser <*> parser <*> parser)

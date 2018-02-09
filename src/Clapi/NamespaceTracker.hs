@@ -31,7 +31,7 @@ import Clapi.Types.Digests
   , OutboundClientDigest(..), OutboundClientInitialisationDigest
   , OutboundProviderDigest(..))
 import Clapi.Types () -- Either String a MonadFail instance
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:/))
+import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:/), pattern Root)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -101,8 +101,8 @@ throwOutProvider
   :: (Ord i, Monad m)
   => i -> Set Seg -> String -> StateT (NstState i) (NstProtocol m i) ()
 throwOutProvider i nss msg = do
-  mapM_ (\ns -> lift $ sendRev $ Right $ ServerData i $ Frped $
-    FrpErrorDigest ns $ Map.singleton GlobalError [Text.pack msg]) nss
+  lift $ sendRev $ Right $ ServerData i $ Frped $ FrpErrorDigest $
+    Set.foldl (\acc ns -> Map.insert (PathError $ Root :/ ns) [Text.pack msg] acc) mempty nss
   lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
 

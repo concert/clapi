@@ -122,7 +122,7 @@ instance Arbitrary ToRelayProviderRelinquish where
   arbitrary = ToRelayProviderRelinquish <$> arbitrary
 
 instance Arbitrary FromRelayProviderErrorBundle where
-  arbitrary = FromRelayProviderErrorBundle <$> arbitrary <*> arbitrary
+  arbitrary = FromRelayProviderErrorBundle <$> arbitrary
 
 instance Arbitrary ToRelayClientBundle where
   arbitrary = ToRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary

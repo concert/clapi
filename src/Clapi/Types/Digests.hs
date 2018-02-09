@@ -53,8 +53,7 @@ data FrpDigest = FrpDigest
   } deriving (Show, Eq)
 
 data FrpErrorDigest = FrpErrorDigest
-  { frpedNamespace :: Seg
-  , frpedErrors :: Map (ErrorIndex Seg) [Text]
+  { frpedErrors :: Map (ErrorIndex TypeName) [Text]
   } deriving (Show, Eq)
 
 data TrcDigest = TrcDigest
@@ -249,8 +248,8 @@ produceFromRelayBundle frd = case frd of
 
     produceFromRelayProviderErrorBundle
       :: FrpErrorDigest -> FromRelayProviderErrorBundle
-    produceFromRelayProviderErrorBundle (FrpErrorDigest ns errs) =
-      FromRelayProviderErrorBundle ns $ produceErrMessages errs
+    produceFromRelayProviderErrorBundle (FrpErrorDigest errs) =
+      FromRelayProviderErrorBundle $ produceErrMessages errs
 
     produceFromRelayClientBundle :: FrcDigest -> FromRelayClientBundle
     produceFromRelayClientBundle (FrcDigest tyUns datUns defs tas dd co errs) =

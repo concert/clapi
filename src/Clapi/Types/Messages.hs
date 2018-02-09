@@ -106,8 +106,7 @@ data FromRelayProviderBundle = FromRelayProviderBundle
   } deriving (Show, Eq)
 
 data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
-  { frpebNamespace :: Seg
-  , frpebErrors :: [MsgError Seg]
+  { frpebErrors :: [MsgError TypeName]
   } deriving (Eq, Show)
 
 data ToRelayClientBundle = ToRelayClientBundle

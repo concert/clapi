@@ -91,7 +91,7 @@ relay vs = waitThenFwdOnly fwd
   where
     fwd (i, dig) = case dig of
         Ipd d -> either
-          (terminalErrors $ trpdNamespace d)
+          terminalErrors
           (handleOwnerSuccess d) $ processToRelayProviderDigest d vs
         Icd d -> handleClientDigest d
           $ processToRelayClientDigest (icdContainerOps d) (icdData d) vs
@@ -129,13 +129,8 @@ relay vs = waitThenFwdOnly fwd
             sendRev (i, Ocid $ cid')
             sendRev (i, Opd $ OutboundProviderDigest reords'' dd'')
             relay vs
-        terminalErrors ns errMap = do
-          sendRev (i, Ope $ FrpErrorDigest ns errMap)
-          relay vs
-        terminalError ns str = do
-          sendRev
-            ( i, Ope $ FrpErrorDigest ns
-            $ Map.singleton GlobalError [Text.pack str])
+        terminalErrors errMap = do
+          sendRev (i, Ope $ FrpErrorDigest errMap)
           relay vs
 
 -- FIXME: these are worst case implementations right now!
