@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# LANGUAGE TupleSections #-}
 
 module Data.Map.Mos where
 
@@ -11,6 +12,12 @@ import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
 type Mos k a = Map.Map k (Set.Set a)
+
+fromList :: (Ord k, Ord a) => [(k, a)] -> Mos k a
+fromList = foldr (uncurry insert) mempty
+
+toList :: Mos k a -> [(k, a)]
+toList = mconcat . Map.elems . Map.mapWithKey (\k as -> (k,) <$> Set.toList as)
 
 insert :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
 insert k a = Map.updateM (Set.insert a) k
