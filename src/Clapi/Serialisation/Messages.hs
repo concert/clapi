@@ -42,19 +42,19 @@ errIdxTaggedData = taggedData typeToTag eiToType
       GlobalError -> EitGlobal
       PathError _ -> EitPath
       TimePointError _ _ -> EitTimePoint
-      TypeNameError _ -> EitTypeName
+      TypeError _ -> EitTypeName
 
 instance Encodable a => Encodable (ErrorIndex a) where
   builder = tdTaggedBuilder errIdxTaggedData $ \ei -> case ei of
     GlobalError -> return mempty
     PathError p -> builder p
     TimePointError p tpid -> builder p <<>> builder tpid
-    TypeNameError tn -> builder tn
+    TypeError tn -> builder tn
   parser = tdTaggedParser errIdxTaggedData $ \eit -> case eit of
     EitGlobal -> return GlobalError
     EitPath -> PathError <$> parser
     EitTimePoint -> TimePointError <$> parser <*> parser
-    EitTypeName -> TypeNameError <$> parser
+    EitTypeName -> TypeError <$> parser
 
 
 instance Encodable a => Encodable (MsgError a) where

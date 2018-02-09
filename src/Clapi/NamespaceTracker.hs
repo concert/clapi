@@ -301,7 +301,7 @@ produceFromRelayClientDigest
       GlobalError -> True
       PathError p -> p `Set.member` ps
       TimePointError p _ -> p `Set.member` ps
-      TypeNameError tn -> tn `Set.member` tns
+      TypeError tn -> tn `Set.member` tns
 
 liftedWaitThen ::
   (Monad m, MonadTrans t, Monad (t (Protocol a a' b' b m))) =>

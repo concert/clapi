@@ -59,7 +59,7 @@ genInitDigest ps tns vs =
     rtns = Map.fromSet (flip valuespaceGet vs) ps
     (tnErrs, defs) = mapPartitionEither $ Map.fromSet (flip vsLookupDef vs) tns
     initialOcd = OutboundClientDigest
-      mempty (OpDefine <$> defs) mempty alEmpty (pure . Text.pack <$> Map.mapKeys TypeNameError tnErrs)
+      mempty (OpDefine <$> defs) mempty alEmpty (pure . Text.pack <$> Map.mapKeys TypeError tnErrs)
   in
     Map.foldlWithKey go initialOcd rtns
   where

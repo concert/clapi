@@ -102,7 +102,7 @@ instance Arbitrary a => Arbitrary (ErrorIndex a) where
     [ return GlobalError
     , PathError <$> arbitrary
     , TimePointError <$> arbitrary <*> arbitrary
-    , TypeNameError <$> arbitrary
+    , TypeError <$> arbitrary
     ]
 
 instance Arbitrary a => Arbitrary (MsgError a) where
