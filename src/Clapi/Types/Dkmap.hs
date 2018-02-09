@@ -23,6 +23,9 @@ data Dkmap k0 k1 v
   = Dkmap {_keyMap :: (Bimap k1 k0), _valueMap :: (Map k0 v)}
   deriving (Show, Eq, Functor, Foldable)
 
+valueMap :: Dkmap k0 k1 v -> Map k0 v
+valueMap = _valueMap
+
 empty :: (Ord k0, Ord k1) => Dkmap k0 k1 v
 empty = Dkmap Bimap.empty mempty
 
