@@ -1,68 +1,69 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 
-module Clapi.Types.SequenceOps
-  ( ReorderBundle(..), SequenceOp(..)
-  , digest, produce, applyDigest
-  ) where
+module Clapi.Types.SequenceOps (SequenceOp(..), updateUniqList, presentAfter) where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (fromJust, isJust)
 import qualified Data.List as List
 import Data.Foldable (foldlM)
 
-import Clapi.Types.UniqList (UniqList, unUniqList, mkUniqList)
+import Clapi.Types.UniqList
+  (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
+import Clapi.Util (ensureUnique)
+
+presentAfter :: Eq a => a -> UniqList a -> Maybe a
+presentAfter a' ul = inner Nothing $ unUniqList ul
+  where
+    inner _ [] = Nothing
+    inner prev (a:as) = if a == a' then prev else inner (Just a) as
 
 data SequenceOp i
-  = AddAfter (Maybe i)
-  | MoveAfter (Maybe i)
-  | DelElem
-  deriving (Eq, Show)
+  = SoPresentAfter (Maybe i)
+  | SoAbsent
+  deriving (Show, Eq)
 
-newtype ReorderBundle i = ReorderBundle [(i, SequenceOp i)] deriving (Eq, Show)
-newtype SequenceDigest i = SequenceDigest (Map.Map i (SequenceOp i))
-
-sdEmpty :: SequenceDigest i -> Bool
-sdEmpty (SequenceDigest m) = null m
-
-digest :: Ord i => ReorderBundle i -> SequenceDigest i
-digest (ReorderBundle ops) = SequenceDigest $ Map.fromList ops
-
-produce :: SequenceDigest i -> ReorderBundle i
-produce (SequenceDigest m) = ReorderBundle $ Map.toList m
+updateUniqList
+  :: (Eq i, Ord i, Show i, MonadFail m)
+  => Map i (SequenceOp i) -> UniqList i -> m (UniqList i)
+updateUniqList ops ul = do
+    ensureUnique "flange" $ Map.elems reorders
+    reorderFromDeps reorders $ Map.foldlWithKey foo ul ops
+  where
+    foo ul' i op = case op of
+      SoPresentAfter _ -> ulInsert i ul'
+      SoAbsent -> ulDelete i ul'
+    reorders = Map.foldlWithKey bar mempty ops
+    bar acc i op = case op of
+      SoPresentAfter mi -> Map.insert i mi acc
+      SoAbsent -> acc
 
 getChainStarts ::
-    Ord i => SequenceDigest i -> ([(i, SequenceOp i)], SequenceDigest i)
-getChainStarts (SequenceDigest m) =
+    Ord i => Map i (Maybe i) -> ([(i, Maybe i)], Map i (Maybe i))
+getChainStarts m =
     let
-        getDep (AddAfter mi) = mi
-        getDep (MoveAfter mi) = mi
-        getDep DelElem = Nothing
-        hasUnresolvedDep = maybe False (flip Map.member m) . getDep
+        hasUnresolvedDep = maybe False (flip Map.member m)
         (remainder, starts) = Map.partition hasUnresolvedDep m
-    in (Map.toList starts, SequenceDigest remainder)
+    in (Map.toList starts, remainder)
 
-applyDigest
+reorderFromDeps
     :: (MonadFail m, Ord i, Show i)
-    => SequenceDigest i -> UniqList i -> m (UniqList i)
-applyDigest sd ul =
-    resolveDigest sd >>= applyOps (unUniqList ul) >>= mkUniqList
+    => Map i (Maybe i) -> UniqList i -> m (UniqList i)
+reorderFromDeps m ul =
+    resolveDigest m >>= applyMoves (unUniqList ul) >>= mkUniqList
   where
-    resolveDigest sd' = if sdEmpty sd' then return []
-        else case getChainStarts sd' of
+    resolveDigest m' = if null m' then return []
+        else case getChainStarts m' of
             ([], _) -> fail "Unresolvable order dependencies"
             (starts, remainder) -> (starts ++) <$> resolveDigest remainder
-    applyOps l starts = foldlM applyOp l starts
+    applyMoves l starts = foldlM applyMove l starts
 
-applyOp :: (MonadFail m, Ord i, Show i) => [i] -> (i, SequenceOp i) -> m [i]
-applyOp l (i, op) = case op of
-    AddAfter mi -> if i `elem` l
-        then fail "Cannot add element twice"
-        else insertAfter "Preceeding element not found for add" i mi l
-    MoveAfter mi ->
-        removeElem "Element was not present to move" i l
-        >>= insertAfter "Preceeding element not found for move" i mi
-    DelElem -> removeElem "Element not present to remove" i l
+applyMove :: (MonadFail m, Ord i, Show i) => [i] -> (i, Maybe i) -> m [i]
+applyMove l (i, mi) =
+    removeElem "Element was not present to move" i l
+    >>= insertAfter "Preceeding element not found for move" i mi
   where
     insertAfter msg v mAfter ol = case mAfter of
         Nothing -> return $ v : ol
@@ -71,7 +72,7 @@ applyOp l (i, op) = case op of
             (bl, al) = span (/= after) ol
           in case al of
             (a:rl) -> return $ bl ++ [a, v] ++ rl
-            [] -> fail $ msg ++ ": " ++ show v
+            [] -> fail $ msg ++ ": " ++ show after
     removeElem msg v ol =
       let
         (ds, ol') = List.partition (== v) ol

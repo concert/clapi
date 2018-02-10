@@ -1,188 +1,160 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 
-import Data.Monoid
-import Control.Monad (when)
-import Control.Monad.Fail (MonadFail)
-import Data.Maybe (fromJust)
 import Data.Text (Text)
-import Data.Word
-import Control.Concurrent.MVar
 import Control.Monad.Trans (lift)
+import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Types (
-    ToRelayBundle(..), FromRelayBundle(FRBClient), InterpolationLimit(ILConstant),
-    Interpolation(IConstant), DataUpdateMessage(..), TreeUpdateMessage(..),
-    OwnerUpdateMessage, Wireable, WireValue(..), castWireValue, Time(..),
-    UpdateBundle(..),
-    RequestBundle(..), SubMessage(..),
-    TimeStamped(..), Liberty(Cannot))
-import Clapi.Types.Path (Path, Seg, pattern Root, pattern (:/), toText)
+import Clapi.Types
+  ( TrDigest(..), TrpDigest(..), FrDigest(..), WireValue(..)
+  , TimeStamped(..), Liberty(Cannot))
+import Clapi.Types.AssocList
+  (alEmpty, alSingleton, alFromMap, alFmapWithKey, alFromList)
+import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
+import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
+import Clapi.Types.Digests
+  (DefOp(OpDefine), DataChange(..), TrcDigest(..), SubOp(..), FrcDigest(..))
+import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/))
+import qualified Clapi.Types.Path as Path
+import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
+import Clapi.Types.Wire (castWireValue)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
-import Clapi.NamespaceTracker (Owners)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
-import Clapi.Util (strictZipWith, fmtStrictZipError)
-import Clapi.Types.AssocList (mkAssocList)
-import Clapi.Types.Definitions
-  (TupleDefinition(..), StructDefinition(..), ArrayDefinition(..), toWireValues)
-import Clapi.TextSerialisation (ttFromText)
-
-zt :: Time
-zt = Time 0 0
-
-sdp, tdp, adp :: Path
-sdp = [pathq|/api/types/base/struct|]
-tdp = [pathq|/api/types/base/tuple|]
-adp = [pathq|/api/types/base/array|]
-
-staticAdd :: Path -> [WireValue] -> OwnerUpdateMessage
-staticAdd p vs = Right $ MsgAdd p zt vs IConstant Nothing Nothing
-
-staticSet :: Path -> [WireValue] -> OwnerUpdateMessage
-staticSet p vs = Right $ MsgSet p zt vs IConstant Nothing Nothing
-
-staticStructDefMsg :: Path -> Text -> [(Seg, Path)]-> OwnerUpdateMessage
-staticStructDefMsg sp doc tm =
-  let
-    al = fromJust $ mkAssocList (fmap (\(n, p) -> (n, (p, Cannot))) tm)
-  in
-    staticAdd sp $ toWireValues $ StructDefinition doc al
-
-staticTupleDefMsg :: Path -> Text -> [(Seg, Text)] -> OwnerUpdateMessage
-staticTupleDefMsg p d fm = let al = fromJust $ mkAssocList $ fmap (fromJust . ttFromText) <$> fm in
-    staticAdd p $ toWireValues $ TupleDefinition d al ILConstant
-
-clRef :: Path -> WireValue
-clRef = WireValue . toText
-
-staticArrayDefMsg :: Path -> Text -> Path -> OwnerUpdateMessage
-staticArrayDefMsg p d ct = staticAdd p $ toWireValues $ ArrayDefinition d ct Cannot
 
 class PathSegable a where
     pathNameFor :: a -> Seg
 
 relayApiProto ::
     (Ord i, PathSegable i) =>
-    MVar (Owners i) ->
     i ->
     Protocol
-        (ClientEvent i (TimeStamped ToRelayBundle)) (ClientEvent i ToRelayBundle)
-        (ServerEvent i FromRelayBundle) (ServerEvent i FromRelayBundle)
+        (ClientEvent i (TimeStamped TrDigest)) (ClientEvent i TrDigest)
+        (ServerEvent i FrDigest) (Either (Map Seg i) (ServerEvent i FrDigest))
         IO ()
-relayApiProto ownerMv selfAddr =
-    publishRelayApi >> subRoot >>
-    steadyState mempty (Map.singleton ownSeg tdZero)
+relayApiProto selfAddr =
+    publishRelayApi >> steadyState mempty mempty
   where
-    toNST = sendFwd . ClientData selfAddr
-    pubUpdate = toNST . TRBOwner . UpdateBundle []
-    publishRelayApi = pubUpdate
-      [ Left $ MsgAssignType [pathq|/relay|] rtp
-      , staticStructDefMsg rtp "topdoc" [
-        ([segq|build|], btp), ([segq|self|], selfTP), ([segq|clients|], catp), ([segq|types|], ttp),
-        ([segq|owners|], odp)]
-      , Left $ MsgAssignType [pathq|/relay/types/types|] sdp
-      , Left $ MsgAssignType [pathq|/relay/types|] ttp
-      , staticStructDefMsg ttp "typedoc" [
-        ([segq|relay|], sdp), ([segq|types|], sdp), ([segq|self|], tdp), ([segq|clients|], adp),
-        ([segq|client_info|], tdp), ([segq|owner_info|], tdp), ([segq|owners|], adp),
-        ([segq|build|], tdp)]
-      , staticArrayDefMsg catp "clientsdoc" citp
-      , Right $ MsgSetChildren cap [ownSeg] Nothing
-      , staticAdd (cap :/ ownSeg) [WireValue $ unTimeDelta tdZero]
-      , staticTupleDefMsg citp
-        "Info about connected clients (clock_diff is in seconds)"
-        [([segq|clock_diff|], "float")]
-      , staticArrayDefMsg odp "ownersdoc" oidp
-      , staticTupleDefMsg oidp "owner info" [([segq|owner|], refOf citp)]
-      , Right $ MsgSetChildren oap [] Nothing
-      , staticTupleDefMsg selfTP "Which client are you" [([segq|info|], refOf citp)]
-      , staticAdd selfP [clRef $ cap :/ ownSeg]
-      , staticTupleDefMsg btp "builddoc" [([segq|commit_hash|], "string[banana]")]
-      , staticAdd [pathq|/relay/build|] [WireValue @Text "banana"]
-      ]
-    rtp = [pathq|/relay/types/relay|]
-    btp = [pathq|/relay/types/build|]
-    ttp = [pathq|/relay/types/types|]
-    catp = [pathq|/relay/types/clients|]
-    citp = [pathq|/relay/types/client_info|]
-    cap = [pathq|/relay/clients|]
-    oidp = [pathq|/relay/types/owner_info|]
-    odp = [pathq|/relay/types/owners|]
-    oap = [pathq|/relay/owners|]
-    selfTP = [pathq|/relay/types/self|]
-    selfP = [pathq|/relay/self|]
-    refOf p = "ref[" <> toText p <> "]"
-    ownSeg = pathNameFor selfAddr
-    subRoot = toNST $ TRBClient $ RequestBundle [MsgSubscribe Root] []
-    steadyState oldOwnerMap ci = waitThen (fwd oldOwnerMap ci) (rev oldOwnerMap ci)
-    pubOwnerMap old new = when (Map.keys old /= Map.keys new) $ do
-        let scm = Right $ MsgSetChildren oap (Map.keys new) Nothing
-        let om = (cap :/) . pathNameFor <$> Map.difference new old
-        pubUpdate $ scm : ((\(ownerN, refP) -> staticAdd (oap :/ ownerN) [clRef refP]) <$> Map.toList om)
-    handleOwnTat oldOwnerMap _ = do
-        newOwnerMap <- lift (readMVar ownerMv)
-        pubOwnerMap oldOwnerMap newOwnerMap
-        return newOwnerMap
-    clientPov ci i (FRBClient (UpdateBundle errs oums)) = let
-        theirSeg = pathNameFor i
-        -- FIXME: don't really want to unTimeDelta here, as TimeDelta's support
-        -- arithmetic. However, currently transform CVs kinda rightfully
-        -- prevents us changing Wireable type, and TimeDelta's aren't
-        -- serialisable!
-        theirTime = unTimeDelta $ Map.findWithDefault
-          (error "Can't rewrite message for unconnected client") theirSeg ci
-        relClientInfo p = if p == selfP
-            then \_ -> [clRef $ cap :/ theirSeg]
-            else case p of
-                (pp :/ _) -> if pp == cap
-                    then either error id . transformCvs [subtract theirTime]
-                    else id
-                _ -> id
-        mkRelative (Right (MsgAdd p t v i' a s)) = Right $ MsgAdd p t (relClientInfo p v) i' a s
-        mkRelative (Right (MsgSet p t v i' a s)) = Right $ MsgSet p t (relClientInfo p v) i' a s
-        mkRelative m = m
-        oums' = mkRelative <$> oums
-      in
-        ServerData i $ FRBClient $ UpdateBundle errs oums'
-    clientPov _ i ob = ServerData i ob
-    fwd oldOwnerMap ci (ClientConnect cid) = sendFwd (ClientConnect cid) >> pubUpdate uMsgs >> steadyState oldOwnerMap ci'
+    publishRelayApi = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
+      rns
+      (Map.fromList $ fmap OpDefine <$>
+        [ ([segq|build|], tupleDef "builddoc"
+             (alSingleton [segq|commit_hash|] $ ttString "banana")
+             ILUninterpolated)
+        , ([segq|client_info|], tupleDef
+             "Info about connected clients (clock_diff is in seconds)"
+             (alSingleton [segq|clock_diff|] $ ttFloat unbounded)
+             ILUninterpolated)
+        , ([segq|clients|], arrayDef "clientsdoc"
+             (TypeName rns [segq|client_info|]) Cannot)
+        , ([segq|owner_info|], tupleDef "owner info"
+             (alSingleton [segq|owner|]
+               $ ttRef $ TypeName rns [segq|client_info|])
+             ILUninterpolated)
+        , ([segq|owners|], arrayDef "ownersdoc"
+             (TypeName rns [segq|owner_info|]) Cannot)
+        , ([segq|self|], tupleDef "Which client you are"
+             (alSingleton [segq|info|]
+               $ ttRef $ TypeName rns [segq|client_info|])
+             ILUninterpolated)
+        , ([segq|relay|], structDef "topdoc" $ staticAl
+          [ ([segq|build|], (TypeName rns [segq|build|], Cannot))
+          , ([segq|clients|], (TypeName rns [segq|clients|], Cannot))
+          , ([segq|owners|], (TypeName rns [segq|owners|], Cannot))
+          , ([segq|self|], (TypeName rns [segq|self|], Cannot))])
+        ])
+      (alFromList
+        [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
+        , ([pathq|/self|], ConstChange Nothing [
+             WireValue $ Path.toText selfClientPath])
+        , (selfClientPath, ConstChange Nothing [WireValue @Float 0.0])
+        ])
+      (Map.singleton Root $ Map.singleton [segq|owners|] $
+        (Nothing, SoPresentAfter $ Just [segq|clients|]))
+      mempty
+    rns = [segq|relay|]
+    selfSeg = pathNameFor selfAddr
+    selfClientPath = Root :/ [segq|clients|] :/ selfSeg
+    staticAl = alFromMap . Map.fromList
+    steadyState timingMap ownerMap = waitThen fwd rev
       where
-        cSeg = pathNameFor cid
-        ci' = Map.insert cSeg tdZero ci
-        uMsgs =
-          [ Right $ MsgSetChildren cap (Map.keys ci') Nothing
-          , staticAdd (cap :/ cSeg) [WireValue $ unTimeDelta tdZero]
-          ]
-    fwd oldOwnerMap ci (ClientData cid (TimeStamped (theirTime, trb))) = do
-        let cSeg = pathNameFor cid
-        d <- lift $ getDelta theirTime
-        let ci' = Map.insert cSeg d ci
-        pubUpdate [ staticSet (cap :/ cSeg) [WireValue $ unTimeDelta d] ]
-        sendFwd (ClientData cid trb)
-        steadyState oldOwnerMap ci'
-    fwd oldOwnerMap ci (ClientDisconnect cid) = sendFwd (ClientDisconnect cid) >> removeClient oldOwnerMap ci cid
-    rev oldOwnerMap ci (ServerData i frb) = do
-        newOwnerMap <- if selfAddr == i
-          then handleOwnTat oldOwnerMap frb
-          else sendRev (clientPov ci i frb) >> return oldOwnerMap
-        steadyState newOwnerMap ci
-    rev oldOwnerMap ci b@(ServerDisconnect cid) = sendRev b >> removeClient oldOwnerMap ci cid
-    removeClient oldOwnerMap ci cid =
-        pubUpdate [ Right $ MsgSetChildren cap (Map.keys ci') Nothing ] >>
-        steadyState oldOwnerMap ci'
-      where
-        ci' = Map.delete (pathNameFor cid) ci
-
-transformCvs
-  :: (Wireable a, MonadFail m) => [a -> a] -> [WireValue] -> m [WireValue]
-transformCvs ss cvs =
-  fmtStrictZipError "functions" "wire values"
-    (strictZipWith (\f wv -> WireValue . f <$> castWireValue wv) ss cvs)
-  >>= sequence
+        fwd ce = case ce of
+          ClientConnect cAddr ->
+            let
+              cSeg = pathNameFor cAddr
+              timingMap' = Map.insert cSeg tdZero timingMap
+            in do
+              sendFwd (ClientConnect cAddr)
+              pubUpdate
+                (alSingleton ([pathq|/clients|] :/ cSeg)
+                  $ ConstChange Nothing [WireValue $ unTimeDelta tdZero])
+                mempty
+              steadyState timingMap' ownerMap
+          ClientData cAddr (TimeStamped (theirTime, d)) -> do
+            let cSeg = pathNameFor cAddr
+            -- FIXME: this delta thing should probably be in the per client
+            -- pipeline, it'd be less jittery and tidy this up
+            delta <- lift $ getDelta theirTime
+            let timingMap' = Map.insert cSeg delta timingMap
+            pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg)
+              $ ConstChange Nothing [WireValue $ unTimeDelta delta])
+              mempty
+            sendFwd $ ClientData cAddr d
+            steadyState timingMap' ownerMap
+          ClientDisconnect cAddr ->
+            sendFwd (ClientDisconnect cAddr) >> removeClient cAddr
+        removeClient cAddr =
+          let
+            cSeg = pathNameFor cAddr
+            timingMap' = Map.delete cSeg timingMap
+          in do
+            pubUpdate alEmpty $ Map.singleton [pathq|/clients|] $
+              Map.singleton cSeg (Nothing, SoAbsent)
+            steadyState timingMap' ownerMap
+        pubUpdate dd co = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
+          rns mempty dd co mempty
+        rev (Left ownerAddrs) = do
+          let ownerMap' = pathNameFor <$> ownerAddrs
+          pubUpdate
+            (alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap')
+            (Map.singleton [pathq|/owners|] $
+              (const (Nothing, SoAbsent)) <$>
+                ownerMap `Map.difference` ownerMap')
+          steadyState timingMap ownerMap'
+        rev (Right se) = do
+          case se of
+            ServerData cAddr d ->
+              case d of
+                Frcd frcd ->
+                  sendRev $ ServerData cAddr $ Frcd
+                  $ frcd {frcdData = viewAs cAddr $ frcdData frcd}
+                _ -> sendRev se
+            _ -> sendRev se
+          steadyState timingMap ownerMap
+        toOwnerPath s = [pathq|/owners|] :/ s
+        toSetRefOp ns = ConstChange Nothing [
+          WireValue $ Path.toText $ [pathq|/clients|] :/ ns]
+        viewAs i dd =
+          let
+            theirSeg = pathNameFor i
+            theirTime = unTimeDelta $ Map.findWithDefault
+              (error "Can't rewrite message for unconnected client") theirSeg
+              timingMap
+            alterTime (ConstChange att [wv]) = ConstChange att $ pure
+              $ WireValue $ subtract theirTime $ either error id
+              $ castWireValue wv
+            alterTime _ = error "Weird data back out of VS"
+            fiddleDataChanges p dc
+              | p `Path.isChildOf` [pathq|/relay/clients|] = alterTime dc
+              | p == [pathq|/relay/self|] = toSetRefOp theirSeg
+              | otherwise = dc
+          in
+            alFmapWithKey fiddleDataChanges dd

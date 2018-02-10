@@ -1,31 +1,29 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
+
 module SerialisationProtocolSpec where
 import Test.Hspec
 
+import Control.Monad (forever)
+import Control.Monad.Trans (lift)
 import qualified Data.ByteString as B
-import Control.Concurrent.Chan.Unagi as U
-import Control.Concurrent.MVar (newEmptyMVar, takeMVar)
 
-import Clapi.Types (MsgError(..))
-import Clapi.Protocol (runProtocolIO, (<<->), sendRev, sendFwd, waitThen)
+import Clapi.Types (MsgError(..), ErrorIndex(..))
+import Clapi.Types.Path (Seg)
+import Clapi.Protocol
+  ((<<->), sendRev, sendFwd, waitThenFwdOnly, waitThenRevOnly, runEffect)
 import Clapi.Serialisation ()
 import Clapi.SerialisationProtocol (serialiser)
-import Clapi.Types.Path (pattern Root)
 
 spec :: Spec
-spec = it "Packetised round trip" $ do
-    (bi, bo) <- U.newChan
-    (mi, mo) <- U.newChan
-    mv <- newEmptyMVar
-    runProtocolIO (U.readChan bo) (U.writeChan mi) (chunkyWrite bi) (takeMVar mv) (serialiser <<-> stopProto)
-    U.readChan mo `shouldReturn` msgs
+spec = it "Packetised round trip" $
+    runEffect $ chunkyEcho <<-> serialiser <<-> test
   where
-    msgs = MsgError Root "part of test"
-    chunkyWrite bi c = do
-        let (c0, c1) = B.splitAt (B.length c `div` 2) c
-        U.writeChan bi c0
-        U.writeChan bi c1
-    stopProto = do
-        sendRev msgs
-        waitThen sendFwd undefined
+    msg :: MsgError Seg
+    msg = MsgError GlobalError "part of test"
+    chunkyEcho = forever $ waitThenRevOnly $ \c ->
+      let (c0, c1) = B.splitAt (B.length c `div` 2) c in
+        sendFwd c0 >> sendFwd c1
+    test = do
+        sendRev msg
+        waitThenFwdOnly $ \m -> lift $ m `shouldBe` msg

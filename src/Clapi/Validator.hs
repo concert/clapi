@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TupleSections #-}
 
 module Clapi.Validator where
 
@@ -8,6 +9,7 @@ import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (void, join)
 import Data.Word (Word8)
+import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
@@ -15,7 +17,7 @@ import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
 import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>))
-import Clapi.Types.Path (Seg)
+import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( TreeType(..), TreeConcreteType(..), TreeContainerTypeName(..), typeEnumOf
@@ -41,6 +43,23 @@ unpackTreeType tt = let (c, ts) = inner tt in (c, reverse ts)
     inner (TtConc t) = (t, [])
     inner (TtCont t) = let (c, ts) = inner $ contTContainedType t in
         (c, (typeEnumOf t) : ts)
+
+-- FIXME: If we had first class tree values we would be able to guarantee that
+-- a ref thing was the right type
+extractTypeAssertion :: TreeType -> WireValue -> [(TypeName, Path)]
+extractTypeAssertion tt wv =
+  let
+    (concT, contTs) = unpackTreeType tt
+    mTn = case concT of
+      TcRef tn -> Just tn
+      _ -> Nothing
+    listMash :: Wireable a => [TreeContainerTypeName] -> (a -> [Path]) -> [Path]
+    listMash (_:cts) f = listMash cts (mconcat . map f)
+    listMash [] f = maybe [] id $ f <|$|> wv
+  in do
+    case mTn of
+      Nothing -> []
+      Just tn -> (tn,) <$> listMash contTs (\v -> [fromJust $ Path.fromText v])
 
 validate :: forall m. MonadFail m => TreeType -> WireValue -> m ()
 validate tt wv =

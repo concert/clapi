@@ -7,22 +7,27 @@ module Clapi.Util (
     appendIfAbsent, (+|?),
     duplicates, ensureUnique,
     strictZipWith, strictZip, fmtStrictZipError,
-    partitionDifference, partitionDifferenceL,
+    partitionDifference, partitionDifferenceF,
     camel,
     uncamel,
     showItems,
     mkProxy,
     bound,
-    safeToEnum
+    safeToEnum,
+    flattenNestedMaps, foldlNestedMaps
 ) where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
+import Data.Foldable (Foldable, toList)
+import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
 import Data.Proxy
+import Data.Map (Map)
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Printf (printf)
 
@@ -78,17 +83,22 @@ fmtStrictZipError n0 n1 = either fmt return
       printf "Mismatched numbers of %v (%i) and %v (%i)" n0 i n1 j
 
 
-partitionDifference ::
-    (Ord a) => Set.Set a -> Set.Set a -> (Set.Set a, Set.Set a)
-partitionDifference sa sb = (Set.difference sa sb, Set.difference sb sa)
+partitionDifference
+  :: (Ord a) => Set.Set a -> Set.Set a -> (Set.Set a, Set.Set a)
+partitionDifference as bs = (Set.difference as bs, Set.difference bs as)
 
-partitionDifferenceL :: (Ord a) => [a] -> [a] -> ([a], [a])
-partitionDifferenceL as bs =
+partitionDifferenceF
+  :: (Ord a, Foldable f, Foldable g, Applicative m, Monoid (m a))
+  => f a -> g a -> (m a, m a)
+partitionDifferenceF as bs =
   let
-    (added, removed) = partitionDifference (Set.fromList as) (Set.fromList bs)
+    (l, r) = partitionDifference (toSet as) (toSet bs)
   in
-    (Set.toList added, Set.toList removed)
-
+    (fromSet l, fromSet r)
+  where
+    toSet :: (Foldable f, Ord a) => f a -> Set a
+    toSet = Set.fromList . Foldable.toList
+    fromSet = foldMap pure
 
 uncamel :: String -> String
 uncamel [] = []
@@ -104,8 +114,8 @@ camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
     initCap [] = []
     initCap (c:cs) = toUpper c : cs
 
-showItems :: (Show a) => [a] -> String
-showItems = intercalate ", " . fmap show
+showItems :: (Foldable f, Show a) => f a -> String
+showItems = intercalate ", " . fmap show . toList
 
 mkProxy :: a -> Proxy a
 mkProxy _ = Proxy
@@ -131,3 +141,16 @@ safeToEnum i =
   in if fromEnum theMin <= i && i <= fromEnum theMax
   then return r
   else fail "enum value out of range"
+
+flattenNestedMaps
+  :: (Ord k0, Ord k1, Ord k2)
+  => (k0 -> k1 -> k2) -> Map k0 (Map k1 v) -> Map k2 v
+flattenNestedMaps f = Map.foldlWithKey inner mempty
+  where
+    inner acc k0 m = Map.union acc $ Map.mapKeys (\k1 -> f k0 k1) m
+
+foldlNestedMaps
+  :: (acc -> k0 -> k1 -> v -> acc) -> acc -> Map k0 (Map k1 v) -> acc
+foldlNestedMaps f = Map.foldlWithKey g
+  where
+    g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc

@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 module Data.Map.Mol where
 
+import Data.Monoid ((<>))
 import qualified Data.Map as Map
 
 import Data.Map.Clapi as Map
@@ -24,3 +25,9 @@ extend k as = Map.updateM (++ as) k
 
 prepend :: (Ord k) => k -> [a] -> Mol k a -> Mol k a
 prepend k as = Map.updateM (as ++) k
+
+union :: (Ord k) => Mol k a -> Mol k a -> Mol k a
+union = Map.unionWith (<>)
+
+unions :: (Ord k) => [Mol k a] -> Mol k a
+unions = Map.unionsWith (<>)

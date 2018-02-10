@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module Clapi.PerClientProto where
 
@@ -12,12 +13,12 @@ data ClientEvent ident a
     = ClientConnect ident
     | ClientDisconnect ident
     | ClientData ident a
-    deriving (Eq, Show)
+    deriving (Show, Eq,Functor)
 
 data ServerEvent ident a
     = ServerData ident a
     | ServerDisconnect ident
-    deriving (Eq, Show)
+    deriving (Show, Eq, Functor)
 
 seIdent :: ServerEvent i a -> i
 seIdent (ServerData i _) = i

@@ -12,219 +12,234 @@ import Blaze.ByteString.Builder (Builder, fromWord32be)
 
 import Data.Attoparsec.ByteString (Parser)
 
-import Clapi.Serialisation.Base (Encodable(..), (<<>>))
-import Clapi.Types.Base (InterpolationLimit(..), Interpolation(..), interpolationType)
+import Clapi.Serialisation.Base
+  (Encodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
+import Clapi.Serialisation.Definitions ()
+import Clapi.Serialisation.Path ()
 import Clapi.TH (btq)
 import Clapi.Types.Messages
-import qualified Clapi.Types.Path as Path
-import Clapi.TaggedData (TaggedData, taggedData, tdInstanceToTag, eitherTagged, tdAllTags, tdTagToEnum)
+import Clapi.TaggedData
+  ( TaggedData, taggedData, tdInstanceToTag, eitherTagged, tdAllTags
+  , tdTagToEnum)
 import Clapi.Serialisation.Wire ()
 
-interpolationTaggedData :: TaggedData InterpolationLimit Interpolation
-interpolationTaggedData = taggedData toTag interpolationType
+data ErrIdxType
+  = EitGlobal
+  | EitPath
+  | EitTimePoint
+  | EitTypeName
+  deriving (Enum, Bounded)
+
+errIdxTaggedData :: TaggedData ErrIdxType (ErrorIndex a)
+errIdxTaggedData = taggedData typeToTag eiToType
   where
-    toTag (ILUninterpolated) = [btq|U|]
-    toTag (ILConstant) = [btq|C|]
-    toTag (ILLinear) = [btq|L|]
-    toTag (ILBezier) = [btq|B|]
+    typeToTag ty = case ty of
+      EitGlobal -> [btq|g|]
+      EitPath -> [btq|p|]
+      EitTimePoint -> [btq|t|]
+      EitTypeName -> [btq|n|]
+    eiToType ei = case ei of
+      GlobalError -> EitGlobal
+      PathError _ -> EitPath
+      TimePointError _ _ -> EitTimePoint
+      TypeError _ -> EitTypeName
 
-instance Encodable Interpolation where
-    builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
-        (IBezier a b) -> fromWord32be a <> fromWord32be b
-        _ -> mempty
-    parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
-        ILUninterpolated -> fail "Not allowed to specify uninterpolated time point"
-        ILConstant -> return IConstant
-        ILLinear -> return ILinear
-        ILBezier -> IBezier <$> parser <*> parser
+instance Encodable a => Encodable (ErrorIndex a) where
+  builder = tdTaggedBuilder errIdxTaggedData $ \ei -> case ei of
+    GlobalError -> return mempty
+    PathError p -> builder p
+    TimePointError p tpid -> builder p <<>> builder tpid
+    TypeError tn -> builder tn
+  parser = tdTaggedParser errIdxTaggedData $ \eit -> case eit of
+    EitGlobal -> return GlobalError
+    EitPath -> PathError <$> parser
+    EitTimePoint -> TimePointError <$> parser <*> parser
+    EitTypeName -> TypeError <$> parser
 
-instance Encodable Path.Seg where
-    builder = builder . Path.unSeg
-    parser = parser >>= Path.mkSeg
 
-instance Encodable Path.Path where
-    builder = builder . Path.toText
-    parser = parser >>= Path.fromText
-
-tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
-tdTaggedParser td p = let at = tdAllTags td in do
-    t <- parser
-    if t `elem` at
-      then p $ tdTagToEnum td t
-      else fail $ "Invalid tag " ++ show t ++ " valid tags are " ++ show at
-
-tdTaggedBuilder
-  :: MonadFail m =>TaggedData e a -> (a -> m Builder) -> a -> m Builder
-tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
-
-instance Encodable MsgError where
-    builder (MsgError p s) = builder p <<>> builder s
+instance Encodable a => Encodable (MsgError a) where
+    builder (MsgError ei s) = builder ei <<>> builder s
     parser = MsgError <$> parser <*> parser
+
+data DefMsgType = DefMsgTDef | DefMsgTUndef deriving (Enum, Bounded)
+
+defMsgTaggedData :: TaggedData DefMsgType (DefMessage a)
+defMsgTaggedData = taggedData typeToTag msgToType
+  where
+    typeToTag ty = case ty of
+      DefMsgTDef -> [btq|d|]
+      DefMsgTUndef -> [btq|u|]
+    msgToType msg = case msg of
+      MsgDefine _ _ -> DefMsgTDef
+      MsgUndefine _ -> DefMsgTUndef
+
+instance Encodable a => Encodable (DefMessage a) where
+    builder = tdTaggedBuilder defMsgTaggedData $ \msg -> case msg of
+      MsgDefine tn def -> builder tn <<>> builder def
+      MsgUndefine tn -> builder tn
+    parser = tdTaggedParser defMsgTaggedData $ \defTy -> case defTy of
+      DefMsgTDef -> MsgDefine <$> parser <*> parser
+      DefMsgTUndef -> MsgUndefine <$> parser
 
 data SubMsgType
   = SubMsgTSub
-  | SubMsgTUnsub deriving (Enum, Bounded)
+  | SubMsgTTypeSub
+  | SubMsgTUnsub
+  | SubMsgTTypeUnsub deriving (Enum, Bounded)
 
 subMsgTaggedData :: TaggedData SubMsgType SubMessage
 subMsgTaggedData = taggedData typeToTag msgToType
   where
-    typeToTag (SubMsgTSub) = [btq|S|]
-    typeToTag (SubMsgTUnsub) = [btq|U|]
+    typeToTag (SubMsgTSub) = [btq|s|]
+    typeToTag (SubMsgTTypeSub) = [btq|S|]
+    typeToTag (SubMsgTUnsub) = [btq|u|]
+    typeToTag (SubMsgTTypeUnsub) = [btq|U|]
     msgToType (MsgSubscribe _) = SubMsgTSub
+    msgToType (MsgTypeSubscribe _) = SubMsgTTypeSub
     msgToType (MsgUnsubscribe _) = SubMsgTUnsub
+    msgToType (MsgTypeUnsubscribe _) = SubMsgTTypeUnsub
 
 instance Encodable SubMessage where
-    builder = tdTaggedBuilder subMsgTaggedData $ builder . subMsgPath
+    builder = tdTaggedBuilder subMsgTaggedData $ \m -> case m of
+        MsgSubscribe p -> builder p
+        MsgUnsubscribe p -> builder p
+        MsgTypeSubscribe t -> builder t
+        MsgTypeUnsubscribe t -> builder t
     parser = tdTaggedParser subMsgTaggedData $ \e -> case e of
         (SubMsgTSub) -> MsgSubscribe <$> parser
+        (SubMsgTTypeSub) -> MsgTypeSubscribe <$> parser
         (SubMsgTUnsub) -> MsgUnsubscribe <$> parser
+        (SubMsgTTypeUnsub) -> MsgTypeUnsubscribe <$> parser
+
+instance Encodable TypeMessage where
+    builder (MsgAssignType p tn l) = builder p <<>> builder tn <<>> builder l
+    parser = MsgAssignType <$> parser <*> parser <*> parser
 
 data DataUpdateMsgType
-  = DUMTAdd
+  = DUMTConstSet
   | DUMTSet
   | DUMTRemove
-  | DUMTClear
-  | DUMTSetChildren deriving (Enum, Bounded)
+  deriving (Enum, Bounded)
 
 dumtTaggedData :: TaggedData DataUpdateMsgType DataUpdateMessage
 dumtTaggedData = taggedData typeToTag msgToType
   where
-    typeToTag (DUMTAdd) = [btq|a|]
-    typeToTag (DUMTSet) = [btq|s|]
-    typeToTag (DUMTRemove) = [btq|r|]
-    typeToTag (DUMTClear) = [btq|c|]
-    typeToTag (DUMTSetChildren) = [btq|C|]
-    msgToType (MsgAdd _ _ _ _ _ _) = DUMTAdd
-    msgToType (MsgSet _ _ _ _ _ _) = DUMTSet
-    msgToType (MsgRemove _ _ _ _) = DUMTRemove
-    msgToType (MsgClear _ _ _ _) = DUMTClear
-    msgToType (MsgSetChildren _ _ _) = DUMTSetChildren
+    typeToTag DUMTConstSet = [btq|S|]
+    typeToTag DUMTSet = [btq|s|]
+    typeToTag DUMTRemove = [btq|r|]
+    msgToType (MsgConstSet {}) = DUMTConstSet
+    msgToType (MsgSet {}) = DUMTSet
+    msgToType (MsgRemove {}) = DUMTRemove
 
 dumtParser :: DataUpdateMsgType -> Parser DataUpdateMessage
 dumtParser e = case e of
-    DUMTAdd -> sap MsgAdd
-    DUMTSet -> sap MsgSet
-    DUMTRemove -> rcp MsgRemove
-    DUMTClear -> rcp MsgClear
-    DUMTSetChildren -> MsgSetChildren <$> parser <*> parser <*> parser
-  where
-    sap mt =
-      mt <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
-    rcp mt = mt <$> parser <*> parser <*> parser <*> parser
+    DUMTConstSet -> MsgConstSet <$> parser <*> parser <*> parser
+    DUMTSet -> MsgSet <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
+    DUMTRemove -> MsgRemove <$> parser <*> parser <*> parser
 
 dumtBuilder :: MonadFail m => DataUpdateMessage -> m Builder
 dumtBuilder m = case m of
-    (MsgAdd p t v i a s) ->
-      builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
-      builder s
-    (MsgSet p t v i a s) ->
-      builder p <<>> builder t <<>> builder v <<>> builder i <<>> builder a <<>>
-      builder s
-    (MsgRemove p t a s) ->
-      builder p <<>> builder t <<>> builder a <<>> builder s
-    (MsgClear p t a s) ->
-      builder p <<>> builder t <<>> builder a <<>> builder s
-    (MsgSetChildren p ns a) ->
-      builder p <<>> builder ns <<>> builder a
+    MsgConstSet p v a -> builder p <<>> builder v <<>> builder a
+    MsgSet p ptId t v i a ->
+      builder p <<>> builder ptId <<>> builder t <<>> builder v <<>> builder i
+      <<>> builder a
+    MsgRemove p t a ->
+      builder p <<>> builder t <<>> builder a
 
 instance Encodable DataUpdateMessage where
     builder = tdTaggedBuilder dumtTaggedData dumtBuilder
     parser = tdTaggedParser dumtTaggedData dumtParser
 
-data TreeUpdateMsgType
-  = TUMTAssignType
-  | TUMTDelete deriving (Enum, Bounded)
 
-tumtTaggedData :: TaggedData TreeUpdateMsgType TreeUpdateMessage
-tumtTaggedData = taggedData typeToTag msgToType
+data ContainerUpdateMsgType
+  = CUMTPresentAfter
+  | CUMTAbsent
+  deriving (Enum, Bounded)
+
+cumtTaggedData :: TaggedData ContainerUpdateMsgType ContainerUpdateMessage
+cumtTaggedData = taggedData typeToTag msgToType
   where
-    typeToTag (TUMTAssignType) = [btq|A|]
-    typeToTag (TUMTDelete) = [btq|D|]
-    msgToType (MsgAssignType _ _) = TUMTAssignType
-    msgToType (MsgDelete _) = TUMTDelete
+    typeToTag CUMTPresentAfter = [btq|>|]
+    typeToTag CUMTAbsent = [btq|-|]
+    msgToType (MsgPresentAfter {}) = CUMTPresentAfter
+    msgToType (MsgAbsent {}) = CUMTAbsent
 
-tumtBuilder :: MonadFail m => TreeUpdateMessage -> m Builder
-tumtBuilder (MsgAssignType p tp) = builder p <<>> builder tp
-tumtBuilder (MsgDelete p) = builder p
+cumtParser :: ContainerUpdateMsgType -> Parser ContainerUpdateMessage
+cumtParser e = case e of
+  CUMTPresentAfter ->
+    MsgPresentAfter <$> parser <*> parser <*> parser <*> parser
+  CUMTAbsent -> MsgAbsent <$> parser <*> parser <*> parser
 
-tumtParser :: TreeUpdateMsgType -> Parser TreeUpdateMessage
-tumtParser (TUMTAssignType) = MsgAssignType <$> parser <*> parser
-tumtParser (TUMTDelete) = MsgDelete <$> parser
+cumtBuilder :: MonadFail m => ContainerUpdateMessage -> m Builder
+cumtBuilder msg = case msg of
+  MsgPresentAfter p t r a ->
+    builder p <<>> builder t <<>> builder r <<>> builder a
+  MsgAbsent p t a ->
+    builder p <<>> builder t <<>> builder a
 
-parseEither
-  :: TaggedData (Either e f) (Either a b) -> (e -> Parser a) -> (f -> Parser b)
-  -> Parser (Either a b)
-parseEither td pa pb =
-  tdTaggedParser td $ either (fmap Left . pa) (fmap Right . pb)
+instance Encodable ContainerUpdateMessage where
+    parser = tdTaggedParser cumtTaggedData cumtParser
+    builder = tdTaggedBuilder cumtTaggedData cumtBuilder
 
-buildEither ::
-    MonadFail m =>
-    TaggedData (Either e f) (Either a b) ->
-    (a -> m Builder) ->
-    (b -> m Builder) ->
-    Either a b ->
-    m Builder
-buildEither td ba bb eab =
-  (builder $ tdInstanceToTag td eab) <<>> either ba bb eab
+data TrBundleType
+  = TrbtProvider | TrbtProviderRelinquish | TrbtClient deriving (Enum, Bounded)
 
-oumTaggedData
-  :: TaggedData
-      (Either TreeUpdateMsgType DataUpdateMsgType)
-      (Either TreeUpdateMessage DataUpdateMessage)
-oumTaggedData = eitherTagged tumtTaggedData dumtTaggedData
-
-instance Encodable OwnerUpdateMessage where
-    builder = buildEither oumTaggedData tumtBuilder dumtBuilder
-    parser = parseEither oumTaggedData tumtParser dumtParser
-
-instance Encodable RequestBundle where
-    builder (RequestBundle subs dums) = builder subs <<>> builder dums
-    parser = RequestBundle <$> parser <*> parser
-
-instance Encodable UpdateBundle where
-    builder (UpdateBundle errs oums) = builder errs <<>> builder oums
-    parser = UpdateBundle <$> parser <*> parser
-
-instance Encodable OwnerRequestBundle where
-    builder (OwnerRequestBundle errs dums) = builder errs <<>> builder dums
-    parser = OwnerRequestBundle <$> parser <*> parser
-
-data ToRelayBundleTypeEnum
-  = RequestToRelayBundleType
-  | UpdateToRelayBundleType deriving (Enum, Bounded)
-
-trbTaggedData :: TaggedData ToRelayBundleTypeEnum ToRelayBundle
-trbTaggedData = taggedData typeToTag bundleType
+trBundleTaggedData :: TaggedData TrBundleType ToRelayBundle
+trBundleTaggedData = taggedData typeToTag bundleToType
   where
-    typeToTag (RequestToRelayBundleType) = [btq|r|]
-    typeToTag (UpdateToRelayBundleType) = [btq|u|]
-    bundleType (TRBOwner _) = UpdateToRelayBundleType
-    bundleType (TRBClient _) = RequestToRelayBundleType
+    typeToTag ty = case ty of
+      TrbtProvider -> [btq|P|]
+      TrbtProviderRelinquish -> [btq|R|]
+      TrbtClient ->  [btq|C|]
+    bundleToType bund = case bund of
+      Trpb _ -> TrbtProvider
+      Trpr _ -> TrbtProviderRelinquish
+      Trcb _ -> TrbtClient
 
 instance Encodable ToRelayBundle where
-    builder = tdTaggedBuilder trbTaggedData $ \b -> case b of
-        (TRBClient rb) -> builder rb
-        (TRBOwner ub) -> builder ub
-    parser = tdTaggedParser trbTaggedData $ \e -> case e of
-        (UpdateToRelayBundleType) -> TRBOwner <$> parser
-        (RequestToRelayBundleType) -> TRBClient <$> parser
+    builder = tdTaggedBuilder trBundleTaggedData $ \bund -> case bund of
+      Trpb (ToRelayProviderBundle ns errs defs dat contMsgs) ->
+        builder ns <<>> builder errs <<>> builder defs <<>> builder dat
+        <<>> builder contMsgs
+      Trpr (ToRelayProviderRelinquish ns) -> builder ns
+      Trcb (ToRelayClientBundle subs dat contMsgs) ->
+        builder subs <<>> builder dat <<>> builder contMsgs
+    parser = tdTaggedParser trBundleTaggedData $ \ty -> case ty of
+      TrbtProvider -> Trpb <$>
+        (ToRelayProviderBundle <$> parser <*> parser <*> parser <*> parser
+        <*> parser)
+      TrbtProviderRelinquish -> Trpr . ToRelayProviderRelinquish <$> parser
+      TrbtClient -> Trcb <$>
+        (ToRelayClientBundle <$> parser <*> parser <*> parser)
 
-data FromRelayBundleTypeEnum
-  = RequestFromRelayBundleType
-  | UpdateFromRelayBundleType deriving (Enum, Bounded)
+data FrBundleType
+  = FrbtProvider | FrbtProviderError | FrbtClient deriving (Enum, Bounded)
 
-frbTaggedData :: TaggedData FromRelayBundleTypeEnum FromRelayBundle
-frbTaggedData = taggedData typeToTag bundleType
+frBundleTaggedData :: TaggedData FrBundleType FromRelayBundle
+frBundleTaggedData = taggedData typeToTag bundleToType
   where
-    typeToTag (RequestFromRelayBundleType) = [btq|R|]
-    typeToTag (UpdateFromRelayBundleType) = [btq|U|]
-    bundleType (FRBOwner _) = RequestFromRelayBundleType
-    bundleType (FRBClient _) = UpdateFromRelayBundleType
+    typeToTag ty = case ty of
+      FrbtProvider -> [btq|P|]
+      FrbtProviderError -> [btq|E|]
+      FrbtClient ->  [btq|C|]
+    bundleToType bund = case bund of
+      Frpb _ -> FrbtProvider
+      Frpeb _ -> FrbtProviderError
+      Frcb _ -> FrbtClient
 
 instance Encodable FromRelayBundle where
-    builder = tdTaggedBuilder frbTaggedData $ \b -> case b of
-        (FRBClient rb) -> builder rb
-        (FRBOwner ub) -> builder ub
-    parser = tdTaggedParser frbTaggedData $ \e -> case e of
-        (UpdateFromRelayBundleType) -> FRBClient <$> parser
-        (RequestFromRelayBundleType) -> FRBOwner <$> parser
+    builder = tdTaggedBuilder frBundleTaggedData $ \bund -> case bund of
+      Frpb (FromRelayProviderBundle ns dat contMsgs) ->
+        builder ns <<>> builder dat <<>> builder contMsgs
+      Frpeb (FromRelayProviderErrorBundle errs) -> builder errs
+      Frcb (FromRelayClientBundle tyUns datUns errs defs tas dat contMsgs) ->
+        builder tyUns <<>> builder datUns <<>> builder errs <<>> builder defs
+        <<>> builder tas <<>> builder dat <<>> builder contMsgs
+    parser = tdTaggedParser frBundleTaggedData $ \ty -> case ty of
+      FrbtProvider -> Frpb <$>
+        (FromRelayProviderBundle <$> parser <*> parser <*> parser)
+      FrbtProviderError ->
+        Frpeb . FromRelayProviderErrorBundle <$> parser
+      FrbtClient -> Frcb <$>
+        (FromRelayClientBundle <$> parser <*> parser <*>  parser <*> parser
+        <*> parser <*> parser <*> parser)

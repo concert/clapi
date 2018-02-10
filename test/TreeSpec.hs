@@ -1,192 +1,89 @@
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TupleSections #-}
 module TreeSpec where
 
 import Test.Hspec
-import Data.Either (isRight)
-import Data.Foldable (toList)
-import Control.Monad (liftM, liftM2, replicateM)
-import Test.QuickCheck (
-    Gen, Arbitrary(..), arbitrary, (==>), forAll, choose, elements, shuffle,
-    oneof, frequency, listOf, vectorOf, sublistOf, counterexample, property)
-import Test.QuickCheck.Property (Result(..), Property(..))
 
-import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
-import qualified Data.Text as T
-
-import qualified Data.Map.Mos as Mos
 import Clapi.TH
-import Clapi.Types (
-    CanFail, WireValue(..), Time(..), Interpolation(..))
-import Clapi.Types.Path (Path(..), isChildOfAny, pattern Root)
-import Clapi.Tree (
-    ClapiTree, Node(..), treeOrphansAndMissing, treeInitNode, treeDeleteNode
-    -- Attributee, Site, SiteMap, TimeSeries, Node(..), ClapiTree(..),
-    -- treeAdd, treeSet, treeDelete, treeDiff, treeApply
-    )
+import Clapi.Types.AssocList (alSingleton, alFromList)
+import qualified Clapi.Types.Dkmap as Dkmap
+import Clapi.Types.Path (Seg, pattern Root, pattern (:/))
+import Clapi.Tree
+  ( RoseTree(..), RoseTreeNode(..), treePaths, treeLookup, treeInsert
+  , treeDelete, treeLookupNode)
+
+s0, s1, s2, s3, s4 :: Seg
+s0 = [segq|t0|]
+s1 = [segq|t1|]
+s2 = [segq|t2|]
+s3 = [segq|t3|]
+s4 = [segq|t4|]
+
+t0, t1, t2, t3, t4 :: RoseTree Char
+t0 = RtEmpty
+t1 = RtConstData Nothing 'b'
+t2 = RtDataSeries Dkmap.empty
+t3 = RtContainer $ fmap (Nothing,) $ alFromList [(s0, t0), (s1, t1), (s2, t2)]
+t4 = RtContainer $ fmap (Nothing,) $ alFromList [(s3, t3), (s1, t1)]
 
 spec :: Spec
 spec = do
-    describe "Init node" $ do
-        it "Remains contiguous" $ do
-            assertContiguous t0
-            assertContiguous t1
-            assertContiguous t2
-            assertContiguous t3
-        it "Is as expected after 1 init" $
-            t1 `shouldBe` expectedT1
-        it "Is as expected after 3 inits" $
-            t3 `shouldBe` expectedT3
-    it "Deletes recursively" $
-        treeDeleteNode [pathq|/a/d|] t3 `shouldReturn` t1
+  describe "treePaths" $
+    it "should return the paths of all the nodes in a tree" $
+      treePaths Root t4 `shouldBe`
+        [ Root
+        , Root :/ s3
+        , Root :/ s3 :/ s0
+        , Root :/ s3 :/ s1
+        , Root :/ s3 :/ s2
+        , Root :/ s1]
 
-assertContiguous = flip shouldBe (mempty, mempty) . treeOrphansAndMissing
+  describe "treeLookup" $ do
+    it "should find a node that is present" $
+      treeLookup (Root :/ s3 :/ s1) t4 `shouldBe` Just t1
+    it "should return Nothing if no node is present" $
+      treeLookup [pathq|/naff|] t4 `shouldBe` Nothing
 
-t0 = mempty :: ClapiTree ()
-t1 = treeInitNode [pathq|/a/b/c|] t0
-t2 = treeInitNode [pathq|/a/d/e|] t1
-t3 = treeInitNode [pathq|/a/d|] t2
+  describe "treeInsert" $  do
+    it "should insert the node" $
+      let
+        att = Just "bob"
+        t = treeInsert att (Root :/ s2) t2 t4
+        expectedKids = alFromList [(s3, Nothing), (s1, Nothing), (s2, att)]
+      in do
+        treeLookup (Root :/ s2) t `shouldBe` Just t2
+        treeLookupNode Root t `shouldBe` Just (RtnChildren expectedKids)
 
-expectedT1 = Map.fromList [
-    (Root, Node [[segq|a|]] mempty),
-    ([pathq|/a|], Node [[segq|b|]] mempty),
-    ([pathq|/a/b|], Node [[segq|c|]] mempty),
-    ([pathq|/a/b/c|], Node [] mempty)] :: ClapiTree ()
-expectedT3 = Map.fromList [
-    (Root, Node [[segq|a|]] mempty),
-    ([pathq|/a|], Node [[segq|b|], [segq|d|]] mempty),
-    ([pathq|/a/b|], Node [[segq|c|]] mempty),
-    ([pathq|/a/b/c|], Node [] mempty),
-    ([pathq|/a/d|], Node [[segq|e|]] mempty),
-    ([pathq|/a/d/e|], Node [] mempty)] :: ClapiTree ()
+    it "should overwrite an existing node" $
+      let
+        att = Just "bob"
+        t = treeInsert att (Root :/ s1) t2 t4
+        expectedKids = alFromList [(s3, Nothing), (s1, att)]
+      in do
+        treeLookup (Root :/ s1) t `shouldBe` Just t2
+        treeLookupNode Root t `shouldBe` Just (RtnChildren expectedKids)
 
+    it "should recursively add containers as needed" $
+      let
+        att = Just "bob"
+        t = treeInsert att ([pathq|/will/bo|]) t0 t1
+        expectedT = RtContainer $ alSingleton [segq|will|]
+          (att, RtContainer $ alSingleton [segq|bo|] (att, t0))
+      in
+        t `shouldBe` expectedT
 
--- instance Arbitrary Time where
---     arbitrary = liftM2 Time arbitrary arbitrary
-
--- instance Arbitrary Interpolation where
---     arbitrary = oneof [
---       return IConstant, return ILinear, IBezier <$> arbitrary <*> arbitrary]
-
--- arbitraryAv :: (Arbitrary a) => Gen a -> Gen (Maybe Attributee, a)
--- arbitraryAv genA = do
---     att <- oneof [return Nothing, liftM Just name]
---     v <- genA
---     return (att, v)
-
--- arbitraryMap :: (Ord k) =>
---     Int -> Int -> Gen k -> (k -> Gen a) -> Gen (Map.Map k a)
--- arbitraryMap min max keyG itemG =
---   do
---     numItems <- choose (min, max)
---     keys <- replicateM numItems keyG
---     itemList <- sequence $ fmap (\k -> sequence (k, itemG k)) keys
---     return $ Map.fromList itemList
-
--- submap :: (Ord k) => Map.Map k a -> Gen (Map.Map k a)
--- submap m = Map.fromList <$> (sublistOf $ Map.toList m)
-
--- slightlyDifferentMap :: (Ord k) => Gen (Map.Map k a) -> (a -> Gen a) ->
---     Map.Map k a -> Gen (Map.Map k a)
--- slightlyDifferentMap g f m =
---   do
---     newBaseMap <- g
---     reducedM <- submap m
---     toTransform <- submap reducedM
---     transformedM <- sequence $ fmap f toTransform
---     return $ Map.union newBaseMap $ Map.union transformedM reducedM
-
--- arbitraryTimeSeries :: (Arbitrary a) => Maybe Site -> Gen (TimeSeries a)
--- arbitraryTimeSeries site =
---     arbitraryMap 1 4 arbitrary (const $ arbitraryAv siteGen)
---   where
---     siteGen = case site of
---       Nothing -> liftM Just arbitrary
---       _ -> arbitrary
-
--- name = do
---     l <- choose (1, 5)
---     replicateM l $ elements ['a'..'z']
-
--- arbitrarySiteMap :: (Arbitrary a) => Gen (SiteMap a)
--- arbitrarySiteMap = arbitraryMap 1 5 justName arbitraryTimeSeries
---   where
---     justName = oneof [return Nothing, liftM Just name]
-
-
--- instance (Arbitrary a) => Arbitrary (Node a) where
---     arbitrary =
---       do
---         numKeys <- choose (0, 4)
---         keys <- replicateM numKeys name
---         siteMap <- arbitrarySiteMap
---         return $ Node keys siteMap
-
-
--- slightlyDifferentNode :: (Arbitrary a) => Node a -> Gen (Node a)
--- slightlyDifferentNode (Node keys sm) =
---   do
---     sm' <- slightlyDifferentMap arbitrarySiteMap (const arbitrary) sm
---     sm'' <- return $ Map.filter (not . null) sm'
---     keys' <- frequency [
---         (1, sublistOf keys >>= shuffle),
---         (3, return keys)
---       ]
---     return $ Node keys' sm''
-
--- arbitraryPath :: Gen Path
--- arbitraryPath = listOf name
-
--- instance (Arbitrary a) => Arbitrary (ClapiTree a) where
---     arbitrary =
---       do
---         nm <- arbitraryMap 0 4 arbitraryPath (const arbitrary)
---         tm <- sequence $ fmap (const arbitraryPath) nm
---         return $ ClapiTree nm (tm, Mos.invertMap tm)
-
--- slightlyDifferentTree :: (Arbitrary a) => ClapiTree a -> Gen (ClapiTree a)
--- slightlyDifferentTree (ClapiTree nm (tm, _)) =
---   do
---     nm' <- slightlyDifferentMap arbitrary slightlyDifferentNode nm
---     deletedKeys <- return $ Set.toList $ Set.difference (Map.keysSet nm) (Map.keysSet nm')
---     nm'' <- return $ Map.filterWithKey
---         (\k _ -> not $ k `isChildOfAny` deletedKeys) nm'
---     toDelta <- submap tm
---     deltaTm <- sequence (fmap (const arbitrary) $ toDelta)
---     deltaTm' <- return $ Map.union deltaTm tm
---     arbTm <- sequence $ fmap (const arbitraryPath) nm''
---     arbTm' <- return $ Map.intersection deltaTm' arbTm
---     tm' <- return $ Map.union arbTm' arbTm
---     return $ ClapiTree nm'' (tm', Mos.invertMap tm')
-
--- data TreePair a = TreePair (ClapiTree a) (ClapiTree a) deriving (Show)
--- instance (Arbitrary a) => Arbitrary (TreePair a) where
---     arbitrary = do
---         t1 <- arbitrary
---         t2 <- slightlyDifferentTree t1
---         return $ TreePair t1 t2
---     shrink (TreePair (ClapiTree nm1 types1) (ClapiTree nm2 types2)) = do
---         (np, n1) <- excludeSingleton $ Map.toList nm1
---         tp1 <- toList $ Mos.getDependency np types1
---         n2 <- toList $ Map.lookup np nm2
---         tp2 <- toList $ Mos.getDependency np types2
---         return $ TreePair (make np n1 tp1) (make np n2 tp2)
---       where
---         excludeSingleton (a:[]) = []
---         excludeSingleton as = as
---         make np n tp = ClapiTree newNm (newTm, newTum)
---           where
---             newNm = Map.singleton np n
---             newTm = Map.singleton np tp
---             newTum = Mos.invertMap newTm
-
-
--- propTreeDiffRoundTrip :: TreePair Int -> Property
--- propTreeDiffRoundTrip (TreePair t1 t2) =
---     isRight d ==> counterexample (show d) $ gubbins failyT2'
---       where
---         d = treeDiff t1 t2
---         failyT2' = d >>= treeApply t1
---         gubbins (Left s) = counterexample s False
---         gubbins (Right t2') = counterexample (show t2') $ t2' == t2
+  describe "treeDelete" $ do
+    it "should delete something that isn't there" $ do
+      treeDelete [pathq|/will|] t4 `shouldBe` t4
+      treeDelete [pathq|/will|] t1 `shouldBe` t1
+    it "should delete recursively" $
+      treeDelete (Root :/ s3 :/ s1) t4 `shouldBe` RtContainer (alFromList
+        [ (s3, (Nothing, RtContainer $ alFromList
+          [(s0, (Nothing, t0)), (s2, (Nothing, t2))]))
+        , (s1, (Nothing, t1))
+        ])
+    it "doesn't create illegitimate parents" $ do
+      treeDelete [pathq|/t3/to/box|] t3 `shouldBe` t3
+      treeDelete [pathq|/t1/to/box|] t3 `shouldBe` t3

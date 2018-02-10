@@ -8,7 +8,9 @@ module Clapi.Types.Tree
   , TreeConcreteTypeName(..), TreeConcreteType(..)
   , TreeContainerTypeName(..), TreeContainerType(..)
   , TreeType(..), TypeEnumOf(..)
-  , tcEnum, ttEnum
+  , tcEnum
+  , ttTime, ttEnum, ttWord32, ttWord64, ttInt32, ttInt64, ttDouble, ttFloat
+  , ttString, ttRef, ttValidatorDesc
   ) where
 
 import Prelude hiding (fail)
@@ -20,7 +22,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.Types.Path (Path, Seg, mkSeg)
+import Clapi.Types.Path (Seg, mkSeg, TypeName)
 import Clapi.Util (uncamel)
 
 
@@ -65,7 +67,7 @@ data TreeConcreteType
   | TcFloat (Bounds Float)
   | TcDouble (Bounds Double)
   | TcString Text
-  | TcRef Path
+  | TcRef TypeName
   | TcValidatorDesc
   deriving (Show, Eq, Ord)
 
@@ -110,5 +112,35 @@ data TreeType
   | TtCont TreeContainerType
   deriving (Show, Eq, Ord)
 
+ttTime :: TreeType
+ttTime = TtConc $ TcTime
+
 ttEnum :: forall a. (Enum a, Bounded a, Show a) => Proxy a -> TreeType
 ttEnum = TtConc . tcEnum
+
+ttWord32 :: Bounds Word32 -> TreeType
+ttWord32 = TtConc . TcWord32
+
+ttWord64 :: Bounds Word64 -> TreeType
+ttWord64 = TtConc . TcWord64
+
+ttInt32 :: Bounds Int32 -> TreeType
+ttInt32 = TtConc . TcInt32
+
+ttInt64 :: Bounds Int64 -> TreeType
+ttInt64 = TtConc . TcInt64
+
+ttFloat :: Bounds Float -> TreeType
+ttFloat = TtConc . TcFloat
+
+ttDouble :: Bounds Double -> TreeType
+ttDouble = TtConc . TcDouble
+
+ttString :: Text -> TreeType
+ttString = TtConc . TcString
+
+ttRef :: TypeName -> TreeType
+ttRef = TtConc . TcRef
+
+ttValidatorDesc :: TreeType
+ttValidatorDesc = TtConc $ TcValidatorDesc

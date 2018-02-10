@@ -51,5 +51,5 @@ spec = do
 assertDep k a ds = Mos.getDependency k ds `shouldBe` Just a
 assertNoDep k ds = Mos.getDependency k ds `shouldBe` Nothing
 assertRevDeps a ks ds =
-    Mos.getDependants a ds `shouldBe` Just (Set.fromList ks)
-assertNoRevDeps a ds = Mos.getDependants a ds `shouldBe` Nothing
+    Mos.getDependants a ds `shouldBe` Set.fromList ks
+assertNoRevDeps a ds = Mos.getDependants a ds `shouldBe` mempty
