@@ -123,7 +123,7 @@ claimNamespace
   -> StateT (NstState i) (NstProtocol m i) ()
 claimNamespace i ns failureAction successAction = get >>= either
     failureAction
-    (\owners' -> updateOwners owners' >> successAction)
+    (\owners' -> maybe (return ()) updateOwners owners' >> successAction)
     . go . nstOwners
   where
     go owners =
@@ -132,9 +132,9 @@ claimNamespace i ns failureAction successAction = get >>= either
           (\_ _ _ -> i) ns i owners
       in
         case existing of
-          Nothing -> return owners'
+          Nothing -> return $ Just owners'
           Just i' -> if (i' == i)
-            then return owners
+            then return Nothing
             else fail "Already owned by someone else guv"
 
 relinquishNamespace

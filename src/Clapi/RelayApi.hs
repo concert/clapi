@@ -22,7 +22,7 @@ import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   (DefOp(OpDefine), DataChange(..), TrcDigest(..), SubOp(..), FrcDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/))
+import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (castWireValue)
@@ -74,7 +74,7 @@ relayApiProto selfAddr =
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             WireValue $ Path.toText selfClientPath])
+             WireValue $ Path.toText $ selfSeg :</ selfClientPath])
         , (selfClientPath, ConstChange Nothing [WireValue @Float 0.0])
         ])
       (Map.singleton Root $ Map.singleton [segq|owners|] $
@@ -141,7 +141,7 @@ relayApiProto selfAddr =
           steadyState timingMap ownerMap
         toOwnerPath s = [pathq|/owners|] :/ s
         toSetRefOp ns = ConstChange Nothing [
-          WireValue $ Path.toText $ [pathq|/clients|] :/ ns]
+          WireValue $ Path.toText $ Root :/ selfSeg :/ [segq|clients|] :/ ns]
         viewAs i dd =
           let
             theirSeg = pathNameFor i
