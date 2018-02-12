@@ -27,13 +27,13 @@ import Clapi.Types
     , FromRelayBundle(..), ToRelayBundle(..)
     , DataUpdateMessage(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
-    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..)
+    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty, TrcDigest(..)
     , ErrorIndex(..)
     , DataChange(..)
     , digestToRelayBundle, produceFromRelayBundle)
 import Clapi.Types.Digests
   ( OutboundDigest(..), InboundDigest(..), InboundClientDigest(..)
-  , OutboundProviderDigest(..))
+  , OutboundProviderDigest(..), SubOp(..))
 import Clapi.Types.Path (Path, Seg, pattern Root)
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -88,18 +88,21 @@ spec = do
             sendFwd $ ClientData alice $ Trpd $ trpDigest helloS
             expectErrors alice $ Map.singleton
                 (PathError helloP) ["Empty Claim"]
+            expectRev $ Right $ ServerDisconnect alice
       in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
---    it "Rejects owner subscription" $
---      let
---        aliceOwns = Map.singleton helloS "alice"
---        protocol = forTest <<-> nstProtocol <<-> fauxRelay
---        forTest = do
---          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgSubscribe helloP] []
---          resps <- collectAllResponsesUntil alice
---          lift $ assertOnlyKeysInMap [alice] resps
---          lift $ assertSingleError alice helloP ["Request", "own"] resps
---      in
---        runEffect protocol
+    it "Rejects owner data subscription" $
+      let
+        forTest = do
+            claimHello alice
+            expectRev $ Left $ Map.fromList
+              [ (helloS, alice)
+              ] -- FIXME: should API be owned?
+            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
+              {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
+            expectErrors alice $ Map.singleton
+                (PathError helloP) ["Acted as client on own namespace"]
+            expectRev $ Right $ ServerDisconnect alice
+      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
   where
     blackHoleRelay = waitThenFwdOnly $ const blackHoleRelay
     expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
