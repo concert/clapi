@@ -34,7 +34,7 @@ import Clapi.Types
 import Clapi.Types.Digests
   ( OutboundDigest(..), InboundDigest(..), InboundClientDigest(..)
   , OutboundProviderDigest(..), SubOp(..))
-import Clapi.Types.Path (Path, Seg, pattern Root)
+import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
@@ -90,19 +90,24 @@ spec = do
                 (PathError helloP) ["Empty Claim"]
             expectRev $ Right $ ServerDisconnect alice
       in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
-    it "Rejects owner data subscription" $
+    it "Rejects owner subscriptions" $
       let
-        forTest = do
+        subDs =
+          [ trcdEmpty
+              {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
+          , trcdEmpty
+              {trcdTypeSubs = Map.singleton (TypeName helloS helloS) OpSubscribe}
+          ]
+        forTest subD = do
             claimHello alice
             expectRev $ Left $ Map.fromList
               [ (helloS, alice)
               ] -- FIXME: should API be owned?
-            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
-              {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
+            sendFwd $ ClientData alice $ Trcd subD
             expectErrors alice $ Map.singleton
                 (PathError helloP) ["Acted as client on own namespace"]
             expectRev $ Right $ ServerDisconnect alice
-      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
+      in mapM_ (\subD -> runEffect $ forTest subD <<-> nstProtocol <<-> blackHoleRelay) subDs
   where
     blackHoleRelay = waitThenFwdOnly $ const blackHoleRelay
     expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
