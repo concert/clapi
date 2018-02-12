@@ -72,21 +72,23 @@ spec :: Spec
 spec = do
     it "Rejects ownership claim on pre-owned path" $
       let
-        expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
-        protocol = forTest <<-> nstProtocol <<-> fauxRelay
         forTest = do
             claimHello alice
             expectRev $ Left $ Map.fromList
               [ (helloS, alice)
               ] -- FIXME: should API be owned?
             claimHello bob
-            expectRev $ Right $ ServerData bob (
-              Frped $ FrpErrorDigest $
-              Map.singleton (PathError helloP) ["Already owned by someone else guv"])
+            expectErrors bob $ Map.singleton
+                (PathError helloP) ["Already owned by someone else guv"]
             expectRev $ Right $ ServerDisconnect bob
-        fauxRelay = waitThenFwdOnly $ const fauxRelay
-      in runEffect protocol
-    it "Rejects empty claim" pending
+      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
+    it "Rejects empty claim" $
+      let
+        forTest = do
+            sendFwd $ ClientData alice $ Trpd $ trpDigest helloS
+            expectErrors alice $ Map.singleton
+                (PathError helloP) ["Empty Claim"]
+      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
 --    it "Rejects owner subscription" $
 --      let
 --        aliceOwns = Map.singleton helloS "alice"
@@ -99,6 +101,10 @@ spec = do
 --      in
 --        runEffect protocol
   where
+    blackHoleRelay = waitThenFwdOnly $ const blackHoleRelay
+    expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
+    expectErrors addr =
+        expectRev . Right . ServerData addr . Frped . FrpErrorDigest
     claimHello addr = sendFwd $ ClientData addr $ Trpd $ trpDigest helloS
 
 --     it "Is idempotent when unsubscribing" $
