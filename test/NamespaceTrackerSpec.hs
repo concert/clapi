@@ -28,6 +28,8 @@ import Clapi.Types
     , DataUpdateMessage(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
     , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty, TrcDigest(..)
+    , frcdEmpty
+    , InboundClientDigest(..), OutboundClientDigest(..)
     , ErrorIndex(..)
     , DataChange(..)
     , digestToRelayBundle, produceFromRelayBundle)
@@ -36,6 +38,7 @@ import Clapi.Types.Digests
   , OutboundProviderDigest(..), SubOp(..))
 import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
+import Clapi.Types.AssocList (alEmpty)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
 import Clapi.NamespaceTracker
@@ -108,6 +111,44 @@ spec = do
                 (PathError helloP) ["Acted as client on own namespace"]
             expectRev $ Right $ ServerDisconnect alice
       in mapM_ (\subD -> runEffect $ forTest subD <<-> nstProtocol <<-> blackHoleRelay) subDs
+    it "Has working client subscriptions" $
+      let
+        forTest = do
+            sendFwd $ ClientData alice $ Trcd $ trcdEmpty {trcdDataSubs = Map.singleton helloP OpSubscribe}
+            expectRev $ Right $ ServerData alice $ Frcd frcdEmpty
+        fauxRelay = do
+            i <- waitThenFwdOnly $ \(i, d) -> do
+                lift (d `shouldBe` Icd (InboundClientDigest
+                  { icdGets = Set.singleton helloP
+                  , icdTypeGets = mempty
+                  , icdContainerOps = mempty
+                  , icdData = alEmpty}))
+                return i
+            sendRev $ (i, Ocid $ OutboundClientDigest
+              { ocdContainerOps = mempty
+              , ocdDefinitions = mempty
+              , ocdTypeAssignments = mempty
+              , ocdData = alEmpty
+              , ocdErrors = mempty})
+            blackHoleRelay
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
+--         -- Get informed of changes by owner
+--         -- Doesn't get bounced any Subscription messages
+--         -- Can Unsubscribe
+--       let
+--         events = [
+--             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
+--             ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
+--             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add],
+--             ClientDisconnect alice
+--           ]
+--       in do
+--         resps <- gogo events alice nstBounceProto
+--         resps `shouldBe` [
+--             ServerData bob $ FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP],
+--             ServerData bob $ FRBClient $ UpdateBundle [] [Right $ dum helloP Add],
+--             ServerDisconnect alice
+--             ]
   where
     blackHoleRelay = waitThenFwdOnly $ const blackHoleRelay
     expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
@@ -127,35 +168,6 @@ spec = do
 --           lift $ resps `shouldBe` mempty
 --       in
 --         runEffect protocol
---     it "Has working client subscriptions" $
---         -- Get informed of changes by owner
---         -- Doesn't get bounced any Subscription messages
---         -- Can Unsubscribe
---       let
---         events = [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add],
---             ClientDisconnect alice
---           ]
---       in do
---         resps <- gogo events alice nstBounceProto
---         resps `shouldBe` [
---             ServerData bob $ FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP],
---             ServerData bob $ FRBClient $ UpdateBundle [] [Right $ dum helloP Add],
---             ServerDisconnect alice
---             ]
---     it "Forbids second owner" $ do
---         response <- trackerHelper [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             ClientData bob $ TRBOwner $ UpdateBundle [MsgError helloP ""] []]
---         Map.size response `shouldBe` 1
---         assertSingleError bob helloP ["Path", "another"] response
---     it "Supports claiming and unclaiming in same bundle" $ do
---         response <- trackerHelper [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root, Left $ MsgDelete helloP],
---             ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root]]
---         response `shouldBe` mempty
 --     it "Unsubscribes client on disconnect" $ do
 --         response <- trackerHelper _disconnectUnsubsBase
 --         response `shouldBe` (Map.singleton bob $ [
