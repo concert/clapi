@@ -204,7 +204,7 @@ handleDisconnect
 handleDisconnect i = do
     nsts <- get
     let (removed, remaining) = Map.partition (== i) $ nstOwners nsts
-    updateOwners remaining
+    unless (null removed) $ updateOwners remaining
     mapM_ send $ Map.keys removed
   where
     send ns = lift $ sendFwd (Originator i, Iprd $ TrprDigest ns)
