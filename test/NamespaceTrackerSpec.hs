@@ -23,22 +23,23 @@ import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
 import Clapi.TH
 import Clapi.Types
-    ( Time(..), Interpolation(..), WireValue(..)
+    ( Time(..), Interpolation(..), InterpolationLimit(..), WireValue(..)
     , FromRelayBundle(..), ToRelayBundle(..)
     , DataUpdateMessage(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
     , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty, TrcDigest(..)
-    , frcdEmpty
+    , frcdEmpty, FrcDigest(..)
     , InboundClientDigest(..), OutboundClientDigest(..)
     , ErrorIndex(..)
     , DataChange(..)
     , digestToRelayBundle, produceFromRelayBundle)
+import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
   ( OutboundDigest(..), InboundDigest(..), InboundClientDigest(..)
-  , OutboundProviderDigest(..), SubOp(..))
+  , OutboundProviderDigest(..), SubOp(..), DefOp(..))
 import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
-import Clapi.Types.AssocList (alEmpty)
+import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
 import Clapi.NamespaceTracker
@@ -114,41 +115,58 @@ spec = do
     it "Has working client subscriptions" $
       let
         forTest = do
-            sendFwd $ ClientData alice $ Trcd $ trcdEmpty {trcdDataSubs = Map.singleton helloP OpSubscribe}
-            expectRev $ Right $ ServerData alice $ Frcd frcdEmpty
+            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
+              {trcdDataSubs = Map.singleton helloP OpSubscribe}
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ dc "f"
+              , frcdDefinitions = Map.singleton helloTn helloDef0
+              }
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ dc "t" }
+            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
+              {trcdDataSubs = Map.singleton helloP OpUnsubscribe}
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdDataUnsubs = Set.singleton helloP
+              }
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdDefinitions = Map.singleton helloTn helloDef1
+              }
+        dc s = ConstChange Nothing [WireValue (s :: T.Text)]
+        helloTn = TypeName helloS helloS
+        helloDef0 = OpDefine $ tupleDef "Yoho" alEmpty ILUninterpolated
+        helloDef1 = OpDefine $ tupleDef "Hoyo" alEmpty ILUninterpolated
         fauxRelay = do
             i <- waitThenFwdOnly $ \(i, d) -> do
                 lift (d `shouldBe` Icd (InboundClientDigest
                   { icdGets = Set.singleton helloP
                   , icdTypeGets = mempty
                   , icdContainerOps = mempty
-                  , icdData = alEmpty}))
+                  , icdData = alEmpty
+                  }))
                 return i
             sendRev $ (i, Ocid $ OutboundClientDigest
               { ocdContainerOps = mempty
+              , ocdDefinitions = Map.singleton helloTn helloDef0
+              , ocdTypeAssignments = mempty
+              , ocdData = alSingleton helloP $ dc "f"
+              , ocdErrors = mempty})
+            sendRev $ (i, Ocd $ OutboundClientDigest
+              { ocdContainerOps = mempty
               , ocdDefinitions = mempty
               , ocdTypeAssignments = mempty
-              , ocdData = alEmpty
+              , ocdData = alFromList
+                [ (helloP, dc "t")
+                , ([pathq|/nowhere|], dc "banana")
+                ]
+              , ocdErrors = mempty})
+            sendRev $ (i, Ocd $ OutboundClientDigest
+              { ocdContainerOps = mempty
+              , ocdDefinitions = Map.singleton helloTn helloDef1
+              , ocdTypeAssignments = mempty
+              , ocdData = alSingleton helloP $ dc "w"
               , ocdErrors = mempty})
             blackHoleRelay
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
---         -- Get informed of changes by owner
---         -- Doesn't get bounced any Subscription messages
---         -- Can Unsubscribe
---       let
---         events = [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add],
---             ClientDisconnect alice
---           ]
---       in do
---         resps <- gogo events alice nstBounceProto
---         resps `shouldBe` [
---             ServerData bob $ FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP],
---             ServerData bob $ FRBClient $ UpdateBundle [] [Right $ dum helloP Add],
---             ServerDisconnect alice
---             ]
   where
     blackHoleRelay = waitThenFwdOnly $ const blackHoleRelay
     expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
