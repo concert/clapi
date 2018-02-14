@@ -18,7 +18,6 @@ import Data.Word
 import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Control.Lens (view)
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
