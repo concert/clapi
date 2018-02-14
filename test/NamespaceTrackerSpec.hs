@@ -40,6 +40,7 @@ import Clapi.Types.Digests
 import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
+import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
 import Clapi.NamespaceTracker
@@ -197,6 +198,11 @@ spec = do
                 [ (helloP, OpSubscribe)
                 , (byeP, OpSubscribe)
                 ]}
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdData = alFromList
+                [ (helloP, textChange "f")
+                , (byeP, textChange "t")
+              ]}
             claimHello alice
             expectRev $ Left $ Map.fromList
               [ (helloS, alice)
@@ -205,13 +211,24 @@ spec = do
             expectRev $ Left $ Map.fromList
               [] -- FIXME: should API be owned?
             expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdDataUnsubs = Set.singleton helloP }
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
               { frcdData = alSingleton byeP $ textChange "f" }
         fauxRelay = do
-            waitThenFwdOnly $ const return ()
+            waitThenFwdOnly $ \(i, _) -> do
+                sendRev (i, Ocid $ ocdEmpty
+                  { ocdData = alFromList
+                    [ (helloP, textChange "f")
+                    , (byeP, textChange "t")
+                  ]
+                })
             waitThenFwdOnly $ const return ()
             waitThenFwdOnly $ \(i, d) -> do
               lift $ d `shouldBe` Iprd (TrprDigest helloS)
-              sendRev (i, Ocid $ ocdEmpty
+              sendRev (i, Ocd $ ocdEmpty
+                {ocdContainerOps = Map.singleton Root $
+                  Map.singleton helloS (Nothing, SoAbsent)})
+              sendRev (i, Ocd $ ocdEmpty
                 {ocdData = alFromList
                   [ (helloP, textChange "t")
                   , (byeP, textChange "f")
