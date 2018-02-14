@@ -307,7 +307,7 @@ type OutboundClientInitialisationDigest = OutboundClientDigest
 
 data OutboundProviderDigest = OutboundProviderDigest
   { opdContainerOps :: ContainerOps
-  , opddData :: DataDigest
+  , opdData :: DataDigest
   } deriving (Show, Eq)
 
 data OutboundDigest

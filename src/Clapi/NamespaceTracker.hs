@@ -40,7 +40,7 @@ import Clapi.Util (flattenNestedMaps)
 
 data Ownership = Owner | Client deriving (Eq, Show)
 
-newtype Originator i = Originator i
+newtype Originator i = Originator i deriving (Eq, Show)
 
 type NstProtocol m i = Protocol
     (ClientEvent i TrDigest)
