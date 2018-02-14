@@ -94,15 +94,6 @@ spec = do
                 (PathError helloP) ["Already owned by someone else guv"]
             expectRev $ Right $ ServerDisconnect bob
       in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
-    it "Rejects claim on pre-subscribed path" $
-      let
-        forTest = do
-            subHello alice
-            claimHello alice
-            expectErrors alice $ Map.singleton
-                (PathError helloP) ["You were subbed to this"]
-            expectRev $ Right $ ServerDisconnect alice
-      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
     it "Rejects empty claim" $
       let
         forTest = do
