@@ -194,7 +194,11 @@ toInboundClientDigest i trcd =
             Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
           (trcdContainerOps trcd)
           (trcdData trcd)
-    let frcd = frcdEmpty {frcdTypeUnsubs = tUnsubs, frcdDataUnsubs = dUnsubs}
+    let frcd = frcdEmpty
+          { frcdTypeUnsubs = Set.intersection tUnsubs $
+              Map.findWithDefault mempty i $ nstTypeRegistrations nsts
+          , frcdDataUnsubs = Set.intersection dUnsubs $
+            Map.findWithDefault mempty i $ nstDataRegistrations nsts}
     return (icd, frcd)
   where
     mapPair f (a, b) = (f a, f b)
