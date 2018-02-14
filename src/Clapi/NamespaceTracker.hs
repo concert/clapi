@@ -67,7 +67,7 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
     fwd (ClientConnect _) = return ()
     fwd (ClientData i trd) =
       case trd of
-        Trpd d -> claimNamespace i (trpdNamespace d)
+        Trpd d -> claimNamespace i d
           (throwOutProvider i (Set.singleton $ trpdNamespace d))
           (sendFwd' i (Ipd d))
         Trprd d -> relinquishNamespace i (trprdNamespace d)
@@ -90,6 +90,9 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
       Opd d -> dispatchProviderDigest d
       Ope d -> (lift $ sendRev $ Right $ ServerData i $ Frped d)
         >> (lift $ sendRev $ Right $ ServerDisconnect i) >> handleDisconnect i
+
+nonClaim :: TrpDigest -> Bool
+nonClaim (TrpDigest _ _ dd cops _) = dd == alEmpty && null cops
 
 updateOwners
   :: Monad m => Map Seg i ->  StateT (NstState i) (NstProtocol m i) ()
@@ -117,22 +120,26 @@ eitherState onFail onSuccess m = StateT $ \s -> either
 
 claimNamespace
   :: (Eq i, Monad m)
-  => i -> Seg
+  => i -> TrpDigest
   -> (String -> StateT (NstState i) (NstProtocol m i) ())
   -> StateT (NstState i) (NstProtocol m i) ()
   -> StateT (NstState i) (NstProtocol m i) ()
-claimNamespace i ns failureAction successAction = get >>= either
+claimNamespace i d failureAction successAction = get >>= either
     failureAction
-    (\owners' -> maybe (return ()) updateOwners owners' >> successAction)
+    (\owners' ->
+      maybe (return ()) updateOwners owners' >>
+      successAction)
     . go . nstOwners
   where
     go owners =
       let
         (existing, owners') = Map.insertLookupWithKey
-          (\_ _ _ -> i) ns i owners
+          (\_ _ _ -> i) (trpdNamespace d) i owners
       in
         case existing of
-          Nothing -> return $ Just owners'
+          Nothing -> if nonClaim d
+            then fail "Empty claim"
+            else return $ Just owners'
           Just i' -> if (i' == i)
             then return Nothing
             else fail "Already owned by someone else guv"

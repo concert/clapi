@@ -99,7 +99,7 @@ spec = do
         forTest = do
             sendFwd $ ClientData alice $ Trpd $ trpDigest helloS
             expectErrors alice $ Map.singleton
-                (PathError helloP) ["Empty Claim"]
+                (PathError helloP) ["Empty claim"]
             expectRev $ Right $ ServerDisconnect alice
       in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
     it "Rejects owner subscriptions" $
@@ -296,7 +296,8 @@ spec = do
     expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
     expectErrors addr =
         expectRev . Right . ServerData addr . Frped . FrpErrorDigest
-    claimHello addr = sendFwd $ ClientData addr $ Trpd $ trpDigest helloS
+    claimHello addr = sendFwd $ ClientData addr $ Trpd $ (trpDigest helloS)
+      {trpdData = alSingleton Root $ textChange "yo"}
     subHello addr = sendFwd $ ClientData addr $ Trcd $ trcdEmpty
       {trcdDataSubs = Map.singleton helloP OpSubscribe}
     textChange s = ConstChange Nothing [WireValue (s :: T.Text)]
