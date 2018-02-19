@@ -272,11 +272,10 @@ spec = do
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
               { frcdErrors = Map.singleton (PathError helloP) ["pants"]
               , frcdDataUnsubs = Set.singleton helloP
-              -- ^ Immediate failure unsubscribes?
               }
             subHello bob
             expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdErrors = Map.singleton (PathError helloP) ["pants"] }
+              { frcdData = alSingleton helloP $ textChange "i" }
             expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
               { frcdData = alSingleton helloP $ textChange "a" }
         fauxRelay = do
@@ -284,8 +283,8 @@ spec = do
                 sendRev (i, Ocid $ outboundClientDigest
                   { ocdErrors = Map.singleton (PathError helloP) ["pants"] })
             waitThenFwdOnly $ \(i, _) -> do
-                sendRev (i, Ocd $ outboundClientDigest
-                  { ocdErrors = Map.singleton (PathError helloP) ["ants"] })
+                sendRev (i, Ocid $ outboundClientDigest
+                  { ocdData = alSingleton helloP $ textChange "i" })
                 sendRev (i, Ocd $ outboundClientDigest
                   { ocdData = alSingleton helloP $ textChange "a" })
             relayNoMore

@@ -232,8 +232,14 @@ registerSubs i (OutboundClientDigest cas defs _tas dd _errs) = modify go
 
 subResponse :: OutboundClientInitialisationDigest -> FrcDigest
 subResponse (OutboundClientDigest cOps defs tas dd errs) =
-  FrcDigest mempty mempty defs tas dd cOps errs
-
+    FrcDigest typesInError pathsInError defs tas dd cOps errs
+  where
+    (pathsInError, typesInError) =
+        foldl collectError mempty $ Map.keys errs
+    collectError (pie, tie) ei = case ei of
+        PathError p -> (Set.insert p pie, tie)
+        TypeError t -> (pie, Set.insert t tie)
+        _ -> (pie, tie)
 
 unsubDeleted
   :: (Monad m, Ord i) => OutboundClientDigest
