@@ -115,19 +115,18 @@ relayApiProto selfAddr =
           let
             cSeg = pathNameFor cAddr
             timingMap' = Map.delete cSeg timingMap
+            -- FIXME: This feels a bit like reimplementing some of the NST
+            ownerMap' = Map.filter (/= cSeg) ownerMap
+            (dd, cops) = ownerChangeInfo ownerMap'
           in do
-            pubUpdate alEmpty $ Map.singleton [pathq|/clients|] $
-              Map.singleton cSeg (Nothing, SoAbsent)
-            steadyState timingMap' ownerMap
+            pubUpdate dd $ Map.insert [pathq|/clients|]
+              (Map.singleton cSeg (Nothing, SoAbsent)) cops
+            steadyState timingMap' ownerMap'
         pubUpdate dd co = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
           rns mempty dd co mempty
         rev (Left ownerAddrs) = do
           let ownerMap' = pathNameFor <$> ownerAddrs
-          pubUpdate
-            (alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap')
-            (Map.singleton [pathq|/owners|] $
-              (const (Nothing, SoAbsent)) <$>
-                ownerMap `Map.difference` ownerMap')
+          uncurry pubUpdate $ ownerChangeInfo ownerMap'
           steadyState timingMap ownerMap'
         rev (Right se) = do
           case se of
@@ -139,6 +138,11 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
+        ownerChangeInfo ownerMap' =
+            ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
+            , Map.singleton [pathq|/owners|] $
+                (const (Nothing, SoAbsent)) <$>
+                  ownerMap `Map.difference` ownerMap')
         toOwnerPath s = [pathq|/owners|] :/ s
         toSetRefOp ns = ConstChange Nothing [
           WireValue $ Path.toText $ Root :/ selfSeg :/ [segq|clients|] :/ ns]
