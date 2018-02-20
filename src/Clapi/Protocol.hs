@@ -144,7 +144,7 @@ waitThenRevOnly
 waitThenRevOnly f = waitThen (const $ error "Message from the void left") f
 
 mapProtocol :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
-mapProtocol f g = waitThen (sendFwd . f) (sendRev . g)
+mapProtocol f g = forever $ waitThen (sendFwd . f) (sendRev . g)
 
 idProtocol :: Monad m => Protocol a a b b m ()
 idProtocol = forever $ waitThen sendFwd sendRev
