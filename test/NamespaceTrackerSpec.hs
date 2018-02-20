@@ -23,19 +23,24 @@ import Data.Map.Clapi (joinM)
 import Clapi.Util ((+|))
 import Clapi.TH
 import Clapi.Types
-    ( Time(..), Interpolation(..), WireValue(..)
+    ( Time(..), Interpolation(..), InterpolationLimit(..), WireValue(..)
     , FromRelayBundle(..), ToRelayBundle(..)
     , DataUpdateMessage(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
-    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..)
+    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty, TrcDigest(..)
+    , frcdEmpty, FrcDigest(..)
     , ErrorIndex(..)
     , DataChange(..)
     , digestToRelayBundle, produceFromRelayBundle)
+import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
-  ( OutboundDigest(..), InboundDigest(..), InboundClientDigest(..)
-  , OutboundProviderDigest(..))
-import Clapi.Types.Path (Path, Seg, pattern Root)
+  ( OutboundDigest(..), InboundDigest(..)
+  , InboundClientDigest(..), OutboundClientDigest(..), outboundClientDigest
+  , OutboundProviderDigest(..), SubOp(..), DefOp(..))
+import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
+import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
+import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Server (neverDoAnything)
 import Clapi.NamespaceTracker
@@ -56,6 +61,14 @@ helloS = [segq|hello|]
 
 helloP = [pathq|/hello|]
 
+ocdEmpty :: OutboundClientDigest
+ocdEmpty = OutboundClientDigest
+  { ocdContainerOps = mempty
+  , ocdDefinitions = mempty
+  , ocdTypeAssignments = mempty
+  , ocdData = alEmpty
+  , ocdErrors = mempty}
+
 -- Collects responses until the identified client disconnects
 collectAllResponsesUntil ::
     (Monad m, Ord i) =>
@@ -72,289 +85,236 @@ spec :: Spec
 spec = do
     it "Rejects ownership claim on pre-owned path" $
       let
-        expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
-        protocol = forTest <<-> nstProtocol <<-> fauxRelay
         forTest = do
             claimHello alice
             expectRev $ Left $ Map.fromList
               [ (helloS, alice)
               ] -- FIXME: should API be owned?
             claimHello bob
-            expectRev $ Right $ ServerData bob (
-              Frped $ FrpErrorDigest $
-              Map.singleton (PathError helloP) ["Already owned by someone else guv"])
+            expectErrors bob $ Map.singleton
+                (PathError helloP) ["Already owned by someone else guv"]
             expectRev $ Right $ ServerDisconnect bob
-        fauxRelay = waitThenFwdOnly $ const fauxRelay
-      in runEffect protocol
-    it "Rejects empty claim" pending
---    it "Rejects owner subscription" $
---      let
---        aliceOwns = Map.singleton helloS "alice"
---        protocol = forTest <<-> nstProtocol <<-> fauxRelay
---        forTest = do
---          sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgSubscribe helloP] []
---          resps <- collectAllResponsesUntil alice
---          lift $ assertOnlyKeysInMap [alice] resps
---          lift $ assertSingleError alice helloP ["Request", "own"] resps
---      in
---        runEffect protocol
+      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
+    it "Rejects empty claim" $
+      let
+        forTest = do
+            sendFwd $ ClientData alice $ Trpd $ trpDigest helloS
+            expectErrors alice $ Map.singleton
+                (PathError helloP) ["Empty claim"]
+            expectRev $ Right $ ServerDisconnect alice
+      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
+    it "Rejects owner subscriptions" $
+      let
+        subDs =
+          [ trcdEmpty
+              {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
+          , trcdEmpty
+              {trcdTypeSubs = Map.singleton (TypeName helloS helloS) OpSubscribe}
+          ]
+        forTest subD = do
+            claimHello alice
+            expectRev $ Left $ Map.fromList
+              [ (helloS, alice)
+              ] -- FIXME: should API be owned?
+            sendFwd $ ClientData alice $ Trcd subD
+            expectErrors alice $ Map.singleton
+                (PathError helloP) ["Acted as client on own namespace"]
+            expectRev $ Right $ ServerDisconnect alice
+      in mapM_ (\subD -> runEffect $ forTest subD <<-> nstProtocol <<-> blackHoleRelay) subDs
+    it "Has working client subscriptions" $
+      let
+        forTest = do
+            subHello alice
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ textChange "f"
+              , frcdDefinitions = Map.singleton helloTn helloDef0
+              }
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ textChange "t" }
+            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
+              {trcdDataSubs = Map.singleton helloP OpUnsubscribe}
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdDataUnsubs = Set.singleton helloP
+              }
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdDefinitions = Map.singleton helloTn helloDef1
+              }
+        helloDef0 = OpDefine $ tupleDef "Yoho" alEmpty ILUninterpolated
+        helloDef1 = OpDefine $ tupleDef "Hoyo" alEmpty ILUninterpolated
+        fauxRelay = do
+            i <- waitThenFwdOnly $ \(i, d) -> do
+                lift (d `shouldBe` Icd (InboundClientDigest
+                  { icdGets = Set.singleton helloP
+                  , icdTypeGets = mempty
+                  , icdContainerOps = mempty
+                  , icdData = alEmpty
+                  }))
+                return i
+            sendRev (i, Ocid $ OutboundClientDigest
+              { ocdContainerOps = mempty
+              , ocdDefinitions = Map.singleton helloTn helloDef0
+              , ocdTypeAssignments = mempty
+              , ocdData = alSingleton helloP $ textChange "f"
+              , ocdErrors = mempty})
+            sendRev (i, Ocd $ OutboundClientDigest
+              { ocdContainerOps = mempty
+              , ocdDefinitions = mempty
+              , ocdTypeAssignments = mempty
+              , ocdData = alFromList
+                [ (helloP, textChange "t")
+                , ([pathq|/nowhere|], textChange "banana")
+                ]
+              , ocdErrors = mempty})
+            sendRev (i, Ocd $ OutboundClientDigest
+              { ocdContainerOps = mempty
+              , ocdDefinitions = Map.singleton helloTn helloDef1
+              , ocdTypeAssignments = mempty
+              , ocdData = alSingleton helloP $ textChange "w"
+              , ocdErrors = mempty})
+            waitThenFwdOnly $ const return ()
+            relayNoMore
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
+    it "Unsubscribes on client disconnect" $
+      let
+        forTest = do
+            subHello alice
+            sendFwd $ ClientDisconnect alice
+            subHello bob
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ textChange "f" }
+        fauxRelay = do
+            waitThenFwdOnly $ const return ()
+            waitThenFwdOnly $ \(i, d) -> sendRev (i, Ocid $ ocdEmpty
+              {ocdData = alSingleton helloP $ textChange "f"})
+            relayNoMore
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
+    it "Disowns on owner disconnect" $
+      -- And unsubs clients
+      let
+        byeP = [pathq|/bye|]
+        forTest = do
+            sendFwd $ ClientData bob $ Trcd $ trcdEmpty
+              {trcdDataSubs = Map.fromList
+                [ (helloP, OpSubscribe)
+                , (byeP, OpSubscribe)
+                ]}
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdData = alFromList
+                [ (helloP, textChange "f")
+                , (byeP, textChange "t")
+              ]}
+            claimHello alice
+            expectRev $ Left $ Map.fromList
+              [ (helloS, alice)
+              ] -- FIXME: should API be owned?
+            sendFwd $ ClientDisconnect alice
+            expectRev $ Left $ Map.fromList
+              [] -- FIXME: should API be owned?
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdDataUnsubs = Set.singleton helloP }
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdData = alSingleton byeP $ textChange "f" }
+        fauxRelay = do
+            waitThenFwdOnly $ \(i, _) -> do
+                sendRev (i, Ocid $ ocdEmpty
+                  { ocdData = alFromList
+                    [ (helloP, textChange "f")
+                    , (byeP, textChange "t")
+                  ]
+                })
+            waitThenFwdOnly $ const return ()
+            waitThenFwdOnly $ \(i, d) -> do
+              lift $ d `shouldBe` Iprd (TrprDigest helloS)
+              sendRev (i, Ocd $ ocdEmpty
+                {ocdContainerOps = Map.singleton Root $
+                  Map.singleton helloS (Nothing, SoAbsent)})
+              sendRev (i, Ocd $ ocdEmpty
+                {ocdData = alFromList
+                  [ (helloP, textChange "t")
+                  , (byeP, textChange "f")
+                  ]
+                })
+            relayNoMore
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
+    it "Is idempotent when unsubscribing" $
+      let
+        forTest = do
+            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
+              { trcdDataSubs = Map.singleton helloP OpUnsubscribe }
+            claimHello bob
+            expectRev $ Left $ Map.fromList
+              [ (helloS, bob)
+              ] -- FIXME: should API be owned?
+      in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
+    it "Forwards client mutations to provider" $
+      let
+        forTest = do
+            claimHello alice
+            expectRev $ Left $ Map.fromList
+              [ (helloS, alice)
+              ] -- FIXME: should API be owned?
+            expectRev $ Right $ ServerData alice $ Frpd $ FrpDigest
+              { frpdNamespace = helloS
+              , frpdData = alSingleton Root $ textChange "x"
+              , frpdContainerOps = mempty
+              }
+        fauxRelay = do
+            waitThenFwdOnly $ \(i, d) -> sendRev (i, Opd $ OutboundProviderDigest
+              { opdContainerOps = mempty
+              , opdData = alSingleton helloP $ textChange "x"
+              })
+            relayNoMore
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
+    it "Returns client validation errors" $
+      let
+        forTest = do
+            subHello alice
+            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
+              { frcdErrors = Map.singleton (PathError helloP) ["pants"]
+              , frcdDataUnsubs = Set.singleton helloP
+              }
+            subHello bob
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ textChange "i" }
+            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
+              { frcdData = alSingleton helloP $ textChange "a" }
+        fauxRelay = do
+            waitThenFwdOnly $ \(i, _) ->
+                sendRev (i, Ocid $ outboundClientDigest
+                  { ocdErrors = Map.singleton (PathError helloP) ["pants"] })
+            waitThenFwdOnly $ \(i, _) -> do
+                sendRev (i, Ocid $ outboundClientDigest
+                  { ocdData = alSingleton helloP $ textChange "i" })
+                sendRev (i, Ocd $ outboundClientDigest
+                  { ocdData = alSingleton helloP $ textChange "a" })
+            relayNoMore
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
+    it "Returns provider validation errors" $
+      let
+        errD = FrpErrorDigest $ Map.singleton (PathError helloP) ["lol"]
+        forTest = do
+            claimHello alice
+            expectRev $ Left $ Map.fromList
+              [ (helloS, alice)
+              ] -- FIXME: should API be owned?
+            expectRev $ Right $ ServerData alice $ Frped errD
+            expectRev $ Right $ ServerDisconnect alice
+            expectRev $ Left $ Map.fromList
+              [] -- FIXME: should API be owned?
+        fauxRelay = do
+            waitThenFwdOnly $ \(i, _) -> sendRev (i, Ope errD)
+            waitThenFwdOnly $ \m -> lift $ m `shouldBe` (Originator alice, Iprd $ TrprDigest helloS)
+            relayNoMore
+      in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
   where
-    claimHello addr = sendFwd $ ClientData addr $ Trpd $ trpDigest helloS
-
---     it "Is idempotent when unsubscribing" $
---       let
---         ownedP = [pathq|/owned|]
---         owners = Map.singleton [segq|owned|] bob
---         protocol = forTest <<-> nstProtocol noopPub <<-> fakeRelay
---         forTest = do
---           sendFwd $ ClientData alice $ TRBClient $ RequestBundle [MsgUnsubscribe ownedP] []
---           sendFwd $ ClientDisconnect alice
---           resps <- collectAllResponsesUntil alice
---           lift $ resps `shouldBe` mempty
---       in
---         runEffect protocol
---     it "Has working client subscriptions" $
---         -- Get informed of changes by owner
---         -- Doesn't get bounced any Subscription messages
---         -- Can Unsubscribe
---       let
---         events = [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add],
---             ClientDisconnect alice
---           ]
---       in do
---         resps <- gogo events alice nstBounceProto
---         resps `shouldBe` [
---             ServerData bob $ FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP],
---             ServerData bob $ FRBClient $ UpdateBundle [] [Right $ dum helloP Add],
---             ServerDisconnect alice
---             ]
---     it "Forbids second owner" $ do
---         response <- trackerHelper [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             ClientData bob $ TRBOwner $ UpdateBundle [MsgError helloP ""] []]
---         Map.size response `shouldBe` 1
---         assertSingleError bob helloP ["Path", "another"] response
---     it "Supports claiming and unclaiming in same bundle" $ do
---         response <- trackerHelper [
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root, Left $ MsgDelete helloP],
---             ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root]]
---         response `shouldBe` mempty
---     it "Unsubscribes client on disconnect" $ do
---         response <- trackerHelper _disconnectUnsubsBase
---         response `shouldBe` (Map.singleton bob $ [
---             FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP]])
---     it "Supports client disconnecting then resubscribing" $ do
---         response <- trackerHelper $ _disconnectUnsubsBase ++ [
---             ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Add]]
---         response `shouldBe` (Map.singleton bob $ map FRBClient [
---             UpdateBundle [] [Left $ MsgAssignType helloP helloP],
---             UpdateBundle [] [Left $ MsgAssignType helloP helloP],
---             UpdateBundle [] [Right $ dum helloP Add]])
---     it "Disowns on owner disconnect" $ do
---         -- and unregisters clients
---         response <- pubTrackerHelper expectedPubs [
---             ClientData bob $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType [pathq|/fudge|] Root], -- Need something to disconnect at end
---             ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
---             ClientDisconnect alice,
---             -- No subscriber => no AssignType msg:
---             ClientData "dave" $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---             -- New subscriber:
---             ClientData "charlie" $ TRBClient $ RequestBundle [MsgSubscribe helloP] []]
---         assertOnlyKeysInMap [bob, "charlie"] response
---         assertMapValue bob [
---             FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP], FRBClient $ UpdateBundle [] [Left $ MsgDelete helloP]] response
---         assertMapValue "charlie" [FRBClient $ UpdateBundle [] [Left $ MsgAssignType helloP helloP]] response
---     it "Forwards client mutations to provider" $
---       let
---         shouldBe' a = lift . shouldBe a
---         protocol = clientSide <<-> nstProtocol noopPub <<-> fauxRelay
---         clientSide = do
---           sendFwd $ ClientData alice $ Trpd $ TrpDigest [segq|alician|] mempty mempty mempty mempty
---           sendFwd $ ClientData bob $ Trpd $ TrpDigest [segq|bobian|] mempty mempty mempty mempty
---           waitThen undefined $ \d -> d `shouldBe'` (ServerData alice $ Frpd $ FrpDigest
---             [segq|alician|]
---             (Map.singleton [pathq|/a|] (Nothing, ulSingle [segq|aseg|]))
---             (Map.singleton [pathq|/aa|] $ ConstChange Nothing []))
---           waitThen undefined $ \d -> d `shouldBe'` (ServerData bob $ Frpd $ FrpDigest
---             [segq|bobian|]
---             (Map.singleton [pathq|/b|] (Nothing, ulSingle [segq|bseg|]))
---             (Map.singleton [pathq|/bb|] $ ConstChange Nothing []))
---         kiddy = Map.fromList
---           [ ([pathq|/alician/a|], (Nothing, ulSingle [segq|aseg|]))
---           , ([pathq|/bobian/b|], (Nothing, ulSingle [segq|bseg|]))
---           ]
---         daty = Map.fromList
---           [ ([pathq|/alician/aa|], ConstChange Nothing [])
---           , ([pathq|/bobian/bb|], ConstChange Nothing [])
---           ]
---         fauxRelay = do
---           waitThen (const $ return ()) undefined
---           waitThen (const $ return ()) undefined
---           sendRev (
---             Originator undefined, Opd $ OutboundProviderDigest kiddy daty)
---       in runEffect protocol
---     it "Returns validation errors" $
---       let
---         protocol = assertions <<-> nstProtocol noopPub <<-> errorSender
---         errorSender = sendRev (Originator alice, Ope errDig)
---         errDig = FrpErrorDigest [segq|myApi|]
---           $ Map.singleton GlobalError ["some error message"]
---         assertions = do
---             d <- wait
---             case d of
---                 (Rev (ServerData i ms)) -> lift $ do
---                     i `shouldBe` alice
---                     ms `shouldBe` (Frped errDig)
---       in
---         runEffect protocol
---  where
---     assertOnlyKeysInMap expected m = Map.keysSet m `shouldBe` Set.fromList expected
---     assertSingleError i path errStrings response = undefined
---         -- let bundles = (fromJust $ Map.lookup i response) :: [FromRelayBundle] in do
---         -- length bundles `shouldBe` 1
---         -- let (errs, ul) = ulae $ head bundles
---         -- ul `shouldBe` 0
---         -- length errs `shouldBe` 1
---         -- mapM_ (assertErrorMsg errStrings) errs
---         -- mapM_ (assertMsgPath path) errs
---       where
---         -- ulae (FRBOwner (OwnerRequestBundle errs dums)) = (errs, length dums)
---     assertErrorMsg substrs msg = undefined
---       --   mapM_ (\s -> getString msg `shouldSatisfy` T.isInfixOf s) substrs
---       -- where
---       --   getString (MsgError _ str) = str
---     assertMsgPath path msg = undefined -- uMsgPath msg `shouldBe` path
---     expectedPubs = map Map.fromList
---       [ [(fudgeS, bob)]
---       , [(fudgeS, bob), (helloS, alice)]
---       , [(fudgeS, bob)]
---       , [(fudgeS, bob), (helloS, "dave")]
---       , [(helloS, "dave")]
---       ]
---     assertMapValue k a m = Map.lookup k m `shouldBe` Just a
---     fudgeS = [segq|fudge|]
-
--- _disconnectUnsubsBase = undefined -- [
---     -- ClientData alice $ TRBOwner $ UpdateBundle [] [Left $ MsgAssignType helloP Root],
---     -- ClientData bob $ TRBClient $ RequestBundle [MsgSubscribe helloP] [],
---     -- ClientDisconnect bob,
---     -- -- Should miss this message:
---     -- ClientData alice $ TRBOwner $ UpdateBundle [] [Right $ dum helloP Set]
---     -- ]
-
--- data DataUpdateMethod
---   = ConstSet
---   | Set
---   | Remove
---   | Children
-
--- dum :: Path -> DataUpdateMethod -> DataUpdateMessage
--- dum path ConstSet = MsgConstSet path [] Nothing
--- dum path Set = MsgSet path 14 (Time 0 0) [] IConstant Nothing
--- dum path Remove = MsgRemove path 14 Nothing
--- dum path Children = MsgSetChildren path ulEmpty Nothing
-
--- waitN :: (Monad m) => Int -> Protocol a a' b' b m [Directed a b]
--- waitN n = inner n mempty
---   where
---     inner 0 ds = return ds
---     inner n ds = wait >>= \d -> inner (n - 1) (d:ds)
-
-
--- fakeRelay ::
---     (Monad m, Show c) =>
---     Protocol ((c, InboundDigest)) Void ((c, OutboundDigest)) Void m ()
--- fakeRelay = forever $ waitThen fwd undefined
---   where
---     fwd (ctx, inDig) = case inDig of
---       Icd (InboundClientDigest _ _ _ _) -> undefined
---       Ipd (TrpDigest {}) -> undefined
---       Iprd (TrprDigest ns) -> undefined
---     -- fwd (ctx, ClientRequest gets updates) = sendRev (ctx, ClientResponse (Left . flip MsgAssignType helloP <$> gets) [] updates)
---     -- fwd (ctx, OwnerRequest updates) = sendRev (ctx, GoodOwnerResponse updates)
-
--- noopPub :: Monad m => Owners i -> m ()
--- noopPub = void . return
-
--- gogo ::
---     (Eq i) =>
---     [ClientEvent i a] ->
---     i ->
---     Protocol
---         (ClientEvent i a) Void
---         (ServerEvent i b) Void IO () ->
---     IO [ServerEvent i b]
--- gogo as i p =
---   do
---     (toProtoIn, toProtoOut) <- U.newChan
---     mapM_ (U.writeChan toProtoIn) as
---     (fromProtoIn, fromProtoOut) <- U.newChan
---     runProtocolIO
---         (U.readChan toProtoOut) (error "bad times")
---         (U.writeChan fromProtoIn) neverDoAnything
---         (untilDisconnect i <<-> p)
---     longHand i fromProtoOut
-
-
--- longHand :: (Eq i) => i -> U.OutChan (ServerEvent i a) -> IO [ServerEvent i a]
--- longHand i chan = reverse <$> inner []
---   where
---     inner es = U.readChan chan >>= onEvent es
---     onEvent es e@(ServerData _ _) = inner (e:es)
---     onEvent es e@(ServerDisconnect i')
---         | i == i' = return (e:es)
---         | otherwise = inner (e:es)
-
--- untilDisconnect ::
---     (Eq i, Monad m) => i -> Protocol a a (ServerEvent i b) (ServerEvent i b) m ()
--- untilDisconnect i = waitThen fwd next
---   where
---     fwd m = sendFwd m >> untilDisconnect i
---     next e@(ServerData _ _) = sendRev e >> untilDisconnect i
---     next e@(ServerDisconnect i')
---         | i == i' = sendRev e
---         | otherwise = sendRev e >> untilDisconnect i
-
--- nstBounceProto = nstProtocol noopPub <<-> fakeRelay
-
--- pubTrackerHelper ::
---     (Ord i, Show i) =>
---     [Owners i] -> [ClientEvent i ToRelayBundle] ->
---     IO (Map.Map i [FromRelayBundle])
--- pubTrackerHelper expectedPubs inMsgs = do
---     pubList <- newMVar []
---     rv <- trackerHelper' (listPub pubList) inMsgs
---     actualPubs <- takeMVar pubList
---     reverse actualPubs `shouldBe` expectedPubs
---     return rv
---   where
---     listPub mv o = modifyMVar_ mv (\l -> return $ o : l)
-
--- trackerHelper = trackerHelper' noopPub
-
--- trackerHelper' ::
---     forall i.  (Ord i, Show i) =>
---     (Owners i -> IO ()) ->
---     [ClientEvent i ToRelayBundle] ->
---     IO (Map.Map i [FromRelayBundle])
--- trackerHelper' pub as =
---     mapPack <$> gogo as' i (digester <<-> trackerProto <<-> fakeRelay)
---   where
---     digester = mapProtocol
---       (fmap digestToRelayBundle) (fmap produceFromRelayBundle)
---     trackerProto = nstProtocol pub
---     i = i' $ head as
---     i' :: ClientEvent i ToRelayBundle -> i
---     i' (ClientData i _) = i
---     i' (ClientConnect i) = i
---     as' :: [ClientEvent i ToRelayBundle]
---     as' = as ++ [ClientDisconnect i]
---     mapPack :: [ServerEvent i FromRelayBundle] -> Map.Map i [FromRelayBundle]
---     mapPack [] = Map.empty
---     mapPack ((ServerDisconnect e):es) = mapPack es
---     mapPack ((ServerData i a):es) = Map.insertWith (++) i [a] (mapPack es)
+    blackHoleRelay = waitThenFwdOnly $ const blackHoleRelay
+    relayNoMore = waitThenFwdOnly $ const $ lift $ fail "Relay got extra"
+    expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
+    expectErrors addr =
+        expectRev . Right . ServerData addr . Frped . FrpErrorDigest
+    claimHello addr = sendFwd $ ClientData addr $ Trpd $ (trpDigest helloS)
+      {trpdData = alSingleton Root $ textChange "yo"}
+    subHello addr = sendFwd $ ClientData addr $ Trcd $ trcdEmpty
+      {trcdDataSubs = Map.singleton helloP OpSubscribe}
+    textChange s = ConstChange Nothing [WireValue (s :: T.Text)]
+    helloTn = TypeName helloS helloS
