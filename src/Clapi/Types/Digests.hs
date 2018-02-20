@@ -237,6 +237,49 @@ digestToRelayBundle trb = case trb of
       in
         TrcDigest tySubs datSubs dd co
 
+produceToRelayBundle :: TrDigest -> ToRelayBundle
+produceToRelayBundle trd = case trd of
+    Trpd d -> Trpb $ produceToRelayProviderBundle d
+    Trprd d -> Trpr $ produceToRelayProviderRelinquish d
+    Trcd d -> Trcb $ produceToRelayClientBundle d
+  where
+    produceToRelayProviderBundle (TrpDigest ns defs dat cops errs) =
+      ToRelayProviderBundle
+        ns (produceErrMessages errs) (produceDefMessages defs)
+        (produceDataUpdateMessages dat) (produceContOpMessages cops)
+
+    produceToRelayProviderRelinquish (TrprDigest ns) =
+      ToRelayProviderRelinquish ns
+
+    produceToRelayClientBundle (TrcDigest tySubs datSubs dd co) =
+      let
+        subs = produceSubMessages tySubs datSubs
+        dat = produceDataUpdateMessages dd
+        cont = produceContOpMessages co
+      in
+        ToRelayClientBundle subs dat cont
+
+digestFromRelayBundle :: FromRelayBundle -> FrDigest
+digestFromRelayBundle frb = case frb of
+    Frpb b -> Frpd $ digestFromRelayProviderBundle b
+    Frpeb b -> Frped $ digestFromRelayProviderErrorBundle b
+    Frcb b -> Frcd $ digestFromRelayClientBundle b
+  where
+    digestFromRelayProviderBundle (FromRelayProviderBundle ns dums coms) =
+        FrpDigest ns (digestDataUpdateMessages dums) (digestContOpMessages coms)
+
+    digestFromRelayProviderErrorBundle (FromRelayProviderErrorBundle errs) =
+        FrpErrorDigest $ digestErrMessages errs
+
+    digestFromRelayClientBundle (FromRelayClientBundle tSubs dSubs errs defs tas dums coms) =
+        FrcDigest
+          (Set.fromList tSubs)
+          (Set.fromList dSubs)
+          (digestDefMessages defs)
+          (digestTypeMessages tas)
+          (digestDataUpdateMessages dums)
+          (digestContOpMessages coms)
+          (digestErrMessages errs)
 
 produceFromRelayBundle :: FrDigest -> FromRelayBundle
 produceFromRelayBundle frd = case frd of
@@ -256,10 +299,10 @@ produceFromRelayBundle frd = case frd of
 
     produceFromRelayClientBundle :: FrcDigest -> FromRelayClientBundle
     produceFromRelayClientBundle (FrcDigest tyUns datUns defs tas dd co errs) =
-      FromRelayClientBundle (Set.toList tyUns) (Set.toList datUns)
-      (produceErrMessages errs) (produceDefMessages defs)
-      (produceTypeMessages tas) (produceDataUpdateMessages dd)
-      (produceContOpMessages co)
+      FromRelayClientBundle
+        (Set.toList tyUns) (Set.toList datUns) (produceErrMessages errs)
+        (produceDefMessages defs) (produceTypeMessages tas)
+        (produceDataUpdateMessages dd) (produceContOpMessages co)
 
 -- The following are slightly different (and more internal to the relay), they
 -- are not neccessarily intended for a single recipient
