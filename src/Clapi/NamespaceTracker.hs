@@ -40,7 +40,7 @@ import Clapi.Util (flattenNestedMaps)
 
 data Ownership = Owner | Client deriving (Eq, Show)
 
-newtype Originator i = Originator i
+newtype Originator i = Originator i deriving (Eq, Show)
 
 type NstProtocol m i = Protocol
     (ClientEvent i TrDigest)
@@ -67,7 +67,7 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
     fwd (ClientConnect _) = return ()
     fwd (ClientData i trd) =
       case trd of
-        Trpd d -> claimNamespace i (trpdNamespace d)
+        Trpd d -> claimNamespace i d
           (throwOutProvider i (Set.singleton $ trpdNamespace d))
           (sendFwd' i (Ipd d))
         Trprd d -> relinquishNamespace i (trprdNamespace d)
@@ -90,6 +90,9 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
       Opd d -> dispatchProviderDigest d
       Ope d -> (lift $ sendRev $ Right $ ServerData i $ Frped d)
         >> (lift $ sendRev $ Right $ ServerDisconnect i) >> handleDisconnect i
+
+nonClaim :: TrpDigest -> Bool
+nonClaim (TrpDigest _ _ dd cops _) = dd == alEmpty && null cops
 
 updateOwners
   :: Monad m => Map Seg i ->  StateT (NstState i) (NstProtocol m i) ()
@@ -117,22 +120,26 @@ eitherState onFail onSuccess m = StateT $ \s -> either
 
 claimNamespace
   :: (Eq i, Monad m)
-  => i -> Seg
+  => i -> TrpDigest
   -> (String -> StateT (NstState i) (NstProtocol m i) ())
   -> StateT (NstState i) (NstProtocol m i) ()
   -> StateT (NstState i) (NstProtocol m i) ()
-claimNamespace i ns failureAction successAction = get >>= either
+claimNamespace i d failureAction successAction = get >>= either
     failureAction
-    (\owners' -> maybe (return ()) updateOwners owners' >> successAction)
+    (\owners' ->
+      maybe (return ()) updateOwners owners' >>
+      successAction)
     . go . nstOwners
   where
     go owners =
       let
         (existing, owners') = Map.insertLookupWithKey
-          (\_ _ _ -> i) ns i owners
+          (\_ _ _ -> i) (trpdNamespace d) i owners
       in
         case existing of
-          Nothing -> return $ Just owners'
+          Nothing -> if nonClaim d
+            then fail "Empty claim"
+            else return $ Just owners'
           Just i' -> if (i' == i)
             then return Nothing
             else fail "Already owned by someone else guv"
@@ -194,7 +201,11 @@ toInboundClientDigest i trcd =
             Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
           (trcdContainerOps trcd)
           (trcdData trcd)
-    let frcd = frcdEmpty {frcdTypeUnsubs = tUnsubs, frcdDataUnsubs = dUnsubs}
+    let frcd = frcdEmpty
+          { frcdTypeUnsubs = Set.intersection tUnsubs $
+              Map.findWithDefault mempty i $ nstTypeRegistrations nsts
+          , frcdDataUnsubs = Set.intersection dUnsubs $
+            Map.findWithDefault mempty i $ nstDataRegistrations nsts}
     return (icd, frcd)
   where
     mapPair f (a, b) = (f a, f b)
@@ -204,7 +215,7 @@ handleDisconnect
 handleDisconnect i = do
     nsts <- get
     let (removed, remaining) = Map.partition (== i) $ nstOwners nsts
-    updateOwners remaining
+    unless (null removed) $ updateOwners remaining
     mapM_ send $ Map.keys removed
   where
     send ns = lift $ sendFwd (Originator i, Iprd $ TrprDigest ns)
@@ -221,8 +232,14 @@ registerSubs i (OutboundClientDigest cas defs _tas dd _errs) = modify go
 
 subResponse :: OutboundClientInitialisationDigest -> FrcDigest
 subResponse (OutboundClientDigest cOps defs tas dd errs) =
-  FrcDigest mempty mempty defs tas dd cOps errs
-
+    FrcDigest typesInError pathsInError defs tas dd cOps errs
+  where
+    (pathsInError, typesInError) =
+        foldl collectError mempty $ Map.keys errs
+    collectError (pie, tie) ei = case ei of
+        PathError p -> (Set.insert p pie, tie)
+        TypeError t -> (pie, Set.insert t tie)
+        _ -> (pie, tie)
 
 unsubDeleted
   :: (Monad m, Ord i) => OutboundClientDigest
