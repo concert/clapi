@@ -1,7 +1,12 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+{-# LANGUAGE
+      OverloadedStrings
+    , ScopedTypeVariables
+    , LambdaCase
+#-}
 module ServerSpec where
 
 import Test.Hspec
+import Test.Hspec.Expectations (Selector)
 
 import Control.Monad (forever)
 import Data.Either (isRight)
@@ -11,9 +16,9 @@ import System.Timeout
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay, killThread)
-import Control.Concurrent.Async (
-    async, withAsync, wait, cancel, asyncThreadId, mapConcurrently,
-    replicateConcurrently)
+import Control.Concurrent.Async
+  ( Async, async, withAsync, wait, poll, cancel, asyncThreadId, mapConcurrently
+  , replicateConcurrently)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forever)
 import qualified Network.Socket as NS
@@ -21,12 +26,33 @@ import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Server (
-  ClientEvent', ServerEvent', doubleCatch, swallowExc, withListen, serve',
-  protocolServer)
+import Clapi.Server
+  ( ClientEvent', ServerEvent', throwAfter, doubleCatch, swallowExc, withListen
+  , serve', protocolServer)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Helpers (seconds, timeLimit)
 import qualified Control.Concurrent.Chan.Unagi as Q
+
+data TestException = TestException Int deriving (Show, Eq)
+instance E.Exception TestException
+
+assertAsyncRunning :: Async a -> IO ()
+assertAsyncRunning a = poll a >>= check
+  where
+    check Nothing = return ()
+    check _ = error "Shouldn't have finished yet!"
+
+throwAfterCheck :: E.Exception a => IO () -> Selector a -> IO ()
+throwAfterCheck threadAction excSelector = do
+  trigger <- newEmptyMVar
+  resp <- newEmptyMVar
+  a <- async $ throwAfter
+    (E.toException $ TestException 0)
+    (putMVar resp 'a' >> takeMVar trigger >> threadAction)
+  takeMVar resp
+  assertAsyncRunning a
+  putMVar trigger 'b'
+  wait a `shouldThrow` excSelector
 
 spec :: Spec
 spec = do
@@ -34,6 +60,15 @@ spec = do
         it "Zero gives port" $ do
             port <- withListen' (return . getPort . snd)
             port `shouldSatisfy` (/= 0)
+
+    describe "throwAfter" $ do
+        it "should only throw its given exc after completing the action" $ do
+          throwAfterCheck (return ()) (\(TestException _) -> True)
+
+        it "should not throw its given exc if the action throws" $ do
+          throwAfterCheck (E.throwIO $ E.toException $ TestException 0)
+            (\(TestException n) -> n == 0)
+
     describe "doubleCatch" $ do
         it "Thread terminated on second kill" $ do
             (i, o) <- Q.newChan
@@ -55,8 +90,10 @@ spec = do
             rv <- doubleCatch (swallowExc $ return 42) undefined undefined
             rv `shouldBe` 42
     describe "Server" $ do
-        it "Waits for children" $ killServerHelper connector0 handler0
-        it "Kills handlers on second kill" $ killServerHelper connector1 handler1
+        it "Waits for children if socket is closed" $
+          killServerHelper connector0 handler0 assertAsyncRunning
+        it "Kills handlers reveives kill" $
+          killServerHelper connector1 handler1 assertAsyncKilled
     describe "Socket closes" $ do
         it "On termination" $ socketCloseTest return
         it "On error" $ socketCloseTest $ error "part of test"
@@ -105,19 +142,18 @@ spec = do
     assertAsyncKilled a = do
         rv <- timeout (seconds 0.1) (E.try $ wait a)
         rv `shouldBe` (Just $ Left E.ThreadKilled)
-    killServerHelper connector handler = withListen' $ \(lsock, laddr) -> do
+    killServerHelper connector handler runCheck =
+      withListen' $ \(lsock, laddr) -> do
         v <- newEmptyMVar
-        withServe lsock (\(hsock, _) -> handler v hsock) $ \a ->
-         do
-            connect "127.0.0.1" (show . getPort $ laddr) $
-                \(csock, _) -> connector a csock
-            timeLimit 0.1 (takeMVar v)
-            assertAsyncKilled a
-    connector0 a csock = recv csock 4096 >> killThread (asyncThreadId a) >> send csock "bye"
-    handler0 v hsock = send hsock "hello" >> recv hsock 4096 >> putMVar v ()
-    connector1 a csock =
-        let kill = killThread (asyncThreadId a) in
-        recv csock 4096 >> kill >> kill
+        withServe lsock (\(hsock, _) -> handler v hsock) $ \a -> do
+          connect "127.0.0.1" (show . getPort $ laddr) $
+            \(csock, _) -> connector a csock
+          timeLimit 0.1 (takeMVar v)
+          runCheck a
+    connector0 _ csock = recv csock 4096 >> send csock "bye"
+    handler0 v hsock =
+        send hsock "hello" >> recv hsock 4096 >> NS.close hsock >> putMVar v ()
+    connector1 a csock = recv csock 4096 >> killThread (asyncThreadId a)
     handler1 v hsock = E.catch
         (send hsock "hello" >> threadDelay (seconds 1))
         (\E.ThreadKilled -> putMVar v ())
@@ -138,7 +174,7 @@ getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
-withListen' = withListen HostAny "0"
+withListen' = withListen (pure ()) (pure ()) HostAny "0"
 withServe lsock handler = E.bracket (async $ serve' lsock handler (return ())) cancel
 withServe' handler io =
     withListen' $ \(lsock, laddr) ->

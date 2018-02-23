@@ -50,9 +50,11 @@ main =
   do
     tid <- myThreadId
     installHandler keyboardSignal (Catch $ killThread tid) Nothing
-    withListen HostAny "1234" $ \(lsock, _) ->
+    withListen onDraining onTerminated HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
+    onDraining = putStrLn "Stopped accepting new connections, waiting for existing clients to disconnect..."
+    onTerminated = putStrLn "Forcibly quit"
     perClientProto addr = (addr, serialiser <<-> digester <<-> attributor "someone")
     totalProto = shower "total"
       <<-> relayApiProto internalAddr

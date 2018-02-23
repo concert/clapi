@@ -14,6 +14,7 @@ import qualified Data.ByteString as B
 import qualified Data.Map as Map
 import Data.Maybe (isNothing)
 import Data.Void (Void)
+import GHC.IO.Exception (IOException)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import Network.Simple.TCP (HostPreference, bindSock)
@@ -28,40 +29,43 @@ swallowExc :: a -> E.SomeException -> a
 swallowExc = const
 
 
-withListen :: HostPreference -> NS.ServiceName ->
-    ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
-withListen hp port action = E.mask $ \restore -> do
+withListen
+  :: IO () -> IO () -> HostPreference -> NS.ServiceName
+  -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
+withListen onDraining onTerminated hp port action = E.mask $ \restore -> do
     -- The addr returned by bindSock is useless when we bind "0":
     (lsock, _) <- bindSock hp port
     NS.listen lsock $ max 2048 NS.maxListenQueue
     addr <- NS.getSocketName lsock
     a <- async $ action (lsock, addr)
     restore $ doubleCatch
-       (swallowExc $ NS.close lsock >> wait a)
-       (cancel a)
+       (swallowExc $ NS.close lsock >> onDraining >> wait a)
+       (cancel a >> onTerminated)
        (wait a >>= \r -> NS.close lsock >> return r)
 
 doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
 doubleCatch softHandle hardHandle action =
-    action `E.catch` (\e -> (softHandle e) `E.onException` hardHandle)
+    action `E.catch` (\e -> softHandle e `E.onException` hardHandle)
 
 
-throwAfter :: IO a -> E.SomeException -> IO b
-throwAfter action e = action >> E.throwIO e
+throwAfter :: E.SomeException -> IO a -> IO b
+throwAfter e action = action >> E.throwIO e
 
 
-serve' :: NS.Socket -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO () -> IO r
+serve' :: NS.Socket -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO () -> IO ()
 serve' listenSock handler onShutdown = E.mask_ $ loop []
   where
     loop as =
-      do
-        as' <- doubleCatch
-            (throwAfter $ onShutdown >> mapM wait as)
-            (mapM cancel as) (do
-                x@(sock, _addr) <- NS.accept listenSock
-                a <- async (handler x `E.finally` NS.close sock)
-                filterM (poll >=> return . isNothing) (a:as))
-        loop as'
+      (do
+        x@(sock, _addr) <- NS.accept listenSock
+        a <- async (handler x `E.finally` NS.close sock)
+        filterM (poll >=> return . isNothing) (a:as) >>= loop
+      ) `E.catch`
+          -- The socket was (almost certainly) closed on us:
+          (\(_ :: IOException) -> onShutdown >> mapM_ wait as)
+        `E.catch`
+          -- Something else happened, like we were killed!
+          (\(e :: E.SomeException) -> throwAfter e $ mapM_ cancel as)
 
 type ClientAddr = NS.SockAddr
 
@@ -88,17 +92,15 @@ _handlePerClient i proto toMainChan sock = do
 neverDoAnything :: IO a
 neverDoAnything = forever $ threadDelay maxBound
 
-protocolServer ::
-    (Ord i) =>
-    NS.Socket ->
-    (NS.SockAddr -> (i, Protocol B.ByteString a B.ByteString b IO ())) ->
-    Protocol
-        (ClientEvent i a)
-        Void
-        (ServerEvent i b)
-        Void IO () ->
-    IO () ->
-    IO ()
+protocolServer
+  :: (Ord i)
+  => NS.Socket -> (NS.SockAddr
+  -> (i, Protocol B.ByteString a B.ByteString b IO ()))
+  -> Protocol
+        (ClientEvent i a) Void
+        (ServerEvent i b) Void
+        IO ()
+  -> IO () -> IO ()
 protocolServer listenSock getClientProto mainProto onShutdown = do
     (mainI, mainO) <- BQ.newChan 4
     clientMap <- newMVar mempty

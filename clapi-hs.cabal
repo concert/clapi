@@ -112,6 +112,7 @@ test-suite clapi-hs-test
                      , clapi-hs
                      , either
                      , hspec
+                     , hspec-expectations
                      , mtl
                      , network
                      , network-simple
