@@ -45,7 +45,7 @@ withListen onDraining onTerminated hp port action = E.mask $ \restore -> do
 
 doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
 doubleCatch softHandle hardHandle action =
-    action `E.catch` (\e -> (softHandle e) `E.onException` hardHandle)
+    action `E.catch` (\e -> softHandle e `E.onException` hardHandle)
 
 
 throwAfter :: E.SomeException -> IO a -> IO b
