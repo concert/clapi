@@ -29,17 +29,18 @@ swallowExc :: a -> E.SomeException -> a
 swallowExc = const
 
 
-withListen :: HostPreference -> NS.ServiceName ->
-    ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
-withListen hp port action = E.mask $ \restore -> do
+withListen
+  :: IO () -> IO () -> HostPreference -> NS.ServiceName
+  -> ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
+withListen onDraining onTerminated hp port action = E.mask $ \restore -> do
     -- The addr returned by bindSock is useless when we bind "0":
     (lsock, _) <- bindSock hp port
     NS.listen lsock $ max 2048 NS.maxListenQueue
     addr <- NS.getSocketName lsock
     a <- async $ action (lsock, addr)
     restore $ doubleCatch
-       (swallowExc $ NS.close lsock >> wait a)
-       (cancel a)
+       (swallowExc $ NS.close lsock >> onDraining >> wait a)
+       (cancel a >> onTerminated)
        (wait a >>= \r -> NS.close lsock >> return r)
 
 doubleCatch :: (E.Exception e) => (e -> IO a) -> IO b -> IO a -> IO a
