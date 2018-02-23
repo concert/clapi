@@ -36,8 +36,8 @@ import qualified Control.Concurrent.Chan.Unagi as Q
 data TestException = TestException Int deriving (Show, Eq)
 instance E.Exception TestException
 
-shouldBeRunning :: Async a -> IO ()
-shouldBeRunning a = poll a >>= check
+assertAsyncRunning :: Async a -> IO ()
+assertAsyncRunning a = poll a >>= check
   where
     check Nothing = return ()
     check _ = error "Shouldn't have finished yet!"
@@ -50,7 +50,7 @@ throwAfterCheck threadAction excSelector = do
     (putMVar resp 'a' >> takeMVar trigger >> threadAction)
     (E.toException $ TestException 0)
   takeMVar resp
-  shouldBeRunning a
+  assertAsyncRunning a
   putMVar trigger 'b'
   wait a `shouldThrow` excSelector
 
