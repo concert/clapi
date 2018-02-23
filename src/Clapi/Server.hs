@@ -88,17 +88,15 @@ _handlePerClient i proto toMainChan sock = do
 neverDoAnything :: IO a
 neverDoAnything = forever $ threadDelay maxBound
 
-protocolServer ::
-    (Ord i) =>
-    NS.Socket ->
-    (NS.SockAddr -> (i, Protocol B.ByteString a B.ByteString b IO ())) ->
-    Protocol
-        (ClientEvent i a)
-        Void
-        (ServerEvent i b)
-        Void IO () ->
-    IO () ->
-    IO ()
+protocolServer
+  :: (Ord i)
+  => NS.Socket -> (NS.SockAddr
+  -> (i, Protocol B.ByteString a B.ByteString b IO ()))
+  -> Protocol
+        (ClientEvent i a) Void
+        (ServerEvent i b) Void
+        IO ()
+  -> IO () -> IO ()
 protocolServer listenSock getClientProto mainProto onShutdown = do
     (mainI, mainO) <- BQ.newChan 4
     clientMap <- newMVar mempty
