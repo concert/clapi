@@ -47,8 +47,8 @@ throwAfterCheck threadAction excSelector = do
   trigger <- newEmptyMVar
   resp <- newEmptyMVar
   a <- async $ throwAfter
-    (putMVar resp 'a' >> takeMVar trigger >> threadAction)
     (E.toException $ TestException 0)
+    (putMVar resp 'a' >> takeMVar trigger >> threadAction)
   takeMVar resp
   assertAsyncRunning a
   putMVar trigger 'b'
@@ -90,8 +90,10 @@ spec = do
             rv <- doubleCatch (swallowExc $ return 42) undefined undefined
             rv `shouldBe` 42
     describe "Server" $ do
-        it "Waits for children" $ killServerHelper connector0 handler0
-        it "Kills handlers on second kill" $ killServerHelper connector1 handler1
+        it "Waits for children if socket is closed" $
+          killServerHelper connector0 handler0 assertAsyncRunning
+        it "Kills handlers reveives kill" $
+          killServerHelper connector1 handler1 assertAsyncKilled
     describe "Socket closes" $ do
         it "On termination" $ socketCloseTest return
         it "On error" $ socketCloseTest $ error "part of test"
@@ -140,19 +142,18 @@ spec = do
     assertAsyncKilled a = do
         rv <- timeout (seconds 0.1) (E.try $ wait a)
         rv `shouldBe` (Just $ Left E.ThreadKilled)
-    killServerHelper connector handler = withListen' $ \(lsock, laddr) -> do
+    killServerHelper connector handler runCheck =
+      withListen' $ \(lsock, laddr) -> do
         v <- newEmptyMVar
-        withServe lsock (\(hsock, _) -> handler v hsock) $ \a ->
-         do
-            connect "127.0.0.1" (show . getPort $ laddr) $
-                \(csock, _) -> connector a csock
-            timeLimit 0.1 (takeMVar v)
-            assertAsyncKilled a
-    connector0 a csock = recv csock 4096 >> killThread (asyncThreadId a) >> send csock "bye"
-    handler0 v hsock = send hsock "hello" >> recv hsock 4096 >> putMVar v ()
-    connector1 a csock =
-        let kill = killThread (asyncThreadId a) in
-        recv csock 4096 >> kill >> kill
+        withServe lsock (\(hsock, _) -> handler v hsock) $ \a -> do
+          connect "127.0.0.1" (show . getPort $ laddr) $
+            \(csock, _) -> connector a csock
+          timeLimit 0.1 (takeMVar v)
+          runCheck a
+    connector0 _ csock = recv csock 4096 >> send csock "bye"
+    handler0 v hsock =
+        send hsock "hello" >> recv hsock 4096 >> NS.close hsock >> putMVar v ()
+    connector1 a csock = recv csock 4096 >> killThread (asyncThreadId a)
     handler1 v hsock = E.catch
         (send hsock "hello" >> threadDelay (seconds 1))
         (\E.ThreadKilled -> putMVar v ())
