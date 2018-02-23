@@ -1,7 +1,12 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+{-# LANGUAGE
+      OverloadedStrings
+    , ScopedTypeVariables
+    , LambdaCase
+#-}
 module ServerSpec where
 
 import Test.Hspec
+import Test.Hspec.Expectations (Selector)
 
 import Control.Monad (forever)
 import Data.Either (isRight)
@@ -11,9 +16,9 @@ import System.Timeout
 import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay, killThread)
-import Control.Concurrent.Async (
-    async, withAsync, wait, cancel, asyncThreadId, mapConcurrently,
-    replicateConcurrently)
+import Control.Concurrent.Async
+  ( Async, async, withAsync, wait, poll, cancel, asyncThreadId, mapConcurrently
+  , replicateConcurrently)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forever)
 import qualified Network.Socket as NS
@@ -21,12 +26,33 @@ import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Server (
-  ClientEvent', ServerEvent', doubleCatch, swallowExc, withListen, serve',
-  protocolServer)
+import Clapi.Server
+  ( ClientEvent', ServerEvent', throwAfter, doubleCatch, swallowExc, withListen
+  , serve', protocolServer)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Helpers (seconds, timeLimit)
 import qualified Control.Concurrent.Chan.Unagi as Q
+
+data TestException = TestException Int deriving (Show, Eq)
+instance E.Exception TestException
+
+shouldBeRunning :: Async a -> IO ()
+shouldBeRunning a = poll a >>= check
+  where
+    check Nothing = return ()
+    check _ = error "Shouldn't have finished yet!"
+
+throwAfterCheck :: E.Exception a => IO () -> Selector a -> IO ()
+throwAfterCheck threadAction excSelector = do
+  trigger <- newEmptyMVar
+  resp <- newEmptyMVar
+  a <- async $ throwAfter
+    (putMVar resp 'a' >> takeMVar trigger >> threadAction)
+    (E.toException $ TestException 0)
+  takeMVar resp
+  shouldBeRunning a
+  putMVar trigger 'b'
+  wait a `shouldThrow` excSelector
 
 spec :: Spec
 spec = do
@@ -34,6 +60,15 @@ spec = do
         it "Zero gives port" $ do
             port <- withListen' (return . getPort . snd)
             port `shouldSatisfy` (/= 0)
+
+    describe "throwAfter" $ do
+        it "should only throw its given exc after completing the action" $ do
+          throwAfterCheck (return ()) (\(TestException _) -> True)
+
+        it "should not throw its given exc if the action throws" $ do
+          throwAfterCheck (E.throwIO $ E.toException $ TestException 0)
+            (\(TestException n) -> n == 0)
+
     describe "doubleCatch" $ do
         it "Thread terminated on second kill" $ do
             (i, o) <- Q.newChan
@@ -138,7 +173,7 @@ getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
-withListen' = withListen HostAny "0"
+withListen' = withListen (pure ()) (pure ()) HostAny "0"
 withServe lsock handler = E.bracket (async $ serve' lsock handler (return ())) cancel
 withServe' handler io =
     withListen' $ \(lsock, laddr) ->
