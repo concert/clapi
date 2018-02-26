@@ -40,6 +40,7 @@ data WireConcreteType
 
 data WireContainerType
   = WcList
+  | WcMaybe
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 data WireType
@@ -76,7 +77,8 @@ withWireTypeProxy f wt = case wt of
     applyUnpacked :: forall a. Wireable a => [WireContainerType] -> Proxy a -> r
     applyUnpacked [] p = f p
     applyUnpacked (ct:cts) _ = case ct of
-      WcList -> applyUnpacked cts (Proxy :: Proxy [a])
+      WcList -> applyUnpacked cts (Proxy @[a])
+      WcMaybe -> applyUnpacked cts (Proxy @(Maybe a))
 
 -- FIXME: could use an association list type that checks the uniqueness of the
 -- keys on creation:
@@ -106,6 +108,7 @@ tagConc w =
 contTag :: WireContainerType -> Tag
 contTag t = case t of
   WcList -> [btq|l|]
+  WcMaybe -> [btq|m|]
 
 tagConts :: [(Tag, WireContainerType)]
 tagConts = revAssoc contTag
@@ -125,9 +128,11 @@ wireValueWireType (WireValue a) = inner $ typeOf a
   where
     inner wt
       | tc == listTyCon = WtCont WcList $ inner $ head $ typeRepArgs wt
+      | tc == maybeTyCon = WtCont WcMaybe $ inner $ head $ typeRepArgs wt
       | otherwise = WtConc $ fromJust $ lookup tc tyConConcs
       where tc = typeRepTyCon wt
-    listTyCon = typeRepTyCon $ typeRep (Proxy :: Proxy [()])
+    listTyCon = typeRepTyCon $ typeRep $ Proxy @[]
+    maybeTyCon = typeRepTyCon $ typeRep $ Proxy @Maybe
 
 instance Encodable WireConcreteType where
   builder = builder . concTag
