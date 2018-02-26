@@ -6,9 +6,8 @@ module Clapi.Serialisation.Messages where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Data.Monoid ((<>))
 
-import Blaze.ByteString.Builder (Builder, fromWord32be)
+import Blaze.ByteString.Builder (Builder)
 
 import Data.Attoparsec.ByteString (Parser)
 
@@ -18,9 +17,7 @@ import Clapi.Serialisation.Definitions ()
 import Clapi.Serialisation.Path ()
 import Clapi.TH (btq)
 import Clapi.Types.Messages
-import Clapi.TaggedData
-  ( TaggedData, taggedData, tdInstanceToTag, eitherTagged, tdAllTags
-  , tdTagToEnum)
+import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.Serialisation.Wire ()
 
 data ErrIdxType
