@@ -69,6 +69,10 @@ spec = describe "validation" $ do
   describeTreeType (TtCont $ TcOrdSet $ TtConc $ TcWord32 unbounded) $ do
     successCase (WireValue @[Word32] [41, 42, 43])
     failureCase (WireValue @[Word32] [41, 42, 43, 42])
+  describeTreeType (TtCont $ TcMaybe $ TtConc $ TcString "banana") $ do
+    successCase (WireValue @(Maybe Text) Nothing)
+    successCase (WireValue @(Maybe Text) $ Just "banana")
+    failureCase (WireValue @(Maybe Text) $ Just "apple")
 
 describeTreeType :: TreeType -> SpecWith TreeType -> Spec
 describeTreeType ty = around (\s -> void $ s ty) .

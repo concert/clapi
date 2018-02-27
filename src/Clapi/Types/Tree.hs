@@ -93,12 +93,14 @@ data TreeContainerTypeName
   = TcnList
   | TcnSet
   | TcnOrdSet
+  | TcnMaybe
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 data TreeContainerType
   = TcList {contTContainedType :: TreeType}
   | TcSet {contTContainedType :: TreeType}
   | TcOrdSet {contTContainedType :: TreeType}
+  | TcMaybe {contTContainedType :: TreeType}
   deriving (Show, Eq, Ord)
 
 instance TypeEnumOf TreeContainerType TreeContainerTypeName where
@@ -106,6 +108,7 @@ instance TypeEnumOf TreeContainerType TreeContainerTypeName where
     TcList _ -> TcnList
     TcSet _ -> TcnSet
     TcOrdSet _ -> TcnOrdSet
+    TcMaybe _ -> TcnMaybe
 
 data TreeType
   = TtConc TreeConcreteType

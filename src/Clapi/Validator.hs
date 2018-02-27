@@ -87,6 +87,7 @@ validate tt wv =
       TcnList -> recy (checkList f) cts
       TcnSet -> recy (checkSet f) cts
       TcnOrdSet -> recy (checkOrdSet f) cts
+      TcnMaybe -> recy (checkMaybe f) cts
     checkEnum :: [Seg] -> Word8 -> m Word8
     checkEnum ns w = let theMax = fromIntegral $ length ns in
       if w >= theMax
@@ -98,9 +99,14 @@ validate tt wv =
       (Text.unpack t =~~ Text.unpack r :: Maybe ())
     checkList :: (a -> m b) -> [a] -> m [b]
     checkList = mapM
+
     checkSet :: (Show b, Ord b) => (a -> m b) -> [a] -> m (Set.Set b)
     checkSet f v = do
       vs <- mapM f v
       Set.fromList <$> ensureUnique "items" vs
+
     checkOrdSet :: (Show b, Ord b) => (a -> m b) -> [a] -> m (UniqList b)
     checkOrdSet f v = mapM f v >>= mkUniqList
+
+    checkMaybe :: (a -> m b) -> Maybe a -> m (Maybe b)
+    checkMaybe = mapM

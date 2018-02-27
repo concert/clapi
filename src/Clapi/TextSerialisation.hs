@@ -46,6 +46,7 @@ contTNameToText tc = case tc of
   TcnList -> "list"
   TcnSet -> "set"
   TcnOrdSet -> "ordSet"
+  TcnMaybe -> "maybe"
 
 contTNameParser :: Parser TreeContainerTypeName
 contTNameParser = Dat.choice $
@@ -123,6 +124,7 @@ contTParser = contTNameParser >>= getParser
       TcnList -> TcList <$> ttParser
       TcnSet -> TcSet <$> ttParser
       TcnOrdSet -> TcOrdSet <$> ttParser
+      TcnMaybe -> TcMaybe <$> ttParser
 
 ttParser :: Parser TreeType
 ttParser = (TtConc <$> concTParser) <|> (TtCont <$> contTParser)

@@ -41,6 +41,7 @@ instance Wireable Float
 instance Wireable Double
 instance Wireable Text
 instance Wireable a => Wireable [a]
+instance Wireable a => Wireable (Maybe a)
 
 data WireValue = forall a. Wireable a => WireValue a
 

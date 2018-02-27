@@ -42,6 +42,9 @@ smallListOf1 g = do
   l <- choose (1, 5)
   replicateM l g
 
+maybeOf :: Gen a -> Gen (Maybe a)
+maybeOf g = oneof [return Nothing, Just <$> g]
+
 name :: Gen Seg
 name = fromJust . mkSeg . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 
@@ -73,21 +76,22 @@ instance Arbitrary WireValue where
       pickConcrete = do
         concT <- arbitraryBoundedEnum
         depth <- choose (0, 2)
-        blargh depth concT
-      blargh depth concT = case concT of
-          WcTime -> listify depth (arbitrary @Time)
-          WcWord8 -> listify depth (arbitrary @Word8)
-          WcWord32 -> listify depth (arbitrary @Word32)
-          WcWord64 -> listify depth (arbitrary @Word64)
-          WcInt32 -> listify depth (arbitrary @Int32)
-          WcInt64 -> listify depth (arbitrary @Int64)
-          WcFloat -> listify depth (arbitrary @Float)
-          WcDouble -> listify depth (arbitrary @Double)
-          WcString -> listify depth arbitraryTextNoNull
-      listify ::
-        forall a. Wireable a => Int -> Gen a -> Gen WireValue
-      listify 0 g = WireValue <$> g
-      listify depth g = listify (depth - 1) (smallListOf g)
+        case concT of
+          WcTime -> contain depth (arbitrary @Time)
+          WcWord8 -> contain depth (arbitrary @Word8)
+          WcWord32 -> contain depth (arbitrary @Word32)
+          WcWord64 -> contain depth (arbitrary @Word64)
+          WcInt32 -> contain depth (arbitrary @Int32)
+          WcInt64 -> contain depth (arbitrary @Int64)
+          WcFloat -> contain depth (arbitrary @Float)
+          WcDouble -> contain depth (arbitrary @Double)
+          WcString -> contain depth arbitraryTextNoNull
+      contain :: Wireable a => Int -> Gen a -> Gen WireValue
+      contain 0 g = WireValue <$> g
+      contain depth g = oneof
+        [ contain (depth - 1) $ smallListOf g
+        , contain (depth - 1) $ maybeOf g
+        ]
   shrink wv = let (concT, contTs) = unpackWireType $ wireValueWireType wv in
       case concT of
           WcTime -> lThing contTs (Proxy @Time)
@@ -100,10 +104,13 @@ instance Arbitrary WireValue where
           WcDouble -> lThing contTs (Proxy @Double)
           WcString -> lThing contTs (Proxy @Text)
     where
-      lThing :: forall a. (Wireable a, Arbitrary a) => [WireContainerType] -> Proxy a -> [WireValue]
+      lThing
+        :: forall a. (Wireable a, Arbitrary a) => [WireContainerType]
+        -> Proxy a -> [WireValue]
       lThing [] _ = fmap WireValue $ shrink @a $ fromJust $ castWireValue wv
       lThing (contT:contTs) _ = case contT of
         WcList -> lThing contTs (Proxy @[a])
+        WcMaybe -> lThing contTs (Proxy @(Maybe a))
 
 roundTripWireValue
   :: forall m. MonadFail m => WireValue -> m Bool
