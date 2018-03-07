@@ -153,9 +153,9 @@ valuespaceGet
   :: MonadFail m => Path -> Valuespace
   -> m (Definition, TypeName, Liberty, RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree defs tas) = do
+    rtn <- note "Path not found" $ Tree.treeLookupNode p tree
     tn <- lookupTypeName p tas
     def <- lookupDef tn defs
-    rtn <- note "Tree node not found" $ Tree.treeLookupNode p tree
     lib <- getLiberty p vs
     return (def, tn, lib, rtn)
 

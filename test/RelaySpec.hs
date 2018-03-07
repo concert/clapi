@@ -10,6 +10,7 @@ module RelaySpec where
 import Test.Hspec
 
 import Control.Monad.Trans (lift)
+import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Word
 import Data.Maybe (fromJust)
@@ -86,6 +87,16 @@ spec = describe "the relay protocol" $ do
           sendFwd ((), Iprd $ TrprDigest foo)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay vsWithStuff
+    it "should reject subscriptions to non-existant paths" $
+      let
+        p = [pathq|/madeup|]
+        expectedOutDig = Ocid $ outboundClientDigest
+          { ocdErrors = Map.singleton (PathError p) ["Path not found"]
+          }
+        test = do
+          sendFwd ((), Icd $ InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
+          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
+      in runEffect $ test <<-> relay baseValuespace
   where
     foo = [segq|foo|]
     bob = Just "bob"
