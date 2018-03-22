@@ -12,22 +12,21 @@ import qualified Data.Map as Map
 import Data.Maybe (isJust, fromJust)
 import Data.Monoid
 import Data.Set (Set)
-import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
 
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
-  (alEmpty, alInsert, alFilterKey, alSetDefault, unAssocList, alKeys)
+  (alEmpty, alInsert, alFilterKey, unAssocList, alKeys)
 import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
 import Clapi.Types.Digests
-  ( ContainerOps, DataDigest, TrpDigest(..), TrprDigest(..)
+  ( TrpDigest(..), TrprDigest(..)
   , FrpErrorDigest(..), DataChange(..)
   , TimeSeriesDataOp(..), DefOp(..)
   , OutboundDigest(..), InboundDigest(..)
-  , OutboundClientDigest(..), OutboundClientInitialisationDigest(..)
+  , OutboundClientDigest(..), OutboundClientInitialisationDigest
   , InboundClientDigest(..), OutboundProviderDigest(..))
-import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern (:/), pattern Root)
+import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern Root)
 import Clapi.Types.Definitions (Liberty, Definition(StructDef), StructDefinition(..))
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), presentAfter)
@@ -37,7 +36,6 @@ import Clapi.Valuespace
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
   , getLiberty, rootTypeName, lookupDef)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
-import Clapi.Util (flattenNestedMaps)
 
 mapPartitionJust :: Map k (Maybe a) -> (Map k a, Set k)
 mapPartitionJust m = let (js, ns) = Map.partition isJust m in

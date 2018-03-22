@@ -3,14 +3,10 @@
 {-# LANGUAGE QuasiQuotes #-}
 module Main where
 
-import Data.Map (Map)
-import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Control.Monad
 import Control.Monad.Trans (liftIO)
 import Control.Concurrent
-import Control.Concurrent.Async
-import Control.Exception
 import System.Posix.Signals
 import Network.Simple.TCP hiding (send)
 import Network.Socket (SockAddr(SockAddrCan))
@@ -28,7 +24,7 @@ import Clapi.Attributor (attributor)
 import Clapi.Valuespace (baseValuespace)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
-import Clapi.Types.Path (Seg, mkSeg)
+import Clapi.Types.Path (mkSeg)
 import Clapi.TH (segq)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()

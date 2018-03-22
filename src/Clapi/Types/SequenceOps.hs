@@ -6,7 +6,6 @@ import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromJust, isJust)
 import qualified Data.List as List
 import Data.Foldable (foldlM)
 

@@ -10,16 +10,13 @@ module Clapi.Valuespace where
 
 import Prelude hiding (fail)
 import Control.Applicative ((<|>))
-import Control.Monad (when, unless, void)
+import Control.Monad (unless)
 import Control.Monad.Fail (MonadFail(..))
-import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Int
-import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
-import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -32,8 +29,7 @@ import Data.Maybe.Clapi (note)
 
 import qualified Data.Map.Mol as Mol
 import Clapi.TH
-import Clapi.Util
-  (strictZipWith, fmtStrictZipError, partitionDifference, showItems)
+import Clapi.Util (strictZipWith, fmtStrictZipError)
 import Clapi.Tree (RoseTree(..), RoseTreeNode, treeInsert, treeChildren, TpId)
 import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
@@ -220,8 +216,6 @@ processToRelayProviderDigest trpd vs =
     isUndef :: DefOp -> Bool
     isUndef OpUndefine = True
     isUndef _ = False
-    fromLeft' = fromLeft $ error "expecting Left"
-    fromRight' = fromRight $ error "expecting Right"
 
 processToRelayClientDigest
   :: ContainerOps -> DataDigest -> Valuespace -> Map Path [Text]
@@ -256,9 +250,9 @@ validateRoseTree def t = case t of
       fmap (validateWireValues (alValues alTreeTypes) . snd . snd) $
       Map.mapKeys Just $ Dkmap.valueMap m
     _ -> fail "Unexpected time series data!"
-  RtContainer alCont -> case def of
+  RtContainer _alCont -> case def of
     TupleDef _ -> fail "Y'all have a container where you wanted data"
-    StructDef (StructDefinition _ alDef) -> return mempty
+    StructDef (StructDefinition _ _alDef) -> return mempty
     ArrayDef _ -> return mempty
 
 validateWireValues :: MonadFail m => [TreeType] -> [WireValue] -> m (Mos TypeName Path)

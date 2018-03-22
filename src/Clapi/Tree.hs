@@ -34,7 +34,6 @@ import Clapi.Types.Path (
 import Clapi.Types.Digests
   ( DataDigest, ContainerOps, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
-import Clapi.Types.UniqList (UniqList)
 
 type TpId = Word32
 
