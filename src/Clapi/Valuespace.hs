@@ -202,7 +202,6 @@ processToRelayProviderDigest trpd vs =
   let
     ns = trpdNamespace trpd
     qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
-    qDefs = Map.mapKeys (TypeName ns) $ trpdDefinitions trpd
     qCops = Map.mapKeys (ns :</) $ trpdContainerOps trpd
     (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
     defs' =
