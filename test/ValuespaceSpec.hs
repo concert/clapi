@@ -104,6 +104,13 @@ spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $ validateTree baseValuespace
       `shouldBe` Right baseValuespace
+    it "rechecks on data changes" $
+      let
+        d = TrpDigest apiNs mempty
+          (alSingleton [pathq|/version|] $
+           ConstChange Nothing [WireValue @Text "wrong"])
+          mempty mempty
+      in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
     it "rechecks on type def changes" $
       -- Make sure changing (api, version) goes and checks things defined
       -- to have that type:
