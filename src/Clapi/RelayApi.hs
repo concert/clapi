@@ -15,12 +15,10 @@ import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types
   ( TrDigest(..), TrpDigest(..), FrDigest(..), WireValue(..)
   , TimeStamped(..), Liberty(Cannot))
-import Clapi.Types.AssocList
-  (alEmpty, alSingleton, alFromMap, alFmapWithKey, alFromList)
+import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
-import Clapi.Types.Digests
-  (DefOp(OpDefine), DataChange(..), TrcDigest(..), SubOp(..), FrcDigest(..))
+import Clapi.Types.Digests (DefOp(OpDefine), DataChange(..), FrcDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
