@@ -70,7 +70,6 @@ spec = describe "the relay protocol" $ do
       in runEffect $ test <<-> relay baseValuespace
     it "should send root info on revoke" $
       let
-        fooP = Root :/ foo
         vsWithStuff = Valuespace
           (treeInsert bob fooP (RtConstData bob []) $ vsTree baseValuespace)
           -- FIXME: This should probably have updated the root def to include the foo NS
@@ -97,6 +96,20 @@ spec = describe "the relay protocol" $ do
           sendFwd ((), Icd $ InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay baseValuespace
+    it "should respond sensibly to data changes" $
+      let
+        vsWithInt = Valuespace
+            (treeInsert bob fooP (RtConstData bob [WireValue (3 :: Word32)]) $ vsTree baseValuespace)
+          -- FIXME: This should probably have updated the root def to include the foo NS
+            (Map.insert foo (Map.singleton foo $ tupleDef "Thing" (alSingleton foo $ ttWord32 unbounded) ILUninterpolated) $ vsTyDefs baseValuespace)
+            (Mos.setDependency fooP (TypeName foo foo) $ vsTyAssns baseValuespace)
+        dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
+        test = do
+            sendFwd ((), Ipd $ (trpDigest foo) {trpdData = dd})
+            waitThenRevOnly $ lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = dd})) . snd
+      in runEffect $ test <<-> relay vsWithInt
+
   where
     foo = [segq|foo|]
+    fooP = Root :/ foo
     bob = Just "bob"
