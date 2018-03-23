@@ -31,7 +31,7 @@ import Clapi.Types
   , TrpDigest(..), DefOp(..), DataChange(..), TypeName(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
-import Clapi.Valuespace (Valuespace(..), validateTree, baseValuespace, processToRelayProviderDigest, apiNs)
+import Clapi.Valuespace (Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest, apiNs)
 import Clapi.Tree (treePaths)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTree(RtEmpty))
@@ -102,8 +102,14 @@ refSeg = [segq|ref|]
 spec :: Spec
 spec = do
   describe "Validation" $ do
-    it "baseValuespace valid" $ validateTree baseValuespace
-      `shouldBe` Right baseValuespace
+    it "baseValuespace valid" $
+      let
+        allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
+          vsTree baseValuespace
+        validated = either (error . show) snd $
+          validateVs allTainted baseValuespace
+      in
+        validated `shouldBe` baseValuespace
     it "rechecks on data changes" $
       let
         d = TrpDigest apiNs mempty
