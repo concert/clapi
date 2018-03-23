@@ -250,9 +250,9 @@ validateRoseTree def t = case t of
       fmap (validateWireValues (alValues alTreeTypes) . snd . snd) $
       Map.mapKeys Just $ Dkmap.valueMap m
     _ -> fail "Unexpected time series data!"
-  RtContainer _alCont -> case def of
+  RtContainer alCont -> case def of
     TupleDef _ -> fail "Y'all have a container where you wanted data"
-    StructDef (StructDefinition _ _alDef) -> return mempty
+    StructDef (StructDefinition _ alDef) -> return mempty
     ArrayDef _ -> return mempty
 
 validateWireValues :: MonadFail m => [TreeType] -> [WireValue] -> m (Mos TypeName Path)
