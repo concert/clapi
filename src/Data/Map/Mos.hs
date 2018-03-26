@@ -139,6 +139,15 @@ setDependencies' k as (deps, revDeps) = (deps', revDeps'')
     revDeps' Nothing = revDeps
     revDeps'' = foldr (\a -> insert a k) (revDeps' mas) as
 
+setDependenciesFromMos'
+  :: (Ord k, Ord a) => Mos k a -> Dependencies' k a -> Dependencies' k a
+setDependenciesFromMos' mos (fwd, rev) = (union mos fwd, union rev $ invert mos)
+
+setRevDependenciesFromMos'
+  :: (Ord k, Ord a) => Mos a k -> Dependencies' k a -> Dependencies' k a
+setRevDependenciesFromMos' mos (fwd, rev) =
+  (union fwd $ invert mos, union mos rev)
+
 delDependencies' ::
     (Ord k, Ord a) => k -> Dependencies' k a -> Dependencies' k a
 delDependencies' k (deps, revDeps) = (deps', revDeps' mas)
@@ -147,6 +156,16 @@ delDependencies' k (deps, revDeps) = (deps', revDeps' mas)
     (mas, deps') = Map.updateLookupWithKey f k deps
     revDeps' (Just as) = foldr (\a -> delete a k) revDeps as
     revDeps' Nothing = revDeps
+
+filterDependencies'
+  :: (Ord k, Ord a) => (k -> Bool) -> Dependencies' k a -> Dependencies' k a
+filterDependencies' f (fwd, rev) =
+  let
+    (discardFwd, keepFwd) = Map.partitionWithKey (\k _ -> f k) fwd
+    keepRev = Map.filter (not . null) $
+      fmap (flip Set.difference $ Map.keysSet discardFwd) rev
+  in
+    (keepFwd, keepRev)
 
 getDependants' ::
   (Ord k, Ord a) => a -> Dependencies' k a -> Set.Set k
