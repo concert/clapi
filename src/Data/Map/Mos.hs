@@ -62,6 +62,9 @@ type Dependencies k a = (Map.Map k a, Mos a k)
 dependenciesFromMap :: (Ord k, Ord a) => Map.Map k a -> Dependencies k a
 dependenciesFromMap m = (m, invertMap m)
 
+dependenciesFromList :: (Ord k, Ord a) => [(k, a)] -> Dependencies k a
+dependenciesFromList = dependenciesFromMap . Map.fromList
+
 getDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
 getDependency k = Map.lookup k . fst
 
