@@ -3,18 +3,22 @@
 
 module Data.Map.Mos where
 
-import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
     merge, preserveMissing, dropMissing, zipWithMaybeMatched)
+import qualified Data.Set as Set
+import Data.Tuple (swap)
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
 type Mos k a = Map.Map k (Set.Set a)
 
+fromFoldable :: (Ord k, Ord a, Foldable f) => f (k, a) -> Mos k a
+fromFoldable = foldr (uncurry insert) mempty
+
 fromList :: (Ord k, Ord a) => [(k, a)] -> Mos k a
-fromList = foldr (uncurry insert) mempty
+fromList = fromFoldable
 
 toList :: Mos k a -> [(k, a)]
 toList = mconcat . Map.elems . Map.mapWithKey (\k as -> (k,) <$> Set.toList as)
@@ -32,6 +36,9 @@ remove a = Map.mapMaybe (Maybe.fromFoldable . (Set.delete a))
 
 invertMap :: (Ord k, Ord a) => Map.Map k a -> Mos a k
 invertMap = Map.foldrWithKey (flip insert) mempty
+
+invert :: (Ord k, Ord a) => Mos k a -> Mos a k
+invert = fromFoldable . Set.map swap . toSet
 
 toSet :: (Ord k, Ord a) => Mos k a -> Set.Set (k, a)
 toSet mos = foldMap id $ Map.mapWithKey (\k as -> Set.map ((,) k) as) mos

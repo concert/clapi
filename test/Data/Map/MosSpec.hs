@@ -1,10 +1,15 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Data.Map.MosSpec where
 
 import Test.Hspec
+import Test.QuickCheck
 
 import qualified Data.Set as Set
 
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 spec :: Spec
@@ -47,6 +52,15 @@ spec = do
         assertRevDeps 1  "b" ds2
         assertNoRevDeps 2 ds2
         ds3 `shouldBe` ds0
+    it "should stay correct under inversion" $ property $
+      \(input :: [(Char, Int)]) -> let mos = Mos.fromList input in
+        mos == Mos.invert (Mos.invert mos)
+    it "should roundtrip via set" $ property $
+      \(input :: [(Char, Int)]) -> let mos = Mos.fromList input in
+        mos == Mos.fromFoldable (Mos.toSet mos)
+    it "can be produced from a Map" $ property $
+      \(input :: Map Char Int) -> let mos = Mos.invertMap input in
+        fmap Set.singleton input == Mos.invert mos
 
 assertDep k a ds = Mos.getDependency k ds `shouldBe` Just a
 assertNoDep k ds = Mos.getDependency k ds `shouldBe` Nothing
