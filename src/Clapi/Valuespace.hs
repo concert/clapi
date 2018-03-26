@@ -19,7 +19,7 @@ import Data.Int
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge
-  (merge, preserveMissing, dropMissing, zipWithMatched)
+  (merge, preserveMissing, dropMissing, zipWithMaybeMatched)
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 import Data.Set (Set)
@@ -180,6 +180,9 @@ validateVs =
       Tree.treeLookup p
     translateErrorMap
       :: Path -> Map (Maybe TpId) [Either String ()]
+    changed :: Eq a => a -> a -> Maybe a
+    changed a1 a2 | a1 == a2 = Nothing
+                  | otherwise = Just a2
       -> Either (Map (ErrorIndex TypeName) [Text]) ()
     translateErrorMap path m =
       let
@@ -227,9 +230,9 @@ validateVs =
                 (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
                 treeChildren rtn
           let changedChildTypes = merge
-                preserveMissing dropMissing
-                (zipWithMatched $ \_ t _ -> t)
-                newChildTypes oldChildTypes
+                dropMissing preserveMissing
+                (zipWithMaybeMatched $ const changed)
+                oldChildTypes newChildTypes
           let changedChildPaths = Map.mapKeys (path :/) changedChildTypes
           inner
             (newTas <> changedChildPaths)
