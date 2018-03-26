@@ -92,7 +92,8 @@ rootDefAddChild ns sd = do
   return $ sd {strDefTypes = newTys}
 
 baseValuespace :: Valuespace
-baseValuespace = Valuespace baseTree baseDefs baseTas
+baseValuespace =
+    either (error . show) snd $ validateVs allTainted unvalidatedBaseVs
   where
     vseg = [segq|version|]
     version = RtConstData Nothing
@@ -103,11 +104,10 @@ baseValuespace = Valuespace baseTree baseDefs baseTas
       [ (apiNs, StructDef apiDef)
       , (vseg, TupleDef versionDef)
       ]
-    baseTas = Mos.dependenciesFromMap $ Map.fromList
-      [ (Root, rootTypeName)
-      , (Root :/ apiNs, apiTypeName)
-      , (Root :/ apiNs :/ vseg, TypeName apiNs vseg)
-      ]
+    baseTas = Mos.dependenciesFromMap $ Map.fromList [(Root, rootTypeName)]
+    unvalidatedBaseVs = Valuespace baseTree baseDefs baseTas
+    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
+      vsTree unvalidatedBaseVs
 
 getTypeAssignment :: MonadFail m => DefMap -> Path -> m TypeName
 getTypeAssignment defs thePath = lookupDef rootTypeName defs >>= go thePath
