@@ -243,7 +243,7 @@ validateVs =
 
 processToRelayProviderDigest
   :: TrpDigest -> Valuespace
-  -> Either (Map (ErrorIndex TypeName) [Text]) Valuespace
+  -> Either (Map (ErrorIndex TypeName) [Text]) (Map Path TypeName, Valuespace)
 processToRelayProviderDigest trpd vs =
   let
     ns = trpdNamespace trpd
@@ -271,7 +271,7 @@ processToRelayProviderDigest trpd vs =
     (updatedTypes, vs') <- validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
       Valuespace tree' defs' $ vsTyAssns vs
-    return vs'
+    return (updatedTypes, vs')
   where
     isUndef :: DefOp -> Bool
     isUndef OpUndefine = True

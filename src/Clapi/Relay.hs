@@ -108,7 +108,8 @@ relay vs = waitThenFwdOnly fwd
           relay vs'
       where
         handleOwnerSuccess
-            (TrpDigest ns defs dd contOps errs) vs'@(Valuespace _ _ tas) =
+            (TrpDigest ns defs dd contOps errs)
+            (updatedTyAssns, vs'@(Valuespace _ _ tas)) =
           let
             shouldPubRoot =
               Map.member ns defs &&
@@ -125,17 +126,16 @@ relay vs = waitThenFwdOnly fwd
             qDefs' = if shouldPubRoot then Map.insert rootTypeName (OpDefine rootDef) qDefs else qDefs
             qContOps = Map.mapKeys (ns :</) contOps'
             qContOps' = if shouldPubRoot then Map.insert Root (nsContOp rootDef) qContOps else qContOps
+            mungedTas = Map.mapWithKey
+              (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
           in do
             sendRev (i,
               Ocd $ OutboundClientDigest
                 qContOps'
                 -- FIXME: we need to provide defs for type assignments too.
                 qDefs'
-                (mungedTas vs') dd' errs')
+                mungedTas dd' errs')
             relay vs'
-        mungedTas vs = Map.mapWithKey
-          (\p tn -> (tn, either error id $ getLiberty p vs))
-          $ fst (vsTyAssns vs)
         handleClientDigest (InboundClientDigest gets typeGets reords dd) errMap =
           let
             dd' = alFilterKey (\k -> not $ Map.member k errMap) dd

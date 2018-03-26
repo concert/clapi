@@ -21,6 +21,7 @@ import qualified Data.Set as Set
 import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
+import qualified Data.Map.Mos as Mos
 import Clapi.TH
 import Clapi.Types.AssocList (alFromMap, AssocList, mkAssocList, alSingleton, alEmpty, alFromList, alInsert)
 import Clapi.Types
@@ -60,9 +61,8 @@ validVersionTypeChange vs =
     mempty
 
 vsAppliesCleanly :: MonadFail m => TrpDigest -> Valuespace -> m Valuespace
-vsAppliesCleanly d vs = case (processToRelayProviderDigest d vs) of
-    Left errs -> fail $ show errs
-    Right vs' -> return vs'
+vsAppliesCleanly d vs = either (fail . show) (return . snd) $
+  processToRelayProviderDigest d vs
 
 redefApiRoot :: (AssocList Seg TypeName -> AssocList Seg TypeName) -> Valuespace -> Definition
 redefApiRoot f vs = structDef "Frigged by test" $ (, Cannot) <$> f currentKids
@@ -104,11 +104,12 @@ spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $
       let
+        apiTn = TypeName [segq|api|]
         allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
           vsTree baseValuespace
         validated = either (error . show) snd $
           validateVs allTainted baseValuespace
-      in
+      in do
         validated `shouldBe` baseValuespace
     it "rechecks on data changes" $
       let

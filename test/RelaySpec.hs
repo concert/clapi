@@ -58,10 +58,8 @@ spec = describe "the relay protocol" $ do
             [ (TypeName foo foo, OpDefine fooDef)
             , (TypeName apiNs [segq|root|], OpDefine extendedRootDef)
             ]
-          -- FIXME: Should only get changed type assignments
           , ocdTypeAssignments = Map.insert
-            [pathq|/foo|] (TypeName foo foo, Cannot)
-            (fmap (,Cannot) $ fst $ vsTyAssns baseValuespace)
+            [pathq|/foo|] (TypeName foo foo, Cannot) mempty
           , ocdContainerOps = Map.singleton Root $ Map.singleton foo (Nothing, SoPresentAfter (Just apiNs))
           }
         test = do
