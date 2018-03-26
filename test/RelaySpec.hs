@@ -35,7 +35,9 @@ import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/))
 import Clapi.Types.Tree (ttWord32, unbounded)
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.Types.Wire (WireValue(..))
-import Clapi.Valuespace (baseValuespace, apiNs, vsTyAssns, Valuespace(..), rootTypeName, lookupDef)
+import Clapi.Valuespace
+  ( baseValuespace, unsafeValidateVs, apiNs, vsTyAssns, Valuespace(..)
+  , rootTypeName, lookupDef)
 
 spec :: Spec
 spec = describe "the relay protocol" $ do
@@ -68,11 +70,13 @@ spec = describe "the relay protocol" $ do
       in runEffect $ test <<-> relay baseValuespace
     it "should send root info on revoke" $
       let
-        vsWithStuff = Valuespace
-          (treeInsert bob fooP (RtConstData bob []) $ vsTree baseValuespace)
-          -- FIXME: This should probably have updated the root def to include the foo NS
-          (Map.insert foo (Map.singleton foo $ tupleDef "Thing" alEmpty ILUninterpolated) $ vsTyDefs baseValuespace)
-          (Mos.setDependency fooP (TypeName foo foo) $ vsTyAssns baseValuespace)
+        vsWithStuff = unsafeValidateVs $ baseValuespace
+          { vsTree = treeInsert bob fooP (RtConstData bob []) $
+              vsTree baseValuespace
+          , vsTyDefs = Map.insert foo
+              (Map.singleton foo $ tupleDef "Thing" alEmpty ILUninterpolated) $
+              vsTyDefs baseValuespace
+          }
         expectedOutDig = Ocd $ outboundClientDigest
           { ocdDefinitions = Map.fromList
             [ (rootTypeName, OpDefine $ fromJust $ lookupDef rootTypeName $ vsTyDefs baseValuespace)
@@ -96,11 +100,15 @@ spec = describe "the relay protocol" $ do
       in runEffect $ test <<-> relay baseValuespace
     it "should respond sensibly to data changes" $
       let
-        vsWithInt = Valuespace
-            (treeInsert bob fooP (RtConstData bob [WireValue (3 :: Word32)]) $ vsTree baseValuespace)
-          -- FIXME: This should probably have updated the root def to include the foo NS
-            (Map.insert foo (Map.singleton foo $ tupleDef "Thing" (alSingleton foo $ ttWord32 unbounded) ILUninterpolated) $ vsTyDefs baseValuespace)
-            (Mos.setDependency fooP (TypeName foo foo) $ vsTyAssns baseValuespace)
+        vsWithInt = unsafeValidateVs $ baseValuespace
+          { vsTree = treeInsert bob fooP
+              (RtConstData bob [WireValue (3 :: Word32)]) $
+              vsTree baseValuespace
+          , vsTyDefs = Map.insert foo
+              (Map.singleton foo $ tupleDef "Thing"
+                (alSingleton foo $ ttWord32 unbounded) ILUninterpolated) $
+              vsTyDefs baseValuespace
+          }
         dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
         test = do
             sendFwd ((), Ipd $ (trpDigest foo) {trpdData = dd})

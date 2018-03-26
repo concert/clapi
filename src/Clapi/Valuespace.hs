@@ -92,9 +92,16 @@ rootDefAddChild ns sd = do
   newTys <- alCons ns (TypeName ns ns, Cannot) $ strDefTypes sd
   return $ sd {strDefTypes = newTys}
 
+-- | Fully revalidates the given Valuespace and throws an error if there are any
+--   validation issues.
+unsafeValidateVs :: Valuespace -> Valuespace
+unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
+  where
+    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
+      vsTree vs
+
 baseValuespace :: Valuespace
-baseValuespace =
-    either (error . show) snd $ validateVs allTainted unvalidatedBaseVs
+baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseTas mempty
   where
     vseg = [segq|version|]
     version = RtConstData Nothing
@@ -106,9 +113,6 @@ baseValuespace =
       , (vseg, TupleDef versionDef)
       ]
     baseTas = Mos.dependenciesFromMap $ Map.fromList [(Root, rootTypeName)]
-    unvalidatedBaseVs = Valuespace baseTree baseDefs baseTas
-    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
-      vsTree unvalidatedBaseVs
 
 getTypeAssignment :: MonadFail m => DefMap -> Path -> m TypeName
 getTypeAssignment defs thePath = lookupDef rootTypeName defs >>= go thePath
