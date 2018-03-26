@@ -28,6 +28,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
+import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -166,38 +167,43 @@ validatePath vs p = undefined -- do
     -- t <- note "Missing tree node" $ Tree.treeLookup p $ vsTree vs
     -- validateRoseTreeNode def t
 
+type RefTypeClaims = Mos TypeName Path
+type TypeClaimsByPath = Map Path (Either RefTypeClaims (Map TpId RefTypeClaims))
+
 validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
   -> Either (Map (ErrorIndex TypeName) [Text]) (Map Path TypeName, Valuespace)
-validateVs =
-    inner mempty .
     -- As the root type is dynamic we always treat it as if it has been
     -- redefined:
-    Map.insert Root Nothing
+validateVs t v = do
+    (newTypeAssns, refClaims, vs) <-
+      inner mempty mempty (Map.insert Root Nothing t) v
+    smashErrMap $
+      Map.mapWithKey (checkRefsAtPath (vsTree vs) (vsTyDefs vs)) refClaims
+    return (newTypeAssns, vs)
   where
     errP p = first (Map.singleton (PathError p) . pure . Text.pack)
     tLook p = maybe (Left $ Map.singleton (PathError p) ["not found"]) Right .
       Tree.treeLookup p
-    translateErrorMap
-      :: Path -> Map (Maybe TpId) [Either String ()]
+    errIf m = unless (null m) $ Left m
+    smashErrMap = errIf . Mol.unions . lefts . Map.elems
     changed :: Eq a => a -> a -> Maybe a
     changed a1 a2 | a1 == a2 = Nothing
                   | otherwise = Just a2
+    checkRefsAtPath
+      :: RoseTree [WireValue] -> DefMap -> Path
+      -> Either RefTypeClaims (Map TpId RefTypeClaims)
       -> Either (Map (ErrorIndex TypeName) [Text]) ()
-    translateErrorMap path m =
+    checkRefsAtPath tree defs path refClaims =
       let
-        idx = maybe (PathError path) (TimePointError path)
-        m' = Map.filter (not . null) $ Map.mapKeys idx $
-          fmap Text.pack . lefts <$> m
+        doCheck eidx = first (Map.singleton eidx . pure @[] . Text.pack) .
+          mapM_ (uncurry $ checkRef tree defs) . Mos.toList
       in
-        unless (null m') $ Left m'
-    checkRefs
-      :: Path -> RoseTree [WireValue] -> DefMap
-      -> Map (Maybe TpId) (Mos TypeName Path)
-      -> Either (Map (ErrorIndex TypeName) [Text]) ()
-    checkRefs path tree defs refs =
-      translateErrorMap path $
-      fmap (uncurry $ checkRef tree defs) . Mos.toList <$> refs
+        either
+          (doCheck $ PathError path)
+          (smashErrMap .
+           Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
+          refClaims
     checkRef
       :: MonadFail m => RoseTree [WireValue] -> DefMap -> TypeName -> Path
       -> m ()
@@ -212,22 +218,23 @@ validateVs =
     -- then we should probably stop, but if we just encouter bad data, we should
     -- probably just capture the error and continue.
     inner
-      :: Map Path TypeName -> Map Path (Maybe (Set TpId)) -> Valuespace
+      :: Map Path TypeName
+      -> TypeClaimsByPath
+      -> Map Path (Maybe (Set TpId)) -> Valuespace
       -> Either (Map (ErrorIndex TypeName) [Text])
-           (Map Path TypeName, Valuespace)
-    inner newTas tainted vs@(Valuespace tree defs oldTyAssns) =
+           (Map Path TypeName, TypeClaimsByPath, Valuespace)
+    inner newTas refClaims tainted vs@(Valuespace tree defs oldTyAssns) =
       case Map.toAscList tainted of
-        [] -> return (newTas, vs)
+        [] -> return (newTas, refClaims, vs)
         ((path, invalidatedTps):_) -> do
           def <- errP path $ defForPath path vs
           rtn <- tLook path tree
-          refs <- errP path $ validateRoseTreeNode def rtn -- invalidatedTps
-          checkRefs path tree defs refs
-          let newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                (\name _ -> defDispatch (childTypeFor name) def) $
-                treeChildren rtn
+          newRefClaims <- errP path $ validateRoseTreeNode def rtn -- invalidatedTps
           let oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                 (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
+                treeChildren rtn
+          let newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+                (\name _ -> defDispatch (childTypeFor name) def) $
                 treeChildren rtn
           let changedChildTypes = merge
                 dropMissing preserveMissing
@@ -236,6 +243,7 @@ validateVs =
           let changedChildPaths = Map.mapKeys (path :/) changedChildTypes
           inner
             (newTas <> changedChildPaths)
+            (Map.insert path newRefClaims refClaims)
             (Map.delete path $
                tainted <> fmap (const Nothing) changedChildPaths)
             (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
@@ -297,27 +305,32 @@ processToRelayClientDigest reords dd vs =
     foldl (Map.unionWith (<>)) updateErrs [
       validationErrs, cannotErrs, mustErrs]
 
-validateRoseTreeNode :: MonadFail m => Definition -> RoseTree [WireValue] -> m (Map (Maybe TpId) (Mos TypeName Path))
+validateRoseTreeNode
+  :: MonadFail m
+  => Definition -> RoseTree [WireValue]
+  -> m (Either RefTypeClaims (Map TpId RefTypeClaims))
 validateRoseTreeNode def t = case t of
   RtEmpty -> fail "Empty node"
   RtConstData _ wvs -> case def of
     TupleDef (TupleDefinition _ alTreeTypes _) ->
-      Map.singleton Nothing <$> validateWireValues (alValues alTreeTypes) wvs
+      Left <$> validateWireValues (alValues alTreeTypes) wvs
     _ -> fail "Unexpected constant value!"
   RtDataSeries m -> case def of
     TupleDef (TupleDefinition _ alTreeTypes _) ->
-      sequence $
-      fmap (validateWireValues (alValues alTreeTypes) . snd . snd) $
-      Map.mapKeys Just $ Dkmap.valueMap m
+      fmap Right $
+      mapM (validateWireValues (alValues alTreeTypes) . snd . snd) $
+      Dkmap.valueMap m
     _ -> fail "Unexpected time series data!"
   RtContainer alCont -> case def of
     TupleDef _ -> fail "Y'all have a container where you wanted data"
-    StructDef (StructDefinition _ alDef) -> return mempty
-    ArrayDef _ -> return mempty
+    StructDef (StructDefinition _ alDef) -> return $ Left mempty
+    ArrayDef _ -> return $ Left mempty
 
-validateWireValues :: MonadFail m => [TreeType] -> [WireValue] -> m (Mos TypeName Path)
+validateWireValues
+  :: MonadFail m => [TreeType] -> [WireValue] -> m RefTypeClaims
 validateWireValues tts wvs =
-    (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs) >>= sequence >>= return . Mos.fromList . mconcat
+    (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs)
+    >>= sequence >>= return . Mos.fromList . mconcat
   where
     vr tt wv = validate tt wv >> return (extractTypeAssertion tt wv)
 
