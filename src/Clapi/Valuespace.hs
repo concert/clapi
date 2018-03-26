@@ -48,7 +48,8 @@ import Clapi.Types.Definitions
   , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor
   , childTypeFor)
 import Clapi.Types.Digests
-  (DefOp(..), ContainerOps, DataDigest, TrpDigest(..), trpdRemovedPaths)
+  ( DefOp(..), ContainerOps, DataChange(..), DataDigest, TrpDigest(..)
+  , trpdRemovedPaths)
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
@@ -265,9 +266,10 @@ processToRelayProviderDigest trpd vs =
       trpdDefinitions trpd
     qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
     qCops = Map.mapKeys (ns :</) $ trpdContainerOps trpd
-    -- FIXME: make the function for reporting time point changes in place of
-    -- `const Nothing`
-    updatedPaths = fmap (const Nothing) $ alToMap qData
+    classifyDc :: DataChange -> Maybe (Set TpId)
+    classifyDc (ConstChange {}) = Nothing
+    classifyDc (TimeChange m) = Just $ Map.keysSet m
+    updatedPaths = fmap classifyDc $ alToMap qData
     (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
     defs' =
       let
