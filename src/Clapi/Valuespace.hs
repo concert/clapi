@@ -48,8 +48,8 @@ import Clapi.Types.Definitions
   , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor
   , childTypeFor)
 import Clapi.Types.Digests
-  ( DefOp(..), ContainerOps, DataChange(..), DataDigest, TrpDigest(..)
-  , trpdRemovedPaths)
+  ( DefOp(..), isUndef, ContainerOps, DataChange(..), isRemove, DataDigest
+  , TrpDigest(..), trpdRemovedPaths)
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
@@ -286,10 +286,6 @@ processToRelayProviderDigest trpd vs =
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
       Valuespace tree' defs' $ vsTyAssns vs
     return (updatedTypes, vs')
-  where
-    isUndef :: DefOp -> Bool
-    isUndef OpUndefine = True
-    isUndef _ = False
 
 processToRelayClientDigest
   :: ContainerOps -> DataDigest -> Valuespace -> Map Path [Text]
