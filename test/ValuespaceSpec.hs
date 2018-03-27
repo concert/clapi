@@ -135,10 +135,25 @@ spec = do
         vsAppliesCleanly (validVersionTypeChange baseValuespace) baseValuespace
         :: Either String Valuespace)
       `shouldSatisfy` isRight
-    it "xref" $ do
+    it "xref referee type change errors" $ do
       -- Change the type of the instance referenced in a cross reference
       vs <- vsWithXRef
       vsProviderErrorsOn vs (validVersionTypeChange vs) [Root :/ apiNs :/ refSeg]
+    it "xref old references do not error" $ do
+      vs <- vsWithXRef
+      -- Add another version
+      let v2s = [segq|v2|]
+      let v2ApiDef = redefApiRoot (alInsert v2s $ TypeName apiNs [segq|version|]) vs
+      let v2Val = alSingleton (Root :/ v2s) $ ConstChange Nothing [WireValue @Word32 1, WireValue @Word32 2, WireValue @Int32 3]
+      vs' <- vsAppliesCleanly (TrpDigest apiNs (Map.singleton apiNs $ OpDefine v2ApiDef) v2Val mempty mempty) vs
+      -- Update the ref to point at new version
+      vs'' <- vsAppliesCleanly
+        (TrpDigest apiNs mempty
+          (alSingleton (Root :/ refSeg)
+           $ ConstChange Nothing [WireValue $ Path.toText [pathq|/api/v2|]])
+          mempty mempty)
+        vs'
+      (vsAppliesCleanly (validVersionTypeChange vs'') vs'' :: Either String Valuespace) `shouldSatisfy` isRight
     it "Array" $
       let
         ars = [segq|arr|]

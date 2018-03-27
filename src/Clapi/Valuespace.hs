@@ -212,29 +212,10 @@ partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
       (Just . Map.alter (Just . Just . maybe (Set.singleton tpid) (Set.insert tpid) . maybe Nothing id) referer . maybe mempty id)
       referee
       acc
-    preExistingXrefs = xrefDifference oldXrefs newXrefs
-
-xrefDifference :: Xrefs -> Xrefs -> Xrefs
-xrefDifference = merge
-    preserveMissing
-    dropMissing
-    (zipWithMaybeMatched $ \k a b -> nonEmptyMap $ refererMapDifference a b)
-  where
-    nonEmptyMap m = if null m then Nothing else Just m
-    refererMapDifference = merge
-      preserveMissing
-      dropMissing
-      (zipWithMaybeMatched mTpidsDifference)
-    mTpidsDifference _ ma mb = case mb of
-      Nothing -> Nothing
-      Just sb -> case ma of
-        Nothing -> Just Nothing
-        Just sa ->
-          let
-            newS = Set.difference sa sb
-          in if null newS
-            then Nothing
-            else Just $ Just newS
+    preExistingXrefs = Map.foldlWithKey removeOldXrefs oldXrefs claims
+    removeOldXrefs acc referrer claimEither = case claimEither of
+      Left _ -> removeXrefs referrer acc
+      Right rtcm -> removeXrefsTps referrer (Map.keysSet rtcm) acc
 
 xrefUnion :: Xrefs -> Xrefs -> Xrefs
 xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
