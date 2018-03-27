@@ -18,8 +18,8 @@ import Clapi.Types.AssocList
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty)
 import Clapi.Types.Messages
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern (:/))
+import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (WireValue)
 
 data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq)
@@ -45,6 +45,12 @@ data TrpDigest = TrpDigest
 
 trpDigest :: Seg -> TrpDigest
 trpDigest ns = TrpDigest ns mempty alEmpty mempty mempty
+
+trpdRemovedPaths :: TrpDigest -> [Path]
+trpdRemovedPaths (TrpDigest _ _ _ cOps _) = Map.foldlWithKey f [] cOps
+  where
+    f acc p segMap = acc ++
+      (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg

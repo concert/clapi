@@ -1,6 +1,9 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 
-module Clapi.Types.SequenceOps (SequenceOp(..), updateUniqList, presentAfter) where
+module Clapi.Types.SequenceOps
+  ( SequenceOp(..), isSoAbsent
+  , updateUniqList, presentAfter
+  ) where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
@@ -23,6 +26,11 @@ data SequenceOp i
   = SoPresentAfter (Maybe i)
   | SoAbsent
   deriving (Show, Eq)
+
+isSoAbsent :: SequenceOp i -> Bool
+isSoAbsent so = case so of
+  SoAbsent -> True
+  _ -> False
 
 updateUniqList
   :: (Eq i, Ord i, Show i, MonadFail m)
