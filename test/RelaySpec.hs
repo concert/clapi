@@ -15,8 +15,6 @@ import qualified Data.Map as Map
 import Data.Word
 import Data.Maybe (fromJust)
 
-import qualified Data.Map.Mos as Mos
-
 import Clapi.TH
 import Clapi.Protocol (waitThenRevOnly, sendFwd, runEffect, (<<->))
 import Clapi.Relay (relay)
@@ -24,16 +22,15 @@ import Clapi.Tree (treeInsert, RoseTree(RtConstData))
 import Clapi.Types.AssocList (alEmpty, alSingleton, alFromList)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
-  (Definition(..), structDef, tupleDef, Liberty(..))
+  (structDef, tupleDef, Liberty(..))
 import Clapi.Types.Digests
-  ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest, FrpErrorDigest(..)
+  ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest
   , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..), OutboundClientDigest(..)
   , outboundClientDigest, TrprDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/))
 import Clapi.Types.Tree (ttWord32, unbounded)
-import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
   ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)
