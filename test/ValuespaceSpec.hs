@@ -33,7 +33,7 @@ import Clapi.Types
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
 import Clapi.Valuespace (Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest, apiNs)
-import Clapi.Tree (treePaths)
+import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTree(RtEmpty))
 
@@ -130,6 +130,20 @@ spec = do
             apiNs (Map.singleton [segq|version|] $ OpDefine newDef) alEmpty mempty
             mempty
       in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
+    it "should only re-validate data that has been marked as invalid" $
+      let
+        p = [pathq|/api/version|]
+        badVs = baseValuespace {
+          vsTree = snd $ updateTreeWithDigest mempty
+            (alSingleton p $ ConstChange Nothing []) $
+            vsTree baseValuespace}
+        invalidatedPaths = Map.singleton p Nothing
+      in do
+        -- Validation without specifying the change should miss the bad data:
+        either (error . show) snd (validateVs mempty badVs) `shouldBe` badVs
+        -- Validation explicitly asking to revalidate the change should fail:
+        either id (error . show) (validateVs invalidatedPaths badVs)
+          `shouldSatisfy` (not . null)
     it "can change the version type" $
       (
         vsAppliesCleanly (validVersionTypeChange baseValuespace) baseValuespace

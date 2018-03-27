@@ -285,7 +285,8 @@ validateVs t v = do
         ((path, invalidatedTps):_) -> do
           def <- errP path $ defForPath path vs
           rtn <- tLook path tree
-          pathRefClaims <- errP path $ validateRoseTreeNode def rtn -- invalidatedTps
+          pathRefClaims <- errP path $
+            validateRoseTreeNode def rtn invalidatedTps
           let oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                 (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
                 treeChildren rtn
@@ -365,9 +366,9 @@ processToRelayClientDigest reords dd vs =
 
 validateRoseTreeNode
   :: MonadFail m
-  => Definition -> RoseTree [WireValue]
+  => Definition -> RoseTree [WireValue] -> Maybe (Set TpId)
   -> m (Either RefTypeClaims (Map TpId RefTypeClaims))
-validateRoseTreeNode def t = case t of
+validateRoseTreeNode def t invalidatedTps = case t of
   RtEmpty -> fail "Empty node"
   RtConstData _ wvs -> case def of
     TupleDef (TupleDefinition _ alTreeTypes _) ->
@@ -375,9 +376,12 @@ validateRoseTreeNode def t = case t of
     _ -> fail "Unexpected constant value!"
   RtDataSeries m -> case def of
     TupleDef (TupleDefinition _ alTreeTypes _) ->
-      fmap Right $
-      mapM (validateWireValues (alValues alTreeTypes) . snd . snd) $
-      Dkmap.valueMap m
+      let toValidate = case invalidatedTps of
+            Nothing -> Dkmap.valueMap m
+            Just tpids -> Map.restrictKeys (Dkmap.valueMap m) tpids
+      in
+        fmap Right $
+        mapM (validateWireValues (alValues alTreeTypes) . snd . snd) toValidate
     _ -> fail "Unexpected time series data!"
   RtContainer alCont -> case def of
     TupleDef _ -> fail "Y'all have a container where you wanted data"
