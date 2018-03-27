@@ -56,8 +56,8 @@ genInitDigest ps tns vs =
   let
     rtns = Map.fromSet (flip valuespaceGet vs) ps
     (tnErrs, defs) = mapPartitionEither $ Map.fromSet (flip vsLookupDef vs) tns
-    initialOcd = OutboundClientDigest
-      mempty (OpDefine <$> defs) mempty alEmpty (pure . Text.pack <$> Map.mapKeys TypeError tnErrs)
+    initialOcd = OutboundClientDigest mempty (OpDefine <$> defs) mempty alEmpty
+      (pure . Text.pack <$> Map.mapKeys TypeError tnErrs)
   in
     Map.foldlWithKey go initialOcd rtns
   where
@@ -65,19 +65,24 @@ genInitDigest ps tns vs =
       :: OutboundClientInitialisationDigest -> Path
       -> Either String (Definition, TypeName, Liberty, RoseTreeNode [WireValue])
       -> OutboundClientInitialisationDigest
-    go d p (Left errStr) = d{ocdErrors =
-      Map.unionWith (<>) (ocdErrors d) (Map.singleton (PathError p) [Text.pack errStr])}
+    go d p (Left errStr) = d {
+        ocdErrors = Map.unionWith (<>) (ocdErrors d)
+          (Map.singleton (PathError p) [Text.pack errStr])
+      }
     go d p (Right (def, tn, lib, rtn)) =
       let
-        d' = d{
+        d' = d {
           ocdDefinitions = Map.insert tn (OpDefine def) (ocdDefinitions d),
           ocdTypeAssignments = Map.insert p (tn, lib) (ocdTypeAssignments d)}
       in case rtn of
         RtnEmpty -> error "Valid tree should not contain empty nodes, but did"
-        RtnChildren kidsAl -> let (kidSegs, kidAtts) = unzip $ unAssocList kidsAl in
-          d'{ocdContainerOps = Map.insert p
-            (Map.fromList $ zipWith3 (\s a att -> (s, (att, SoPresentAfter a))) kidSegs
-               (Nothing : (Just <$> kidSegs)) kidAtts)
+        RtnChildren kidsAl ->
+          let (kidSegs, kidAtts) = unzip $ unAssocList kidsAl in
+          d' {
+            ocdContainerOps = Map.insert p
+              (Map.fromList $ zipWith3
+                (\s a att -> (s, (att, SoPresentAfter a)))
+                kidSegs (Nothing : (Just <$> kidSegs)) kidAtts)
             (ocdContainerOps d')
           }
         RtnConstData att vals -> d'{ocdData =
@@ -101,9 +106,10 @@ relay vs = waitThenFwdOnly fwd
           sendRev (i, Ocd $ OutboundClientDigest
             -- FIXME: Attributing revocation to nobody!
             (Map.singleton Root $ Map.singleton ns (Nothing, SoAbsent))
-            (Map.insert
-              rootTypeName (OpDefine $ fromJust $ vsLookupDef rootTypeName vs') $
-              (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $ Map.findWithDefault mempty ns $ vsTyDefs vs))
+            (Map.insert rootTypeName
+              (OpDefine $ fromJust $ vsLookupDef rootTypeName vs') $
+              (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $
+                 Map.findWithDefault mempty ns $ vsTyDefs vs))
             mempty alEmpty mempty)
           relay vs'
       where
@@ -122,9 +128,13 @@ relay vs = waitThenFwdOnly fwd
             contOps' = vsMinimiseReords contOps vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
             qDefs = Map.mapKeys (TypeName ns) defs'
-            qDefs' = if shouldPubRoot then Map.insert rootTypeName (OpDefine rootDef) qDefs else qDefs
+            qDefs' = if shouldPubRoot
+              then Map.insert rootTypeName (OpDefine rootDef) qDefs
+              else qDefs
             qContOps = Map.mapKeys (ns :</) contOps'
-            qContOps' = if shouldPubRoot then Map.insert Root (nsContOp rootDef) qContOps else qContOps
+            qContOps' = if shouldPubRoot
+              then Map.insert Root (nsContOp rootDef) qContOps
+              else qContOps
             mungedTas = Map.mapWithKey
               (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
           in do
@@ -135,10 +145,12 @@ relay vs = waitThenFwdOnly fwd
                 qDefs'
                 mungedTas dd' errs')
             relay vs'
-        handleClientDigest (InboundClientDigest gets typeGets reords dd) errMap =
+        handleClientDigest
+            (InboundClientDigest gets typeGets reords dd) errMap =
           let
             dd' = alFilterKey (\k -> not $ Map.member k errMap) dd
-            reords' = Map.filterWithKey (\k _ -> not $ Map.member k errMap) reords
+            reords' = Map.filterWithKey
+              (\k _ -> not $ Map.member k errMap) reords
             dd'' = vsMinimiseDataDigest dd' vs
             reords'' = vsMinimiseReords reords' vs
             -- FIXME: above uses errors semantically and shouldn't (thus throws

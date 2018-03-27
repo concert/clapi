@@ -25,8 +25,8 @@ import Clapi.Types.Definitions
   (structDef, tupleDef, Liberty(..))
 import Clapi.Types.Digests
   ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest
-  , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..), OutboundClientDigest(..)
-  , outboundClientDigest, TrprDigest(..))
+  , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
+  , OutboundClientDigest(..), outboundClientDigest, TrprDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/))
@@ -59,7 +59,8 @@ spec = describe "the relay protocol" $ do
             ]
           , ocdTypeAssignments = Map.insert
             [pathq|/foo|] (TypeName foo foo, Cannot) mempty
-          , ocdContainerOps = Map.singleton Root $ Map.singleton foo (Nothing, SoPresentAfter (Just apiNs))
+          , ocdContainerOps = Map.singleton Root $
+              Map.singleton foo (Nothing, SoPresentAfter (Just apiNs))
           }
         test = do
           sendFwd ((), inDig)
@@ -80,7 +81,8 @@ spec = describe "the relay protocol" $ do
                 vsLookupDef rootTypeName baseValuespace)
             , (TypeName foo foo, OpUndefine)
             ]
-          , ocdContainerOps = Map.singleton Root $ Map.singleton foo (Nothing, SoAbsent)
+          , ocdContainerOps = Map.singleton Root $
+              Map.singleton foo (Nothing, SoAbsent)
           }
         test = do
           sendFwd ((), Iprd $ TrprDigest foo)
@@ -93,7 +95,8 @@ spec = describe "the relay protocol" $ do
           { ocdErrors = Map.singleton (PathError p) ["Path not found"]
           }
         test = do
-          sendFwd ((), Icd $ InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
+          sendFwd ((), Icd $
+            InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay baseValuespace
     it "should respond sensibly to data changes" $
@@ -110,7 +113,9 @@ spec = describe "the relay protocol" $ do
         dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
         test = do
             sendFwd ((), Ipd $ (trpDigest foo) {trpdData = dd})
-            waitThenRevOnly $ lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = dd})) . snd
+            waitThenRevOnly $
+              lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = dd})) .
+              snd
       in runEffect $ test <<-> relay vsWithInt
 
   where

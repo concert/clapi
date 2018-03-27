@@ -193,7 +193,8 @@ validatePath vs p = undefined -- do
     -- validateRoseTreeNode def t
 
 type RefTypeClaims = Mos TypeName Referee
-type TypeClaimsByPath = Map Referer (Either RefTypeClaims (Map TpId RefTypeClaims))
+type TypeClaimsByPath =
+  Map Referer (Either RefTypeClaims (Map TpId RefTypeClaims))
 
 partitionXrefs :: Xrefs -> TypeClaimsByPath -> (Xrefs, Xrefs)
 partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
@@ -206,9 +207,13 @@ partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
       Right rtcm -> Map.foldlWithKey (addRefererWithTpid referer) acc rtcm
     addReferer referer acc referee = Map.alter
       (Just . Map.insert referer Nothing . maybe mempty id) referee acc
-    addRefererWithTpid referer acc tpid rtcs = foldl (addRefererWithTpid' referer tpid) acc $ mosValues rtcs
+    addRefererWithTpid referer acc tpid rtcs =
+      foldl (addRefererWithTpid' referer tpid) acc $ mosValues rtcs
     addRefererWithTpid' referer tpid acc referee = Map.alter
-      (Just . Map.alter (Just . Just . maybe (Set.singleton tpid) (Set.insert tpid) . maybe Nothing id) referer . maybe mempty id)
+      (Just . Map.alter
+        (Just . Just . maybe (Set.singleton tpid) (Set.insert tpid) .
+          maybe Nothing id)
+        referer . maybe mempty id)
       referee
       acc
     preExistingXrefs = Map.foldlWithKey removeOldXrefs oldXrefs claims
@@ -418,7 +423,8 @@ validateExistingXrefs xrs newTas =
     refererErrors referee acc referer mTpids = case mTpids of
       Nothing -> Map.insert (PathError referer) (errText referee) acc
       Just tpids -> Set.foldl
-        (\acc' tpid -> Map.insert (TimePointError referer tpid) (errText referee) acc')
+        (\acc' tpid ->
+           Map.insert (TimePointError referer tpid) (errText referee) acc')
         acc tpids
     refereeErrs acc referee refererMap =
       Map.foldlWithKey (refererErrors referee) acc refererMap
