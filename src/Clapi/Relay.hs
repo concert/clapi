@@ -34,7 +34,7 @@ import Clapi.Tree (RoseTreeNode(..), TimeSeries)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupDef
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
-  , getLiberty, rootTypeName, lookupDef)
+  , getLiberty, rootTypeName)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
 
 mapPartitionJust :: Map k (Maybe a) -> (Map k a, Set k)
@@ -102,7 +102,7 @@ relay vs = waitThenFwdOnly fwd
             -- FIXME: Attributing revocation to nobody!
             (Map.singleton Root $ Map.singleton ns (Nothing, SoAbsent))
             (Map.insert
-              rootTypeName (OpDefine $ fromJust $ lookupDef rootTypeName $ vsTyDefs vs') $
+              rootTypeName (OpDefine $ fromJust $ vsLookupDef rootTypeName vs') $
               (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $ Map.findWithDefault mempty ns $ vsTyDefs vs))
             mempty alEmpty mempty)
           relay vs'
@@ -113,7 +113,7 @@ relay vs = waitThenFwdOnly fwd
             shouldPubRoot =
               Map.member ns defs &&
               Map.notMember ns (vsTyDefs vs)
-            rootDef = fromJust $ lookupDef rootTypeName $ vsTyDefs vs'
+            rootDef = fromJust $ vsLookupDef rootTypeName vs'
             nsContOp (StructDef (StructDefinition _ kids)) = Map.singleton ns
               (Nothing, SoPresentAfter $ presentAfter ns $ alKeys kids)
             nsContOp _ = error "Root def not a struct WTAF"

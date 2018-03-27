@@ -7,7 +7,15 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Clapi.Valuespace where
+module Clapi.Valuespace
+  ( Valuespace, vsTree, vsTyDefs
+  , baseValuespace
+  , vsLookupDef, valuespaceGet, getLiberty
+  , apiNs, rootTypeName, apiTypeName
+  , processToRelayProviderDigest, processToRelayClientDigest
+  , validateVs, unsafeValidateVs
+  , vsRelinquish
+  ) where
 
 import Prelude hiding (fail)
 import Control.Applicative ((<|>))
@@ -41,7 +49,7 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
-  ( alKeysSet, alValues, alLookup, alFromMap, alSingleton, alCons
+  ( alKeysSet, alValues, alLookup, alFromMap, alSingleton
   , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
@@ -70,10 +78,6 @@ data Valuespace = Valuespace
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
   } deriving (Eq, Show)
-
-type XrefMos = Mos Referee Referer
-vsXrefMos :: Valuespace -> XrefMos
-vsXrefMos = fmap Map.keysSet . vsXrefs
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
 removeTamSubtree tam p = Mos.filterDependencies (`Path.isChildOf` p) tam
@@ -108,11 +112,6 @@ versionDef = TupleDefinition "The version of CLAPI" (unsafeMkAssocList
   , ([segq|minor|], ttWord32 unbounded)
   , ([segq|revision|], ttInt32 unbounded)
   ]) ILUninterpolated
-
-rootDefAddChild :: MonadFail m => Seg -> StructDefinition -> m StructDefinition
-rootDefAddChild ns sd = do
-  newTys <- alCons ns (TypeName ns ns, Cannot) $ strDefTypes sd
-  return $ sd {strDefTypes = newTys}
 
 -- | Fully revalidates the given Valuespace and throws an error if there are any
 --   validation issues.

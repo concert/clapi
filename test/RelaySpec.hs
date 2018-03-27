@@ -36,8 +36,8 @@ import Clapi.Types.Tree (ttWord32, unbounded)
 import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
-  ( baseValuespace, unsafeValidateVs, apiNs, vsTyAssns, Valuespace(..)
-  , rootTypeName, lookupDef)
+  ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)
+  , rootTypeName, vsLookupDef)
 
 spec :: Spec
 spec = describe "the relay protocol" $ do
@@ -79,7 +79,8 @@ spec = describe "the relay protocol" $ do
           }
         expectedOutDig = Ocd $ outboundClientDigest
           { ocdDefinitions = Map.fromList
-            [ (rootTypeName, OpDefine $ fromJust $ lookupDef rootTypeName $ vsTyDefs baseValuespace)
+            [ (rootTypeName, OpDefine $ fromJust $
+                vsLookupDef rootTypeName baseValuespace)
             , (TypeName foo foo, OpUndefine)
             ]
           , ocdContainerOps = Map.singleton Root $ Map.singleton foo (Nothing, SoAbsent)
