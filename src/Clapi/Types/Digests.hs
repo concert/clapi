@@ -25,8 +25,17 @@ import Clapi.Types.Wire (WireValue)
 data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq)
 data DefOp = OpDefine {odDef :: Definition} | OpUndefine deriving (Show, Eq)
 
+isUndef :: DefOp -> Bool
+isUndef OpUndefine = True
+isUndef _ = False
+
 data TimeSeriesDataOp =
   OpSet Time [WireValue] Interpolation | OpRemove deriving (Show, Eq)
+
+isRemove :: TimeSeriesDataOp -> Bool
+isRemove OpRemove = True
+isRemove _ = False
+
 data DataChange
   = ConstChange (Maybe Attributee) [WireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))

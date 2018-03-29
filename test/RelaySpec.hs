@@ -15,8 +15,6 @@ import qualified Data.Map as Map
 import Data.Word
 import Data.Maybe (fromJust)
 
-import qualified Data.Map.Mos as Mos
-
 import Clapi.TH
 import Clapi.Protocol (waitThenRevOnly, sendFwd, runEffect, (<<->))
 import Clapi.Relay (relay)
@@ -24,18 +22,19 @@ import Clapi.Tree (treeInsert, RoseTree(RtConstData))
 import Clapi.Types.AssocList (alEmpty, alSingleton, alFromList)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
-  (Definition(..), structDef, tupleDef, Liberty(..))
+  (structDef, tupleDef, Liberty(..))
 import Clapi.Types.Digests
-  ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest, FrpErrorDigest(..)
-  , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..), OutboundClientDigest(..)
-  , outboundClientDigest, TrprDigest(..))
+  ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest
+  , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
+  , OutboundClientDigest(..), outboundClientDigest, TrprDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/))
 import Clapi.Types.Tree (ttWord32, unbounded)
-import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.Types.Wire (WireValue(..))
-import Clapi.Valuespace (baseValuespace, apiNs, vsTyAssns, Valuespace(..), rootTypeName, lookupDef)
+import Clapi.Valuespace
+  ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)
+  , rootTypeName, vsLookupDef)
 
 spec :: Spec
 spec = describe "the relay protocol" $ do
@@ -58,11 +57,10 @@ spec = describe "the relay protocol" $ do
             [ (TypeName foo foo, OpDefine fooDef)
             , (TypeName apiNs [segq|root|], OpDefine extendedRootDef)
             ]
-          -- FIXME: Should only get changed type assignments
           , ocdTypeAssignments = Map.insert
-            [pathq|/foo|] (TypeName foo foo, Cannot)
-            (fmap (,Cannot) $ fst $ vsTyAssns baseValuespace)
-          , ocdContainerOps = Map.singleton Root $ Map.singleton foo (Nothing, SoPresentAfter (Just apiNs))
+            [pathq|/foo|] (TypeName foo foo, Cannot) mempty
+          , ocdContainerOps = Map.singleton Root $
+              Map.singleton foo (Nothing, SoPresentAfter (Just apiNs))
           }
         test = do
           sendFwd ((), inDig)
@@ -70,18 +68,21 @@ spec = describe "the relay protocol" $ do
       in runEffect $ test <<-> relay baseValuespace
     it "should send root info on revoke" $
       let
-        fooP = Root :/ foo
-        vsWithStuff = Valuespace
-          (treeInsert bob fooP (RtConstData bob []) $ vsTree baseValuespace)
-          -- FIXME: This should probably have updated the root def to include the foo NS
-          (Map.insert foo (Map.singleton foo $ tupleDef "Thing" alEmpty ILUninterpolated) $ vsTyDefs baseValuespace)
-          (Mos.setDependency fooP (TypeName foo foo) $ vsTyAssns baseValuespace)
+        vsWithStuff = unsafeValidateVs $ baseValuespace
+          { vsTree = treeInsert bob fooP (RtConstData bob []) $
+              vsTree baseValuespace
+          , vsTyDefs = Map.insert foo
+              (Map.singleton foo $ tupleDef "Thing" alEmpty ILUninterpolated) $
+              vsTyDefs baseValuespace
+          }
         expectedOutDig = Ocd $ outboundClientDigest
           { ocdDefinitions = Map.fromList
-            [ (rootTypeName, OpDefine $ fromJust $ lookupDef rootTypeName $ vsTyDefs baseValuespace)
+            [ (rootTypeName, OpDefine $ fromJust $
+                vsLookupDef rootTypeName baseValuespace)
             , (TypeName foo foo, OpUndefine)
             ]
-          , ocdContainerOps = Map.singleton Root $ Map.singleton foo (Nothing, SoAbsent)
+          , ocdContainerOps = Map.singleton Root $
+              Map.singleton foo (Nothing, SoAbsent)
           }
         test = do
           sendFwd ((), Iprd $ TrprDigest foo)
@@ -94,9 +95,30 @@ spec = describe "the relay protocol" $ do
           { ocdErrors = Map.singleton (PathError p) ["Path not found"]
           }
         test = do
-          sendFwd ((), Icd $ InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
+          sendFwd ((), Icd $
+            InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay baseValuespace
+    it "should respond sensibly to data changes" $
+      let
+        vsWithInt = unsafeValidateVs $ baseValuespace
+          { vsTree = treeInsert bob fooP
+              (RtConstData bob [WireValue (3 :: Word32)]) $
+              vsTree baseValuespace
+          , vsTyDefs = Map.insert foo
+              (Map.singleton foo $ tupleDef "Thing"
+                (alSingleton foo $ ttWord32 unbounded) ILUninterpolated) $
+              vsTyDefs baseValuespace
+          }
+        dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
+        test = do
+            sendFwd ((), Ipd $ (trpDigest foo) {trpdData = dd})
+            waitThenRevOnly $
+              lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = dd})) .
+              snd
+      in runEffect $ test <<-> relay vsWithInt
+
   where
     foo = [segq|foo|]
+    fooP = Root :/ foo
     bob = Just "bob"
