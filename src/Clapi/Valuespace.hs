@@ -395,6 +395,7 @@ processToRelayClientDigest reords dd vs =
 data ValidationErr
   = GenericErr String
   | ProgrammingErr String
+  | BadNodeType String
   | MissingChild Seg
   | ExtraChild Seg
   | RefTargetNotFound Path
@@ -410,22 +411,22 @@ validateRoseTreeNode
   :: Definition -> RoseTree [WireValue] -> Maybe (Set TpId)
   -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validateRoseTreeNode def t invalidatedTps = case t of
-  RtEmpty -> Left [GenericErr "Empty node"]
-  RtConstData _ wvs -> first pure $ fromMonadFail $ case def of
-    TupleDef (TupleDefinition _ alTreeTypes _) ->
+  RtEmpty -> Left [BadNodeType "Empty"]
+  RtConstData _ wvs -> case def of
+    TupleDef (TupleDefinition _ alTreeTypes _) -> first pure $ fromMonadFail $
       Left <$> validateWireValues (alValues alTreeTypes) wvs
-    _ -> fail "Unexpected constant value!"
-  RtDataSeries m -> first pure $ fromMonadFail $ case def of
+    _ -> Left [BadNodeType "Unexpected constant value!"]
+  RtDataSeries m -> case def of
     TupleDef (TupleDefinition _ alTreeTypes _) ->
       let toValidate = case invalidatedTps of
             Nothing -> Dkmap.valueMap m
             Just tpids -> Map.restrictKeys (Dkmap.valueMap m) tpids
-      in
+      in first pure $ fromMonadFail $
         fmap Right $
         mapM (validateWireValues (alValues alTreeTypes) . snd . snd) toValidate
-    _ -> fail "Unexpected time series data!"
+    _ -> Left [BadNodeType "Unexpected time series data!"]
   RtContainer alCont -> case def of
-    TupleDef _ -> Left [GenericErr "Y'all have a container where you wanted data"]
+    TupleDef _ -> Left [BadNodeType "Y'all have a container where you wanted data"]
     StructDef (StructDefinition _ alDef) -> if defSegs == rtnSegs
         then return $ Left mempty
         else Left $ fmap MissingChild missingSegs ++ fmap ExtraChild extraSegs
