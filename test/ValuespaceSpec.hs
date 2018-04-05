@@ -140,6 +140,15 @@ spec = do
             apiNs (Map.singleton [segq|version|] $ OpDefine newDef)
             alEmpty mempty mempty
       in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
+    it "rechecks on container ops" $
+      let
+        d = TrpDigest
+            apiNs
+            mempty
+            alEmpty
+            (Map.singleton Root $ Map.singleton [segq|version|] (Nothing, SoAbsent))
+            mempty
+      in vsProviderErrorsOn baseValuespace d [[pathq|/api|]]
     it "should only re-validate data that has been marked as invalid" $
       let
         p = [pathq|/api/version|]
