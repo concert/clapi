@@ -283,28 +283,40 @@ validateVs t v = do
     inner newTas newRefClaims tainted vs@(Valuespace tree _ oldTyAssns _) =
       case Map.toAscList tainted of
         [] -> return (newTas, newRefClaims, vs)
-        ((path, invalidatedTps):_) -> do
-          def <- errP path $ defForPath path vs
-          rtn <- tLook path tree
-          pathRefClaims <- errP path $
-            validateRoseTreeNode def rtn invalidatedTps
-          let oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
-                treeChildren rtn
-          let newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                (\name _ -> defDispatch (childTypeFor name) def) $
-                treeChildren rtn
-          let changedChildTypes = merge
-                dropMissing preserveMissing
-                (zipWithMaybeMatched $ const changed)
-                oldChildTypes newChildTypes
-          let changedChildPaths = Map.mapKeys (path :/) changedChildTypes
-          inner
-            (newTas <> changedChildPaths)
-            (Map.insert path pathRefClaims newRefClaims)
-            (Map.delete path $
-               tainted <> fmap (const Nothing) changedChildPaths)
-            (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
+        ((path, invalidatedTps):_) ->
+          case lookupTypeName path (vsTyAssns vs) of
+            -- When we don't have the type (and haven't bailed out) we know the
+            -- parent was implictly added by the rose tree and thus doesn't
+            -- appear in the taints, but because it was changed it should be
+            -- counted as such.
+            Nothing -> case path of
+              (parentPath :/ _) -> inner
+                newTas newRefClaims (Map.insert parentPath Nothing tainted)
+                vs
+              _ -> Left $ Map.singleton GlobalError
+                ["Attempted to taint parent of root"]
+            Just tn -> do
+              def <- errP path $ vsLookupDef tn vs
+              rtn <- tLook path tree
+              pathRefClaims <- errP path $
+                validateRoseTreeNode def rtn invalidatedTps
+              let oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+                    (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
+                    treeChildren rtn
+              let newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+                    (\name _ -> defDispatch (childTypeFor name) def) $
+                    treeChildren rtn
+              let changedChildTypes = merge
+                    dropMissing preserveMissing
+                    (zipWithMaybeMatched $ const changed)
+                    oldChildTypes newChildTypes
+              let changedChildPaths = Map.mapKeys (path :/) changedChildTypes
+              inner
+                (newTas <> changedChildPaths)
+                (Map.insert path pathRefClaims newRefClaims)
+                (Map.delete path $
+                   tainted <> fmap (const Nothing) changedChildPaths)
+                (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
 
 opsTouched :: ContainerOps -> DataDigest -> Map Path (Maybe (Set TpId))
 opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
