@@ -362,7 +362,7 @@ processToRelayClientDigest reords dd vs =
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
     vs' = vs {vsTree = tree'}
     touched = ddTouched dd <> fmap (const Nothing) reords
-    touchedLiberties = Map.fromSet (flip getLiberty vs) $ Map.keysSet touched
+    touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs) touched
     cannotErrs = const ["You touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties
     mustErrs = const ["You failed to provide a value for must"] <$>
