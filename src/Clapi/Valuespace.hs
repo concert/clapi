@@ -397,7 +397,16 @@ validateRoseTreeNode def t invalidatedTps = case t of
     _ -> fail "Unexpected time series data!"
   RtContainer alCont -> case def of
     TupleDef _ -> fail "Y'all have a container where you wanted data"
-    StructDef (StructDefinition _ alDef) -> return $ Left mempty
+    StructDef (StructDefinition _ alDef) -> if defSegs == rtnSegs
+        then return $ Left mempty
+        else fail $ "Children differ from def:" ++ segDiffStr
+      where
+        defSegs = alKeysSet alDef
+        rtnSegs = alKeysSet alCont
+        segsString c = concatMap $ ((" " ++ c) ++) . Text.unpack . Path.unSeg
+        missingSegs = Set.difference defSegs rtnSegs
+        extraSegs = Set.difference rtnSegs defSegs
+        segDiffStr = segsString "-" missingSegs ++ segsString "+" extraSegs
     ArrayDef _ -> return $ Left mempty
 
 validateWireValues
