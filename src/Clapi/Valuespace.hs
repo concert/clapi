@@ -367,8 +367,10 @@ processToRelayProviderDigest trpd vs =
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] ()
 validatePath vs p mTpids = do
     def <- first pure $ fromMonadFail $ defForPath p vs
-    t <- first pure $ fromMonadFail $ note "Missing tree node" $ Tree.treeLookup p $ vsTree vs
+    t <- maybe (Left [ProgrammingErr "Tainted but missing"]) Right $ Tree.treeLookup p $ vsTree vs
     claims <- validateRoseTreeNode def t mTpids
+    -- FIXME: The ref checking doesn't really belong here (hence the awful type
+    -- mashing)
     first pure $ fromMonadFail $ either (fail . show) return $ checkRefClaims (vsTyAssns vs) $ Map.singleton p claims
 
 processToRelayClientDigest
