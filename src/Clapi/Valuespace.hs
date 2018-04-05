@@ -219,8 +219,8 @@ xrefUnion :: Xrefs -> Xrefs -> Xrefs
 xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
 checkRefClaims
-  :: Valuespace -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims)) -> Either (Map (ErrorIndex TypeName) [ValidationErr]) ()
-checkRefClaims (Valuespace tree defs tyAssns _) refClaims = smashErrMap $ Map.mapWithKey checkRefsAtPath refClaims
+  :: TypeAssignmentMap -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims)) -> Either (Map (ErrorIndex TypeName) [ValidationErr]) ()
+checkRefClaims tyAssns refClaims = smashErrMap $ Map.mapWithKey checkRefsAtPath refClaims
   where
     errIf m = unless (null m) $ Left m
     smashErrMap = errIf . Mol.unions . lefts . Map.elems
@@ -230,7 +230,7 @@ checkRefClaims (Valuespace tree defs tyAssns _) refClaims = smashErrMap $ Map.ma
       -> Either (Map (ErrorIndex TypeName) [ValidationErr]) ()
     checkRefsAtPath path refClaims =
       let
-        doCheck eidx = first (Map.singleton eidx . pure @[] . GenericErr) .
+        doCheck eidx = first (Map.singleton eidx . pure @[]) .
           mapM_ (uncurry checkRef) . Mos.toList
       in
         either
@@ -238,13 +238,12 @@ checkRefClaims (Valuespace tree defs tyAssns _) refClaims = smashErrMap $ Map.ma
           (smashErrMap .
            Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
           refClaims
-    checkRef :: MonadFail m => TypeName -> Path -> m ()
-    checkRef requiredTn refP = do
-      actualTn <- getTypeAssignment defs refP
-      unless (actualTn == requiredTn) $
-        fail "Reference points to value of bad type"
-      maybe (fail "Reference to missing path") (const $ return ()) $
-        Tree.treeLookup refP tree
+    checkRef :: TypeName -> Path -> Either ValidationErr ()
+    checkRef requiredTn refP = case lookupTypeName refP tyAssns of
+        Nothing -> Left $ RefTargetNotFound refP
+        Just actualTn -> if actualTn == requiredTn
+            then Right ()
+            else Left $ RefTargetTypeErr refP actualTn requiredTn
 
 validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
@@ -254,7 +253,7 @@ validateVs t v = do
       -- As the root type is dynamic we always treat it as if it has been
       -- redefined:
       inner mempty mempty (Map.insert Root Nothing t) v
-    checkRefClaims vs refClaims
+    checkRefClaims (vsTyAssns vs) refClaims
     let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
     let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
     unless (null existingXrefErrs) $ Left existingXrefErrs
@@ -386,7 +385,7 @@ validatePath vs p mTpids = do
     def <- first pure $ fromMonadFail $ defForPath p vs
     t <- first pure $ fromMonadFail $ note "Missing tree node" $ Tree.treeLookup p $ vsTree vs
     claims <- validateRoseTreeNode def t mTpids
-    first pure $ fromMonadFail $ either (fail . show) return $ checkRefClaims vs $ Map.singleton p claims
+    first pure $ fromMonadFail $ either (fail . show) return $ checkRefClaims (vsTyAssns vs) $ Map.singleton p claims
 
 processToRelayClientDigest
   :: ContainerOps -> DataDigest -> Valuespace -> Map Path [Text]
@@ -414,6 +413,8 @@ data ValidationErr
   | ProgrammingErr String
   | MissingChild Seg
   | ExtraChild Seg
+  | RefTargetNotFound Path
+  | RefTargetTypeErr Path TypeName TypeName
   deriving (Show)
 
 fromMonadFail :: Either String a -> Either ValidationErr a
