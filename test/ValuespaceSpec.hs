@@ -196,8 +196,7 @@ spec = do
           apiNs
           (Map.fromList [(ars, OpDefine vaDef), (apiNs, OpDefine rootDef)])
           alEmpty
-          (Map.singleton Root $ Map.singleton ars $
-            (Nothing, SoPresentAfter Nothing))
+          mempty
           mempty
         badChild = TrpDigest
           apiNs

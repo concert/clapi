@@ -75,8 +75,7 @@ relayApiProto selfAddr =
              WireValue $ Path.toText $ selfSeg :</ selfClientPath])
         , (selfClientPath, ConstChange Nothing [WireValue @Float 0.0])
         ])
-      (Map.singleton Root $ Map.singleton [segq|owners|] $
-        (Nothing, SoPresentAfter $ Just [segq|clients|]))
+      mempty
       mempty
     rns = [segq|relay|]
     selfSeg = pathNameFor selfAddr
