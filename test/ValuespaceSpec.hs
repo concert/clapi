@@ -205,6 +205,14 @@ spec = do
             ConstChange Nothing [WireValue ("boo" :: Text)])
           mempty
           mempty
+        goodChild = TrpDigest
+          apiNs
+          mempty
+          (alSingleton [pathq|/arr/mehearties|] $
+            ConstChange Nothing [WireValue @Word32 3, WireValue @Word32 4, WireValue @Int32 3])
+          mempty
+          mempty
       in do
         vs <- vsAppliesCleanly emptyArrayD baseValuespace
         vsProviderErrorsOn vs badChild [[pathq|/api/arr/bad|]]
+        (vsAppliesCleanly goodChild vs :: Either String Valuespace) `shouldSatisfy` isRight

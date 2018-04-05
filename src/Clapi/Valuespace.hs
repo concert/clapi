@@ -283,51 +283,63 @@ validateVs t v = do
     inner newTas newRefClaims tainted vs@(Valuespace tree _ oldTyAssns _) =
       case Map.toAscList tainted of
         [] -> return (newTas, newRefClaims, vs)
-        ((path, invalidatedTps):_) -> do
-          def <- errP path $ defForPath path vs
-          rtn <- tLook path tree
-          case validateRoseTreeNode def rtn invalidatedTps of
-            Left validationErrs -> if null emptyArrays
-                then Left $ Map.singleton (PathError path) validationErrs
-                else inner newTas' newRefClaims tainted' vs'
-              where
-                emptyArrays = mapMaybe mHandlable validationErrs
-                isEmptyContainer d = case d of
-                    ArrayDef _ -> True
-                    StructDef (StructDefinition _ defKids) -> defKids == alEmpty
-                    _ -> False
-                mHandlable ve = case ve of
-                    MissingChild name -> do
-                      tn <- defDispatch (childTypeFor name) def
-                      cdef <- vsLookupDef tn vs
-                      if isEmptyContainer cdef
-                        then Just (name, tn)
-                        else Nothing
-                    _ -> Nothing
-                qEmptyArrays = first (path :/) <$> emptyArrays
-                newTas' = newTas <> Map.fromList qEmptyArrays
-                tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
-                att = Nothing  -- FIXME: who is this attributed to?
-                insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
-                vs' = vs {vsTree = foldl (\t (cp, _) -> insertEmpty cp t) tree qEmptyArrays}
-            Right pathRefClaims -> inner
-                  (newTas <> changedChildPaths)
-                  (Map.insert path pathRefClaims newRefClaims)
-                  (Map.delete path $
-                     tainted <> fmap (const Nothing) changedChildPaths)
-                  (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
-              where
-                oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                  (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
-                  treeChildren rtn
-                newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                  (\name _ -> defDispatch (childTypeFor name) def) $
-                  treeChildren rtn
-                changedChildTypes = merge
-                  dropMissing preserveMissing
-                  (zipWithMaybeMatched $ const changed)
-                  oldChildTypes newChildTypes
-                changedChildPaths = Map.mapKeys (path :/) changedChildTypes
+        ((path, invalidatedTps):_) ->
+          case lookupTypeName path (vsTyAssns vs) of
+            -- When we don't have the type (and haven't bailed out) we know the
+            -- parent was implictly added by the rose tree and thus doesn't
+            -- appear in the taints, but because it was changed it should be
+            -- counted as such.
+            Nothing -> case path of
+              (parentPath :/ _) -> inner
+                newTas newRefClaims (Map.insert parentPath Nothing tainted)
+                vs
+              _ -> Left $ Map.singleton GlobalError
+                [GenericErr "Attempted to taint parent of root"]
+            Just tn -> do
+              def <- errP path $ vsLookupDef tn vs
+              rtn <- tLook path tree
+              case validateRoseTreeNode def rtn invalidatedTps of
+                Left validationErrs -> if null emptyArrays
+                    then Left $ Map.singleton (PathError path) validationErrs
+                    else inner newTas' newRefClaims tainted' vs'
+                  where
+                    emptyArrays = mapMaybe mHandlable validationErrs
+                    isEmptyContainer d = case d of
+                        ArrayDef _ -> True
+                        StructDef (StructDefinition _ defKids) -> defKids == alEmpty
+                        _ -> False
+                    mHandlable ve = case ve of
+                        MissingChild name -> do
+                          tn <- defDispatch (childTypeFor name) def
+                          cdef <- vsLookupDef tn vs
+                          if isEmptyContainer cdef
+                            then Just (name, tn)
+                            else Nothing
+                        _ -> Nothing
+                    qEmptyArrays = first (path :/) <$> emptyArrays
+                    newTas' = newTas <> Map.fromList qEmptyArrays
+                    tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
+                    att = Nothing  -- FIXME: who is this attributed to?
+                    insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
+                    vs' = vs {vsTree = foldl (\t (cp, _) -> insertEmpty cp t) tree qEmptyArrays}
+                Right pathRefClaims -> inner
+                      (newTas <> changedChildPaths)
+                      (Map.insert path pathRefClaims newRefClaims)
+                      (Map.delete path $
+                         tainted <> fmap (const Nothing) changedChildPaths)
+                      (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
+                  where
+                    oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+                      (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
+                      treeChildren rtn
+                    newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+                      (\name _ -> defDispatch (childTypeFor name) def) $
+                      treeChildren rtn
+                    changedChildTypes = merge
+                      dropMissing preserveMissing
+                      (zipWithMaybeMatched $ const changed)
+                      oldChildTypes newChildTypes
+                    changedChildPaths = Map.mapKeys (path :/) changedChildTypes
 
 opsTouched :: ContainerOps -> DataDigest -> Map Path (Maybe (Set TpId))
 opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
