@@ -186,12 +186,6 @@ valuespaceGet p vs@(Valuespace tree defs tas _) = do
     lib <- getLiberty p vs
     return (def, tn, lib, rtn)
 
-validatePath :: MonadFail m => Valuespace -> Path -> m ()
-validatePath vs p = undefined -- do
-    -- def <- defForPath p vs
-    -- t <- note "Missing tree node" $ Tree.treeLookup p $ vsTree vs
-    -- validateRoseTreeNode def t
-
 type RefTypeClaims = Mos TypeName Referee
 type TypeClaimsByPath =
   Map Referer (Either RefTypeClaims (Map TpId RefTypeClaims))
@@ -224,30 +218,12 @@ partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
 xrefUnion :: Xrefs -> Xrefs -> Xrefs
 xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
-validateVs
-  :: Map Path (Maybe (Set TpId)) -> Valuespace
-  -> Either (Map (ErrorIndex TypeName) [Text]) (Map Path TypeName, Valuespace)
-validateVs t v = do
-    (newTypeAssns, refClaims, vs) <-
-      -- As the root type is dynamic we always treat it as if it has been
-      -- redefined:
-      inner mempty mempty (Map.insert Root Nothing t) v
-    smashErrMap $
-      Map.mapWithKey (checkRefsAtPath (vsTree vs) (vsTyDefs vs)) refClaims
-    let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
-    let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
-    unless (null existingXrefErrs) $ Left existingXrefErrs
-    let vs' = vs {vsXrefs = xrefUnion preExistingXrefs newXrefs}
-    return (newTypeAssns, vs')
+checkRefClaims
+  :: Valuespace -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims)) -> Either (Map (ErrorIndex TypeName) [Text]) ()
+checkRefClaims vs refClaims = smashErrMap $ Map.mapWithKey (checkRefsAtPath (vsTree vs) (vsTyDefs vs)) refClaims
   where
-    errP p = first (Map.singleton (PathError p) . pure . Text.pack)
-    tLook p = maybe (Left $ Map.singleton (PathError p) ["not found"]) Right .
-      Tree.treeLookup p
     errIf m = unless (null m) $ Left m
     smashErrMap = errIf . Mol.unions . lefts . Map.elems
-    changed :: Eq a => a -> a -> Maybe a
-    changed a1 a2 | a1 == a2 = Nothing
-                  | otherwise = Just a2
     checkRefsAtPath
       :: RoseTree [WireValue] -> DefMap -> Path
       -> Either RefTypeClaims (Map TpId RefTypeClaims)
@@ -272,6 +248,27 @@ validateVs t v = do
       maybe (fail "Reference to missing path") (const $ return ()) $
         Tree.treeLookup refP tree
 
+validateVs
+  :: Map Path (Maybe (Set TpId)) -> Valuespace
+  -> Either (Map (ErrorIndex TypeName) [Text]) (Map Path TypeName, Valuespace)
+validateVs t v = do
+    (newTypeAssns, refClaims, vs) <-
+      -- As the root type is dynamic we always treat it as if it has been
+      -- redefined:
+      inner mempty mempty (Map.insert Root Nothing t) v
+    checkRefClaims vs refClaims
+    let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
+    let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
+    unless (null existingXrefErrs) $ Left existingXrefErrs
+    let vs' = vs {vsXrefs = xrefUnion preExistingXrefs newXrefs}
+    return (newTypeAssns, vs')
+  where
+    errP p = first (Map.singleton (PathError p) . pure . Text.pack)
+    tLook p = maybe (Left $ Map.singleton (PathError p) ["not found"]) Right .
+      Tree.treeLookup p
+    changed :: Eq a => a -> a -> Maybe a
+    changed a1 a2 | a1 == a2 = Nothing
+                  | otherwise = Just a2
 
     -- FIXME: this currently bails earlier than it could in light of validation
     -- errors. If we can't figure out the type of children in order to recurse,
@@ -309,6 +306,12 @@ validateVs t v = do
                tainted <> fmap (const Nothing) changedChildPaths)
             (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
 
+ddTouched :: DataDigest -> Map Path (Maybe (Set TpId))
+ddTouched = fmap classifyDc . alToMap
+  where
+    classifyDc :: DataChange -> Maybe (Set TpId)
+    classifyDc (ConstChange {}) = Nothing
+    classifyDc (TimeChange m) = Just $ Map.keysSet m
 
 processToRelayProviderDigest
   :: TrpDigest -> Valuespace
@@ -322,10 +325,7 @@ processToRelayProviderDigest trpd vs =
       trpdDefinitions trpd
     qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
     qCops = Map.mapKeys (ns :</) $ trpdContainerOps trpd
-    classifyDc :: DataChange -> Maybe (Set TpId)
-    classifyDc (ConstChange {}) = Nothing
-    classifyDc (TimeChange m) = Just $ Map.keysSet m
-    updatedPaths = fmap classifyDc $ alToMap qData
+    updatedPaths = ddTouched qData
     tpRemovals :: DataChange -> Set TpId
     tpRemovals (ConstChange {})= mempty
     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
@@ -348,22 +348,30 @@ processToRelayProviderDigest trpd vs =
       Valuespace tree' defs' (vsTyAssns vs) xrefs'
     return (updatedTypes, vs')
 
+validatePath :: MonadFail m => Valuespace -> Path -> Maybe (Set TpId) -> m ()
+validatePath vs p mTpids = do
+    def <- defForPath p vs
+    t <- note "Missing tree node" $ Tree.treeLookup p $ vsTree vs
+    claims <- validateRoseTreeNode def t mTpids
+    either (fail . show) return $ checkRefClaims vs $ Map.singleton p claims
+
 processToRelayClientDigest
   :: ContainerOps -> DataDigest -> Valuespace -> Map Path [Text]
 processToRelayClientDigest reords dd vs =
   let
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
     vs' = vs {vsTree = tree'}
-    touchedPaths = Set.union (alKeysSet dd) (Map.keysSet reords)
-    touchedLiberties = Map.fromSet (flip getLiberty vs) touchedPaths
+    touched = ddTouched dd <> fmap (const Nothing) reords
+    touchedLiberties = Map.fromSet (flip getLiberty vs) $ Map.keysSet touched
     cannotErrs = const ["You touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties
     mustErrs = const ["You failed to provide a value for must"] <$>
       ( Map.filter (== Just Must)
       $ Map.fromSet (flip getLiberty vs) $ Set.fromList
       $ Tree.treeMissing tree')
-    validationErrs = Map.fromSet (
-      either (return . Text.pack) (const []) . validatePath vs') touchedPaths
+    validationErrs = Map.mapWithKey
+        (\p mTpids -> either (return . Text.pack) (const []) $ validatePath vs' p mTpids)
+        touched
   in
     foldl (Map.unionWith (<>)) updateErrs [
       validationErrs, cannotErrs, mustErrs]
