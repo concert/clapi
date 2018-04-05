@@ -264,7 +264,7 @@ validateVs t v = do
     return (newTypeAssns, vs')
   where
     errP p = first (Map.singleton (PathError p) . pure . GenericErr)
-    tLook p = maybe (Left $ Map.singleton (PathError p) [GenericErr "not found"]) Right .
+    tLook p = maybe (Left $ Map.singleton (PathError p) [ProgrammingErr "Missing RTN"]) Right .
       Tree.treeLookup p
     changed :: Eq a => a -> a -> Maybe a
     changed a1 a2 | a1 == a2 = Nothing
@@ -413,6 +413,7 @@ processToRelayClientDigest reords dd vs =
 
 data ValidationErr
   = GenericErr String
+  | ProgrammingErr String
   | MissingChild Seg
   | ExtraChild Seg
   deriving (Show)
