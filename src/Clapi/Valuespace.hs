@@ -220,28 +220,26 @@ xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
 checkRefClaims
   :: Valuespace -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims)) -> Either (Map (ErrorIndex TypeName) [ValidationErr]) ()
-checkRefClaims vs refClaims = smashErrMap $ Map.mapWithKey (checkRefsAtPath (vsTree vs) (vsTyDefs vs)) refClaims
+checkRefClaims (Valuespace tree defs tyAssns _) refClaims = smashErrMap $ Map.mapWithKey checkRefsAtPath refClaims
   where
     errIf m = unless (null m) $ Left m
     smashErrMap = errIf . Mol.unions . lefts . Map.elems
     checkRefsAtPath
-      :: RoseTree [WireValue] -> DefMap -> Path
+      :: Path
       -> Either RefTypeClaims (Map TpId RefTypeClaims)
       -> Either (Map (ErrorIndex TypeName) [ValidationErr]) ()
-    checkRefsAtPath tree defs path refClaims =
+    checkRefsAtPath path refClaims =
       let
         doCheck eidx = first (Map.singleton eidx . pure @[] . GenericErr) .
-          mapM_ (uncurry $ checkRef tree defs) . Mos.toList
+          mapM_ (uncurry checkRef) . Mos.toList
       in
         either
           (doCheck $ PathError path)
           (smashErrMap .
            Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
           refClaims
-    checkRef
-      :: MonadFail m => RoseTree [WireValue] -> DefMap -> TypeName -> Path
-      -> m ()
-    checkRef tree defs requiredTn refP = do
+    checkRef :: MonadFail m => TypeName -> Path -> m ()
+    checkRef requiredTn refP = do
       actualTn <- getTypeAssignment defs refP
       unless (actualTn == requiredTn) $
         fail "Reference points to value of bad type"
