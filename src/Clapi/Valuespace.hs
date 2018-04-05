@@ -49,11 +49,11 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
-  ( alKeysSet, alValues, alLookup, alFromMap, alSingleton, alEmpty
+  ( alKeysSet, alValues, alFromMap, alSingleton, alEmpty
   , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
-  , StructDefinition(..), ArrayDefinition(..), defDispatch, childLibertyFor
+  , StructDefinition(..), defDispatch, childLibertyFor
   , childTypeFor)
 import Clapi.Types.Digests
   ( DefOp(..), isUndef, ContainerOps, DataChange(..), isRemove, DataDigest
@@ -135,22 +135,6 @@ baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseTas mempty
       ]
     baseTas = Mos.dependenciesFromMap $ Map.fromList [(Root, rootTypeName)]
 
-getTypeAssignment :: MonadFail m => DefMap -> Path -> m TypeName
-getTypeAssignment defs thePath = lookupDef rootTypeName defs >>= go thePath
-  where
-    go path def = case path of
-      seg :</ p -> do
-        tn <- tnForChild def seg
-        def' <- lookupDef tn defs
-        case p of
-          Root -> return tn
-          _ -> go p def'
-      _ -> return rootTypeName
-    tnForChild def seg = case def of
-      TupleDef _ -> fail "Tuples have no children"
-      StructDef (StructDefinition _ tal) -> fst <$> alLookup seg tal
-      ArrayDef (ArrayDefinition _ tn _) -> return tn
-
 lookupDef :: MonadFail m => TypeName -> DefMap -> m Definition
 lookupDef tn@(TypeName ns s) defs = note "Missing def" $
     (Map.lookup ns defs >>= Map.lookup s) <|>
@@ -220,7 +204,7 @@ xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
 checkRefClaims
   :: TypeAssignmentMap -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims)) -> Either (Map (ErrorIndex TypeName) [ValidationErr]) ()
-checkRefClaims tyAssns refClaims = smashErrMap $ Map.mapWithKey checkRefsAtPath refClaims
+checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
   where
     errIf m = unless (null m) $ Left m
     smashErrMap = errIf . Mol.unions . lefts . Map.elems
@@ -307,10 +291,10 @@ validateVs t v = do
                         _ -> False
                     mHandlable ve = case ve of
                         MissingChild name -> do
-                          tn <- defDispatch (childTypeFor name) def
-                          cdef <- vsLookupDef tn vs
+                          ctn <- defDispatch (childTypeFor name) def
+                          cdef <- vsLookupDef ctn vs
                           if isEmptyContainer cdef
-                            then Just (name, tn)
+                            then Just (name, ctn)
                             else Nothing
                         _ -> Nothing
                     qEmptyArrays = first (path :/) <$> emptyArrays
@@ -318,7 +302,7 @@ validateVs t v = do
                     tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
                     att = Nothing  -- FIXME: who is this attributed to?
                     insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
-                    vs' = vs {vsTree = foldl (\t (cp, _) -> insertEmpty cp t) tree qEmptyArrays}
+                    vs' = vs {vsTree = foldl (\acc (cp, _) -> insertEmpty cp acc) tree qEmptyArrays}
                 Right pathRefClaims -> inner
                       (newTas <> changedChildPaths)
                       (Map.insert path pathRefClaims newRefClaims)
