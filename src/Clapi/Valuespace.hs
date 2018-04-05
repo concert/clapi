@@ -292,14 +292,15 @@ validateVs t v = do
                 else inner newTas' newRefClaims tainted' vs'
               where
                 emptyArrays = mapMaybe mHandlable validationErrs
-                isArrayDef d = case d of
+                isEmptyContainer d = case d of
                     ArrayDef _ -> True
+                    StructDef (StructDefinition _ defKids) -> defKids == alEmpty
                     _ -> False
                 mHandlable ve = case ve of
                     MissingChild name -> do
                       tn <- defDispatch (childTypeFor name) def
                       cdef <- vsLookupDef tn vs
-                      if isArrayDef cdef
+                      if isEmptyContainer cdef
                         then Just (name, tn)
                         else Nothing
                     _ -> Nothing
