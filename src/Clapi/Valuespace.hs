@@ -318,8 +318,8 @@ validateVs t v = do
                    tainted <> fmap (const Nothing) changedChildPaths)
                 (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
 
-ddTouched :: DataDigest -> Map Path (Maybe (Set TpId))
-ddTouched = fmap classifyDc . alToMap
+opsTouched :: ContainerOps -> DataDigest -> Map Path (Maybe (Set TpId))
+opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
   where
     classifyDc :: DataChange -> Maybe (Set TpId)
     classifyDc (ConstChange {}) = Nothing
@@ -337,7 +337,7 @@ processToRelayProviderDigest trpd vs =
       trpdDefinitions trpd
     qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
     qCops = Map.mapKeys (ns :</) $ trpdContainerOps trpd
-    updatedPaths = ddTouched qData
+    updatedPaths = opsTouched qCops qData
     tpRemovals :: DataChange -> Set TpId
     tpRemovals (ConstChange {})= mempty
     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
@@ -373,7 +373,7 @@ processToRelayClientDigest reords dd vs =
   let
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
     vs' = vs {vsTree = tree'}
-    touched = ddTouched dd <> fmap (const Nothing) reords
+    touched = opsTouched reords dd
     touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs) touched
     cannotErrs = const ["You touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties
