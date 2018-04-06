@@ -397,7 +397,7 @@ data ValidationErr
   | MissingChild Seg
   | ExtraChild Seg
   | RefTargetNotFound Path
-  | RefTargetTypeErr {vertePath :: Path, verteExpectedType :: TypeName, verteTargetType :: TypeName}
+  | RefTargetTypeErr {veRttePath :: Path, veRtteExpectedType :: TypeName, veRtteTargetType :: TypeName}
   | LibertyErr String
   deriving (Show)
 
