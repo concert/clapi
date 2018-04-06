@@ -140,6 +140,15 @@ spec = do
             apiNs (Map.singleton [segq|version|] $ OpDefine newDef)
             alEmpty mempty mempty
       in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
+    it "rechecks on container ops" $
+      let
+        d = TrpDigest
+            apiNs
+            mempty
+            alEmpty
+            (Map.singleton Root $ Map.singleton [segq|version|] (Nothing, SoAbsent))
+            mempty
+      in vsProviderErrorsOn baseValuespace d [[pathq|/api|]]
     it "should only re-validate data that has been marked as invalid" $
       let
         p = [pathq|/api/version|]
@@ -216,3 +225,13 @@ spec = do
         vs <- vsAppliesCleanly emptyArrayD baseValuespace
         vsProviderErrorsOn vs badChild [[pathq|/api/arr/bad|]]
         (vsAppliesCleanly goodChild vs :: Either String Valuespace) `shouldSatisfy` isRight
+    it "Errors on struct with missing child" $
+      let
+        rootDef = redefApiRoot (alInsert [segq|unfilled|] $ TypeName apiNs [segq|version|]) baseValuespace
+        missingChild = TrpDigest
+          apiNs
+          (Map.singleton apiNs $ OpDefine rootDef)
+          alEmpty
+          mempty
+          mempty
+      in vsProviderErrorsOn baseValuespace missingChild [[pathq|/api|]]
