@@ -195,3 +195,17 @@ roseTreeNode t = case t of
 
 treeLookupNode :: Path -> RoseTree a -> Maybe (RoseTreeNode a)
 treeLookupNode p = fmap roseTreeNode . treeLookup p
+
+data RoseTreeNodeType
+  = RtntEmpty
+  | RtntContainer
+  | RtntConstData
+  | RtntDataSeries
+  deriving Show
+
+rtType :: RoseTree a -> RoseTreeNodeType
+rtType rt = case rt of
+  RtEmpty -> RtntEmpty
+  RtContainer _ -> RtntContainer
+  RtConstData _ _ -> RtntConstData
+  RtDataSeries _ -> RtntDataSeries
