@@ -201,7 +201,7 @@ data RoseTreeNodeType
   | RtntContainer
   | RtntConstData
   | RtntDataSeries
-  deriving (Enum, Show)
+  deriving Show
 
 rtType :: RoseTree a -> RoseTreeNodeType
 rtType rt = case rt of
