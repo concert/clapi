@@ -44,7 +44,7 @@ import Data.Maybe.Clapi (note)
 
 import Clapi.TH
 import Clapi.Util (strictZipWith, fmtStrictZipError)
-import Clapi.Tree (RoseTree(..), RoseTreeNode, treeInsert, treeChildren, TpId)
+import Clapi.Tree (RoseTree(..), RoseTreeNode, treeInsert, treeChildren, TpId, RoseTreeNodeType(..))
 import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
@@ -393,7 +393,7 @@ processToRelayClientDigest reords dd vs =
 data ValidationErr
   = GenericErr String
   | ProgrammingErr String
-  | BadNodeType String
+  | BadNodeType {vebntExpected :: RoseTreeNodeType, vebntActual :: RoseTreeNodeType}
   | MissingChild Seg
   | ExtraChild Seg
   | RefTargetNotFound Path
@@ -406,35 +406,45 @@ fromMonadFail mf = case mf of
     Left msg -> Left $ GenericErr msg
     Right a -> Right a
 
+defNodeType :: Definition -> RoseTreeNodeType
+defNodeType def = case def of
+    StructDef _ -> RtntContainer
+    ArrayDef _ -> RtntContainer
+    TupleDef (TupleDefinition _ _ interpLim) -> case interpLim of
+        ILUninterpolated -> RtntConstData
+        _ -> RtntDataSeries
+
 validateRoseTreeNode
   :: Definition -> RoseTree [WireValue] -> Maybe (Set TpId)
   -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validateRoseTreeNode def t invalidatedTps = case t of
-  RtEmpty -> Left [BadNodeType "Empty"]
-  RtConstData _ wvs -> case def of
-    TupleDef (TupleDefinition _ alTreeTypes _) -> first pure $ fromMonadFail $
-      Left <$> validateWireValues (alValues alTreeTypes) wvs
-    _ -> Left [BadNodeType "Unexpected constant value!"]
-  RtDataSeries m -> case def of
-    TupleDef (TupleDefinition _ alTreeTypes _) ->
-      let toValidate = case invalidatedTps of
-            Nothing -> Dkmap.valueMap m
-            Just tpids -> Map.restrictKeys (Dkmap.valueMap m) tpids
-      in first pure $ fromMonadFail $
-        fmap Right $
-        mapM (validateWireValues (alValues alTreeTypes) . snd . snd) toValidate
-    _ -> Left [BadNodeType "Unexpected time series data!"]
-  RtContainer alCont -> case def of
-    TupleDef _ -> Left [BadNodeType "Y'all have a container where you wanted data"]
-    StructDef (StructDefinition _ alDef) -> if defSegs == rtnSegs
-        then return $ Left mempty
-        else Left $ fmap MissingChild missingSegs ++ fmap ExtraChild extraSegs
-      where
-        defSegs = alKeysSet alDef
-        rtnSegs = alKeysSet alCont
-        missingSegs = Set.toList $ Set.difference defSegs rtnSegs
-        extraSegs = Set.toList $ Set.difference rtnSegs defSegs
-    ArrayDef _ -> return $ Left mempty
+    RtEmpty -> tyErr
+    RtConstData _ wvs -> case def of
+      TupleDef (TupleDefinition _ alTreeTypes _) -> first pure $ fromMonadFail $
+        Left <$> validateWireValues (alValues alTreeTypes) wvs
+      _ -> tyErr
+    RtDataSeries m -> case def of
+      TupleDef (TupleDefinition _ alTreeTypes _) ->
+        let toValidate = case invalidatedTps of
+              Nothing -> Dkmap.valueMap m
+              Just tpids -> Map.restrictKeys (Dkmap.valueMap m) tpids
+        in first pure $ fromMonadFail $
+          fmap Right $
+          mapM (validateWireValues (alValues alTreeTypes) . snd . snd) toValidate
+      _ -> tyErr
+    RtContainer alCont -> case def of
+      TupleDef _ -> tyErr
+      StructDef (StructDefinition _ alDef) -> if defSegs == rtnSegs
+          then return $ Left mempty
+          else Left $ fmap MissingChild missingSegs ++ fmap ExtraChild extraSegs
+        where
+          defSegs = alKeysSet alDef
+          rtnSegs = alKeysSet alCont
+          missingSegs = Set.toList $ Set.difference defSegs rtnSegs
+          extraSegs = Set.toList $ Set.difference rtnSegs defSegs
+      ArrayDef _ -> return $ Left mempty
+  where
+    tyErr = Left [BadNodeType (defNodeType def) (Tree.rtType t)]
 
 validateWireValues
   :: MonadFail m => [TreeType] -> [WireValue] -> m RefTypeClaims
