@@ -364,35 +364,31 @@ processToRelayProviderDigest trpd vs =
       Valuespace tree' defs' (vsTyAssns vs) xrefs'
     return (updatedTypes, vs')
 
-validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] ()
+validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validatePath vs p mTpids = do
     def <- first pure $ fromMonadFail $ defForPath p vs
     t <- maybe (Left [ProgrammingErr "Tainted but missing"]) Right $ Tree.treeLookup p $ vsTree vs
-    claims <- validateRoseTreeNode def t mTpids
-    -- FIXME: The ref checking doesn't really belong here (hence the awful type
-    -- mashing)
-    first pure $ fromMonadFail $ either (fail . show) return $ checkRefClaims (vsTyAssns vs) $ Map.singleton p claims
+    validateRoseTreeNode def t mTpids
 
 processToRelayClientDigest
-  :: ContainerOps -> DataDigest -> Valuespace -> Map Path [Text]
+  :: ContainerOps -> DataDigest -> Valuespace -> Map (ErrorIndex TypeName) [ValidationErr]
 processToRelayClientDigest reords dd vs =
   let
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
     vs' = vs {vsTree = tree'}
     touched = opsTouched reords dd
     touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs) touched
-    cannotErrs = const ["You touched a cannot"]
+    cannotErrs = const [LibertyErr "Touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties
-    mustErrs = const ["You failed to provide a value for must"] <$>
+    mustErrs = const [LibertyErr "Failed to provide a value for must"] <$>
       ( Map.filter (== Just Must)
       $ Map.fromSet (flip getLiberty vs) $ Set.fromList
       $ Tree.treeMissing tree')
-    validationErrs = Map.mapWithKey
-        (\p mTpids -> either (return . Text.pack . show) (const []) $ validatePath vs' p mTpids)
-        touched
+    (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
+    refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
   in
-    foldl (Map.unionWith (<>)) updateErrs [
-      validationErrs, cannotErrs, mustErrs]
+    foldl (Map.unionWith (<>)) refErrs $ fmap (Map.mapKeys PathError)
+      [fmap (fmap $ GenericErr . Text.unpack) updateErrs, validationErrs, cannotErrs, mustErrs]
 
 data ValidationErr
   = GenericErr String
@@ -402,6 +398,7 @@ data ValidationErr
   | ExtraChild Seg
   | RefTargetNotFound Path
   | RefTargetTypeErr Path TypeName TypeName
+  | LibertyErr String
   deriving (Show)
 
 fromMonadFail :: Either String a -> Either ValidationErr a

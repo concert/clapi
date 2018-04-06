@@ -9,7 +9,8 @@ module Clapi.Relay where
 import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (isJust, fromJust)
+import qualified Data.Set as Set
+import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Text as Text
@@ -148,16 +149,23 @@ relay vs = waitThenFwdOnly fwd
         handleClientDigest
             (InboundClientDigest gets typeGets reords dd) errMap =
           let
-            dd' = alFilterKey (\k -> not $ Map.member k errMap) dd
+            -- TODO: Be more specific in what we reject (filtering by TpId
+            -- rather than entire path)
+            eidxPath eidx = case eidx of
+                PathError p -> Just p
+                TimePointError p _ -> Just p
+                _ -> Nothing
+            errPaths = Set.fromList $ mapMaybe eidxPath $ Map.keys errMap
+            dd' = alFilterKey (\k -> not $ Set.member k errPaths) dd
             reords' = Map.filterWithKey
-              (\k _ -> not $ Map.member k errMap) reords
+              (\k _ -> not $ Set.member k errPaths) reords
             dd'' = vsMinimiseDataDigest dd' vs
             reords'' = vsMinimiseReords reords' vs
             -- FIXME: above uses errors semantically and shouldn't (thus throws
             -- away valid time point changes)
             cid = genInitDigest gets typeGets vs
             cid' = cid{ocdErrors =
-              Map.unionWith (<>) (ocdErrors cid) (Map.mapKeys PathError errMap)}
+              Map.unionWith (<>) (ocdErrors cid) (fmap (Text.pack . show) <$> errMap)}
           in do
             sendRev (i, Ocid $ cid')
             sendRev (i, Opd $ OutboundProviderDigest reords'' dd'')
