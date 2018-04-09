@@ -16,9 +16,10 @@ import Data.Set (Set)
 import qualified Data.Text as Text
 import Data.Void (Void)
 
+import Clapi.Types.Base (Attributee)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
-  (alEmpty, alInsert, alFilterKey, unAssocList, alKeys, alMapKeys)
+  (AssocList, alEmpty, alInsert, alFilterKey, unAssocList, alMapKeys, alFoldlWithKey)
 import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
 import Clapi.Types.Digests
   ( TrpDigest(..), TrprDigest(..)
@@ -28,11 +29,11 @@ import Clapi.Types.Digests
   , OutboundClientDigest(..), OutboundClientInitialisationDigest
   , InboundClientDigest(..), OutboundProviderDigest(..)
   , DataDigest, ContainerOps)
-import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern Root)
-import Clapi.Types.Definitions (Liberty, Definition(StructDef), StructDefinition(..))
+import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern Root, parentPath)
+import Clapi.Types.Definitions (Liberty, Definition)
 import Clapi.Types.Wire (WireValue)
-import Clapi.Types.SequenceOps (SequenceOp(..), presentAfter)
-import Clapi.Tree (RoseTreeNode(..), TimeSeries)
+import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupDef
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
@@ -92,6 +93,25 @@ genInitDigest ps tns vs =
         RtnDataSeries ts ->
           d'{ocdData = alInsert p (oppifyTimeSeries ts) $ ocdData d}
 
+contDiff
+  :: AssocList Seg (Maybe Attributee) -> AssocList Seg (Maybe Attributee)
+  -> Map Seg (Maybe Attributee, SequenceOp Seg)
+contDiff a b = afters <> absents
+  where
+    asAfter (acc, prev) k ma = ((k, (ma, SoPresentAfter prev)) : acc, Just k)
+    aftersFor = Map.fromList . fst . alFoldlWithKey asAfter ([], Nothing)
+    aftersA = aftersFor a
+    aftersB = aftersFor b
+    afters = Map.difference aftersB aftersA
+    absents = fmap (const SoAbsent) <$> Map.difference aftersA aftersB
+
+mayContDiff :: Maybe (RoseTreeNode a) -> AssocList Seg (Maybe Attributee) -> Maybe (Map Seg (Maybe Attributee, SequenceOp Seg))
+mayContDiff ma kb = case ma of
+    Just (RtnChildren ka) -> if ka == kb
+        then Nothing
+        else Just $ contDiff ka kb
+    _ -> Nothing
+
 relay
   :: Monad m => Valuespace
   -> Protocol (i, InboundDigest) Void (i, OutboundDigest) Void m ()
@@ -122,9 +142,6 @@ relay vs = waitThenFwdOnly fwd
               Map.member ns defs &&
               Map.notMember ns (vsTyDefs vs)
             rootDef = fromJust $ vsLookupDef rootTypeName vs'
-            nsContOp (StructDef (StructDefinition _ kids)) = Map.singleton ns
-              (Nothing, SoPresentAfter $ presentAfter ns $ alKeys kids)
-            nsContOp _ = error "Root def not a struct WTAF"
             qDd = maybe (error "Bad sneakers") id $ alMapKeys (ns :</) dd
             qDd' = vsMinimiseDataDigest qDd vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
@@ -135,11 +152,14 @@ relay vs = waitThenFwdOnly fwd
               else qDefs'
             qContOps = Map.mapKeys (ns :</) contOps
             qContOps' = vsMinimiseContOps qContOps vs
-            qContOps'' = if shouldPubRoot
-              then Map.insert Root (nsContOp rootDef) qContOps'
-              else qContOps'
             mungedTas = Map.mapWithKey
               (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
+            getContOps p = case fromJust $ treeLookupNode p $ vsTree vs' of
+              RtnChildren kb -> (p,) <$> mayContDiff (treeLookupNode p $ vsTree vs) kb
+              _ -> Nothing
+            extraCops = Map.fromAscList $ mapMaybe (\p -> parentPath p >>= getContOps) $
+              Set.toAscList $ Map.keysSet updatedTyAssns
+            qContOps'' = extraCops <> qContOps'
           in do
             sendRev (i,
               Ocd $ OutboundClientDigest

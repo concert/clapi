@@ -6,7 +6,7 @@
 module Clapi.Types.Path (
     Path(..), Seg, mkSeg, unSeg,
     pathP, segP, toText, fromText,
-    splitHead, splitTail,
+    splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
     NodePath, TypePath,
@@ -114,3 +114,8 @@ typeNameP = TypeName <$> segP <*> (DAT.char qualSepChar >> segP)
 typeNameFromText :: MonadFail m => Text -> m TypeName
 typeNameFromText =
   either fail return . DAT.parseOnly (typeNameP <* DAT.endOfInput)
+
+parentPath :: Path -> Maybe Path
+parentPath p = case p of
+  (pp :/ _) -> Just pp
+  _ -> Nothing

@@ -110,7 +110,7 @@ spec = describe "the relay protocol" $ do
           { vsTree = treeInsert bob fooP (RtContainer alEmpty) $ vsTree baseValuespace
           , vsTyDefs = Map.insert foo tyDefs $ vsTyDefs baseValuespace
           }
-        dd = alSingleton (Root :/ kid) $ ConstChange bob []
+        dd = alSingleton (Root :/ kid) $ ConstChange Nothing []
         inDig = Ipd $ (trpDigest foo)
           { trpdData = dd
           }
@@ -119,7 +119,7 @@ spec = describe "the relay protocol" $ do
           { ocdData = qualify foo dd
           , ocdTypeAssignments = Map.singleton qKid (TypeName foo kid, Cannot)
           , ocdContainerOps = Map.singleton fooP $
-            Map.singleton kid (bob, SoPresentAfter Nothing)
+            Map.singleton kid (Nothing, SoPresentAfter Nothing)
           }
         test = do
           sendFwd ((), inDig)
