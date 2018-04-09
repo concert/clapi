@@ -19,7 +19,7 @@ import Clapi.TH
 import Clapi.Protocol (waitThenRevOnly, sendFwd, runEffect, (<<->))
 import Clapi.Relay (relay)
 import Clapi.Tree (treeInsert, RoseTree(RtConstData))
-import Clapi.Types.AssocList (alEmpty, alSingleton, alFromList)
+import Clapi.Types.AssocList (alEmpty, alSingleton, alFromList, alMapKeys)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
   (structDef, tupleDef, Liberty(..))
@@ -29,7 +29,7 @@ import Clapi.Types.Digests
   , OutboundClientDigest(..), outboundClientDigest, TrprDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
-import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/))
+import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/), pattern (:</))
 import Clapi.Types.Tree (ttWord32, unbounded)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
@@ -52,7 +52,7 @@ spec = describe "the relay protocol" $ do
           , (foo, (TypeName foo foo, Cannot))
           ]
         expectedOutDig = Ocd $ outboundClientDigest
-          { ocdData = dd
+          { ocdData = qualify foo dd
           , ocdDefinitions = Map.fromList
             [ (TypeName foo foo, OpDefine fooDef)
             , (TypeName apiNs [segq|root|], OpDefine extendedRootDef)
@@ -114,11 +114,11 @@ spec = describe "the relay protocol" $ do
         test = do
             sendFwd ((), Ipd $ (trpDigest foo) {trpdData = dd})
             waitThenRevOnly $
-              lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = dd})) .
+              lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = qualify foo dd})) .
               snd
       in runEffect $ test <<-> relay vsWithInt
-
   where
     foo = [segq|foo|]
     fooP = Root :/ foo
     bob = Just "bob"
+    qualify ns = maybe (error "bad sneakers") id . alMapKeys (ns :</)
