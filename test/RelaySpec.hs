@@ -18,11 +18,11 @@ import Data.Maybe (fromJust)
 import Clapi.TH
 import Clapi.Protocol (waitThenRevOnly, sendFwd, runEffect, (<<->))
 import Clapi.Relay (relay)
-import Clapi.Tree (treeInsert, RoseTree(RtConstData))
+import Clapi.Tree (treeInsert, RoseTree(RtConstData, RtContainer))
 import Clapi.Types.AssocList (alEmpty, alSingleton, alFromList, alMapKeys)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
-  (structDef, tupleDef, Liberty(..))
+  (arrayDef, structDef, tupleDef, Liberty(..))
 import Clapi.Types.Digests
   ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest
   , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
@@ -99,6 +99,32 @@ spec = describe "the relay protocol" $ do
             InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay baseValuespace
+    it "should have container ops for implicitly created children" $
+      let
+        kid = [segq|kid|]
+        tyDefs = Map.fromList
+          [ (foo, arrayDef "arr" (TypeName foo kid) Cannot)
+          , (kid, tupleDef "kid" alEmpty ILUninterpolated)
+          ]
+        vsWithStuff = unsafeValidateVs $ baseValuespace
+          { vsTree = treeInsert bob fooP (RtContainer alEmpty) $ vsTree baseValuespace
+          , vsTyDefs = Map.insert foo tyDefs $ vsTyDefs baseValuespace
+          }
+        dd = alSingleton (Root :/ kid) $ ConstChange bob []
+        inDig = Ipd $ (trpDigest foo)
+          { trpdData = dd
+          }
+        qKid = fooP :/ kid
+        expectedOutDig = Ocd $ outboundClientDigest
+          { ocdData = qualify foo dd
+          , ocdTypeAssignments = Map.singleton qKid (TypeName foo kid, Cannot)
+          , ocdContainerOps = Map.singleton fooP $
+            Map.singleton kid (bob, SoPresentAfter Nothing)
+          }
+        test = do
+          sendFwd ((), inDig)
+          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
+      in runEffect $ test <<-> relay vsWithStuff
     it "should respond sensibly to data changes" $
       let
         vsWithInt = unsafeValidateVs $ baseValuespace
