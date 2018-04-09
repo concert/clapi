@@ -134,7 +134,7 @@ relay vs = waitThenFwdOnly fwd
               then Map.insert rootTypeName (OpDefine rootDef) qDefs'
               else qDefs'
             qContOps = Map.mapKeys (ns :</) contOps
-            qContOps' = vsMinimiseReords qContOps vs
+            qContOps' = vsMinimiseContOps qContOps vs
             qContOps'' = if shouldPubRoot
               then Map.insert Root (nsContOp rootDef) qContOps'
               else qContOps'
@@ -149,7 +149,7 @@ relay vs = waitThenFwdOnly fwd
                 mungedTas qDd' errs')
             relay vs'
         handleClientDigest
-            (InboundClientDigest gets typeGets reords dd) errMap =
+            (InboundClientDigest gets typeGets contOps dd) errMap =
           let
             -- TODO: Be more specific in what we reject (filtering by TpId
             -- rather than entire path)
@@ -159,10 +159,10 @@ relay vs = waitThenFwdOnly fwd
                 _ -> Nothing
             errPaths = Set.fromList $ mapMaybe eidxPath $ Map.keys errMap
             dd' = alFilterKey (\k -> not $ Set.member k errPaths) dd
-            reords' = Map.filterWithKey
-              (\k _ -> not $ Set.member k errPaths) reords
+            contOps' = Map.filterWithKey
+              (\k _ -> not $ Set.member k errPaths) contOps
             dd'' = vsMinimiseDataDigest dd' vs
-            reords'' = vsMinimiseReords reords' vs
+            contOps'' = vsMinimiseContOps contOps' vs
             -- FIXME: above uses errors semantically and shouldn't (thus throws
             -- away valid time point changes)
             cid = genInitDigest gets typeGets vs
@@ -170,7 +170,7 @@ relay vs = waitThenFwdOnly fwd
               Map.unionWith (<>) (ocdErrors cid) (fmap (Text.pack . show) <$> errMap)}
           in do
             sendRev (i, Ocid $ cid')
-            sendRev (i, Opd $ OutboundProviderDigest reords'' dd'')
+            sendRev (i, Opd $ OutboundProviderDigest contOps'' dd'')
             relay vs
         terminalErrors errMap = do
           sendRev (i, Ope $ FrpErrorDigest errMap)
@@ -185,5 +185,5 @@ vsMinimiseDataDigest :: DataDigest -> Valuespace -> DataDigest
 vsMinimiseDataDigest dd _ = dd
 
 -- FIXME: Worst case implementation
-vsMinimiseReords :: ContainerOps -> Valuespace -> ContainerOps
-vsMinimiseReords reords _ = reords
+vsMinimiseContOps :: ContainerOps -> Valuespace -> ContainerOps
+vsMinimiseContOps contOps _ = contOps
