@@ -18,7 +18,7 @@ import Data.Void (Void)
 
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
-  (alEmpty, alInsert, alFilterKey, unAssocList, alKeys)
+  (alEmpty, alInsert, alFilterKey, unAssocList, alKeys, alMapKeys)
 import Clapi.Types.Messages (ErrorIndex(..), namespaceErrIdx)
 import Clapi.Types.Digests
   ( TrpDigest(..), TrprDigest(..)
@@ -26,7 +26,8 @@ import Clapi.Types.Digests
   , TimeSeriesDataOp(..), DefOp(..)
   , OutboundDigest(..), InboundDigest(..)
   , OutboundClientDigest(..), OutboundClientInitialisationDigest
-  , InboundClientDigest(..), OutboundProviderDigest(..))
+  , InboundClientDigest(..), OutboundProviderDigest(..)
+  , DataDigest, ContainerOps)
 import Clapi.Types.Path (Path, TypeName(..), pattern (:</), pattern Root)
 import Clapi.Types.Definitions (Liberty, Definition(StructDef), StructDefinition(..))
 import Clapi.Types.Wire (WireValue)
@@ -124,27 +125,28 @@ relay vs = waitThenFwdOnly fwd
             nsContOp (StructDef (StructDefinition _ kids)) = Map.singleton ns
               (Nothing, SoPresentAfter $ presentAfter ns $ alKeys kids)
             nsContOp _ = error "Root def not a struct WTAF"
-            defs' = vsMinimiseDefinitions defs vs
-            dd' = vsMinimiseDataDigest dd vs
-            contOps' = vsMinimiseReords contOps vs
+            qDd = maybe (error "Bad sneakers") id $ alMapKeys (ns :</) dd
+            qDd' = vsMinimiseDataDigest qDd vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
-            qDefs = Map.mapKeys (TypeName ns) defs'
-            qDefs' = if shouldPubRoot
-              then Map.insert rootTypeName (OpDefine rootDef) qDefs
-              else qDefs
-            qContOps = Map.mapKeys (ns :</) contOps'
-            qContOps' = if shouldPubRoot
-              then Map.insert Root (nsContOp rootDef) qContOps
-              else qContOps
+            qDefs = Map.mapKeys (TypeName ns) defs
+            qDefs' = vsMinimiseDefinitions qDefs vs
+            qDefs'' = if shouldPubRoot
+              then Map.insert rootTypeName (OpDefine rootDef) qDefs'
+              else qDefs'
+            qContOps = Map.mapKeys (ns :</) contOps
+            qContOps' = vsMinimiseReords qContOps vs
+            qContOps'' = if shouldPubRoot
+              then Map.insert Root (nsContOp rootDef) qContOps'
+              else qContOps'
             mungedTas = Map.mapWithKey
               (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
           in do
             sendRev (i,
               Ocd $ OutboundClientDigest
-                qContOps'
+                qContOps''
                 -- FIXME: we need to provide defs for type assignments too.
-                qDefs'
-                mungedTas dd' errs')
+                qDefs''
+                mungedTas qDd' errs')
             relay vs'
         handleClientDigest
             (InboundClientDigest gets typeGets reords dd) errMap =
@@ -174,7 +176,14 @@ relay vs = waitThenFwdOnly fwd
           sendRev (i, Ope $ FrpErrorDigest errMap)
           relay vs
 
--- FIXME: these are worst case implementations right now!
+-- FIXME: Worst case implementation
+vsMinimiseDefinitions :: Map TypeName DefOp -> Valuespace -> Map TypeName DefOp
 vsMinimiseDefinitions defs _ = defs
+
+-- FIXME: Worst case implementation
+vsMinimiseDataDigest :: DataDigest -> Valuespace -> DataDigest
 vsMinimiseDataDigest dd _ = dd
+
+-- FIXME: Worst case implementation
+vsMinimiseReords :: ContainerOps -> Valuespace -> ContainerOps
 vsMinimiseReords reords _ = reords
