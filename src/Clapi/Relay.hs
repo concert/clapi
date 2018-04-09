@@ -9,6 +9,7 @@ module Clapi.Relay where
 import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Map.Strict.Merge (merge, preserveMissing, dropMissing, zipWithMaybeMatched)
 import qualified Data.Set as Set
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Monoid
@@ -96,16 +97,16 @@ genInitDigest ps tns vs =
 contDiff
   :: AssocList Seg (Maybe Attributee) -> AssocList Seg (Maybe Attributee)
   -> Map Seg (Maybe Attributee, SequenceOp Seg)
-contDiff a b = afters <> absents
+contDiff a b = merge
+    dropMissing preserveMissing dropMatched (aftersFor a) (aftersFor b)
   where
     asAfter (acc, prev) k ma = ((k, (ma, SoPresentAfter prev)) : acc, Just k)
     aftersFor = Map.fromList . fst . alFoldlWithKey asAfter ([], Nothing)
-    aftersA = aftersFor a
-    aftersB = aftersFor b
-    afters = Map.difference aftersB aftersA
-    absents = fmap (const SoAbsent) <$> Map.difference aftersA aftersB
+    dropMatched = zipWithMaybeMatched $ const $ const $ const Nothing
 
-mayContDiff :: Maybe (RoseTreeNode a) -> AssocList Seg (Maybe Attributee) -> Maybe (Map Seg (Maybe Attributee, SequenceOp Seg))
+mayContDiff
+  :: Maybe (RoseTreeNode a) -> AssocList Seg (Maybe Attributee)
+  -> Maybe (Map Seg (Maybe Attributee, SequenceOp Seg))
 mayContDiff ma kb = case ma of
     Just (RtnChildren ka) -> if ka == kb
         then Nothing
