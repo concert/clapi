@@ -2,7 +2,7 @@
 
 module Clapi.Types.SequenceOps
   ( SequenceOp(..), isSoAbsent
-  , updateUniqList, presentAfter
+  , updateUniqList
   ) where
 
 import Prelude hiding (fail)
@@ -15,12 +15,6 @@ import Data.Foldable (foldlM)
 import Clapi.Types.UniqList
   (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
 import Clapi.Util (ensureUnique)
-
-presentAfter :: Eq a => a -> UniqList a -> Maybe a
-presentAfter a' ul = inner Nothing $ unUniqList ul
-  where
-    inner _ [] = Nothing
-    inner prev (a:as) = if a == a' then prev else inner (Just a) as
 
 data SequenceOp i
   = SoPresentAfter (Maybe i)
