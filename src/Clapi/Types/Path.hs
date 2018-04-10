@@ -64,8 +64,14 @@ pattern seg :</ path <- (splitHead -> Just (seg, path)) where
     seg :</ path = Path $ seg : unPath path
 
 splitTail :: Path -> Maybe (Path, Seg)
-splitTail (Path []) = Nothing
-splitTail (Path segs) = Just (Path $ init segs, last segs)
+splitTail (Path path) = case path of
+    (y : xs) -> (\(s, ps) -> Just (Path ps, s)) $ go y xs
+    [] -> Nothing
+  where
+    go :: Seg -> [Seg] -> (Seg, [Seg])
+    go y xs = case xs of
+        [] -> (y, [])
+        (z : zs) -> (y :) <$> go z zs
 
 pattern (:/) :: Path -> Seg -> Path
 pattern path :/ seg <- (splitTail -> Just (path, seg)) where
