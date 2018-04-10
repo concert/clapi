@@ -9,7 +9,7 @@ module Clapi.Relay where
 import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge (merge, preserveMissing, dropMissing, zipWithMaybeMatched)
+import Data.Map.Strict.Merge (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
 import qualified Data.Set as Set
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Monoid
@@ -98,11 +98,12 @@ contDiff
   :: AssocList Seg (Maybe Attributee) -> AssocList Seg (Maybe Attributee)
   -> Map Seg (Maybe Attributee, SequenceOp Seg)
 contDiff a b = merge
-    dropMissing preserveMissing dropMatched (aftersFor a) (aftersFor b)
+    asAbsent preserveMissing dropMatched (aftersFor a) (aftersFor b)
   where
     asAfter (acc, prev) k ma = ((k, (ma, SoPresentAfter prev)) : acc, Just k)
     aftersFor = Map.fromList . fst . alFoldlWithKey asAfter ([], Nothing)
     dropMatched = zipWithMaybeMatched $ const $ const $ const Nothing
+    asAbsent = mapMissing $ \_ (ma, _) -> (ma, SoAbsent)
 
 mayContDiff
   :: Maybe (RoseTreeNode a) -> AssocList Seg (Maybe Attributee)
