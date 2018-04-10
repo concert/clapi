@@ -133,7 +133,7 @@ baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseTas mempty
       [ (apiNs, StructDef apiDef)
       , (vseg, TupleDef versionDef)
       ]
-    baseTas = Mos.dependenciesFromMap $ Map.fromList [(Root, rootTypeName)]
+    baseTas = Mos.dependenciesFromMap $ Map.singleton Root rootTypeName
 
 lookupDef :: MonadFail m => TypeName -> DefMap -> m Definition
 lookupDef tn@(TypeName ns s) defs = note "Missing def" $
