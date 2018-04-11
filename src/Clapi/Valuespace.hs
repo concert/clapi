@@ -464,7 +464,7 @@ vsRelinquish ns (Valuespace tree defs tas xrefs) =
       (Tree.treeDelete nsp tree)
       (Map.delete ns defs)
       (Mos.filterDeps
-       (\p (TypeName ns' _) -> p `Path.isChildOf` nsp || ns == ns') tas)
+       (\p (TypeName ns' _) -> not $ p `Path.isChildOf` nsp || ns == ns') tas)
       (filterXrefs (\p -> not (p `Path.isChildOf` nsp)) xrefs)
 
 validateExistingXrefs
