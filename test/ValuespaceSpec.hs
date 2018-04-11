@@ -221,10 +221,18 @@ spec = do
             ConstChange Nothing [WireValue @Word32 3, WireValue @Word32 4, WireValue @Int32 3])
           mempty
           mempty
+        removeGoodChild = TrpDigest
+          apiNs
+          mempty
+          alEmpty
+          (Map.singleton [pathq|/arr|] $ Map.singleton [segq|mehearties|] (Nothing, SoAbsent))
+          mempty
       in do
         vs <- vsAppliesCleanly emptyArrayD baseValuespace
         vsProviderErrorsOn vs badChild [[pathq|/api/arr/bad|]]
-        (vsAppliesCleanly goodChild vs :: Either String Valuespace) `shouldSatisfy` isRight
+        vs' <- vsAppliesCleanly goodChild vs
+        vs'' <- vsAppliesCleanly removeGoodChild vs'
+        vs'' `shouldBe` vs
     it "Errors on struct with missing child" $
       let
         rootDef = redefApiRoot (alInsert [segq|unfilled|] $ TypeName apiNs [segq|version|]) baseValuespace
