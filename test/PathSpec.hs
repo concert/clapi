@@ -10,7 +10,7 @@ import Data.Either (isLeft)
 import Clapi.TH (pathq, segq)
 import Clapi.Types (CanFail)
 import Clapi.Types.Path
-  (Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText)
+  (Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText, isChildOf)
 
 
 spec :: Spec
@@ -38,6 +38,11 @@ spec = do
         it "Empty path" $ rt "/"
         it "Top level path" $ rt "/fdoo"
         it "Nested path" $ rt "/boo_1/chew_2"
+    describe "isChildOf" $ do
+        it "Child -> True" $ isChildOf [pathq|/a/b/c/d|] [pathq|/a|] `shouldBe` True
+        it "Non-child -> False" $ isChildOf [pathq|/b/a/g|] [pathq|/a|] `shouldBe` False
+        it "Parent -> False" $ isChildOf [pathq|/a|] [pathq|/a/b|] `shouldBe` False
+        it "Same path -> True" $ isChildOf [pathq|/a/b|] [pathq|/a/b|] `shouldBe` True
   where
     shouldBeGoodPath t p = (fromText t :: CanFail Path) `shouldBe` Right p
     shouldBeBadPath t = (fromText t :: CanFail Path) `shouldSatisfy` isLeft
