@@ -361,7 +361,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' defs' (vsTyAssns vs) xrefs'
+      Valuespace tree' defs' tas xrefs'
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
