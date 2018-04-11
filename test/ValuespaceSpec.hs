@@ -37,7 +37,7 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
-  , apiNs)
+  , apiNs, vsRelinquish)
 import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTree(RtEmpty))
@@ -235,3 +235,16 @@ spec = do
           mempty
           mempty
       in vsProviderErrorsOn baseValuespace missingChild [[pathq|/api|]]
+    it "Relinquish" $
+      let
+        fs = [segq|foo|]
+        fooRootDef = arrayDef "frd" (TypeName apiNs [segq|version|]) Cannot
+        claimFoo = TrpDigest
+          fs
+          (Map.singleton fs $ OpDefine fooRootDef)
+          alEmpty
+          mempty
+          mempty
+      in do
+        vs <- vsAppliesCleanly claimFoo baseValuespace
+        vsRelinquish fs vs `shouldBe` baseValuespace
