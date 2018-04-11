@@ -115,7 +115,7 @@ filterDeps f (deps, revDeps) =
   let
     (toKeep, toDrop) = Map.partitionWithKey f deps
   in
-    (toKeep, flip Set.difference (Map.keysSet toDrop) <$> revDeps)
+    (toKeep, Map.filter (not . null) $ flip Set.difference (Map.keysSet toDrop) <$> revDeps)
 
 filterDependencies
   :: (Ord k, Ord a) => (k -> Bool) -> Dependencies k a -> Dependencies k a
