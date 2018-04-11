@@ -80,7 +80,7 @@ data Valuespace = Valuespace
   } deriving (Eq, Show)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
-removeTamSubtree tam p = Mos.filterDependencies (`Path.isChildOf` p) tam
+removeTamSubtree tam p = Mos.filterDependencies (not . flip Path.isChildOf p) tam
 
 removeXrefs :: Referer -> Xrefs -> Xrefs
 removeXrefs referer = fmap (Map.delete referer)
