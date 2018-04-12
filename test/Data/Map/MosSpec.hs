@@ -61,6 +61,10 @@ spec = do
     it "can be produced from a Map" $ property $
       \(input :: Map Char Int) -> let mos = Mos.invertMap input in
         fmap Set.singleton input == Mos.invert mos
+    it "filterDeps" $ Mos.filterDeps
+        (\k a -> k == 3 || a == "hi")
+        (Mos.dependenciesFromList [(1, "hi"), (2, "ho"), (3, "silver")])
+        `shouldBe` Mos.dependenciesFromList [(1, "hi"), (3, "silver")]
 
 assertDep k a ds = Mos.getDependency k ds `shouldBe` Just a
 assertNoDep k ds = Mos.getDependency k ds `shouldBe` Nothing

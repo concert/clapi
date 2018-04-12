@@ -37,7 +37,7 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
-  , apiNs)
+  , apiNs, vsRelinquish)
 import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTree(RtEmpty))
@@ -221,10 +221,18 @@ spec = do
             ConstChange Nothing [WireValue @Word32 3, WireValue @Word32 4, WireValue @Int32 3])
           mempty
           mempty
+        removeGoodChild = TrpDigest
+          apiNs
+          mempty
+          alEmpty
+          (Map.singleton [pathq|/arr|] $ Map.singleton [segq|mehearties|] (Nothing, SoAbsent))
+          mempty
       in do
         vs <- vsAppliesCleanly emptyArrayD baseValuespace
         vsProviderErrorsOn vs badChild [[pathq|/api/arr/bad|]]
-        (vsAppliesCleanly goodChild vs :: Either String Valuespace) `shouldSatisfy` isRight
+        vs' <- vsAppliesCleanly goodChild vs
+        vs'' <- vsAppliesCleanly removeGoodChild vs'
+        vs'' `shouldBe` vs
     it "Errors on struct with missing child" $
       let
         rootDef = redefApiRoot (alInsert [segq|unfilled|] $ TypeName apiNs [segq|version|]) baseValuespace
@@ -235,3 +243,16 @@ spec = do
           mempty
           mempty
       in vsProviderErrorsOn baseValuespace missingChild [[pathq|/api|]]
+    it "Relinquish" $
+      let
+        fs = [segq|foo|]
+        fooRootDef = arrayDef "frd" (TypeName apiNs [segq|version|]) Cannot
+        claimFoo = TrpDigest
+          fs
+          (Map.singleton fs $ OpDefine fooRootDef)
+          alEmpty
+          mempty
+          mempty
+      in do
+        vs <- vsAppliesCleanly claimFoo baseValuespace
+        vsRelinquish fs vs `shouldBe` baseValuespace

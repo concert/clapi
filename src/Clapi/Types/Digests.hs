@@ -56,7 +56,7 @@ trpDigest :: Seg -> TrpDigest
 trpDigest ns = TrpDigest ns mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
-trpdRemovedPaths (TrpDigest _ _ _ cOps _) = Map.foldlWithKey f [] cOps
+trpdRemovedPaths (TrpDigest ns _ _ cOps _) = (ns :</) <$> Map.foldlWithKey f [] cOps
   where
     f acc p segMap = acc ++
       (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
