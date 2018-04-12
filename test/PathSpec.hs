@@ -39,10 +39,10 @@ spec = do
         it "Top level path" $ rt "/fdoo"
         it "Nested path" $ rt "/boo_1/chew_2"
     describe "isChildOf" $ do
-        it "Child -> True" $ isChildOf [pathq|/a/b/c/d|] [pathq|/a|] `shouldBe` True
-        it "Non-child -> False" $ isChildOf [pathq|/b/a/g|] [pathq|/a|] `shouldBe` False
-        it "Parent -> False" $ isChildOf [pathq|/a|] [pathq|/a/b|] `shouldBe` False
-        it "Same path -> True" $ isChildOf [pathq|/a/b|] [pathq|/a/b|] `shouldBe` True
+        it "Child -> True" $ [pathq|/a|] `shouldSatisfy` isChildOf [pathq|/a/b/c/d|]
+        it "Non-child -> False" $ [pathq|/a|] `shouldNotSatisfy` isChildOf [pathq|/b/a/g|]
+        it "Parent -> False" $ [pathq|/a/b|] `shouldNotSatisfy` isChildOf [pathq|/a|]
+        it "Same path -> True" $ [pathq|/a/b|] `shouldSatisfy` isChildOf [pathq|/a/b|]
   where
     shouldBeGoodPath t p = (fromText t :: CanFail Path) `shouldBe` Right p
     shouldBeBadPath t = (fromText t :: CanFail Path) `shouldSatisfy` isLeft
