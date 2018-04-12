@@ -109,13 +109,16 @@ delDependencies ::
     (Ord k, Ord a, Foldable f) => f k -> Dependencies k a -> Dependencies k a
 delDependencies ks ds = foldr delDependency ds ks
 
+nonNull :: Foldable f => f a -> Maybe (f a)
+nonNull s = if null s then Nothing else Just s
+
 filterDeps
   :: (Ord k, Ord a) => (k -> a -> Bool) -> Dependencies k a -> Dependencies k a
 filterDeps f (deps, revDeps) =
   let
     (toKeep, toDrop) = Map.partitionWithKey f deps
   in
-    (toKeep, Map.filter (not . null) $ flip Set.difference (Map.keysSet toDrop) <$> revDeps)
+    (toKeep, Map.mapMaybe (nonNull . flip Set.difference (Map.keysSet toDrop)) revDeps)
 
 filterDependencies
   :: (Ord k, Ord a) => (k -> Bool) -> Dependencies k a -> Dependencies k a
