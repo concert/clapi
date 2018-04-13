@@ -2,6 +2,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module ValuespaceSpec where
 
 import Test.Hspec
@@ -37,10 +38,13 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
-  , apiNs, vsRelinquish)
+  , processToRelayClientDigest, apiNs, vsRelinquish, ValidationErr(..))
 import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Tree (RoseTree(RtEmpty))
+import Clapi.Tree (RoseTree(RtEmpty), RoseTreeNodeType(..))
+
+deriving instance Eq RoseTreeNodeType
+deriving instance Eq ValidationErr
 
 vsProviderErrorsOn :: Valuespace -> TrpDigest -> [Path] -> Expectation
 vsProviderErrorsOn vs d ps = case (processToRelayProviderDigest d vs) of
@@ -108,6 +112,18 @@ vsWithXRef =
 
 refSeg :: Seg
 refSeg = [segq|ref|]
+
+emptyArrayD :: Seg -> Valuespace -> TrpDigest
+emptyArrayD s vs = TrpDigest
+    apiNs
+    (Map.fromList [(s, OpDefine vaDef), (apiNs, OpDefine rootDef)])
+    alEmpty
+    mempty
+    mempty
+  where
+    vaDef = arrayDef "for test" (TypeName apiNs [segq|version|]) May
+    rootDef = redefApiRoot (alInsert s $ TypeName apiNs s)
+      baseValuespace
 
 spec :: Spec
 spec = do
@@ -198,15 +214,6 @@ spec = do
     it "Array" $
       let
         ars = [segq|arr|]
-        vaDef = arrayDef "for test" (TypeName apiNs [segq|version|]) Cannot
-        rootDef = redefApiRoot (alInsert ars $ TypeName apiNs ars)
-          baseValuespace
-        emptyArrayD = TrpDigest
-          apiNs
-          (Map.fromList [(ars, OpDefine vaDef), (apiNs, OpDefine rootDef)])
-          alEmpty
-          mempty
-          mempty
         badChild = TrpDigest
           apiNs
           mempty
@@ -228,7 +235,7 @@ spec = do
           (Map.singleton [pathq|/arr|] $ Map.singleton [segq|mehearties|] (Nothing, SoAbsent))
           mempty
       in do
-        vs <- vsAppliesCleanly emptyArrayD baseValuespace
+        vs <- vsAppliesCleanly (emptyArrayD ars baseValuespace) baseValuespace
         vsProviderErrorsOn vs badChild [[pathq|/api/arr/bad|]]
         vs' <- vsAppliesCleanly goodChild vs
         vs'' <- vsAppliesCleanly removeGoodChild vs'
@@ -256,3 +263,11 @@ spec = do
       in do
         vs <- vsAppliesCleanly claimFoo baseValuespace
         vsRelinquish fs vs `shouldBe` baseValuespace
+    describe "Client" $
+        it "Can create new array entries" $
+          let
+            dd = alSingleton [pathq|/api/arr/a|] $ ConstChange Nothing
+                [WireValue @Word32 1, WireValue @Word32 2, WireValue @Int32 3]
+          in do
+            vs <- vsAppliesCleanly (emptyArrayD [segq|arr|] baseValuespace) baseValuespace
+            processToRelayClientDigest mempty dd vs `shouldBe` mempty

@@ -14,7 +14,7 @@ module Clapi.Valuespace
   , apiNs, rootTypeName, apiTypeName
   , processToRelayProviderDigest, processToRelayClientDigest
   , validateVs, unsafeValidateVs
-  , vsRelinquish
+  , vsRelinquish, ValidationErr(..)
   ) where
 
 import Prelude hiding (fail)
@@ -375,20 +375,42 @@ processToRelayClientDigest
 processToRelayClientDigest reords dd vs =
   let
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
-    vs' = vs {vsTree = tree'}
     touched = opsTouched reords dd
-    touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs) touched
+    (tas', newPaths) = fillTyAssns (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
+    vs' = vs {vsTree = tree', vsTyAssns = tas'}
+    touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs') touched
     cannotErrs = const [LibertyErr "Touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties
     mustErrs = const [LibertyErr "Failed to provide a value for must"] <$>
       ( Map.filter (== Just Must)
-      $ Map.fromSet (flip getLiberty vs) $ Set.fromList
+      $ Map.fromSet (flip getLiberty vs') $ Set.fromList
       $ Tree.treeMissing tree')
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
   in
     foldl (Map.unionWith (<>)) refErrs $ fmap (Map.mapKeys PathError)
       [fmap (fmap $ GenericErr . Text.unpack) updateErrs, validationErrs, cannotErrs, mustErrs]
+
+fillTyAssns :: DefMap -> TypeAssignmentMap -> [Path] -> (TypeAssignmentMap, Set Path)
+fillTyAssns defs = inner mempty
+  where
+    inner freshlyAssigned tam paths = case paths of
+        [] -> (tam, freshlyAssigned)
+        (p : ps) -> case Mos.getDependency p tam of
+            Just _ -> inner freshlyAssigned tam ps
+            Nothing -> let newAssns = infer p $ fst tam in
+                inner (freshlyAssigned <> Map.keysSet newAssns) (Mos.setDependencies newAssns tam) ps
+    infer p tm = case Path.splitTail p of
+        Nothing -> error "Attempted to infer root in fillTyAssns"
+        Just (pp, cSeg) ->
+          let
+            (mptn, tm') = case Map.lookup pp tm of
+                Just tn -> (Just tn, tm)
+                Nothing -> let ptm = infer pp tm in
+                    (Map.lookup pp ptm, tm <> ptm)
+          in case mptn >>= flip lookupDef defs >>= defDispatch (childTypeFor cSeg) of
+            Just tn -> Map.insert p tn tm'
+            Nothing -> tm'
 
 data ValidationErr
   = GenericErr String
