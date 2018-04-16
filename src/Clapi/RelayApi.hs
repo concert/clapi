@@ -10,11 +10,12 @@ import Data.Text (Text)
 import Control.Monad.Trans (lift)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types
   ( TrDigest(..), TrpDigest(..), FrDigest(..), WireValue(..)
-  , TimeStamped(..), Liberty(Cannot))
+  , TimeStamped(..), Liberty(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
@@ -27,6 +28,7 @@ import Clapi.Types.Wire (castWireValue)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
+import Clapi.Valuespace (apiNs, dnSeg)
 
 class PathSegable a where
     pathNameFor :: a -> Seg
@@ -47,11 +49,17 @@ relayApiProto selfAddr =
         [ ([segq|build|], tupleDef "builddoc"
              (alSingleton [segq|commit_hash|] $ ttString "banana")
              ILUninterpolated)
-        , ([segq|client_info|], tupleDef
-             "Info about connected clients (clock_diff is in seconds)"
-             (alSingleton [segq|clock_diff|] $ ttFloat unbounded)
+        , (clock_diff, tupleDef
+             "The difference between two clocks, in seconds"
+             (alSingleton [segq|seconds|] $ ttFloat unbounded)
              ILUninterpolated)
-        , ([segq|clients|], arrayDef "clientsdoc"
+        , ([segq|client_info|], structDef
+             "Info about a single connected client" $ staticAl
+             -- FIXME: this should be "May":
+             [ (dnSeg, (TypeName apiNs dnSeg, Cannot))
+             , (clock_diff, (TypeName rns clock_diff, Cannot))
+             ])
+        , ([segq|clients|], arrayDef "Info about the connected clients"
              (TypeName rns [segq|client_info|]) Cannot)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
@@ -73,11 +81,15 @@ relayApiProto selfAddr =
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
         , ([pathq|/self|], ConstChange Nothing [
              WireValue $ Path.toText $ selfSeg :</ selfClientPath])
-        , (selfClientPath, ConstChange Nothing [WireValue @Float 0.0])
+        , ( selfClientPath :/ clock_diff
+          , ConstChange Nothing [WireValue @Float 0.0])
+        , ( selfClientPath :/ dnSeg
+          , ConstChange Nothing [WireValue @Text "Relay"])
         ])
       mempty
       mempty
     rns = [segq|relay|]
+    clock_diff = [segq|clock_diff|]
     selfSeg = pathNameFor selfAddr
     selfClientPath = Root :/ [segq|clients|] :/ selfSeg
     staticAl = alFromMap . Map.fromList
@@ -89,10 +101,13 @@ relayApiProto selfAddr =
               cSeg = pathNameFor cAddr
               timingMap' = Map.insert cSeg tdZero timingMap
             in do
-              sendFwd (ClientConnect cAddr)
-              pubUpdate
-                (alSingleton ([pathq|/clients|] :/ cSeg)
-                  $ ConstChange Nothing [WireValue $ unTimeDelta tdZero])
+              sendFwd (ClientConnect displayName cAddr)
+              pubUpdate (alFromList
+                [ ( [pathq|/clients|] :/ cSeg :/ clock_diff
+                  , ConstChange Nothing [WireValue $ unTimeDelta tdZero])
+                , ( [pathq|/clients|] :/ cSeg :/ dnSeg
+                  , ConstChange Nothing [WireValue $ Text.pack displayName])
+                ])
                 mempty
               steadyState timingMap' ownerMap
           ClientData cAddr (TimeStamped (theirTime, d)) -> do
@@ -101,7 +116,7 @@ relayApiProto selfAddr =
             -- pipeline, it'd be less jittery and tidy this up
             delta <- lift $ getDelta theirTime
             let timingMap' = Map.insert cSeg delta timingMap
-            pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg)
+            pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
               $ ConstChange Nothing [WireValue $ unTimeDelta delta])
               mempty
             sendFwd $ ClientData cAddr d
