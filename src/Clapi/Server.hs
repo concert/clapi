@@ -23,8 +23,6 @@ import Clapi.Protocol (Protocol, runProtocolIO)
 import Clapi.PerClientProto
   (ClientEvent(..), ServerEvent(..), liftToPerClientEvent, seIdent)
 
-data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
-
 swallowExc :: a -> E.SomeException -> a
 swallowExc = const
 
