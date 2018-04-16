@@ -10,7 +10,7 @@ import Data.ByteString (ByteString)
 import Clapi.Protocol (Protocol, sendFwd, ProtocolF(..), Directed(..))
 
 data ClientEvent ident a
-    = ClientConnect ident
+    = ClientConnect String ident
     | ClientDisconnect ident
     | ClientData ident a
     deriving (Show, Eq,Functor)
@@ -26,14 +26,15 @@ seIdent (ServerDisconnect i) = i
 
 liftToPerClientEvent ::
     Monad m
-    => i
+    => String
+    -> i
     -> Protocol ByteString a ByteString b m ()
     -> Protocol
          ByteString (ClientEvent i a)
          ByteString (ServerEvent i b)
          m ()
-liftToPerClientEvent i proto = do
-    sendFwd $ ClientConnect i
+liftToPerClientEvent displayName i proto = do
+    sendFwd $ ClientConnect displayName i
     inner proto
   where
     inner p = FreeT $ go <$> runFreeT p

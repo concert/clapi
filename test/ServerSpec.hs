@@ -195,4 +195,4 @@ echo = forever $ waitThen boing undefined
     boing (ClientData addr a) = sendRev (ServerData addr a)
     boing _ = return ()
 
-getCat addr = (addr, cat)
+getCat addr = ("For Test", addr, cat)

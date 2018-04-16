@@ -84,7 +84,7 @@ relayApiProto selfAddr =
     steadyState timingMap ownerMap = waitThen fwd rev
       where
         fwd ce = case ce of
-          ClientConnect cAddr ->
+          ClientConnect displayName cAddr ->
             let
               cSeg = pathNameFor cAddr
               timingMap' = Map.insert cSeg tdZero timingMap

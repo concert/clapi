@@ -64,7 +64,7 @@ nstProtocol_ :: (Monad m, Ord i) => StateT (NstState i) (NstProtocol m i) ()
 nstProtocol_ = forever $ liftedWaitThen fwd rev
   where
     sendFwd' i d = lift $ sendFwd (Originator i, d)
-    fwd (ClientConnect _) = return ()
+    fwd (ClientConnect _ _) = return ()
     fwd (ClientData i trd) =
       case trd of
         Trpd d -> claimNamespace i d
