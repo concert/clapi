@@ -11,7 +11,7 @@ module Clapi.Valuespace
   ( Valuespace, vsTree, vsTyDefs
   , baseValuespace
   , vsLookupDef, valuespaceGet, getLiberty
-  , apiNs, rootTypeName, apiTypeName
+  , apiNs, rootTypeName, apiTypeName, dnSeg
   , processToRelayProviderDigest, processToRelayClientDigest
   , validateVs, unsafeValidateVs
   , vsRelinquish, ValidationErr(..)
@@ -62,7 +62,7 @@ import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (TreeType(..), ttWord32, ttInt32, unbounded)
+import Clapi.Types.Tree (TreeType(..), ttWord32, ttInt32, unbounded, ttString)
 import Clapi.Validator (validate, extractTypeAssertion)
 import qualified Clapi.Types.Dkmap as Dkmap
 
@@ -113,6 +113,14 @@ versionDef = TupleDefinition "The version of CLAPI" (unsafeMkAssocList
   , ([segq|revision|], ttInt32 unbounded)
   ]) ILUninterpolated
 
+dnSeg :: Seg
+dnSeg = [segq|display_name|]
+
+displayNameDef :: TupleDefinition
+displayNameDef = TupleDefinition
+  "A human-readable name for a struct or array element"
+  (alSingleton [segq|name|] $ ttString "") ILUninterpolated
+
 -- | Fully revalidates the given Valuespace and throws an error if there are any
 --   validation issues.
 unsafeValidateVs :: Valuespace -> Valuespace
@@ -132,6 +140,7 @@ baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseTas mempty
     baseDefs = Map.singleton apiNs $ Map.fromList
       [ (apiNs, StructDef apiDef)
       , (vseg, TupleDef versionDef)
+      , (dnSeg, TupleDef displayNameDef)
       ]
     baseTas = Mos.dependenciesFromMap $ Map.singleton Root rootTypeName
 
