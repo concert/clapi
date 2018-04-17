@@ -14,7 +14,7 @@ import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types
-  ( TrDigest(..), TrpDigest(..), FrDigest(..), WireValue(..)
+  ( TrDigest(..), TrpDigest(..), FrDigest(..), FrpDigest(..), WireValue(..)
   , TimeStamped(..), Liberty(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
@@ -55,8 +55,7 @@ relayApiProto selfAddr =
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
-             -- FIXME: this should be "May":
-             [ (dnSeg, (TypeName apiNs dnSeg, Cannot))
+             [ (dnSeg, (TypeName apiNs dnSeg, May))
              , (clock_diff, (TypeName rns clock_diff, Cannot))
              ])
         , ([segq|clients|], arrayDef "Info about the connected clients"
@@ -147,6 +146,9 @@ relayApiProto selfAddr =
                 Frcd frcd ->
                   sendRev $ ServerData cAddr $ Frcd
                   $ frcd {frcdData = viewAs cAddr $ frcdData frcd}
+                Frpd frpd -> if frpdNamespace frpd == rns
+                  then handleApiRequest frpd
+                  else sendRev se
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
@@ -174,3 +176,9 @@ relayApiProto selfAddr =
               | otherwise = dc
           in
             alFmapWithKey fiddleDataChanges dd
+        -- This function trusts that the valuespace has completely validated the
+        -- actions the client can perform (i.e. can only change the name of a
+        -- client)
+        handleApiRequest (FrpDigest ns dd cops) =
+          sendFwd $ ClientData selfAddr $ Trpd $
+          TrpDigest ns mempty dd cops mempty
