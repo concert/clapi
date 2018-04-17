@@ -51,7 +51,8 @@ main =
   where
     onDraining = putStrLn "Stopped accepting new connections, waiting for existing clients to disconnect..."
     onTerminated = putStrLn "Forcibly quit"
-    perClientProto addr = (addr, serialiser <<-> digester <<-> attributor "someone")
+    perClientProto addr =
+      ("SomeOne", addr, serialiser <<-> digester <<-> attributor "someone")
     totalProto = shower "total"
       <<-> relayApiProto internalAddr
       <<-> shower "nt"

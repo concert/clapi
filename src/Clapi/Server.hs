@@ -23,8 +23,6 @@ import Clapi.Protocol (Protocol, runProtocolIO)
 import Clapi.PerClientProto
   (ClientEvent(..), ServerEvent(..), liftToPerClientEvent, seIdent)
 
-data User = Alice | Bob | Charlie deriving (Eq, Ord, Show)
-
 swallowExc :: a -> E.SomeException -> a
 swallowExc = const
 
@@ -76,26 +74,26 @@ instance Show (Q.InChan a) where
     show _ = "<InChan>"
 
 _handlePerClient ::
-    i ->
+    String -> i ->
     Protocol B.ByteString a B.ByteString b IO () ->
     ((ServerEvent i b -> IO ()) -> IO (ClientEvent i a -> IO ())) ->
     NS.Socket ->
     IO ()
-_handlePerClient i proto toMainChan sock = do
+_handlePerClient displayName i proto toMainChan sock = do
     (clientChanIn, clientChanOut) <- Q.newChan
     mainChanIn <- toMainChan $ Q.writeChan clientChanIn
     runProtocolIO
         (NSB.recv sock 4096) mainChanIn
         (NSB.sendAll sock) (Q.readChan clientChanOut)
-        (liftToPerClientEvent i proto)
+        (liftToPerClientEvent displayName i proto)
 
 neverDoAnything :: IO a
 neverDoAnything = forever $ threadDelay maxBound
 
 protocolServer
   :: (Ord i)
-  => NS.Socket -> (NS.SockAddr
-  -> (i, Protocol B.ByteString a B.ByteString b IO ()))
+  => NS.Socket
+  -> (NS.SockAddr -> (String, i, Protocol B.ByteString a B.ByteString b IO ()))
   -> Protocol
         (ClientEvent i a) Void
         (ServerEvent i b) Void
@@ -118,6 +116,6 @@ protocolServer listenSock getClientProto mainProto onShutdown = do
     rmReturnPath clientMap i = modifyMVar_ clientMap (return . Map.delete i)
     clientP mainI clientMap _as = serve' listenSock (clientHandler clientMap mainI) onShutdown
     clientHandler clientMap mainI (sock, addr) = do
-        let (i, cp) = getClientProto addr
-        _handlePerClient i cp (addReturnPath clientMap mainI i) sock
+        let (dn, i, cp) = getClientProto addr
+        _handlePerClient dn i cp (addReturnPath clientMap mainI i) sock
         rmReturnPath clientMap i
