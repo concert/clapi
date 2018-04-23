@@ -6,7 +6,6 @@ module Clapi.Types.Base
   ( Tag, unTag, mkTag
   , Time(..), TimeStamped(..)
   , Attributee
-  , Site
   , InterpolationLimit(..), Interpolation(..), interpolationType
   ) where
 
@@ -35,7 +34,6 @@ data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 newtype TimeStamped a = TimeStamped (Time, a) deriving (Show, Functor)
 
 type Attributee = Text
-type Site = Text
 
 data InterpolationLimit = ILUninterpolated | ILConstant | ILLinear | ILBezier
   deriving (Show, Eq, Ord, Enum, Bounded)

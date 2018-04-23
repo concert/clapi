@@ -2,7 +2,6 @@
 
 module Clapi.SerialisationProtocol (serialiser, mapProtocol, digester) where
 
-import Control.Monad.Trans.Free
 import Data.Attoparsec.ByteString (parse, IResult(..))
 import Data.ByteString (ByteString)
 import Data.ByteString.UTF8 (fromString)
@@ -13,9 +12,7 @@ import Clapi.Types
   ( ToRelayBundle(..), FromRelayBundle(..), TrDigest(..), FrDigest(..)
   , digestToRelayBundle, produceFromRelayBundle)
 import Clapi.Serialisation.Base (Encodable(..))
-import Clapi.Protocol
-  ( Protocol, waitThen, sendFwd, sendRev, ProtocolF(..), Directed(..)
-  , mapProtocol)
+import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev, mapProtocol)
 
 -- mapProtocol ::
 --     Monad m
