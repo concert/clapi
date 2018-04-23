@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Word (Word32)
 
 import Clapi.Types.AssocList
-  (AssocList, alEmpty, alFromList, alFmapWithKey, alValues, alKeysSet)
+  (AssocList, alNull, alEmpty, alFromList, alFmapWithKey, alValues, alKeysSet)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty)
 import Clapi.Types.Messages
@@ -361,12 +361,19 @@ data OutboundClientDigest = OutboundClientDigest
 outboundClientDigest :: OutboundClientDigest
 outboundClientDigest = OutboundClientDigest mempty mempty mempty alEmpty mempty
 
+ocdNull :: OutboundClientDigest -> Bool
+ocdNull (OutboundClientDigest cops defs tas dd errs) =
+    null cops && null defs && null tas && alNull dd && null errs
+
 type OutboundClientInitialisationDigest = OutboundClientDigest
 
 data OutboundProviderDigest = OutboundProviderDigest
   { opdContainerOps :: ContainerOps
   , opdData :: DataDigest
   } deriving (Show, Eq)
+
+opdNull :: OutboundProviderDigest -> Bool
+opdNull (OutboundProviderDigest cops dd) = null cops && alNull dd
 
 data OutboundDigest
   = Ocid OutboundClientInitialisationDigest

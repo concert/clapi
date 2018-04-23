@@ -143,6 +143,13 @@ spec = describe "the relay protocol" $ do
               lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = qualify foo dd})) .
               snd
       in runEffect $ test <<-> relay vsWithInt
+    it "should not send empty ocids/opds to client requests" $
+      let
+        test = do
+            sendFwd (1, Icd $ InboundClientDigest mempty mempty mempty alEmpty)
+            sendFwd (2, Icd $ InboundClientDigest (Set.singleton [pathq|/whatevz|]) mempty mempty alEmpty)
+            waitThenRevOnly $ lift . (`shouldSatisfy` (== (2 :: Int)) . fst)
+      in runEffect $ test <<-> relay baseValuespace
   where
     foo = [segq|foo|]
     fooP = Root :/ foo
