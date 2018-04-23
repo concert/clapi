@@ -5,50 +5,36 @@ module NamespaceTrackerSpec where
 
 import Test.Hspec
 
-import qualified Control.Concurrent.Chan.Unagi as U
-import Control.Monad (forever, join, void)
 import Control.Monad.Trans (lift)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Map.Mol as Mol
 import qualified Data.Set as Set
-import Data.List (partition)
-import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Void
-import Text.Printf
-import Control.Concurrent.MVar
 
-import Data.Map.Clapi (joinM)
-import Clapi.Util ((+|))
 import Clapi.TH
 import Clapi.Types
-    ( Time(..), Interpolation(..), InterpolationLimit(..), WireValue(..)
-    , FromRelayBundle(..), ToRelayBundle(..)
-    , DataUpdateMessage(..)
+    ( InterpolationLimit(..), WireValue(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
     , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty, TrcDigest(..)
     , frcdEmpty, FrcDigest(..)
     , ErrorIndex(..)
-    , DataChange(..)
-    , digestToRelayBundle, produceFromRelayBundle)
+    , DataChange(..))
 import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
   ( OutboundDigest(..), InboundDigest(..)
   , InboundClientDigest(..), OutboundClientDigest(..), outboundClientDigest
   , OutboundProviderDigest(..), SubOp(..), DefOp(..))
 import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
-import Clapi.Types.UniqList (ulEmpty, ulSingle)
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Server (neverDoAnything)
-import Clapi.NamespaceTracker
-  (nstProtocol, NstState(..), Ownership(..), Originator(..))
+import Clapi.NamespaceTracker (nstProtocol, Originator(..))
 import qualified Clapi.Protocol as Protocol
-import Clapi.Protocol (
-  Protocol(..), Directed(..), fromDirected, wait, waitThen, sendFwd, sendRev,
-  send, (<<->), runEffect, runProtocolIO, mapProtocol, waitThenFwdOnly, waitThenRevOnly)
+import Clapi.Protocol
+  ( Protocol, sendFwd, sendRev, (<<->), runEffect, waitThenFwdOnly
+  , waitThenRevOnly)
 
 type Owners i = Map Seg i
 
@@ -59,6 +45,7 @@ bob = "bob"
 helloS :: Seg
 helloS = [segq|hello|]
 
+helloP :: Path
 helloP = [pathq|/hello|]
 
 ocdEmpty :: OutboundClientDigest

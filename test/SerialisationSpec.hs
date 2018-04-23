@@ -18,7 +18,7 @@ import Blaze.ByteString.Builder (toByteString)
 import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
 import Clapi.Types
-  ( Time, Attributee, Site, WireValue
+  ( Time, Attributee, WireValue
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..), TypeMessage(..)
   , MsgError(..), TpId, DefMessage(..), ContainerUpdateMessage(..)
   , ToRelayClientBundle(..), ToRelayProviderBundle(..)
@@ -26,11 +26,11 @@ import Clapi.Types
   , FromRelayProviderErrorBundle(..), ToRelayProviderRelinquish(..)
   , ToRelayBundle(..), FromRelayBundle(..)
   , ErrorIndex(..))
-import Clapi.Types.Path (Path(..), Seg, pattern Root)
+import Clapi.Types.Path (Path(..), pattern Root)
 import Clapi.Serialisation (Encodable(..))
 
 -- Incl. Arbitrary instances of WireValue:
-import TypesSpec (smallListOf, name, arbitraryTextNoNull)
+import TypesSpec (smallListOf, arbitraryTextNoNull)
 
 encode :: (MonadFail m, Encodable a) => a -> m ByteString
 encode x = toByteString <$> builder x

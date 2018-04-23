@@ -3,10 +3,8 @@
 
 module TextSerialisationSpec where
 
-import Data.Proxy
-
 import Test.Hspec
-import Test.QuickCheck (Arbitrary(..), property, oneof)
+import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 
 import Clapi.TextSerialisation (ttFromText, ttToText)
