@@ -5,7 +5,7 @@
 {-# LANGUAGE TupleSections #-}
 
 module Clapi.Types.AssocList
-  ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList
+  ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList, alNull
   , alEmpty, alSingleton, alFromKeys, alFromList, alFromMap, alPickFromMap
   , alToMap, alFromZip
   , alCons, alLookup, alInsert, alSetDefault, alDelete
@@ -30,6 +30,9 @@ import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
 newtype AssocList a b
   = AssocList {unAssocList :: [(a, b)]}
   deriving (Show, Eq, Functor, Foldable, Traversable)
+
+alNull :: AssocList a b -> Bool
+alNull (AssocList l) = null l
 
 mkAssocList :: (MonadFail m, Ord a, Show a) => [(a, b)] -> m (AssocList a b)
 mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocList abPairs)

@@ -6,6 +6,7 @@
 
 module Clapi.Relay where
 
+import Control.Monad (unless)
 import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -27,7 +28,7 @@ import Clapi.Types.Digests
   , FrpErrorDigest(..), DataChange(..)
   , TimeSeriesDataOp(..), DefOp(..)
   , OutboundDigest(..), InboundDigest(..)
-  , OutboundClientDigest(..), OutboundClientInitialisationDigest
+  , OutboundClientDigest(..), OutboundClientInitialisationDigest, ocdNull, opdNull
   , InboundClientDigest(..), OutboundProviderDigest(..)
   , DataDigest, ContainerOps)
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern Root, parentPath)
@@ -190,9 +191,10 @@ relay vs = waitThenFwdOnly fwd
             cid = genInitDigest gets typeGets vs
             cid' = cid{ocdErrors =
               Map.unionWith (<>) (ocdErrors cid) (fmap (Text.pack . show) <$> errMap)}
+            opd = OutboundProviderDigest contOps'' dd''
           in do
-            sendRev (i, Ocid $ cid')
-            sendRev (i, Opd $ OutboundProviderDigest contOps'' dd'')
+            unless (ocdNull cid') $ sendRev (i, Ocid cid')
+            unless (opdNull opd) $ sendRev (i, Opd opd)
             relay vs
         terminalErrors errMap = do
           sendRev (i, Ope $ FrpErrorDigest errMap)
