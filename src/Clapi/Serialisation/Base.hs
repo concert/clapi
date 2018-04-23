@@ -32,7 +32,7 @@ import Clapi.TaggedData
 import Clapi.Types.AssocList (AssocList, mkAssocList, unAssocList)
 import Clapi.Types.Base
   ( Time(..), TimeStamped(..), Tag(..), mkTag, InterpolationLimit(..)
-  , Interpolation(..), interpolationType)
+  , Interpolation(..), InterpolationType(..), interpolationType)
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
 import Clapi.Util (bound)
@@ -157,15 +157,20 @@ instance Encodable InterpolationLimit where
   builder = tdTaggedBuilder ilTaggedData $ const $ return mempty
   parser = tdTaggedParser ilTaggedData return
 
-interpolationTaggedData :: TaggedData InterpolationLimit Interpolation
-interpolationTaggedData = taggedData ilToTag interpolationType
+itToTag :: InterpolationType -> Tag
+itToTag it = case it of
+    ItConstant -> [btq|c|]
+    ItLinear -> [btq|l|]
+    ItBezier -> [btq|b|]
+
+interpolationTaggedData :: TaggedData InterpolationType Interpolation
+interpolationTaggedData = taggedData itToTag interpolationType
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
         (IBezier a b) -> fromWord32be a <> fromWord32be b
         _ -> mempty
     parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
-        ILUninterpolated -> fail "Not allowed to specify uninterpolated time point"
-        ILConstant -> return IConstant
-        ILLinear -> return ILinear
-        ILBezier -> IBezier <$> parser <*> parser
+        ItConstant -> return IConstant
+        ItLinear -> return ILinear
+        ItBezier -> IBezier <$> parser <*> parser

@@ -6,7 +6,8 @@ module Clapi.Types.Base
   ( Tag, unTag, mkTag
   , Time(..), TimeStamped(..)
   , Attributee
-  , InterpolationLimit(..), Interpolation(..), interpolationType
+  , InterpolationLimit(..), Interpolation(..)
+  , InterpolationType(..), interpolationType
   ) where
 
 import Prelude hiding (fail)
@@ -39,8 +40,10 @@ data InterpolationLimit = ILUninterpolated | ILConstant | ILLinear | ILBezier
   deriving (Show, Eq, Ord, Enum, Bounded)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Show, Eq, Ord)
+data InterpolationType = ItConstant | ItLinear | ItBezier
+  deriving (Show, Eq, Ord, Enum, Bounded)
 
-interpolationType :: Interpolation -> InterpolationLimit
-interpolationType IConstant = ILConstant
-interpolationType ILinear = ILLinear
-interpolationType (IBezier _ _) = ILBezier
+interpolationType :: Interpolation -> InterpolationType
+interpolationType IConstant = ItConstant
+interpolationType ILinear = ItLinear
+interpolationType (IBezier _ _) = ItBezier
