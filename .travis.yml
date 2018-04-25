@@ -14,10 +14,14 @@ before_install:
   - mkdir -p ~/.local/bin
   - export PATH=$HOME/.local/bin:$PATH
   - stack upgrade --binary-only || travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+  - git clone https://github.com/concert/stack-hpc-coveralls.git
+  - $(cd stack-hpc-coveralls; stack install stack-hpc-coveralls)
 install:
   - stack --no-terminal --install-ghc test --only-dependencies
 script:
-  - stack --no-terminal test
+  - stack --no-terminal test --coverage
+after_script:
+  - shc clapi-hs clapi-hs-test
 notifications:
   email: false
   irc:
