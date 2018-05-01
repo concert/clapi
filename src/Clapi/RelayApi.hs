@@ -137,8 +137,12 @@ relayApiProto selfAddr =
           rns mempty dd co mempty
         rev (Left ownerAddrs) = do
           let ownerMap' = pathNameFor <$> ownerAddrs
-          uncurry pubUpdate $ ownerChangeInfo ownerMap'
-          steadyState timingMap ownerMap'
+          if elem selfAddr $ Map.elems ownerAddrs
+            then do
+              uncurry pubUpdate $ ownerChangeInfo ownerMap'
+              steadyState timingMap ownerMap'
+            else
+              return () -- The relay API did something invalid and got kicked out
         rev (Right se) = do
           case se of
             ServerData cAddr d ->
