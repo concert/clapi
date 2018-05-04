@@ -10,11 +10,14 @@ import Data.Either (isLeft)
 import Clapi.TH (pathq, segq)
 import Clapi.Types (CanFail)
 import Clapi.Types.Path
-  (Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText, isChildOf)
+  ( Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText
+  , isChildOf, joinSegs)
 
 
 spec :: Spec
 spec = do
+    describe "Join segs" $ it "Joins segs as expected" $
+        joinSegs [[segq|yo|], [segq|ho|], [segq|ahoy|]] `shouldBe` [segq|yo_ho_ahoy|]
     describe "Quasiquoter" $ it "Produces expected path" $ [pathq|/oi/mate|] `shouldBe` Path [[segq|oi|], [segq|mate|]]
     describe ":/" $ do
         it "Splits the end off" $ let (p :/ s) = [pathq|/a/b/c|] in do
