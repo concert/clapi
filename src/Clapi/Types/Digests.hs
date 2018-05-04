@@ -61,6 +61,9 @@ trpdRemovedPaths (TrpDigest ns _ _ cOps _) = (ns :</) <$> Map.foldlWithKey f [] 
     f acc p segMap = acc ++
       (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
 
+trpdNull :: TrpDigest -> Bool
+trpdNull (TrpDigest _ns defs dd cops errs) = null defs && alNull dd && null cops && null errs
+
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
   , frpdData :: DataDigest
