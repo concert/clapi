@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveLift #-}
 
 module Clapi.Types.Path (
-    Path(..), Seg, mkSeg, unSeg,
+    Path(..), Seg, mkSeg, unSeg, joinSegs,
     pathP, segP, toText, fromText,
     splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
@@ -37,6 +37,9 @@ segP = fmap (Seg . Text.pack) $ DAT.many1 $ DAT.satisfy isValidSegChar
 
 mkSeg :: MonadFail m => Text -> m Seg
 mkSeg = either fail return . DAT.parseOnly (segP <* DAT.endOfInput)
+
+joinSegs :: [Seg] -> Seg
+joinSegs = Seg . Text.intercalate (Text.singleton '_') . fmap unSeg
 
 newtype Path = Path {unPath :: [Seg]} deriving (Eq, Ord, Lift)
 
