@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE Rank2Types #-}
 
 module Clapi.Validator where
 
@@ -103,10 +104,16 @@ validate' tt a = case tt of
       \l -> mapM_ (validate' tt') l >> void (f l)
 
 validate :: MonadFail m => TreeType -> WireValue -> m ()
-validate tt wv = withTtProxy tt f
+validate tt = withWireable (validate' tt) tt
+
+withWireable
+  :: forall m r. MonadFail m
+  => (forall a. Wireable a => a -> m r)
+  -> TreeType -> WireValue -> m r
+withWireable f tt wv = withTtProxy tt go
   where
-    f :: forall a m. (Wireable a, MonadFail m) => Proxy a -> m ()
-    f _ = castWireValue @a wv >>= validate' tt
+    go :: forall a. Wireable a => Proxy a -> m r
+    go _ = castWireValue @a wv >>= f
 
 bimapM :: Applicative m => (a -> m a') -> (b -> m b') -> (a, b) -> m (a', b')
 bimapM fa fb (a, b) = (,) <$> fa a <*> fb b
