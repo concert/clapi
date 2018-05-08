@@ -7,6 +7,7 @@ module Clapi.Types.Wire
   ( Wireable
   , WireValue(..), castWireValue
   , (<|$|>), (<|*|>)
+  , cast'
   ) where
 
 import Prelude hiding (fail)
@@ -21,7 +22,7 @@ import Data.Typeable
 import Clapi.Serialisation.Base (Encodable)
 import Clapi.Types.Base (Time(..))
 
-cast' :: forall a b m. (Typeable a, Typeable b, MonadFail m) => a -> m b
+cast' :: forall b a m. (Typeable a, Typeable b, MonadFail m) => a -> m b
 cast' a =
   let
     die = fail $ "Type mismatch: tried to cast value of type "
