@@ -63,7 +63,7 @@ import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType(..), ttWord32, ttInt32, unbounded, ttString)
-import Clapi.Validator (validate, extractTypeAssertion)
+import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
 type DefMap = Map Seg (Map Seg Definition)
@@ -483,7 +483,7 @@ validateWireValues tts wvs =
     (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs)
     >>= sequence >>= return . Mos.fromList . mconcat
   where
-    vr tt wv = validate tt wv >> return (extractTypeAssertion tt wv)
+    vr tt wv = validate tt wv >> extractTypeAssertions tt wv
 
 -- FIXME: The VS you get back from this can be invalid WRT refs/inter NS types
 vsRelinquish :: Seg -> Valuespace -> Valuespace

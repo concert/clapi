@@ -11,6 +11,7 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (void, join)
 import Data.Word (Word8)
 import Data.Maybe (fromJust)
+import Data.Monoid ((<>))
 import Data.Proxy
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -48,22 +49,56 @@ unpackTreeType tt = let (c, ts) = inner tt in (c, reverse ts)
     inner (TtCont t) = let (c, ts) = inner $ contTContainedType t in
         (c, (typeEnumOf t) : ts)
 
--- FIXME: If we had first class tree values we would be able to guarantee that
--- a ref thing was the right type
-extractTypeAssertion :: TreeType -> WireValue -> [(TypeName, Path)]
-extractTypeAssertion tt wv =
-  let
-    (concT, contTs) = unpackTreeType tt
-    mTn = case concT of
-      TcRef tn -> Just tn
-      _ -> Nothing
-    listMash :: Wireable a => [TreeContainerTypeName] -> (a -> [Path]) -> [Path]
-    listMash (_:cts) f = listMash cts (mconcat . map f)
-    listMash [] f = maybe [] id $ f <|$|> wv
-  in do
-    case mTn of
-      Nothing -> []
-      Just tn -> (tn,) <$> listMash contTs (\v -> [fromJust $ Path.fromText v])
+extractTypeAssertions
+  :: MonadFail m => TreeType -> WireValue -> m [(TypeName, Path)]
+extractTypeAssertions tt = withWireable (extractTypeAssertions' tt) tt
+
+extractTypeAssertions'
+  :: (Wireable a, MonadFail m) => TreeType -> a -> m [(TypeName, Path)]
+extractTypeAssertions' tt a = case tt of
+  TtConc tct -> case tct of
+    TcRef tn -> cast' a >>= Path.fromText >>= return . pure . (tn,)
+    _ -> return []
+  TtCont tct -> overContainer extractTypeAssertions' tct a
+
+overContainer
+  :: forall a m r. (Wireable a, MonadFail m, Monoid r)
+  => (forall a'. Wireable a' => TreeType -> a' -> m r)
+  -> TreeContainerType -> a
+  -> m r
+overContainer f tct a = case tct of
+  TcList tt ->
+    let
+      g :: forall b. Wireable b => Proxy b -> m r
+      g _ = cast' @[b] a >>= mapM (f tt) >>= return . foldMap id
+    in
+      withTtProxy tt g
+  TcSet tt ->
+    let
+      g :: forall b. Wireable b => Proxy b -> m r
+      g _ = cast' @[b] a >>= mapM (f tt) >>= return . foldMap id
+    in
+      withTtProxy tt g
+  TcOrdSet tt ->
+    let
+      g :: forall b. Wireable b => Proxy b -> m r
+      g _ = cast' @[b] a >>= mapM (f tt) >>= return . foldMap id
+    in
+      withTtProxy tt g
+  TcMaybe tt ->
+    let
+      g :: forall b. Wireable b => Proxy b -> m r
+      g _ = cast' @(Maybe b) a >>= mapM (f tt) >>= return . foldMap id
+    in
+      withTtProxy tt g
+  TcPair tt1 tt2 ->
+    let
+      g :: forall b c. (Wireable b, Wireable c) => Proxy b -> Proxy c -> m r
+      g _ _ = cast' @(b, c) a >>= bimapM (f tt1) (f tt2) >>=
+        \(r1, r2) -> return (r1 <> r2)
+    in
+      withTtProxy tt1 $ \p1 -> withTtProxy tt2 $ \p2 -> g p1 p2
+
 
 validate' :: (Wireable a, MonadFail m) => TreeType -> a -> m ()
 validate' tt a = case tt of
