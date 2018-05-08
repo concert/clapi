@@ -15,6 +15,7 @@ module Clapi.Types.Tree
   , tcEnum
   , ttTime, ttEnum, ttWord32, ttWord64, ttInt32, ttInt64, ttDouble, ttFloat
   , ttString, ttRef, ttValidatorDesc
+  , ttList, ttSet, ttOrdSet, ttMaybe, ttPair
   ) where
 
 import Prelude hiding (fail)
@@ -183,3 +184,18 @@ ttRef = TtConc . TcRef
 
 ttValidatorDesc :: TreeType
 ttValidatorDesc = TtConc $ TcValidatorDesc
+
+ttList :: TreeType -> TreeType
+ttList = TtCont . TcList
+
+ttSet :: TreeType -> TreeType
+ttSet = TtCont . TcSet
+
+ttOrdSet :: TreeType -> TreeType
+ttOrdSet = TtCont . TcOrdSet
+
+ttMaybe :: TreeType -> TreeType
+ttMaybe = TtCont . TcMaybe
+
+ttPair :: TreeType -> TreeType -> TreeType
+ttPair tt1 tt2 = TtCont $ TcPair tt1 tt2
