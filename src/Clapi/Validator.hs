@@ -10,14 +10,14 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (void, join)
 import Data.Word (Word8)
 import Data.Maybe (fromJust)
-import Data.Typeable (Proxy(..), Typeable)
+import Data.Proxy
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
-import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>), cast')
+import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>), cast', castWireValue)
 import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
@@ -135,3 +135,9 @@ validate' tt a = case tt of
   where
     bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
     bimapM_ fa fb (a, b) = void $ (,) <$> fa a <*> fb b
+
+validate'' :: MonadFail m => TreeType -> WireValue -> m ()
+validate'' tt wv = withTtProxy tt f
+  where
+    f :: forall a m. (Wireable a, MonadFail m) => Proxy a -> m ()
+    f _ = castWireValue @a wv >>= validate' tt
