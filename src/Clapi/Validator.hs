@@ -42,13 +42,6 @@ inBounds b n = go (boundsMin b) (boundsMax b)
     go Nothing (Just hi) = lte hi
     go (Just lo) (Just hi) = gte lo >> lte hi
 
-unpackTreeType :: TreeType -> (TreeConcreteType, [TreeContainerTypeName])
-unpackTreeType tt = let (c, ts) = inner tt in (c, reverse ts)
-  where
-    inner (TtConc t) = (t, [])
-    inner (TtCont t) = let (c, ts) = inner $ contTContainedType t in
-        (c, (typeEnumOf t) : ts)
-
 extractTypeAssertions
   :: MonadFail m => TreeType -> WireValue -> m [(TypeName, Path)]
 extractTypeAssertions tt = withWireable (extractTypeAssertions' tt) tt
