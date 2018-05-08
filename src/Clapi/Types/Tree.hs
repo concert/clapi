@@ -2,10 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
 
 module Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
@@ -29,9 +25,6 @@ import Data.Word
 
 import Clapi.Types.Path (Seg, mkSeg, TypeName)
 import Clapi.Util (uncamel)
-
--- FIXME: might want to move these elsewhere
-import Clapi.Types.Wire (Wireable)
 
 
 data Bounds a
@@ -79,12 +72,6 @@ data TreeConcreteType
   | TcValidatorDesc
   deriving (Show, Eq, Ord)
 
-ttConcMagic
-  :: TreeConcreteType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
-ttConcMagic tct f = case tct of
-  TcWord32 _ -> f $ Proxy @Word32
-  -- FIXME: etc
-
 instance TypeEnumOf TreeConcreteType TreeConcreteTypeName where
   typeEnumOf tct = case tct of
       TcTime -> TcnTime
@@ -119,15 +106,6 @@ data TreeContainerType
   | TcPair TreeType TreeType -- FIXME: this is a pain
   deriving (Show, Eq, Ord)
 
-ttContMagic
-  :: TreeContainerType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
-ttContMagic tct f = case tct of
-  TcList tt -> magic tt (\pConc -> f $ proxyF (Proxy @[]) pConc)
-  -- FIXME: etc...
-  TcPair tt1 tt2 ->
-    magic tt1 $ \pConc1 ->
-      magic tt2 $ \pConc2 -> f $ proxyF3 (Proxy @(,)) pConc1 pConc2
-
 instance TypeEnumOf TreeContainerType TreeContainerTypeName where
   typeEnumOf tct = case tct of
     TcList _ -> TcnList
@@ -140,17 +118,6 @@ data TreeType
   = TtConc TreeConcreteType
   | TtCont TreeContainerType
   deriving (Show, Eq, Ord)
-
-magic :: TreeType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
-magic tt f = case tt of
-  TtConc tct -> ttConcMagic tct f
-  TtCont tct -> ttContMagic tct f
-
-proxyF :: Proxy a -> Proxy b -> Proxy (a b)
-proxyF _ _ = Proxy
-
-proxyF3 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a b c)
-proxyF3 p1 p2 p3 = proxyF (proxyF p1 p2) p3
 
 ttTime :: TreeType
 ttTime = TtConc $ TcTime

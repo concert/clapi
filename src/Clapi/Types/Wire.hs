@@ -12,7 +12,6 @@ module Clapi.Types.Wire
 
 import Prelude hiding (fail)
 
--- Wire type stuff:
 import Control.Monad.Fail (MonadFail(..))
 import Data.Int
 import Data.Text (Text)

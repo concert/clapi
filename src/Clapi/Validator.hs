@@ -22,7 +22,8 @@ import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( TreeType(..), TreeConcreteType(..), TreeContainerType(..), TreeContainerTypeName(..), typeEnumOf
-  , contTContainedType, Bounds, boundsMin, boundsMax, magic)
+  , contTContainedType, Bounds, boundsMin, boundsMax)
+import Clapi.Types.TreeTypeProxy (withTtProxy)
 import Clapi.TextSerialisation (ttFromText)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
@@ -123,14 +124,14 @@ validate' tt a = case tt of
           f :: forall b m. (Wireable b, MonadFail m) => Proxy b -> m ()
           f p = cast' @[b] a >>= mapM_ (validate' @b tt1)
         in
-          magic tt1 f
+          withTtProxy tt1 f
       -- FIXME: the rest
       TcPair tt1 tt2 ->
         let
           f :: forall b c m. (Wireable b, Wireable c, MonadFail m) => Proxy b -> Proxy c -> m ()
           f p1 p2 = cast' @(b, c) a >>= bimapM_ (validate' @b tt1) (validate' @c tt2)
         in
-          magic tt1 (\p1 -> magic tt2 (\p2 -> f p1 p2))
+          withTtProxy tt1 (\p1 -> withTtProxy tt2 (\p2 -> f p1 p2))
   where
     bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
     bimapM_ fa fb (a, b) = void $ (,) <$> fa a <*> fb b

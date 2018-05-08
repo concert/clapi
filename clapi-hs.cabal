@@ -46,6 +46,7 @@ library
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
                      , Clapi.Types.Tree
+                     , Clapi.Types.TreeTypeProxy
                      , Clapi.Types.Wire
                      , Clapi.Types.UniqList
                      , Clapi.Tree
