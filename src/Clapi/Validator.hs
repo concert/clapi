@@ -94,17 +94,6 @@ validate' tt a = case tt of
     checkWith :: (Wireable b, MonadFail m) => (b -> m c) -> m ()
     checkWith f = void $ cast' a >>= f
 
-    checkString r t = maybe
-      (fail $ printf "did not match '%s'" r)
-      (const $ return t)
-      (Text.unpack t =~~ Text.unpack r :: Maybe ())
-
-    checkEnum :: MonadFail m => [Seg] -> Word8 -> m Word8
-    checkEnum ns w = let theMax = fromIntegral $ length ns in
-      if w >= theMax
-        then fail $ printf "Enum value %v out of range" w
-        else return w
-
     checkListWith
       :: forall f b c m. (Foldable f, Wireable b, Wireable (f b), MonadFail m)
       => TreeType -> (f b -> m c) -> Proxy b -> m ()
@@ -122,3 +111,15 @@ bimapM fa fb (a, b) = (,) <$> fa a <*> fb b
 
 bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
 bimapM_ fa fb = void . bimapM fa fb
+
+checkString :: MonadFail m => Text -> Text -> m Text
+checkString r t = maybe
+  (fail $ printf "did not match '%s'" r)
+  (const $ return t)
+  (Text.unpack t =~~ Text.unpack r :: Maybe ())
+
+checkEnum :: MonadFail m => [Seg] -> Word8 -> m Word8
+checkEnum ns w = let theMax = fromIntegral $ length ns in
+  if w >= theMax
+    then fail $ printf "Enum value %v out of range" w
+    else return w
