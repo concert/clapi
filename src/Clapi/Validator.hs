@@ -12,6 +12,7 @@ import Data.Word (Word8)
 import Data.Maybe (fromJust)
 import Data.Proxy
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
