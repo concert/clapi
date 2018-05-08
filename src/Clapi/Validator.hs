@@ -116,23 +116,51 @@ validate tt wv =
 validate' :: (Wireable a, MonadFail m) => TreeType -> a -> m ()
 validate' tt a = case tt of
     TtConc tct -> case tct of
-      TcWord32 b -> void $ cast' a >>= inBounds b
-      -- FIXME: the rest
+      TcTime -> checkWith @Time pure
+      TcEnum ns -> checkWith $ checkEnum ns
+      TcWord32 b -> checkWith $ inBounds b
+      TcWord64 b -> checkWith $ inBounds b
+      TcInt32 b -> checkWith $ inBounds b
+      TcInt64 b -> checkWith $ inBounds b
+      TcFloat b -> checkWith $ inBounds b
+      TcDouble b -> checkWith $ inBounds b
+      TcString r -> checkWith $ checkString r
+      TcRef _ -> checkWith Path.fromText
+      TcValidatorDesc -> checkWith ttFromText
     TtCont tct -> case tct of
-      TcList tt1 ->
-        let
-          f :: forall b m. (Wireable b, MonadFail m) => Proxy b -> m ()
-          f p = cast' @[b] a >>= mapM_ (validate' @b tt1)
-        in
-          withTtProxy tt1 f
-      -- FIXME: the rest
+      TcList tt1 -> withTtProxy tt1 $ checkListWith @[] tt1 pure
+      TcSet tt1 -> withTtProxy tt1 $
+        checkListWith @[] tt1 $ ensureUnique "items"
+      TcOrdSet tt1 -> withTtProxy tt1 $
+        checkListWith @[] tt1 $ ensureUnique "items"
+      TcMaybe tt1 -> withTtProxy tt1 $ checkListWith @Maybe tt1 pure
       TcPair tt1 tt2 ->
         let
           f :: forall b c m. (Wireable b, Wireable c, MonadFail m) => Proxy b -> Proxy c -> m ()
-          f p1 p2 = cast' @(b, c) a >>= bimapM_ (validate' @b tt1) (validate' @c tt2)
+          f _ _ = cast' @(b, c) a >>= bimapM_ (validate' tt1) (validate' tt2)
         in
           withTtProxy tt1 (\p1 -> withTtProxy tt2 (\p2 -> f p1 p2))
   where
+    checkWith :: (Wireable b, MonadFail m) => (b -> m c) -> m ()
+    checkWith f = void $ cast' a >>= f
+
+    checkString r t = maybe
+      (fail $ printf "did not match '%s'" r)
+      (const $ return t)
+      (Text.unpack t =~~ Text.unpack r :: Maybe ())
+
+    checkEnum :: MonadFail m => [Seg] -> Word8 -> m Word8
+    checkEnum ns w = let theMax = fromIntegral $ length ns in
+      if w >= theMax
+        then fail $ printf "Enum value %v out of range" w
+        else return w
+
+    checkListWith
+      :: forall f b c m. (Foldable f, Wireable b, Wireable (f b), MonadFail m)
+      => TreeType -> (f b -> m c) -> Proxy b -> m ()
+    checkListWith tt' f _ = checkWith @(f b) $
+      \l -> mapM_ (validate' tt') l >> void (f l)
+
     bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
     bimapM_ fa fb (a, b) = void $ (,) <$> fa a <*> fb b
 
