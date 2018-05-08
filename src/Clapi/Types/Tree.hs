@@ -29,6 +29,9 @@ import Data.Word
 import Clapi.Types.Path (Seg, mkSeg, TypeName)
 import Clapi.Util (uncamel)
 
+-- FIXME: might want to move these elsewhere
+import Clapi.Types.Wire (Wireable)
+
 
 data Bounds a
   = Bounds (Maybe a) (Maybe a)
@@ -75,7 +78,8 @@ data TreeConcreteType
   | TcValidatorDesc
   deriving (Show, Eq, Ord)
 
-ttConcMagic :: TreeConcreteType -> (forall (a :: *). Proxy a -> r) -> r
+ttConcMagic
+  :: TreeConcreteType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
 ttConcMagic tct f = case tct of
   TcWord32 _ -> f $ Proxy @Word32
   -- FIXME: etc
@@ -114,7 +118,8 @@ data TreeContainerType
   | TcPair TreeType TreeType -- FIXME: this is a pain
   deriving (Show, Eq, Ord)
 
-ttContMagic :: TreeContainerType -> (forall (a :: *). Proxy a -> r) -> r
+ttContMagic
+  :: TreeContainerType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
 ttContMagic tct f = case tct of
   TcList tt -> magic tt (\pConc -> f $ proxyF (Proxy @[]) pConc)
   -- FIXME: etc...
@@ -135,7 +140,7 @@ data TreeType
   | TtCont TreeContainerType
   deriving (Show, Eq, Ord)
 
-magic :: TreeType -> (forall (a :: *). Proxy a -> r) -> r
+magic :: TreeType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
 magic tt f = case tt of
   TtConc tct -> ttConcMagic tct f
   TtCont tct -> ttContMagic tct f
