@@ -43,6 +43,7 @@ instance Wireable Double
 instance Wireable Text
 instance Wireable a => Wireable [a]
 instance Wireable a => Wireable (Maybe a)
+instance (Wireable a, Wireable b) => Wireable (a, b)
 
 data WireValue = forall a. Wireable a => WireValue a
 
