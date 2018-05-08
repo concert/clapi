@@ -111,11 +111,14 @@ validate' tt a = case tt of
     checkListWith tt' f _ = checkWith @(f b) $
       \l -> mapM_ (validate' tt') l >> void (f l)
 
-    bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
-    bimapM_ fa fb (a, b) = void $ (,) <$> fa a <*> fb b
-
 validate :: MonadFail m => TreeType -> WireValue -> m ()
 validate tt wv = withTtProxy tt f
   where
     f :: forall a m. (Wireable a, MonadFail m) => Proxy a -> m ()
     f _ = castWireValue @a wv >>= validate' tt
+
+bimapM :: Applicative m => (a -> m a') -> (b -> m b') -> (a, b) -> m (a', b')
+bimapM fa fb (a, b) = (,) <$> fa a <*> fb b
+
+bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
+bimapM_ fa fb = void . bimapM fa fb
