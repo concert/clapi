@@ -63,56 +63,6 @@ extractTypeAssertion tt wv =
       Nothing -> []
       Just tn -> (tn,) <$> listMash contTs (\v -> [fromJust $ Path.fromText v])
 
-validate :: forall m. MonadFail m => TreeType -> WireValue -> m ()
-validate tt wv =
-  let
-    (concT, contTs) = unpackTreeType tt
-    g = case concT of
-      TcTime -> recy $ return @m @Time
-      TcEnum ns  -> recy $ checkEnum ns
-      TcWord32 b -> recy $ inBounds b
-      TcWord64 b -> recy $ inBounds b
-      TcInt32 b -> recy $ inBounds b
-      TcInt64 b -> recy $ inBounds b
-      TcFloat b -> recy $ inBounds b
-      TcDouble b -> recy $ inBounds b
-      TcString r -> recy $ checkString r
-      TcRef _ -> recy Path.fromText
-      TcValidatorDesc -> recy ttFromText
-  in
-    g contTs
-  where
-    recy :: (Show b, Ord b, Wireable a) =>
-      (a -> m b) -> [TreeContainerTypeName]-> m ()
-    recy f [] = void $ join $ f <|$|> wv
-    recy f (ct:cts) = case ct of
-      TcnList -> recy (checkList f) cts
-      TcnSet -> recy (checkSet f) cts
-      TcnOrdSet -> recy (checkOrdSet f) cts
-      TcnMaybe -> recy (checkMaybe f) cts
-    checkEnum :: [Seg] -> Word8 -> m Word8
-    checkEnum ns w = let theMax = fromIntegral $ length ns in
-      if w >= theMax
-        then fail $ printf "Enum value %v out of range" w
-        else return w
-    checkString r t = maybe
-      (fail $ printf "did not match '%s'" r)
-      (const $ return t)
-      (Text.unpack t =~~ Text.unpack r :: Maybe ())
-    checkList :: (a -> m b) -> [a] -> m [b]
-    checkList = mapM
-
-    checkSet :: (Show b, Ord b) => (a -> m b) -> [a] -> m (Set.Set b)
-    checkSet f v = do
-      vs <- mapM f v
-      Set.fromList <$> ensureUnique "items" vs
-
-    checkOrdSet :: (Show b, Ord b) => (a -> m b) -> [a] -> m (UniqList b)
-    checkOrdSet f v = mapM f v >>= mkUniqList
-
-    checkMaybe :: (a -> m b) -> Maybe a -> m (Maybe b)
-    checkMaybe = mapM
-
 validate' :: (Wireable a, MonadFail m) => TreeType -> a -> m ()
 validate' tt a = case tt of
     TtConc tct -> case tct of
@@ -164,8 +114,8 @@ validate' tt a = case tt of
     bimapM_ :: Applicative m => (a -> m ()) -> (b -> m ()) -> (a, b) -> m ()
     bimapM_ fa fb (a, b) = void $ (,) <$> fa a <*> fb b
 
-validate'' :: MonadFail m => TreeType -> WireValue -> m ()
-validate'' tt wv = withTtProxy tt f
+validate :: MonadFail m => TreeType -> WireValue -> m ()
+validate tt wv = withTtProxy tt f
   where
     f :: forall a m. (Wireable a, MonadFail m) => Proxy a -> m ()
     f _ = castWireValue @a wv >>= validate' tt
