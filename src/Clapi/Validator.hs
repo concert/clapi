@@ -86,7 +86,8 @@ validate' tt a = case tt of
       TcMaybe tt1 -> withTtProxy tt1 $ checkListWith @Maybe tt1 pure
       TcPair tt1 tt2 ->
         let
-          f :: forall b c m. (Wireable b, Wireable c, MonadFail m) => Proxy b -> Proxy c -> m ()
+          f :: forall b c m. (Wireable b, Wireable c, MonadFail m)
+            => Proxy b -> Proxy c -> m ()
           f _ _ = cast' @(b, c) a >>= bimapM_ (validate' tt1) (validate' tt2)
         in
           withTtProxy tt1 (\p1 -> withTtProxy tt2 (\p2 -> f p1 p2))
