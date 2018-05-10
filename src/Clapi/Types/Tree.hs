@@ -12,6 +12,7 @@ module Clapi.Types.Tree
   , ttTime, ttEnum, ttWord32, ttWord64, ttInt32, ttInt64, ttDouble, ttFloat
   , ttString, ttRef, ttValidatorDesc
   , ttList, ttSet, ttOrdSet, ttMaybe, ttPair
+  , TreeType'(..)
   ) where
 
 import Prelude hiding (fail)
@@ -117,6 +118,24 @@ instance TypeEnumOf TreeContainerType TreeContainerTypeName where
 data TreeType
   = TtConc TreeConcreteType
   | TtCont TreeContainerType
+  deriving (Show, Eq, Ord)
+
+data TreeType'
+  = TtTime
+  | TtEnum [Seg]
+  | TtWord32 (Bounds Word32)
+  | TtWord64 (Bounds Word64)
+  | TtInt32 (Bounds Int32)
+  | TtInt64 (Bounds Int64)
+  | TtFloat (Bounds Float)
+  | TtDouble (Bounds Double)
+  | TtString Text
+  | TtRef TypeName
+  | TtList TreeType'
+  | TtSet TreeType'
+  | TtOrdSet TreeType'
+  | TtMaybe TreeType'
+  | TtPair TreeType' TreeType'
   deriving (Show, Eq, Ord)
 
 ttTime :: TreeType

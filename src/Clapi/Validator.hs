@@ -25,8 +25,8 @@ import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( TreeType(..), TreeConcreteType(..), TreeContainerType(..), TreeContainerTypeName(..), typeEnumOf
-  , contTContainedType, Bounds, boundsMin, boundsMax)
-import Clapi.Types.TreeTypeProxy (withTtProxy)
+  , contTContainedType, Bounds, boundsMin, boundsMax, TreeType'(..))
+import Clapi.Types.TreeTypeProxy (withTtProxy, withTtProxy')
 import Clapi.TextSerialisation (ttFromText)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
@@ -91,6 +91,41 @@ overContainer f tct a = case tct of
         \(r1, r2) -> return (r1 <> r2)
     in
       withTtProxy tt1 $ \p1 -> withTtProxy tt2 $ \p2 -> g p1 p2
+
+validate'' :: (Wireable a, MonadFail m) => TreeType' -> a -> m ()
+validate'' tt a = case tt of
+    TtTime -> checkWith @Time pure
+    TtEnum ns -> checkWith $ checkEnum ns
+    TtWord32 b -> checkWith $ inBounds b
+    TtWord64 b -> checkWith $ inBounds b
+    TtInt32 b -> checkWith $ inBounds b
+    TtInt64 b -> checkWith $ inBounds b
+    TtFloat b -> checkWith $ inBounds b
+    TtDouble b -> checkWith $ inBounds b
+    TtString r -> checkWith $ checkString r
+    TtRef _ -> checkWith Path.fromText
+    TtList tt1 -> withTtProxy' tt1 $ checkListWith @[] tt1 pure
+    TtSet tt1 -> withTtProxy' tt1 $
+      checkListWith @[] tt1 $ ensureUnique "items"
+    TtOrdSet tt1 -> withTtProxy' tt1 $
+      checkListWith @[] tt1 $ ensureUnique "items"
+    TtMaybe tt1 -> withTtProxy' tt1 $ checkListWith @Maybe tt1 pure
+    TtPair tt1 tt2 ->
+      let
+        f :: forall b c m. (Wireable b, Wireable c, MonadFail m)
+          => Proxy b -> Proxy c -> m ()
+        f _ _ = cast' @(b, c) a >>= bimapM_ (validate'' tt1) (validate'' tt2)
+      in
+        withTtProxy' tt1 (\p1 -> withTtProxy' tt2 (\p2 -> f p1 p2))
+  where
+    checkWith :: (Wireable b, MonadFail m) => (b -> m c) -> m ()
+    checkWith f = void $ cast' a >>= f
+
+    checkListWith
+      :: forall f b c m. (Foldable f, Wireable b, Wireable (f b), MonadFail m)
+      => TreeType' -> (f b -> m c) -> Proxy b -> m ()
+    checkListWith tt' f _ = checkWith @(f b) $
+      \l -> mapM_ (validate'' tt') l >> void (f l)
 
 
 validate' :: (Wireable a, MonadFail m) => TreeType -> a -> m ()
