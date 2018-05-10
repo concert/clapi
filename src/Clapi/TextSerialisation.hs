@@ -19,7 +19,7 @@ import Data.Scientific (toRealFloat)
 import Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax, TreeConcreteTypeName(..),
   TreeContainerTypeName(..) , TreeConcreteType(..), TreeContainerType(..),
-  TreeType(..), typeEnumOf)
+  TreeType(..), typeEnumOf, TreeType'(..), TreeTypeName(..))
 import Clapi.Types.Path (segP, unSeg)
 import qualified Clapi.Types.Path as Path
 
@@ -135,6 +135,11 @@ ttFromText = either fail return . Dat.parseOnly (ttParser <* Dat.endOfInput)
 bracketText :: Text -> Text
 bracketText t = Text.singleton argsOpen <> t <> Text.singleton argsClose
 
+bracketNotNull :: Text -> Text
+bracketNotNull t = case t of
+  "" -> ""
+  _ -> bracketText t
+
 concTToText :: TreeConcreteType -> Text
 concTToText tct = (concTNameToText $ typeEnumOf tct) <> args
   where
@@ -161,3 +166,75 @@ ttToText :: TreeType -> Text
 ttToText tt = case tt of
     TtConc tct -> concTToText tct
     TtCont tct -> contTToText tct
+
+ttToText' :: TreeType' -> Text
+ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
+  where
+    bracketContent = case tt of
+      TtTime -> ""
+      TtEnum ns -> Text.intercalate (Text.singleton listSep) (fmap unSeg ns)
+      TtWord32 b -> boundsToText b
+      TtWord64 b -> boundsToText b
+      TtInt32 b -> boundsToText b
+      TtInt64 b -> boundsToText b
+      TtFloat b -> boundsToText b
+      TtDouble b -> boundsToText b
+      TtString r -> r
+      TtRef tn -> Path.typeNameToText tn
+      TtList tt' -> ttToText' tt'
+      TtSet tt' -> ttToText' tt'
+      TtOrdSet tt' -> ttToText' tt'
+      TtMaybe tt' -> ttToText' tt'
+      TtPair tt1 tt2 -> ttToText' tt1 <> Text.singleton listSep <> ttToText' tt2
+
+ttParser' :: Parser TreeType'
+ttParser' = ttNameParser >>= argsParser
+  where
+    optionalArgs def p = bracketed p <|> return def
+    bbp :: Ord a => Parser a -> Parser (Bounds a)
+    bbp = optionalArgs unbounded . boundsParser
+    argsParser ttn = case ttn of
+      TtnTime -> return TtTime
+      TtnEnum -> TtEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
+      TtnWord32 -> TtWord32 <$> bbp Dat.decimal
+      TtnWord64 -> TtWord64 <$> bbp Dat.decimal
+      TtnInt32 -> TtInt32 <$> bbp (Dat.signed Dat.decimal)
+      TtnInt64 -> TtInt64 <$> bbp (Dat.signed Dat.decimal)
+      TtnFloat -> TtFloat <$> bbp (toRealFloat <$> Dat.scientific)
+      TtnDouble -> TtDouble <$> bbp (toRealFloat <$> Dat.scientific)
+      TtnString -> TtString <$> optionalArgs "" (Dat.takeWhile $ const True)
+      TtnRef -> TtRef <$> bracketed Path.typeNameP
+      TtnList -> bracketed $ TtList <$> ttParser'
+      TtnSet -> bracketed $ TtSet <$> ttParser'
+      TtnOrdSet -> bracketed $ TtOrdSet <$> ttParser'
+      TtnMaybe -> bracketed $ TtMaybe <$> ttParser'
+      TtnPair -> bracketed $ do
+        tt1 <- ttParser'
+        sep'd listSep
+        tt2 <- ttParser'
+        return $ TtPair tt1 tt2
+
+ttFromText' :: MonadFail m => Text -> m TreeType'
+ttFromText' = either fail return . Dat.parseOnly (ttParser' <* Dat.endOfInput)
+
+ttNameToText :: TreeTypeName -> Text
+ttNameToText ttn = case ttn of
+  TtnTime -> "time"
+  TtnEnum -> "enum"
+  TtnWord32 -> "word32"
+  TtnWord64 -> "word64"
+  TtnInt32 -> "int32"
+  TtnInt64 -> "int64"
+  TtnFloat -> "float"
+  TtnDouble -> "double"
+  TtnString -> "string"
+  TtnRef -> "ref"
+  TtnList -> "list"
+  TtnSet -> "set"
+  TtnOrdSet -> "ordSet"
+  TtnMaybe -> "maybe"
+  TtnPair -> "pair"
+
+ttNameParser :: Parser TreeTypeName
+ttNameParser = Dat.choice $
+  fmap (\ctn -> Dat.string (ttNameToText ctn) >> return ctn) [minBound..]

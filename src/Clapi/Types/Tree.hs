@@ -12,7 +12,7 @@ module Clapi.Types.Tree
   , ttTime, ttEnum, ttWord32, ttWord64, ttInt32, ttInt64, ttDouble, ttFloat
   , ttString, ttRef, ttValidatorDesc
   , ttList, ttSet, ttOrdSet, ttMaybe, ttPair
-  , TreeType'(..)
+  , TreeType'(..), TreeTypeName(..)
   ) where
 
 import Prelude hiding (fail)
@@ -137,6 +137,33 @@ data TreeType'
   | TtMaybe TreeType'
   | TtPair TreeType' TreeType'
   deriving (Show, Eq, Ord)
+
+data TreeTypeName
+  = TtnTime | TtnEnum
+  | TtnWord32 | TtnWord64 | TtnInt32 | TtnInt64 | TtnFloat | TtnDouble
+  | TtnString | TtnRef
+  | TtnList | TtnSet | TtnOrdSet
+  | TtnMaybe
+  | TtnPair
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+instance TypeEnumOf TreeType' TreeTypeName where
+  typeEnumOf tt = case tt of
+    TtTime -> TtnTime
+    TtEnum _ -> TtnEnum
+    TtWord32 _ -> TtnWord32
+    TtWord64 _ -> TtnWord64
+    TtInt32 _ -> TtnInt32
+    TtInt64 _ -> TtnInt64
+    TtFloat _ -> TtnFloat
+    TtDouble _ -> TtnDouble
+    TtString _ -> TtnString
+    TtRef _ -> TtnRef
+    TtList _ -> TtnList
+    TtSet _ -> TtnSet
+    TtOrdSet _ -> TtnOrdSet
+    TtMaybe _ -> TtnMaybe
+    TtPair _ _ -> TtnPair
 
 ttTime :: TreeType
 ttTime = TtConc $ TcTime
