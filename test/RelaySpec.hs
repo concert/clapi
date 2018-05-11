@@ -30,7 +30,7 @@ import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/), pattern (:</))
-import Clapi.Types.Tree (TreeType'(..), unbounded)
+import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
   ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)

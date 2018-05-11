@@ -17,7 +17,7 @@ import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Path
   (Seg, mkSeg, unSeg, TypeName, typeNameToText, typeNameFromText)
-import Clapi.Types.Tree (TreeType')
+import Clapi.Types.Tree (TreeType)
 import Clapi.Types.Wire (WireValue(..), (<|$|>), (<|*|>))
 import Clapi.Util (strictZip, fmtStrictZipError, safeToEnum)
 
@@ -34,7 +34,7 @@ class OfMetaType metaType where
 
 data TupleDefinition = TupleDefinition
   { tupDefDoc :: Text
-  , tupDefTypes :: AssocList Seg TreeType'
+  , tupDefTypes :: AssocList Seg TreeType
   , tupDefInterpLimit :: InterpolationLimit
   } deriving (Show, Eq)
 
@@ -137,7 +137,7 @@ data Definition
   | ArrayDef ArrayDefinition
   deriving (Show, Eq)
 
-tupleDef :: Text -> AssocList Seg TreeType' -> InterpolationLimit -> Definition
+tupleDef :: Text -> AssocList Seg TreeType -> InterpolationLimit -> Definition
 tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
 
 structDef :: Text -> AssocList Seg (TypeName, Liberty) -> Definition

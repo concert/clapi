@@ -6,7 +6,7 @@
 module Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
   , TypeEnumOf(..)
-  , TreeType'(..), TreeTypeName(..), ttEnum
+  , TreeType(..), TreeTypeName(..), ttEnum
   ) where
 
 import Prelude hiding (fail)
@@ -43,7 +43,7 @@ unbounded = Bounds Nothing Nothing
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
   typeEnumOf :: a -> b
 
-data TreeType'
+data TreeType
   = TtTime
   | TtEnum [Seg]
   | TtWord32 (Bounds Word32)
@@ -54,11 +54,11 @@ data TreeType'
   | TtDouble (Bounds Double)
   | TtString Text
   | TtRef TypeName
-  | TtList TreeType'
-  | TtSet TreeType'
-  | TtOrdSet TreeType'
-  | TtMaybe TreeType'
-  | TtPair TreeType' TreeType'
+  | TtList TreeType
+  | TtSet TreeType
+  | TtOrdSet TreeType
+  | TtMaybe TreeType
+  | TtPair TreeType TreeType
   deriving (Show, Eq, Ord)
 
 data TreeTypeName
@@ -70,7 +70,7 @@ data TreeTypeName
   | TtnPair
   deriving (Show, Eq, Ord, Enum, Bounded)
 
-instance TypeEnumOf TreeType' TreeTypeName where
+instance TypeEnumOf TreeType TreeTypeName where
   typeEnumOf tt = case tt of
     TtTime -> TtnTime
     TtEnum _ -> TtnEnum
@@ -88,6 +88,6 @@ instance TypeEnumOf TreeType' TreeTypeName where
     TtMaybe _ -> TtnMaybe
     TtPair _ _ -> TtnPair
 
-ttEnum :: forall a. (Enum a, Bounded a, Show a) => Proxy a -> TreeType'
+ttEnum :: forall a. (Enum a, Bounded a, Show a) => Proxy a -> TreeType
 ttEnum _ = TtEnum $
   fmap (fromJust . mkSeg . Text.pack . uncamel . show) [minBound :: a..]

@@ -13,7 +13,7 @@ import Clapi.Types.Definitions
   ( Liberty(..), MetaType(..), metaType
   , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
   , Definition(..), defDispatch)
-import Clapi.Types.Tree (TreeType')
+import Clapi.Types.Tree (TreeType)
 
 libertyTaggedData :: TaggedData Liberty Liberty
 libertyTaggedData = taggedData toTag id
@@ -28,7 +28,7 @@ instance Encodable Liberty where
   parser = tdTaggedParser libertyTaggedData return
 
 -- FIXME: do we want to serialise the type to text first?!
-instance Encodable TreeType' where
+instance Encodable TreeType where
   builder = builder . ttToText'
   parser = parser >>= ttFromText'
 

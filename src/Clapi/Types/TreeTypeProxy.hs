@@ -17,10 +17,10 @@ import Data.Word
 
 import Clapi.Types.Base (Time)
 import Clapi.Types.Wire (Wireable)
-import Clapi.Types.Tree (TreeType'(..))
+import Clapi.Types.Tree (TreeType(..))
 
 
-withTtProxy' :: forall r. TreeType' -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
+withTtProxy' :: forall r. TreeType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
 withTtProxy' tt f = case tt of
     TtTime -> f $ Proxy @Time
     TtEnum _ -> f $ Proxy @Word8

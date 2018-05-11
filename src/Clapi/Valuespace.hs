@@ -62,7 +62,7 @@ import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (TreeType'(..), unbounded)
+import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
@@ -478,7 +478,7 @@ validateRoseTreeNode def t invalidatedTps = case t of
     tyErr = Left [BadNodeType (defNodeType def) (Tree.rtType t)]
 
 validateWireValues
-  :: MonadFail m => [TreeType'] -> [WireValue] -> m RefTypeClaims
+  :: MonadFail m => [TreeType] -> [WireValue] -> m RefTypeClaims
 validateWireValues tts wvs =
     (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs)
     >>= sequence >>= return . Mos.fromList . mconcat

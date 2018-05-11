@@ -29,7 +29,7 @@ import Clapi.Types.AssocList
   , alInsert)
 import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), Interpolation(..), WireValue(..)
-  , TreeType'(..) , OfMetaType, Liberty(..)
+  , TreeType(..) , OfMetaType, Liberty(..)
   , tupleDef, structDef, arrayDef, ErrorIndex(..)
   , toWireValues, valuesToDef, defDispatch, metaType, Definition(..)
   , StructDefinition(strDefTypes)

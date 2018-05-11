@@ -24,7 +24,7 @@ import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>), ca
 import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
-  (typeEnumOf, Bounds, boundsMin, boundsMax, TreeType'(..))
+  (typeEnumOf, Bounds, boundsMin, boundsMax, TreeType(..))
 import Clapi.Types.TreeTypeProxy (withTtProxy')
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
@@ -41,12 +41,12 @@ inBounds b n = go (boundsMin b) (boundsMax b)
     go (Just lo) (Just hi) = gte lo >> lte hi
 
 extractTypeAssertions
-  :: MonadFail m => TreeType' -> WireValue -> m [(TypeName, Path)]
+  :: MonadFail m => TreeType -> WireValue -> m [(TypeName, Path)]
 extractTypeAssertions tt = withWireable (extractTypeAssertions' tt) tt
 
 extractTypeAssertions'
   :: forall a m . (Wireable a, MonadFail m)
-  => TreeType' -> a -> m [(TypeName, Path)]
+  => TreeType -> a -> m [(TypeName, Path)]
 extractTypeAssertions' tt a = case tt of
   TtRef tn -> cast' a >>= Path.fromText >>= return . pure . (tn,)
   -- FIXME: this need some factoring!
@@ -89,7 +89,7 @@ extractTypeAssertions' tt a = case tt of
       withTtProxy' tt1 $ \p1 -> withTtProxy' tt2 $ \p2 -> g p1 p2
   _ -> return []
 
-validate' :: (Wireable a, MonadFail m) => TreeType' -> a -> m ()
+validate' :: (Wireable a, MonadFail m) => TreeType -> a -> m ()
 validate' tt a = case tt of
     TtTime -> checkWith @Time pure
     TtEnum ns -> checkWith $ checkEnum ns
@@ -120,17 +120,17 @@ validate' tt a = case tt of
 
     checkListWith
       :: forall f b c m. (Foldable f, Wireable b, Wireable (f b), MonadFail m)
-      => TreeType' -> (f b -> m c) -> Proxy b -> m ()
+      => TreeType -> (f b -> m c) -> Proxy b -> m ()
     checkListWith tt' f _ = checkWith @(f b) $
       \l -> mapM_ (validate' tt') l >> void (f l)
 
-validate :: MonadFail m => TreeType' -> WireValue -> m ()
+validate :: MonadFail m => TreeType -> WireValue -> m ()
 validate tt = withWireable (validate' tt) tt
 
 withWireable
   :: forall m r. MonadFail m
   => (forall a. Wireable a => a -> m r)
-  -> TreeType' -> WireValue -> m r
+  -> TreeType -> WireValue -> m r
 withWireable f tt wv = withTtProxy' tt go
   where
     go :: forall a. Wireable a => Proxy a -> m r

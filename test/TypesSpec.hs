@@ -31,7 +31,7 @@ import Clapi.Types
   , InterpolationLimit, Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap)
 
-import Clapi.Types.Tree (TreeType'(..), Bounds, bounds, ttEnum)
+import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
 import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))
 
 smallListOf :: Gen a -> Gen [a]
@@ -163,7 +163,7 @@ arbitraryRegex =
     Text.pack . mconcat <$> shuffle (safe ++ delims)
 
 
-instance Arbitrary TreeType' where
+instance Arbitrary TreeType where
     arbitrary = oneof
       [ return TtTime
       , return $ ttEnum $ Proxy @TestEnum

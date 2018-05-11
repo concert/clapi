@@ -18,7 +18,7 @@ import Data.Scientific (toRealFloat)
 
 import Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
-  , typeEnumOf, TreeType'(..), TreeTypeName(..))
+  , typeEnumOf, TreeType(..), TreeTypeName(..))
 import Clapi.Types.Path (segP, unSeg)
 import qualified Clapi.Types.Path as Path
 
@@ -77,7 +77,7 @@ bracketNotNull t = case t of
   "" -> ""
   _ -> bracketText t
 
-ttToText' :: TreeType' -> Text
+ttToText' :: TreeType -> Text
 ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
   where
     bracketContent = case tt of
@@ -97,7 +97,7 @@ ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtMaybe tt' -> ttToText' tt'
       TtPair tt1 tt2 -> ttToText' tt1 <> Text.singleton listSep <> ttToText' tt2
 
-ttParser' :: Parser TreeType'
+ttParser' :: Parser TreeType
 ttParser' = ttNameParser >>= argsParser
   where
     bbp :: Ord a => Parser a -> Parser (Bounds a)
@@ -134,7 +134,7 @@ ttParser' = ttNameParser >>= argsParser
         tt2 <- ttParser'
         return $ TtPair tt1 tt2
 
-ttFromText' :: MonadFail m => Text -> m TreeType'
+ttFromText' :: MonadFail m => Text -> m TreeType
 ttFromText' = either fail return . Dat.parseOnly (ttParser' <* Dat.endOfInput)
 
 ttNameToText :: TreeTypeName -> Text

@@ -23,7 +23,7 @@ import Clapi.Types.Digests (DefOp(OpDefine), DataChange(..), FrcDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (TreeType'(..), unbounded)
+import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (castWireValue)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
