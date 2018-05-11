@@ -12,7 +12,7 @@ import Data.Word
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.TextSerialisation (ttToText', ttFromText')
+import Clapi.TextSerialisation (ttToText', ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Path
@@ -58,7 +58,7 @@ instance OfMetaType TupleDefinition where
         -> m TupleDefinition
       mkDef d ns ts il = do
         names <- mapM mkSeg ns
-        types <- mapM ttFromText' ts
+        types <- mapM ttFromText ts
         al <- alFromZip names types
         interp <- safeToEnum $ fromIntegral il
         return $ TupleDefinition d al interp

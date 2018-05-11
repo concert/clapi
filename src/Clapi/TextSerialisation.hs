@@ -134,8 +134,8 @@ ttParser' = ttNameParser >>= argsParser
         tt2 <- ttParser'
         return $ TtPair tt1 tt2
 
-ttFromText' :: MonadFail m => Text -> m TreeType
-ttFromText' = either fail return . Dat.parseOnly (ttParser' <* Dat.endOfInput)
+ttFromText :: MonadFail m => Text -> m TreeType
+ttFromText = either fail return . Dat.parseOnly (ttParser' <* Dat.endOfInput)
 
 ttNameToText :: TreeTypeName -> Text
 ttNameToText ttn = case ttn of

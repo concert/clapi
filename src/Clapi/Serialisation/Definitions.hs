@@ -7,7 +7,7 @@ import Clapi.Serialisation.Base
   (Encodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
 import Clapi.Serialisation.Path ()
 import Clapi.TaggedData (TaggedData, taggedData)
-import Clapi.TextSerialisation (ttToText', ttFromText')
+import Clapi.TextSerialisation (ttToText', ttFromText)
 import Clapi.TH (btq)
 import Clapi.Types.Definitions
   ( Liberty(..), MetaType(..), metaType
@@ -30,7 +30,7 @@ instance Encodable Liberty where
 -- FIXME: do we want to serialise the type to text first?!
 instance Encodable TreeType where
   builder = builder . ttToText'
-  parser = parser >>= ttFromText'
+  parser = parser >>= ttFromText
 
 instance Encodable TupleDefinition where
   builder (TupleDefinition doc types interpl) =
