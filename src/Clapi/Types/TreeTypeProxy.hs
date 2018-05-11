@@ -7,7 +7,7 @@
 #-}
 
 module Clapi.Types.TreeTypeProxy
-  ( withTtProxy'
+  ( withTtProxy
   ) where
 
 import Data.Int
@@ -20,8 +20,8 @@ import Clapi.Types.Wire (Wireable)
 import Clapi.Types.Tree (TreeType(..))
 
 
-withTtProxy' :: forall r. TreeType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
-withTtProxy' tt f = case tt of
+withTtProxy :: forall r. TreeType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
+withTtProxy tt f = case tt of
     TtTime -> f $ Proxy @Time
     TtEnum _ -> f $ Proxy @Word8
     TtWord32 _ -> f $ Proxy @Word32
@@ -35,12 +35,12 @@ withTtProxy' tt f = case tt of
     TtList tt' -> listy tt'
     TtSet tt' -> listy tt'
     TtOrdSet tt' -> listy tt'
-    TtMaybe tt' -> withTtProxy' tt' (f . proxyF (Proxy @Maybe))
+    TtMaybe tt' -> withTtProxy tt' (f . proxyF (Proxy @Maybe))
     TtPair tt1 tt2 ->
-      withTtProxy' tt1 $ \pConc1 ->
-        withTtProxy' tt2 $ \pConc2 -> f $ proxyF3 (Proxy @(,)) pConc1 pConc2
+      withTtProxy tt1 $ \pConc1 ->
+        withTtProxy tt2 $ \pConc2 -> f $ proxyF3 (Proxy @(,)) pConc1 pConc2
   where
-    listy tt' = withTtProxy' tt' (f. proxyF (Proxy @[]))
+    listy tt' = withTtProxy tt' (f. proxyF (Proxy @[]))
 
 proxyF :: Proxy a -> Proxy b -> Proxy (a b)
 proxyF _ _ = Proxy

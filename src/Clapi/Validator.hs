@@ -25,7 +25,7 @@ import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   (typeEnumOf, Bounds, boundsMin, boundsMax, TreeType(..))
-import Clapi.Types.TreeTypeProxy (withTtProxy')
+import Clapi.Types.TreeTypeProxy (withTtProxy)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
 inBounds b n = go (boundsMin b) (boundsMax b)
@@ -56,28 +56,28 @@ extractTypeAssertions' tt a = case tt of
       g _ = cast' @[b] a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
-      withTtProxy' tt' g
+      withTtProxy tt' g
   TtSet tt' ->
     let
       g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
       g _ = cast' @[b] a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
-      withTtProxy' tt' g
+      withTtProxy tt' g
   TtOrdSet tt' ->
     let
       g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
       g _ = cast' @[b] a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
-      withTtProxy' tt' g
+      withTtProxy tt' g
   TtMaybe tt' ->
     let
       g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
       g _ = cast' @(Maybe b) a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
-      withTtProxy' tt' g
+      withTtProxy tt' g
   TtPair tt1 tt2 ->
     let
       g :: forall b c. (Wireable b, Wireable c)
@@ -86,7 +86,7 @@ extractTypeAssertions' tt a = case tt of
         bimapM (extractTypeAssertions' tt1) (extractTypeAssertions' tt2) >>=
         \(r1, r2) -> return (r1 <> r2)
     in
-      withTtProxy' tt1 $ \p1 -> withTtProxy' tt2 $ \p2 -> g p1 p2
+      withTtProxy tt1 $ \p1 -> withTtProxy tt2 $ \p2 -> g p1 p2
   _ -> return []
 
 validate' :: (Wireable a, MonadFail m) => TreeType -> a -> m ()
@@ -101,19 +101,19 @@ validate' tt a = case tt of
     TtDouble b -> checkWith $ inBounds b
     TtString r -> checkWith $ checkString r
     TtRef _ -> checkWith Path.fromText
-    TtList tt1 -> withTtProxy' tt1 $ checkListWith @[] tt1 pure
-    TtSet tt1 -> withTtProxy' tt1 $
+    TtList tt1 -> withTtProxy tt1 $ checkListWith @[] tt1 pure
+    TtSet tt1 -> withTtProxy tt1 $
       checkListWith @[] tt1 $ ensureUnique "items"
-    TtOrdSet tt1 -> withTtProxy' tt1 $
+    TtOrdSet tt1 -> withTtProxy tt1 $
       checkListWith @[] tt1 $ ensureUnique "items"
-    TtMaybe tt1 -> withTtProxy' tt1 $ checkListWith @Maybe tt1 pure
+    TtMaybe tt1 -> withTtProxy tt1 $ checkListWith @Maybe tt1 pure
     TtPair tt1 tt2 ->
       let
         f :: forall b c m. (Wireable b, Wireable c, MonadFail m)
           => Proxy b -> Proxy c -> m ()
         f _ _ = cast' @(b, c) a >>= bimapM_ (validate' tt1) (validate' tt2)
       in
-        withTtProxy' tt1 (\p1 -> withTtProxy' tt2 (\p2 -> f p1 p2))
+        withTtProxy tt1 (\p1 -> withTtProxy tt2 (\p2 -> f p1 p2))
   where
     checkWith :: (Wireable b, MonadFail m) => (b -> m c) -> m ()
     checkWith f = void $ cast' a >>= f
@@ -131,7 +131,7 @@ withWireable
   :: forall m r. MonadFail m
   => (forall a. Wireable a => a -> m r)
   -> TreeType -> WireValue -> m r
-withWireable f tt wv = withTtProxy' tt go
+withWireable f tt wv = withTtProxy tt go
   where
     go :: forall a. Wireable a => Proxy a -> m r
     go _ = castWireValue @a wv >>= f
