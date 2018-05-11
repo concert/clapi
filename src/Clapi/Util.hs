@@ -1,5 +1,8 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE
+    PolyKinds
+  , ScopedTypeVariables
+#-}
 
 module Clapi.Util (
     tagl, tagr,
@@ -14,7 +17,8 @@ module Clapi.Util (
     mkProxy,
     bound,
     safeToEnum,
-    flattenNestedMaps, foldlNestedMaps
+    flattenNestedMaps, foldlNestedMaps,
+    proxyF, proxyF3
 ) where
 
 import Prelude hiding (fail)
@@ -154,3 +158,9 @@ foldlNestedMaps
 foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
+
+proxyF :: Proxy a -> Proxy b -> Proxy (a b)
+proxyF _ _ = Proxy
+
+proxyF3 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a b c)
+proxyF3 p1 p2 p3 = proxyF (proxyF p1 p2) p3

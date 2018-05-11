@@ -1,8 +1,5 @@
 {-# LANGUAGE
-    KindSignatures
-  , PolyKinds
-  , Rank2Types
-  , ScopedTypeVariables
+    Rank2Types
   , TypeApplications
 #-}
 
@@ -15,12 +12,13 @@ import Data.Proxy
 import Data.Text (Text)
 import Data.Word
 
+import Clapi.Util (proxyF, proxyF3)
 import Clapi.Types.Base (Time)
 import Clapi.Types.Wire (Wireable)
 import Clapi.Types.Tree (TreeType(..))
 
 
-withTtProxy :: forall r. TreeType -> (forall (a :: *). Wireable a => Proxy a -> r) -> r
+withTtProxy :: TreeType -> (forall a. Wireable a => Proxy a -> r) -> r
 withTtProxy tt f = case tt of
     TtTime -> f $ Proxy @Time
     TtEnum _ -> f $ Proxy @Word8
@@ -40,10 +38,4 @@ withTtProxy tt f = case tt of
       withTtProxy tt1 $ \pConc1 ->
         withTtProxy tt2 $ \pConc2 -> f $ proxyF3 (Proxy @(,)) pConc1 pConc2
   where
-    listy tt' = withTtProxy tt' (f. proxyF (Proxy @[]))
-
-proxyF :: Proxy a -> Proxy b -> Proxy (a b)
-proxyF _ _ = Proxy
-
-proxyF3 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a b c)
-proxyF3 p1 p2 p3 = proxyF (proxyF p1 p2) p3
+    listy tt' = withTtProxy tt' (f . proxyF (Proxy @[]))
