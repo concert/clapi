@@ -8,23 +8,20 @@ module Clapi.Validator where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Control.Monad (void, join)
+import Control.Monad (void)
 import Data.Word (Word8)
-import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 import Data.Proxy
-import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
-import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>), cast', castWireValue)
+import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue)
 import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree
-  (typeEnumOf, Bounds, boundsMin, boundsMax, TreeType(..))
+import Clapi.Types.Tree (Bounds, boundsMin, boundsMax, TreeType(..))
 import Clapi.Types.TreeTypeProxy (withTtProxy)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
