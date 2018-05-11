@@ -29,7 +29,7 @@ import Clapi.Types.AssocList
   , alInsert)
 import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), Interpolation(..), WireValue(..)
-  , TreeType(..) , TreeConcreteType(..), OfMetaType, Liberty(..)
+  , TreeType'(..) , OfMetaType, Liberty(..)
   , tupleDef, structDef, arrayDef, ErrorIndex(..)
   , toWireValues, valuesToDef, defDispatch, metaType, Definition(..)
   , StructDefinition(strDefTypes)
@@ -56,7 +56,7 @@ validVersionTypeChange :: Valuespace -> TrpDigest
 validVersionTypeChange vs =
   let
     svd = tupleDef
-      "Stringy" (alSingleton [segq|vstr|] $ TtConc $ TcString "pear")
+      "Stringy" (alSingleton [segq|vstr|] $ TtString "pear")
       ILUninterpolated
     rootDef = redefApiRoot
       (alInsert [segq|version|] $ TypeName apiNs [segq|stringVersion|]) vs
@@ -104,7 +104,7 @@ vsWithXRef =
   let
     newNodeDef = tupleDef
       "for test"
-      (alSingleton [segq|daRef|] $ TtConc $ TcRef $
+      (alSingleton [segq|daRef|] $ TtRef $
         TypeName [segq|api|] [segq|version|])
       ILUninterpolated
     newVal = ConstChange Nothing [WireValue $ Path.toText [pathq|/api/version|]]
@@ -150,7 +150,7 @@ spec = do
       let
           newDef = tupleDef
             "for test"
-            (alSingleton [segq|versionString|] $ TtConc $ TcString "apple")
+            (alSingleton [segq|versionString|] $ TtString "apple")
             ILUninterpolated
           d = TrpDigest
             apiNs (Map.singleton [segq|version|] $ OpDefine newDef)

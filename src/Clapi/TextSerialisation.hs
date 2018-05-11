@@ -17,40 +17,10 @@ import qualified Data.Attoparsec.Text as Dat
 import Data.Scientific (toRealFloat)
 
 import Clapi.Types.Tree
-  ( Bounds, bounds, unbounded, boundsMin, boundsMax, TreeConcreteTypeName(..),
-  TreeContainerTypeName(..) , TreeConcreteType(..), TreeContainerType(..),
-  TreeType(..), typeEnumOf, TreeType'(..), TreeTypeName(..))
+  ( Bounds, bounds, unbounded, boundsMin, boundsMax
+  , typeEnumOf, TreeType'(..), TreeTypeName(..))
 import Clapi.Types.Path (segP, unSeg)
 import qualified Clapi.Types.Path as Path
-
-concTNameToText :: TreeConcreteTypeName -> Text
-concTNameToText tc = case tc of
-  TcnTime -> "time"
-  TcnEnum -> "enum"
-  TcnWord32 -> "word32"
-  TcnWord64 -> "word64"
-  TcnInt32 -> "int32"
-  TcnInt64 -> "int64"
-  TcnFloat -> "float"
-  TcnDouble -> "double"
-  TcnString -> "string"
-  TcnRef -> "ref"
-  TcnValidatorDesc -> "validator"
-
-concTNameParser :: Parser TreeConcreteTypeName
-concTNameParser = Dat.choice $
-  fmap (\ctn -> Dat.string (concTNameToText ctn) >> return ctn) [minBound..]
-
-contTNameToText :: TreeContainerTypeName -> Text
-contTNameToText tc = case tc of
-  TcnList -> "list"
-  TcnSet -> "set"
-  TcnOrdSet -> "ordSet"
-  TcnMaybe -> "maybe"
-
-contTNameParser :: Parser TreeContainerTypeName
-contTNameParser = Dat.choice $
-  fmap (\ctn -> Dat.string (contTNameToText ctn) >> return ctn) [minBound..]
 
 
 argsOpen, argsClose, boundsSep, listSep :: Char
@@ -86,51 +56,18 @@ boundsParser p = do
   bounds a b
 
 bracketed :: Parser a -> Parser a
-bracketed p =
-    Dat.char argsOpen
-    >> (upToLastClose >>= either fail return . Dat.parseOnly p)
-  where
-    upToLastClose :: Parser Text
-    upToLastClose = do
-      t1 <- Dat.takeWhile (/= argsClose)
-      t2 <- (Dat.char argsClose >> Dat.endOfInput >> return "")
-            <|> ((<>) <$> (Text.singleton <$> Dat.char argsClose) <*> upToLastClose)
-      return $ t1 <> t2
+bracketed p = do
+  _ <- Dat.char argsOpen
+  res <- p
+  _ <- Dat.char argsClose
+  return res
 
-
-concTParser :: Parser TreeConcreteType
-concTParser = concTNameParser >>= getParser
-  where
-    optionalArgs def p = bracketed p <|> return def
-    bbp :: Ord a => Parser a -> Parser (Bounds a)
-    bbp = optionalArgs unbounded . boundsParser
-    getParser tcn = case tcn of
-      TcnTime -> return TcTime
-      TcnEnum -> TcEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
-      TcnWord32 -> TcWord32 <$> bbp Dat.decimal
-      TcnWord64 -> TcWord64 <$> bbp Dat.decimal
-      TcnInt32 -> TcInt32 <$> bbp (Dat.signed Dat.decimal)
-      TcnInt64 -> TcInt64 <$> bbp (Dat.signed Dat.decimal)
-      TcnFloat -> TcFloat <$> bbp (toRealFloat <$> Dat.scientific)
-      TcnDouble -> TcDouble <$> bbp (toRealFloat <$> Dat.scientific)
-      TcnString -> TcString <$> optionalArgs "" (Dat.takeWhile $ const True)
-      TcnRef -> TcRef <$> bracketed Path.typeNameP
-      TcnValidatorDesc -> return TcValidatorDesc
-
-contTParser :: Parser TreeContainerType
-contTParser = contTNameParser >>= getParser
-  where
-    getParser tcn = bracketed $ case tcn of
-      TcnList -> TcList <$> ttParser
-      TcnSet -> TcSet <$> ttParser
-      TcnOrdSet -> TcOrdSet <$> ttParser
-      TcnMaybe -> TcMaybe <$> ttParser
-
-ttParser :: Parser TreeType
-ttParser = (TtConc <$> concTParser) <|> (TtCont <$> contTParser)
-
-ttFromText :: MonadFail m => Text -> m TreeType
-ttFromText = either fail return . Dat.parseOnly (ttParser <* Dat.endOfInput)
+optionalBracket :: a -> Parser a -> Parser a
+optionalBracket def p = do
+  mOpen <- maybeP $ Dat.char argsOpen
+  case mOpen of
+    Nothing -> return def
+    Just _ -> p <* Dat.char argsClose
 
 bracketText :: Text -> Text
 bracketText t = Text.singleton argsOpen <> t <> Text.singleton argsClose
@@ -139,33 +76,6 @@ bracketNotNull :: Text -> Text
 bracketNotNull t = case t of
   "" -> ""
   _ -> bracketText t
-
-concTToText :: TreeConcreteType -> Text
-concTToText tct = (concTNameToText $ typeEnumOf tct) <> args
-  where
-    bracketContent = case tct of
-        TcTime -> ""
-        TcEnum segs -> Text.intercalate (Text.singleton listSep) (fmap unSeg segs)
-        TcWord32 bs -> boundsToText bs
-        TcWord64 bs -> boundsToText bs
-        TcInt32 bs -> boundsToText bs
-        TcInt64 bs -> boundsToText bs
-        TcFloat bs -> boundsToText bs
-        TcDouble bs -> boundsToText bs
-        TcString s -> s
-        TcRef tn -> Path.typeNameToText tn
-        TcValidatorDesc -> ""
-    args = case bracketContent of
-        "" -> ""
-        s -> bracketText s
-
-contTToText :: TreeContainerType -> Text
-contTToText tct = (contTNameToText $ typeEnumOf $ tct) <> bracketText (ttToText $ contTContainedType tct)
-
-ttToText :: TreeType -> Text
-ttToText tt = case tt of
-    TtConc tct -> concTToText tct
-    TtCont tct -> contTToText tct
 
 ttToText' :: TreeType' -> Text
 ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
@@ -190,9 +100,19 @@ ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
 ttParser' :: Parser TreeType'
 ttParser' = ttNameParser >>= argsParser
   where
-    optionalArgs def p = bracketed p <|> return def
     bbp :: Ord a => Parser a -> Parser (Bounds a)
-    bbp = optionalArgs unbounded . boundsParser
+    bbp = optionalBracket unbounded . boundsParser
+    regex =
+      let
+        f (esc, n) c = if esc then Just (False, n) else
+          case () of
+            _ | c == argsOpen -> Just (False, n + 1)
+              | c == argsClose ->
+                if n - 1 == 0 then Nothing else Just (False, n - 1)
+              | c == '\\' -> Just (True, n)
+              | otherwise -> Just (False, n)
+      in
+        Dat.scan (False, 1 :: Int) f
     argsParser ttn = case ttn of
       TtnTime -> return TtTime
       TtnEnum -> TtEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
@@ -202,7 +122,7 @@ ttParser' = ttNameParser >>= argsParser
       TtnInt64 -> TtInt64 <$> bbp (Dat.signed Dat.decimal)
       TtnFloat -> TtFloat <$> bbp (toRealFloat <$> Dat.scientific)
       TtnDouble -> TtDouble <$> bbp (toRealFloat <$> Dat.scientific)
-      TtnString -> TtString <$> optionalArgs "" (Dat.takeWhile $ const True)
+      TtnString -> TtString <$> optionalBracket "" regex
       TtnRef -> TtRef <$> bracketed Path.typeNameP
       TtnList -> bracketed $ TtList <$> ttParser'
       TtnSet -> bracketed $ TtSet <$> ttParser'

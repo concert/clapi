@@ -7,7 +7,8 @@ module TypesSpec where
 
 import Test.Hspec
 import Test.QuickCheck
-  (Arbitrary(..), Gen, property, elements, choose, arbitraryBoundedEnum, oneof)
+  ( Arbitrary(..), Gen, property, elements, choose, arbitraryBoundedEnum, oneof
+  , listOf, shuffle)
 import Test.QuickCheck.Instances ()
 
 import System.Random (Random)
@@ -24,12 +25,13 @@ import Data.Int (Int32, Int64)
 import Clapi.Serialisation
   ( WireContainerType(..), WireConcreteType(..), wireValueWireType
   , withWireTypeProxy, unpackWireType)
+import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
   ( Time(..), WireValue(..), Wireable, castWireValue, Liberty
   , InterpolationLimit, Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap)
 
-import Clapi.Types.Tree (TreeConcreteType(..), tcEnum, TreeContainerType(..), TreeType(..), Bounds, bounds)
+import Clapi.Types.Tree (TreeType'(..), Bounds, bounds, ttEnum)
 import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))
 
 smallListOf :: Gen a -> Gen [a]
@@ -68,7 +70,7 @@ instance Arbitrary Time where
   arbitrary = liftM2 Time arbitrary arbitrary
 
 arbitraryTextNoNull :: Gen Text
-arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$> arbitrary @String
+arbitraryTextNoNull = Text.filter (/= '\NUL') <$> arbitrary @Text
 
 instance Arbitrary WireValue where
   arbitrary = pickConcrete
@@ -150,31 +152,30 @@ instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
             (Just _, Just _) -> bounds (min a b) (max a b)
             _ -> bounds a b
 
-instance Arbitrary TreeConcreteType where
-    arbitrary = oneof [
-        arbTime, arbEnum, arbWord32, arbWord64, arbInt32, arbInt64, arbFloat,
-        arbDouble, arbString, arbRef, arbValidatorDesc]
-      where
-        arbTime = return TcTime
-        arbEnum = return $ tcEnum (Proxy :: Proxy TestEnum)
-        arbWord32 = TcWord32 <$> arbitrary
-        arbWord64 = TcWord64 <$> arbitrary
-        arbInt32 = TcInt32 <$> arbitrary
-        arbInt64 = TcInt64 <$> arbitrary
-        arbFloat = TcFloat <$> arbitrary
-        arbDouble = TcDouble <$> arbitrary
-        arbString = TcString <$> arbitraryTextNoNull
-        arbRef = TcRef <$> arbitrary
-        arbValidatorDesc = return TcValidatorDesc
+arbitraryRegex :: Gen Text
+arbitraryRegex =
+  let
+    niceAscii = pure @[] <$> ['!'..'Z'] ++ ['^'..'~']
+    escapedArgsDelims = ('\\':) . pure @[] <$> [argsOpen, argsClose]
+  in do
+    safe <- listOf (elements $ niceAscii ++ escapedArgsDelims)
+    delims <- flip replicate "[]" <$> choose (0, 3)
+    Text.pack . mconcat <$> shuffle (safe ++ delims)
 
-instance Arbitrary TreeContainerType where
-    arbitrary = oneof [arbList, arbSet, arbOrdSet]
-      where
-        arbList = TcList <$> arbitrary
-        arbSet = TcSet <$> arbitrary
-        arbOrdSet = TcOrdSet <$> arbitrary
 
-instance Arbitrary TreeType where
-    arbitrary = oneof [TtConc <$> arbitrary, TtCont <$> arbitrary]
+instance Arbitrary TreeType' where
+    arbitrary = oneof
+      [ return TtTime
+      , return $ ttEnum $ Proxy @TestEnum
+      , TtWord32 <$> arbitrary, TtWord64 <$> arbitrary
+      , TtInt32 <$> arbitrary, TtInt64 <$> arbitrary
+      , TtFloat <$> arbitrary, TtDouble <$> arbitrary
+      , TtString <$> arbitraryRegex
+      , TtRef <$> arbitrary
+      , TtList <$> arbitrary, TtSet <$> arbitrary, TtOrdSet <$> arbitrary
+      , TtMaybe <$> arbitrary
+      , TtPair <$> arbitrary <*> arbitrary
+      ]
+
 
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)

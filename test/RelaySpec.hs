@@ -30,7 +30,7 @@ import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/), pattern (:</))
-import Clapi.Types.Tree (ttWord32, unbounded)
+import Clapi.Types.Tree (TreeType'(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
   ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)
@@ -41,7 +41,7 @@ spec = describe "the relay protocol" $ do
     it "should extend the root structure when a namespace is claimed" $
       let
         fooDef = tupleDef "Some Word32"
-          (alSingleton [segq|value|] (ttWord32 unbounded)) ILUninterpolated
+          (alSingleton [segq|value|] (TtWord32 unbounded)) ILUninterpolated
         dd = alSingleton Root $ ConstChange bob [WireValue (42 :: Word32)]
         inDig = Ipd $ (trpDigest foo)
           { trpdDefinitions = Map.singleton foo $ OpDefine fooDef
@@ -133,7 +133,7 @@ spec = describe "the relay protocol" $ do
               vsTree baseValuespace
           , vsTyDefs = Map.insert foo
               (Map.singleton foo $ tupleDef "Thing"
-                (alSingleton foo $ ttWord32 unbounded) ILUninterpolated) $
+                (alSingleton foo $ TtWord32 unbounded) ILUninterpolated) $
               vsTyDefs baseValuespace
           }
         dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]

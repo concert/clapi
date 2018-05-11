@@ -62,7 +62,7 @@ import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (TreeType(..), ttWord32, ttInt32, unbounded, ttString)
+import Clapi.Types.Tree (TreeType'(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
@@ -108,9 +108,9 @@ apiDef = StructDefinition "Information about CLAPI itself" $
 
 versionDef :: TupleDefinition
 versionDef = TupleDefinition "The version of CLAPI" (unsafeMkAssocList
-  [ ([segq|major|], ttWord32 unbounded)
-  , ([segq|minor|], ttWord32 unbounded)
-  , ([segq|revision|], ttInt32 unbounded)
+  [ ([segq|major|], TtWord32 unbounded)
+  , ([segq|minor|], TtWord32 unbounded)
+  , ([segq|revision|], TtInt32 unbounded)
   ]) ILUninterpolated
 
 dnSeg :: Seg
@@ -119,7 +119,7 @@ dnSeg = [segq|display_name|]
 displayNameDef :: TupleDefinition
 displayNameDef = TupleDefinition
   "A human-readable name for a struct or array element"
-  (alSingleton [segq|name|] $ ttString "") ILUninterpolated
+  (alSingleton [segq|name|] $ TtString "") ILUninterpolated
 
 -- | Fully revalidates the given Valuespace and throws an error if there are any
 --   validation issues.
@@ -478,7 +478,7 @@ validateRoseTreeNode def t invalidatedTps = case t of
     tyErr = Left [BadNodeType (defNodeType def) (Tree.rtType t)]
 
 validateWireValues
-  :: MonadFail m => [TreeType] -> [WireValue] -> m RefTypeClaims
+  :: MonadFail m => [TreeType'] -> [WireValue] -> m RefTypeClaims
 validateWireValues tts wvs =
     (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs)
     >>= sequence >>= return . Mos.fromList . mconcat
