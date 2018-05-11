@@ -12,7 +12,7 @@ import Data.Word
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.TextSerialisation (ttToText', ttFromText)
+import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.Types.AssocList (AssocList, unAssocList, alFromZip)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Path
@@ -46,7 +46,7 @@ instance OfMetaType TupleDefinition where
     in
       [ WireValue d
       , WireValue $ unSeg <$> names
-      , WireValue $ ttToText' <$> treeTypes
+      , WireValue $ ttToText <$> treeTypes
       , WireValue @Word8 $ fromIntegral $ fromEnum il
       ]
 

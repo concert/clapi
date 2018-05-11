@@ -77,8 +77,8 @@ bracketNotNull t = case t of
   "" -> ""
   _ -> bracketText t
 
-ttToText' :: TreeType -> Text
-ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
+ttToText :: TreeType -> Text
+ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
   where
     bracketContent = case tt of
       TtTime -> ""
@@ -91,11 +91,11 @@ ttToText' tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtDouble b -> boundsToText b
       TtString r -> r
       TtRef tn -> Path.typeNameToText tn
-      TtList tt' -> ttToText' tt'
-      TtSet tt' -> ttToText' tt'
-      TtOrdSet tt' -> ttToText' tt'
-      TtMaybe tt' -> ttToText' tt'
-      TtPair tt1 tt2 -> ttToText' tt1 <> Text.singleton listSep <> ttToText' tt2
+      TtList tt' -> ttToText tt'
+      TtSet tt' -> ttToText tt'
+      TtOrdSet tt' -> ttToText tt'
+      TtMaybe tt' -> ttToText tt'
+      TtPair tt1 tt2 -> ttToText tt1 <> Text.singleton listSep <> ttToText tt2
 
 ttParser' :: Parser TreeType
 ttParser' = ttNameParser >>= argsParser

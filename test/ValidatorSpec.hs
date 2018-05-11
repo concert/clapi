@@ -14,7 +14,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.TextSerialisation (ttToText')
+import Clapi.TextSerialisation (ttToText)
 import Clapi.TH
 import Clapi.Types
   ( Time(..), WireValue(..), TreeType(..), ttEnum
@@ -73,7 +73,7 @@ spec = describe "validation" $ do
 
 describeTreeType :: TreeType -> SpecWith TreeType -> Spec
 describeTreeType ty = around (\s -> void $ s ty) .
-  describe ("validate of: " ++ (Text.unpack $ ttToText' ty))
+  describe ("validate of: " ++ (Text.unpack $ ttToText ty))
 
 successCase :: WireValue -> SpecWith TreeType
 successCase wv = it ("should accept the valid value: " ++ show wv) $
