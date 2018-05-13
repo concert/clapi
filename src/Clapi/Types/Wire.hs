@@ -1,7 +1,9 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE
+    ExistentialQuantification
+  , ScopedTypeVariables
+  , StandaloneDeriving
+#-}
 
 module Clapi.Types.Wire
   ( Wireable
