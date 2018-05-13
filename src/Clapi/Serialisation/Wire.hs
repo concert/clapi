@@ -3,6 +3,8 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE PolyKinds #-}
 
 module Clapi.Serialisation.Wire where
 
@@ -15,139 +17,156 @@ import Data.Text (Text)
 import Data.Typeable
 import Data.Maybe (fromJust)
 
--- For building:
 import Data.Monoid
 
--- For parsing:
 import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
 import Clapi.Types.Base (Tag, Time)
 import Clapi.Types.Wire (WireValue(..), Wireable)
 import Clapi.TH (btq)
-
--- Wireable serialisation:
+import Clapi.Util (proxyF, proxyF3)
 
 -- | We define a type for tags that we want to use to denote our types on the
 --   wire, so that we can define functions that we can verify are total.
-data WireConcreteType
-  = WcTime
-  | WcWord8 | WcWord32 | WcWord64
-  | WcInt32 | WcInt64
-  | WcFloat | WcDouble
-  | WcString
-  deriving (Show, Eq, Ord, Enum, Bounded)
-
-data WireContainerType
-  = WcList
-  | WcMaybe
+data WireTypeName
+  = WtnTime
+  | WtnWord8 | WtnWord32 | WtnWord64
+  | WtnInt32 | WtnInt64
+  | WtnFloat | WtnDouble
+  | WtnString
+  | WtnList
+  | WtnMaybe
+  | WtnPair
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 data WireType
-  = WtConc WireConcreteType
-  | WtCont WireContainerType WireType
+  = WtTime
+  | WtWord8 | WtWord32 | WtWord64
+  | WtInt32 | WtInt64
+  | WtFloat | WtDouble
+  | WtString
+  | WtList WireType
+  | WtMaybe WireType
+  | WtPair WireType WireType
   deriving (Show, Eq, Ord)
 
-unpackWireType :: WireType -> (WireConcreteType, [WireContainerType])
-unpackWireType wt = let (c, ts) = inner wt in (c, reverse ts)
-  where
-    inner (WtConc t) = (t, [])
-    inner (WtCont w s) = let (c, ts) = inner s in (c, w : ts)
+wtName :: WireType -> WireTypeName
+wtName wt = case wt of
+  WtTime -> WtnTime
+  WtWord8 -> WtnWord8
+  WtWord32 -> WtnWord32
+  WtWord64 -> WtnWord64
+  WtInt32 -> WtnInt32
+  WtInt64 -> WtnInt64
+  WtFloat -> WtnFloat
+  WtDouble -> WtnDouble
+  WtString -> WtnString
+  WtList _ -> WtnList
+  WtMaybe _ -> WtnMaybe
+  WtPair _ _ -> WtnPair
 
-withWireConcreteTypeProxy
-  :: (forall a. Wireable a => Proxy a -> r) -> WireConcreteType -> r
-withWireConcreteTypeProxy f t = case t of
-  WcTime -> f (Proxy @Time)
-  WcWord8 -> f (Proxy @Word8)
-  WcWord32 -> f (Proxy @Word32)
-  WcWord64 -> f (Proxy @Word64)
-  WcInt32 -> f (Proxy @Int32)
-  WcInt64 -> f (Proxy @Int64)
-  WcFloat -> f (Proxy @Float)
-  WcDouble -> f (Proxy @Double)
-  WcString -> f (Proxy @Text)
+withWtProxy :: WireType -> (forall a. Wireable a => Proxy a -> r) -> r
+withWtProxy wt f = case wt of
+  WtTime -> f $ Proxy @Time
+  WtWord8 -> f $ Proxy @Word8
+  WtWord32 -> f $ Proxy @Word32
+  WtWord64 -> f $ Proxy @Word64
+  WtInt32 -> f $ Proxy @Int32
+  WtInt64 -> f $ Proxy @Int64
+  WtFloat -> f $ Proxy @Float
+  WtDouble -> f $ Proxy @Double
+  WtString -> f $ Proxy @Text
+  WtList wt' -> withWtProxy wt' $ f . proxyF (Proxy @[])
+  WtMaybe wt' -> withWtProxy wt' $ f . proxyF (Proxy @Maybe)
+  WtPair wt1 wt2 ->
+    withWtProxy wt1 $ \p1 ->
+      withWtProxy wt2 $ \p2 ->
+        f $ proxyF3 (Proxy @(,)) p1 p2
 
-withWireTypeProxy
-  :: forall r. (forall a. Wireable a => Proxy a -> r) -> WireType -> r
-withWireTypeProxy f wt = case wt of
-    WtConc concT -> withWireConcreteTypeProxy f concT
-    _ -> let (concT, contTs) = unpackWireType wt in
-      withWireConcreteTypeProxy (applyUnpacked contTs) concT
-  where
-    applyUnpacked :: forall a. Wireable a => [WireContainerType] -> Proxy a -> r
-    applyUnpacked [] p = f p
-    applyUnpacked (ct:cts) _ = case ct of
-      WcList -> applyUnpacked cts (Proxy @[a])
-      WcMaybe -> applyUnpacked cts (Proxy @(Maybe a))
+wtnTag :: WireTypeName -> Tag
+wtnTag wt = case wt of
+  WtnTime -> [btq|t|]
+  WtnWord8 -> [btq|b|]
+  WtnWord32 -> [btq|w|]
+  WtnWord64 -> [btq|W|]
+  WtnInt32 -> [btq|i|]
+  WtnInt64 -> [btq|I|]
+  WtnFloat -> [btq|f|]
+  WtnDouble -> [btq|F|]
+  WtnString -> [btq|s|]
+  WtnList -> [btq|l|]
+  WtnMaybe -> [btq|m|]
+  WtnPair -> [btq|p|]
+
+tagWtns :: [(Tag, WireTypeName)]
+tagWtns = revAssoc wtnTag
+
+tagWtn :: MonadFail m => Tag -> m WireTypeName
+tagWtn t = maybe (fail "Unrecognised type tag") return $ lookup t tagWtns
 
 -- FIXME: could use an association list type that checks the uniqueness of the
 -- keys on creation:
 revAssoc :: (Enum a, Bounded a) => (a -> r) -> [(r, a)]
 revAssoc f = [(f e, e) | e <- [minBound..]]
 
-
-concTag :: WireConcreteType -> Tag
-concTag t = case t of
-  WcTime -> [btq|t|]
-  WcWord8 -> [btq|b|]
-  WcWord32 -> [btq|w|]
-  WcWord64 -> [btq|W|]
-  WcInt32 -> [btq|i|]
-  WcInt64 -> [btq|I|]
-  WcFloat -> [btq|f|]
-  WcDouble -> [btq|F|]
-  WcString -> [btq|s|]
-
-tagConcs :: [(Tag, WireConcreteType)]
-tagConcs = revAssoc concTag
-
-tagConc :: MonadFail m => Tag -> m WireConcreteType
-tagConc w =
-  maybe (fail "Unrecognised concrete type tag") return $ lookup w tagConcs
-
-contTag :: WireContainerType -> Tag
-contTag t = case t of
-  WcList -> [btq|l|]
-  WcMaybe -> [btq|m|]
-
-tagConts :: [(Tag, WireContainerType)]
-tagConts = revAssoc contTag
-
-tagCont :: MonadFail m => Tag -> m WireContainerType
-tagCont w =
-  maybe (fail "Unrecognised container type tag") return $ lookup w tagConts
-
-concTyCon :: WireConcreteType -> TyCon
-concTyCon = withWireConcreteTypeProxy $ typeRepTyCon . typeRep
-
-tyConConcs :: [(TyCon, WireConcreteType)]
-tyConConcs = revAssoc concTyCon
-
 wireValueWireType :: WireValue -> WireType
-wireValueWireType (WireValue a) = inner $ typeOf a
+wireValueWireType (WireValue a) = go $ typeOf a
   where
-    inner wt
-      | tc == listTyCon = WtCont WcList $ inner $ head $ typeRepArgs wt
-      | tc == maybeTyCon = WtCont WcMaybe $ inner $ head $ typeRepArgs wt
-      | otherwise = WtConc $ fromJust $ lookup tc tyConConcs
-      where tc = typeRepTyCon wt
-    listTyCon = typeRepTyCon $ typeRep $ Proxy @[]
-    maybeTyCon = typeRepTyCon $ typeRep $ Proxy @Maybe
+    go :: TypeRep -> WireType
+    go tr | tc == f @Time = WtTime
+          | tc == f @Word8 = WtWord8
+          | tc == f @Word32 = WtWord32
+          | tc == f @Word64 = WtWord64
+          | tc == f @Int32 = WtInt32
+          | tc == f @Int64 = WtInt64
+          | tc == f @Float = WtFloat
+          | tc == f @Double = WtDouble
+          | tc == f @Text = WtString
+          | tc == f @[] = WtList $ go $ head $ typeRepArgs tr
+          | tc == f @Maybe = WtMaybe $ go $ head $ typeRepArgs tr
+          | tc == f @(,) =
+            twoHead (\tr1 tr2 -> WtPair (go tr1) (go tr2)) $ typeRepArgs tr
+          | otherwise = error $ show tc
+      where tc = typeRepTyCon tr
+    -- NB: this needs AllowAmbiguousTypes
+    f :: forall a. Typeable a => TyCon
+    f = typeRepTyCon $ typeRep $ Proxy @a
+    twoHead :: (a -> a -> r) -> [a] -> r
+    twoHead g (a1:a2:_) = g a1 a2
 
-instance Encodable WireConcreteType where
-  builder = builder . concTag
-  parser = parser >>= tagConc
+instance Encodable WireTypeName where
+  builder = builder . wtnTag
+  parser = parser >>= tagWtn
 
 instance Encodable WireType where
-  builder (WtConc t) = builder t
-  builder (WtCont w s) = (builder $ contTag w) <<>> builder s
-  parser = parser >>= inner
+  builder wt =
+    builder (wtnTag $ wtName wt) <<>> case wt of
+      WtList wt' -> builder wt'
+      WtMaybe wt' -> builder wt'
+      WtPair wt1 wt2 -> builder wt1 <<>> builder wt2
+      _ -> return mempty
+  parser = parser >>= go
     where
-      inner w = (WtConc <$> tagConc w) <|> (WtCont <$> tagCont w <*> parser)
+      go :: WireTypeName -> Parser WireType
+      go wtn = case wtn of
+        WtnTime -> return WtTime
+        WtnWord8 -> return WtWord8
+        WtnWord32 -> return WtWord32
+        WtnWord64 -> return WtWord64
+        WtnInt32 -> return WtInt32
+        WtnInt64 -> return WtInt64
+        WtnFloat -> return WtFloat
+        WtnDouble -> return WtDouble
+        WtnString -> return WtString
+        WtnList -> WtList <$> parser
+        WtnMaybe -> WtMaybe <$> parser
+        WtnPair -> WtPair <$> parser <*> parser
 
 instance Encodable WireValue where
-  builder wv@(WireValue a) = (<>) <$> builder (wireValueWireType wv) <*> builder a
-  parser = parser >>= withWireTypeProxy go
+  builder wv@(WireValue a) =
+    (<>) <$> builder (wireValueWireType wv) <*> builder a
+  parser = parser >>= \wt -> withWtProxy wt go
     where
       go :: forall a. Wireable a => Proxy a -> Parser WireValue
       go _ = WireValue <$> parser @a
