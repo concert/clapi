@@ -1,10 +1,12 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE
+    ScopedTypeVariables
+  , Rank2Types
+  , QuasiQuotes
+  , TypeApplications
+  , AllowAmbiguousTypes
+  , PolyKinds
+#-}
 
 module Clapi.Serialisation.Wire where
 
