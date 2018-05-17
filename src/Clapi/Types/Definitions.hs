@@ -26,6 +26,7 @@ import Clapi.Types.Wire (WireValue(..), (<|$|>), (<|*|>))
 import Clapi.Util (strictZip, fmtStrictZipError, safeToEnum)
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
+data ClientPermission = ReadOnly | Editable deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
@@ -134,6 +135,10 @@ instance OfMetaType (ArrayDefinition Liberty) where
   childTypeFor _ (ArrayDefinition _ tp _) = Just tp
   childLibertyFor (ArrayDefinition _ _ l) _ = return l
 
+data TreeDefinition a
+  = TStructDef (StructDefinition a)
+  | TArrayDef (ArrayDefinition a)
+  deriving (Show, Eq)
 
 data Definition
   = TupleDef TupleDefinition
