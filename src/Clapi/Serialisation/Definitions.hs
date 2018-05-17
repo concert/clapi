@@ -37,11 +37,11 @@ instance Encodable TupleDefinition where
     builder doc <<>> builder types <<>> builder interpl
   parser = TupleDefinition <$> parser <*> parser <*> parser
 
-instance Encodable StructDefinition where
+instance Encodable a => Encodable (StructDefinition a) where
   builder (StructDefinition doc tyinfo) = builder doc <<>> builder tyinfo
   parser = StructDefinition <$> parser <*> parser
 
-instance Encodable ArrayDefinition where
+instance Encodable a => Encodable (ArrayDefinition a) where
   builder (ArrayDefinition doc ct cl) =
     builder doc <<>> builder ct <<>> builder cl
   parser = ArrayDefinition <$> parser <*> parser <*> parser

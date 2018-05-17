@@ -104,7 +104,7 @@ rootTypeName, apiTypeName :: TypeName
 rootTypeName = TypeName apiNs [segq|root|]
 apiTypeName = TypeName apiNs apiNs
 
-apiDef :: StructDefinition
+apiDef :: StructDefinition Liberty
 apiDef = StructDefinition "Information about CLAPI itself" $
   alSingleton [segq|version|] (TypeName apiNs [segq|version|], Cannot)
 
