@@ -139,7 +139,7 @@ relay vs = waitThenFwdOnly fwd
           relay vs'
       where
         handleOwnerSuccess
-            (TrpDigest ns defs dd contOps errs) (updatedTyAssns, vs') =
+            (TrpDigest ns defs valDefs dd contOps errs) (updatedTyAssns, vs') =
           let
             shouldPubRoot =
               Map.member ns defs &&

@@ -92,7 +92,7 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
         >> (lift $ sendRev $ Right $ ServerDisconnect i) >> handleDisconnect i
 
 nonClaim :: TrpDigest -> Bool
-nonClaim (TrpDigest _ _ dd cops _) = dd == alEmpty && null cops
+nonClaim (TrpDigest _ _ _ dd cops _) = dd == alEmpty && null cops
 
 updateOwners
   :: Monad m => Map Seg i ->  StateT (NstState i) (NstProtocol m i) ()

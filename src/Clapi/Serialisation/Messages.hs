@@ -195,16 +195,16 @@ trBundleTaggedData = taggedData typeToTag bundleToType
 
 instance Encodable ToRelayBundle where
     builder = tdTaggedBuilder trBundleTaggedData $ \bund -> case bund of
-      Trpb (ToRelayProviderBundle ns errs defs dat contMsgs) ->
-        builder ns <<>> builder errs <<>> builder defs <<>> builder dat
-        <<>> builder contMsgs
+      Trpb (ToRelayProviderBundle ns errs defs valDefs dat contMsgs) ->
+        builder ns <<>> builder errs <<>> builder defs <<>> builder valDefs
+        <<>> builder dat <<>> builder contMsgs
       Trpr (ToRelayProviderRelinquish ns) -> builder ns
       Trcb (ToRelayClientBundle subs dat contMsgs) ->
         builder subs <<>> builder dat <<>> builder contMsgs
     parser = tdTaggedParser trBundleTaggedData $ \ty -> case ty of
       TrbtProvider -> Trpb <$>
         (ToRelayProviderBundle <$> parser <*> parser <*> parser <*> parser
-        <*> parser)
+        <*> parser <*> parser)
       TrbtProviderRelinquish -> Trpr . ToRelayProviderRelinquish <$> parser
       TrbtClient -> Trcb <$>
         (ToRelayClientBundle <$> parser <*> parser <*> parser)

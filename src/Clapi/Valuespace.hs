@@ -136,7 +136,8 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
       vsTree vs
 
 baseValuespace :: Valuespace
-baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseValDefs baseTreeDefs basePostDefs baseTas mempty
+baseValuespace = unsafeValidateVs $ Valuespace
+    baseTree baseDefs baseValDefs baseTreeDefs basePostDefs baseTas mempty
   where
     vseg = [segq|version|]
     version = RtConstData Nothing
@@ -150,7 +151,8 @@ baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseValDefs bas
       ]
     baseValDefs = Map.singleton apiNs $ Map.fromList
       [ (vseg, versionDef), (dnSeg, displayNameDef) ]
-    baseTreeDefs = Map.singleton apiNs $ Map.singleton apiNs $ TStructDef $ apiDef ReadOnly
+    baseTreeDefs = Map.singleton apiNs $
+        Map.singleton apiNs $ TStructDef $ apiDef ReadOnly
     basePostDefs = mempty
     baseTas = Mos.dependenciesFromMap $ Map.singleton Root rootTypeName
 
@@ -366,17 +368,16 @@ processToRelayProviderDigest trpd vs =
     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
     xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
       fmap tpRemovals $ alToMap qData
-    (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
-    defs' =
-      let
+    applyDefOps ops = Map.alter updateNsDefs ns
+      where
+        (undefOps, defOps) = Map.partition isUndef ops
         newDefs = odDef <$> defOps
         updateNsDefs Nothing = Just newDefs
         updateNsDefs (Just existingDefs) = Just $ Map.union newDefs $
           Map.withoutKeys existingDefs (Map.keysSet undefOps)
-      in
-        Map.alter updateNsDefs ns (vsTyDefs vs)
+    defs' = applyDefOps (trpdDefinitions trpd) (vsTyDefs vs)
     -- FIXME: Doesn't do anything because there aren't val/tree/post defs in digest
-    valDefs' = vsValDefs vs
+    valDefs' = applyDefOps (trpdValueDefs trpd) $ vsValDefs vs
     treeDefs' = vsTreeDefs vs
     postDefs' = vsPostDefs vs
     (updateErrs, tree') = Tree.updateTreeWithDigest qCops qData (vsTree vs)

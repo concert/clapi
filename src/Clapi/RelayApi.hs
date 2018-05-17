@@ -15,7 +15,7 @@ import qualified Data.Text as Text
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types
   ( TrDigest(..), TrpDigest(..), FrDigest(..), FrpDigest(..), WireValue(..)
-  , TimeStamped(..), Liberty(..))
+  , TimeStamped(..), Liberty(..), TupleDefinition(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
@@ -76,6 +76,23 @@ relayApiProto selfAddr =
           , ([segq|owners|], (TypeName rns [segq|owners|], Cannot))
           , ([segq|self|], (TypeName rns [segq|self|], Cannot))])
         ])
+      (Map.fromList $ fmap OpDefine <$>
+        [ ([segq|build|], TupleDefinition "builddoc"
+             (alSingleton [segq|commit_hash|] $ ttString "banana")
+             ILUninterpolated)
+        , (clock_diff, TupleDefinition
+             "The difference between two clocks, in seconds"
+             (alSingleton [segq|seconds|] $ ttFloat unbounded)
+             ILUninterpolated)
+        , ([segq|owner_info|], TupleDefinition "owner info"
+             (alSingleton [segq|owner|]
+               $ ttRef $ TypeName rns [segq|client_info|])
+             ILUninterpolated)
+        , ([segq|self|], TupleDefinition "Which client you are"
+             (alSingleton [segq|info|]
+               $ ttRef $ TypeName rns [segq|client_info|])
+             ILUninterpolated)
+        ])
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
         , ([pathq|/self|], ConstChange Nothing [
@@ -134,7 +151,7 @@ relayApiProto selfAddr =
               (Map.singleton cSeg (Nothing, SoAbsent)) cops
             steadyState timingMap' ownerMap'
         pubUpdate dd co = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
-          rns mempty dd co mempty
+          rns mempty mempty dd co mempty
         rev (Left ownerAddrs) = do
           let ownerMap' = pathNameFor <$> ownerAddrs
           if elem selfAddr $ Map.elems ownerAddrs
@@ -185,4 +202,4 @@ relayApiProto selfAddr =
         -- client)
         handleApiRequest (FrpDigest ns dd cops) =
           sendFwd $ ClientData selfAddr $ Trpd $
-          TrpDigest ns mempty dd cops mempty
+          TrpDigest ns mempty mempty dd cops mempty

@@ -7,7 +7,7 @@ import Data.Text (Text)
 import Data.Word (Word32)
 
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Liberty)
+import Clapi.Types.Definitions (Definition, TupleDefinition, Liberty)
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Wire (WireValue)
@@ -92,6 +92,7 @@ data ToRelayProviderBundle = ToRelayProviderBundle
   { trpbNamespace :: Seg
   , trpbErrors :: [MsgError Seg]
   , trpbDefinitions :: [DefMessage Seg Definition]
+  , trpbValueDefs :: [DefMessage Seg TupleDefinition]
   , trpbData :: [DataUpdateMessage]
   , trpbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)

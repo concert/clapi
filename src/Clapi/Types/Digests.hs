@@ -16,7 +16,7 @@ import Data.Word (Word32)
 import Clapi.Types.AssocList
   (AssocList, alNull, alEmpty, alFromList, alFmapWithKey, alValues, alKeysSet)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Liberty)
+import Clapi.Types.Definitions (Definition, Liberty, TupleDefinition)
 import Clapi.Types.Messages
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
@@ -47,22 +47,24 @@ type ContainerOps = Map Path (Map Seg (Maybe Attributee, SequenceOp Seg))
 data TrpDigest = TrpDigest
   { trpdNamespace :: Seg
   , trpdDefinitions :: Map Seg (DefOp Definition)
+  , trpdValueDefs :: Map Seg (DefOp TupleDefinition)
   , trpdData :: DataDigest
   , trpdContainerOps :: ContainerOps
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
   } deriving (Show, Eq)
 
 trpDigest :: Seg -> TrpDigest
-trpDigest ns = TrpDigest ns mempty alEmpty mempty mempty
+trpDigest ns = TrpDigest ns mempty mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
-trpdRemovedPaths (TrpDigest ns _ _ cOps _) = (ns :</) <$> Map.foldlWithKey f [] cOps
+trpdRemovedPaths (TrpDigest ns _ _ _ cOps _) = (ns :</) <$> Map.foldlWithKey f [] cOps
   where
     f acc p segMap = acc ++
       (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
 
 trpdNull :: TrpDigest -> Bool
-trpdNull (TrpDigest _ns defs dd cops errs) = null defs && alNull dd && null cops && null errs
+trpdNull (TrpDigest _ns defs valDefs dd cops errs) =
+    null defs && null valDefs && alNull dd && null cops && null errs
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
@@ -235,9 +237,10 @@ digestToRelayBundle trb = case trb of
     Trcb b -> Trcd $ digestToRelayClientBundle b
   where
     digestToRelayProviderBundle :: ToRelayProviderBundle -> TrpDigest
-    digestToRelayProviderBundle (ToRelayProviderBundle ns errs defs dat cont) =
+    digestToRelayProviderBundle (ToRelayProviderBundle ns errs defs valDefs dat cont) =
       TrpDigest ns
         (digestDefMessages defs)
+        (digestDefMessages valDefs)
         (digestDataUpdateMessages dat)
         (digestContOpMessages cont)
         (digestErrMessages errs)
@@ -261,9 +264,9 @@ produceToRelayBundle trd = case trd of
     Trprd d -> Trpr $ produceToRelayProviderRelinquish d
     Trcd d -> Trcb $ produceToRelayClientBundle d
   where
-    produceToRelayProviderBundle (TrpDigest ns defs dat cops errs) =
+    produceToRelayProviderBundle (TrpDigest ns defs valueDefs dat cops errs) =
       ToRelayProviderBundle
-        ns (produceErrMessages errs) (produceDefMessages defs)
+        ns (produceErrMessages errs) (produceDefMessages defs) (produceDefMessages valueDefs)
         (produceDataUpdateMessages dat) (produceContOpMessages cops)
 
     produceToRelayProviderRelinquish (TrprDigest ns) =
