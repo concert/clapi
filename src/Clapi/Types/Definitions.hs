@@ -27,6 +27,7 @@ import Clapi.Util (strictZip, fmtStrictZipError, safeToEnum)
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
 data ClientPermission = ReadOnly | Editable deriving (Show, Eq, Enum, Bounded)
+data Mandatoriness = Mandatory | Optional deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
