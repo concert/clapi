@@ -40,6 +40,7 @@ library
                      , Clapi.Types.AssocList
                      , Clapi.Types.Base
                      , Clapi.Types.Definitions
+                     , Clapi.Types.TypeName
                      , Clapi.Types.Digests
                      , Clapi.Types.Dkmap
                      , Clapi.Types.Messages
