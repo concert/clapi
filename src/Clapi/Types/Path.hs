@@ -9,7 +9,7 @@ module Clapi.Types.Path (
     splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
-    NodePath, TypePath,
+    NodePath,
     TypeName(..), typeNameP, typeNameToText, typeNameFromText) where
 
 import Prelude hiding (fail)
@@ -103,7 +103,6 @@ childPaths :: Functor f => Path -> f Seg -> f Path
 childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
 
 type NodePath = Path
-type TypePath = Path
 
 data TypeName = TypeName {tnNamespace :: Seg, tnName :: Seg} deriving (Eq, Ord)
 
