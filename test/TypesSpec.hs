@@ -22,14 +22,12 @@ import qualified Data.Text as Text
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 
-import Clapi.Serialisation
-  ( WireContainerType(..), WireConcreteType(..), wireValueWireType
-  , withWireTypeProxy, unpackWireType)
 import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
   ( Time(..), WireValue(..), Wireable, castWireValue, Liberty
   , InterpolationLimit, Definition(..), StructDefinition(..)
-  , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap)
+  , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
+  , wireValueWireType, withWtProxy)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
 import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))

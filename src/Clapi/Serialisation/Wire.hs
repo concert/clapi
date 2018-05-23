@@ -1,33 +1,25 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     ScopedTypeVariables
-  , Rank2Types
   , QuasiQuotes
   , TypeApplications
-  , AllowAmbiguousTypes
-  , PolyKinds
 #-}
 
 module Clapi.Serialisation.Wire where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Control.Applicative ((<|>))
-import Data.Word
-import Data.Int
-import Data.Text (Text)
 import Data.Typeable
-import Data.Maybe (fromJust)
 
 import Data.Monoid
 
 import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
-import Clapi.Types.Base (Tag, Time)
-import Clapi.Types.Wire (WireValue(..), Wireable)
+import Clapi.Types.Base (Tag)
+import Clapi.Types.Wire
+  (WireValue(..), Wireable, WireType(..), wireValueWireType, withWtProxy)
 import Clapi.TH (btq)
-import Clapi.Util (proxyF, proxyF3)
 
 -- | We define a type for tags that we want to use to denote our types on the
 --   wire, so that we can define functions that we can verify are total.
@@ -41,17 +33,6 @@ data WireTypeName
   | WtnMaybe
   | WtnPair
   deriving (Show, Eq, Ord, Enum, Bounded)
-
-data WireType
-  = WtTime
-  | WtWord8 | WtWord32 | WtWord64
-  | WtInt32 | WtInt64
-  | WtFloat | WtDouble
-  | WtString
-  | WtList WireType
-  | WtMaybe WireType
-  | WtPair WireType WireType
-  deriving (Show, Eq, Ord)
 
 wtName :: WireType -> WireTypeName
 wtName wt = case wt of
@@ -67,24 +48,6 @@ wtName wt = case wt of
   WtList _ -> WtnList
   WtMaybe _ -> WtnMaybe
   WtPair _ _ -> WtnPair
-
-withWtProxy :: WireType -> (forall a. Wireable a => Proxy a -> r) -> r
-withWtProxy wt f = case wt of
-  WtTime -> f $ Proxy @Time
-  WtWord8 -> f $ Proxy @Word8
-  WtWord32 -> f $ Proxy @Word32
-  WtWord64 -> f $ Proxy @Word64
-  WtInt32 -> f $ Proxy @Int32
-  WtInt64 -> f $ Proxy @Int64
-  WtFloat -> f $ Proxy @Float
-  WtDouble -> f $ Proxy @Double
-  WtString -> f $ Proxy @Text
-  WtList wt' -> withWtProxy wt' $ f . proxyF (Proxy @[])
-  WtMaybe wt' -> withWtProxy wt' $ f . proxyF (Proxy @Maybe)
-  WtPair wt1 wt2 ->
-    withWtProxy wt1 $ \p1 ->
-      withWtProxy wt2 $ \p2 ->
-        f $ proxyF3 (Proxy @(,)) p1 p2
 
 wtnTag :: WireTypeName -> Tag
 wtnTag wt = case wt of
@@ -111,31 +74,6 @@ tagWtn t = maybe (fail "Unrecognised type tag") return $ lookup t tagWtns
 -- keys on creation:
 revAssoc :: (Enum a, Bounded a) => (a -> r) -> [(r, a)]
 revAssoc f = [(f e, e) | e <- [minBound..]]
-
-wireValueWireType :: WireValue -> WireType
-wireValueWireType (WireValue a) = go $ typeOf a
-  where
-    go :: TypeRep -> WireType
-    go tr | tc == f @Time = WtTime
-          | tc == f @Word8 = WtWord8
-          | tc == f @Word32 = WtWord32
-          | tc == f @Word64 = WtWord64
-          | tc == f @Int32 = WtInt32
-          | tc == f @Int64 = WtInt64
-          | tc == f @Float = WtFloat
-          | tc == f @Double = WtDouble
-          | tc == f @Text = WtString
-          | tc == f @[] = WtList $ go $ head $ typeRepArgs tr
-          | tc == f @Maybe = WtMaybe $ go $ head $ typeRepArgs tr
-          | tc == f @(,) =
-            twoHead (\tr1 tr2 -> WtPair (go tr1) (go tr2)) $ typeRepArgs tr
-          | otherwise = error $ show tc
-      where tc = typeRepTyCon tr
-    -- NB: this needs AllowAmbiguousTypes
-    f :: forall a. Typeable a => TyCon
-    f = typeRepTyCon $ typeRep $ Proxy @a
-    twoHead :: (a -> a -> r) -> [a] -> r
-    twoHead g (a1:a2:_) = g a1 a2
 
 instance Encodable WireTypeName where
   builder = builder . wtnTag
