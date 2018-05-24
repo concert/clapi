@@ -1,16 +1,9 @@
 {-# LANGUAGE
-    DeriveLift
-  , StandaloneDeriving
-  , TypeApplications
+    TypeApplications
 #-}
 module Clapi.Types.WireTH where
 
-import Data.Proxy
-
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax (Lift(..))
-
-deriving instance Lift (Proxy a)
 
 mkWithWtProxy :: String -> [Name] -> Q [Dec]
 mkWithWtProxy newFnName preds =
