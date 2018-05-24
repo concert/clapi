@@ -86,7 +86,7 @@ data WireType
   | WtPair WireType WireType
   deriving (Show, Eq, Ord)
 
-withWtProxy = $(mkWithWtProxy [''Wireable])
+mkWithWtProxy "withWtProxy" [''Wireable]
 
 wireValueWireType :: WireValue -> WireType
 wireValueWireType (WireValue a) = go $ typeOf a

@@ -12,13 +12,12 @@ import Language.Haskell.TH.Syntax (Lift(..))
 
 deriving instance Lift (Proxy a)
 
-mkWithWtProxy :: [Name] -> Q Exp
-mkWithWtProxy preds =
+mkWithWtProxy :: String -> [Name] -> Q [Dec]
+mkWithWtProxy newFnName preds =
   let
     wt = mkName "wt"; f = mkName "f"; a = mkName "a"; r = mkName "r"
     wt1 = mkName "wt1"; wt2 = mkName "wt2"; p1 = mkName "p1"; p2 = mkName "p2"
-    withWtProxyName = mkName "withWtProxy"
-    withWtProxy wtE fE = AppE (AppE (VarE withWtProxyName) wtE) fE
+    withWtProxy wtE fE = AppE (AppE (VarE $ mkName newFnName) wtE) fE
     proxy tName = AppTypeE (ConE $ mkName "Proxy") (ConT $ mkName tName)
     proxyF e = AppE (VarE $ mkName "proxyF") e
     proxyF3 e1 e2 e3 = AppE (AppE (AppE (VarE $ mkName "proxyF3")  e1) e2) e3
@@ -32,10 +31,10 @@ mkWithWtProxy preds =
       (ConP (mkName $ "Wt" ++ wtName) [])
       (NormalB $ AppE (VarE f) (proxy tName))
       []
-  in do
-    return $ LetE
+  in
+    return $
       [ -- WireType -> (forall a. (pred1 a, pred2 a...) => Proxy a -> r) -> r
-        SigD withWtProxyName $
+        SigD (mkName newFnName) $
           (ConT $ mkName "WireType")
           `arrow`
           ((ForallT [PlainTV a] ((flip AppT $ VarT a) . ConT <$> preds) $
@@ -44,7 +43,7 @@ mkWithWtProxy preds =
             VarT r)
           `arrow`
           VarT r)
-      , FunD withWtProxyName
+      , FunD (mkName newFnName)
         [ Clause
             [VarP wt, VarP f]
             (NormalB $ CaseE (VarE wt)
@@ -82,4 +81,3 @@ mkWithWtProxy preds =
             []
         ]
       ]
-      (VarE withWtProxyName)
