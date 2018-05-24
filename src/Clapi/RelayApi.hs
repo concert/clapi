@@ -23,7 +23,7 @@ import Clapi.Types.Digests (DefOp(OpDefine), DataChange(..), FrcDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
+import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (castWireValue)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
@@ -47,11 +47,11 @@ relayApiProto selfAddr =
       rns
       (Map.fromList $ fmap OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
-             (alSingleton [segq|commit_hash|] $ ttString "banana")
+             (alSingleton [segq|commit_hash|] $ TtString "banana")
              ILUninterpolated)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (alSingleton [segq|seconds|] $ ttFloat unbounded)
+             (alSingleton [segq|seconds|] $ TtFloat unbounded)
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
@@ -62,13 +62,13 @@ relayApiProto selfAddr =
              (TypeName rns [segq|client_info|]) Cannot)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
-               $ ttRef $ TypeName rns [segq|client_info|])
+               $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
              (TypeName rns [segq|owner_info|]) Cannot)
         , ([segq|self|], tupleDef "Which client you are"
              (alSingleton [segq|info|]
-               $ ttRef $ TypeName rns [segq|client_info|])
+               $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
           [ ([segq|build|], (TypeName rns [segq|build|], Cannot))

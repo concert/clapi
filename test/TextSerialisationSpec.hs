@@ -5,7 +5,6 @@ module TextSerialisationSpec where
 
 import Test.Hspec
 import Test.QuickCheck (property)
-import Test.QuickCheck.Instances ()
 
 import Clapi.TextSerialisation (ttFromText, ttToText)
 import Clapi.Types ()

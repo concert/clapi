@@ -1,14 +1,19 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE
+    ExistentialQuantification
+  , OverloadedStrings
+  , Rank2Types
+  , ScopedTypeVariables
+  , TemplateHaskell
+  , TypeApplications
+#-}
 
 module TypesSpec where
 
 import Test.Hspec
 import Test.QuickCheck
-  (Arbitrary(..), Gen, property, elements, choose, arbitraryBoundedEnum, oneof)
-import Test.QuickCheck.Instances ()
+  ( Arbitrary(..), Gen, property, elements, choose, arbitraryBoundedEnum, oneof
+  , listOf, shuffle)
 
 import System.Random (Random)
 import Data.Maybe (fromJust)
@@ -21,16 +26,17 @@ import qualified Data.Text as Text
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int32, Int64)
 
-import Clapi.Serialisation
-  ( WireContainerType(..), WireConcreteType(..), wireValueWireType
-  , withWireTypeProxy, unpackWireType)
+import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
-  ( Time(..), WireValue(..), Wireable, castWireValue, Liberty
+  ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Liberty
   , InterpolationLimit, Definition(..), StructDefinition(..)
-  , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap)
+  , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
+  , wireValueWireType, withWtProxy)
+import Clapi.Util (proxyF, proxyF3)
 
-import Clapi.Types.Tree (TreeConcreteType(..), tcEnum, TreeContainerType(..), TreeType(..), Bounds, bounds)
+import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
 import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))
+import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
 smallListOf g = do
@@ -68,53 +74,71 @@ instance Arbitrary Time where
   arbitrary = liftM2 Time arbitrary arbitrary
 
 arbitraryTextNoNull :: Gen Text
-arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$> arbitrary @String
+arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$> arbitrary
+
+instance Arbitrary Text where
+  arbitrary = arbitraryTextNoNull
+
+-- | An Arbitrary class where we can be more picky about exactly what we
+--   generate. Specifically, we want only small lists and text without \NUL
+--   characters.
+class Arbitrary a => PickyArbitrary a where
+  pArbitrary :: Gen a
+  pArbitrary = arbitrary
+
+instance PickyArbitrary Time
+instance PickyArbitrary Word8
+instance PickyArbitrary Word32
+instance PickyArbitrary Word64
+instance PickyArbitrary Int32
+instance PickyArbitrary Int64
+instance PickyArbitrary Float
+instance PickyArbitrary Double
+instance PickyArbitrary Text where
+  pArbitrary = arbitraryTextNoNull
+instance PickyArbitrary a => PickyArbitrary [a] where
+  pArbitrary = smallListOf pArbitrary
+instance PickyArbitrary a => PickyArbitrary (Maybe a)
+instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b)
+
+instance Arbitrary WireType where
+  arbitrary = oneof
+    [ return WtTime
+    , return WtWord8, return WtWord32, return WtWord64
+    , return WtInt32, return WtInt64
+    , return WtFloat, return WtDouble
+    , return WtString
+    , WtList <$> arbitrary, WtMaybe <$> arbitrary
+    , WtPair <$> arbitrary <*> arbitrary
+    ]
+
+mkWithWtProxy "withPArbWtProxy" [''PickyArbitrary, ''Wireable]
+
+withPArbWvValue
+  :: forall r. WireValue
+  -> (forall a. (PickyArbitrary a, Wireable a) => a -> r) -> r
+withPArbWvValue wv f = withPArbWtProxy wt g
+  where
+    wt = wireValueWireType wv
+    g :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> r
+    g _ = f $ fromJust $ castWireValue @a wv
+
 
 instance Arbitrary WireValue where
-  arbitrary = pickConcrete
+  arbitrary = do
+      wt <- arbitrary @WireType
+      withPArbWtProxy wt f
     where
-      pickConcrete = do
-        concT <- arbitraryBoundedEnum
-        depth <- choose (0, 2)
-        case concT of
-          WcTime -> contain depth (arbitrary @Time)
-          WcWord8 -> contain depth (arbitrary @Word8)
-          WcWord32 -> contain depth (arbitrary @Word32)
-          WcWord64 -> contain depth (arbitrary @Word64)
-          WcInt32 -> contain depth (arbitrary @Int32)
-          WcInt64 -> contain depth (arbitrary @Int64)
-          WcFloat -> contain depth (arbitrary @Float)
-          WcDouble -> contain depth (arbitrary @Double)
-          WcString -> contain depth arbitraryTextNoNull
-      contain :: Wireable a => Int -> Gen a -> Gen WireValue
-      contain 0 g = WireValue <$> g
-      contain depth g = oneof
-        [ contain (depth - 1) $ smallListOf g
-        , contain (depth - 1) $ maybeOf g
-        ]
-  shrink wv = let (concT, contTs) = unpackWireType $ wireValueWireType wv in
-      case concT of
-          WcTime -> lThing contTs (Proxy @Time)
-          WcWord8 -> lThing contTs (Proxy @Word8)
-          WcWord32 -> lThing contTs (Proxy @Word32)
-          WcWord64 -> lThing contTs (Proxy @Word64)
-          WcInt32 -> lThing contTs (Proxy @Int32)
-          WcInt64 -> lThing contTs (Proxy @Int64)
-          WcFloat -> lThing contTs (Proxy @Float)
-          WcDouble -> lThing contTs (Proxy @Double)
-          WcString -> lThing contTs (Proxy @Text)
+      f :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> Gen WireValue
+      f _ = WireValue <$> pArbitrary @a
+  shrink wv = withPArbWvValue wv f
     where
-      lThing
-        :: forall a. (Wireable a, Arbitrary a) => [WireContainerType]
-        -> Proxy a -> [WireValue]
-      lThing [] _ = fmap WireValue $ shrink @a $ fromJust $ castWireValue wv
-      lThing (contT:contTs) _ = case contT of
-        WcList -> lThing contTs (Proxy @[a])
-        WcMaybe -> lThing contTs (Proxy @(Maybe a))
+      f :: forall a. (PickyArbitrary a, Wireable a) => a -> [WireValue]
+      f a = WireValue <$> shrink a
 
 roundTripWireValue
   :: forall m. MonadFail m => WireValue -> m Bool
-roundTripWireValue wv = withWireTypeProxy go $ wireValueWireType wv
+roundTripWireValue wv = withWtProxy (wireValueWireType wv) go
   where
     -- This may be the most poncing around with types I've done for the least
     -- value of testing ever!
@@ -150,31 +174,30 @@ instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
             (Just _, Just _) -> bounds (min a b) (max a b)
             _ -> bounds a b
 
-instance Arbitrary TreeConcreteType where
-    arbitrary = oneof [
-        arbTime, arbEnum, arbWord32, arbWord64, arbInt32, arbInt64, arbFloat,
-        arbDouble, arbString, arbRef, arbValidatorDesc]
-      where
-        arbTime = return TcTime
-        arbEnum = return $ tcEnum (Proxy :: Proxy TestEnum)
-        arbWord32 = TcWord32 <$> arbitrary
-        arbWord64 = TcWord64 <$> arbitrary
-        arbInt32 = TcInt32 <$> arbitrary
-        arbInt64 = TcInt64 <$> arbitrary
-        arbFloat = TcFloat <$> arbitrary
-        arbDouble = TcDouble <$> arbitrary
-        arbString = TcString <$> arbitraryTextNoNull
-        arbRef = TcRef <$> arbitrary
-        arbValidatorDesc = return TcValidatorDesc
+arbitraryRegex :: Gen Text
+arbitraryRegex =
+  let
+    niceAscii = pure @[] <$> ['!'..'Z'] ++ ['^'..'~']
+    escapedArgsDelims = ('\\':) . pure @[] <$> [argsOpen, argsClose]
+  in do
+    safe <- listOf (elements $ niceAscii ++ escapedArgsDelims)
+    delims <- flip replicate "[]" <$> choose (0, 3)
+    Text.pack . mconcat <$> shuffle (safe ++ delims)
 
-instance Arbitrary TreeContainerType where
-    arbitrary = oneof [arbList, arbSet, arbOrdSet]
-      where
-        arbList = TcList <$> arbitrary
-        arbSet = TcSet <$> arbitrary
-        arbOrdSet = TcOrdSet <$> arbitrary
 
 instance Arbitrary TreeType where
-    arbitrary = oneof [TtConc <$> arbitrary, TtCont <$> arbitrary]
+    arbitrary = oneof
+      [ return TtTime
+      , return $ ttEnum $ Proxy @TestEnum
+      , TtWord32 <$> arbitrary, TtWord64 <$> arbitrary
+      , TtInt32 <$> arbitrary, TtInt64 <$> arbitrary
+      , TtFloat <$> arbitrary, TtDouble <$> arbitrary
+      , TtString <$> arbitraryRegex
+      , TtRef <$> arbitrary
+      , TtList <$> arbitrary, TtSet <$> arbitrary, TtOrdSet <$> arbitrary
+      , TtMaybe <$> arbitrary
+      , TtPair <$> arbitrary <*> arbitrary
+      ]
+
 
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)

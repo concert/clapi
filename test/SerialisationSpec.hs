@@ -12,7 +12,6 @@ import qualified Data.ByteString as BS
 import Test.Hspec
 import Test.QuickCheck
   (property, Property, counterexample, Arbitrary(..), Gen, oneof)
-import Test.QuickCheck.Instances ()
 
 import Blaze.ByteString.Builder (toByteString)
 import Data.Attoparsec.ByteString (parseOnly, endOfInput)

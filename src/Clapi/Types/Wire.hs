@@ -1,27 +1,38 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE
+    AllowAmbiguousTypes
+  , ExistentialQuantification
+  , PolyKinds
+  , Rank2Types
+  , ScopedTypeVariables
+  , StandaloneDeriving
+  , TemplateHaskell
+  , TypeApplications
+#-}
 
 module Clapi.Types.Wire
   ( Wireable
   , WireValue(..), castWireValue
   , (<|$|>), (<|*|>)
+  , cast'
+  , WireType(..), wireValueWireType, withWtProxy, withWvValue
   ) where
 
 import Prelude hiding (fail)
 
--- Wire type stuff:
 import Control.Monad.Fail (MonadFail(..))
 import Data.Int
 import Data.Text (Text)
 import Data.Word
 import Data.Typeable
+import Data.Maybe (fromJust)
 
 import Clapi.Serialisation.Base (Encodable)
 import Clapi.Types.Base (Time(..))
+import Clapi.Types.WireTH (mkWithWtProxy)
+import Clapi.Util (proxyF, proxyF3)
 
-cast' :: forall a b m. (Typeable a, Typeable b, MonadFail m) => a -> m b
+cast' :: forall b a m. (Typeable a, Typeable b, MonadFail m) => a -> m b
 cast' a =
   let
     die = fail $ "Type mismatch: tried to cast value of type "
@@ -42,6 +53,7 @@ instance Wireable Double
 instance Wireable Text
 instance Wireable a => Wireable [a]
 instance Wireable a => Wireable (Maybe a)
+instance (Wireable a, Wireable b) => Wireable (a, b)
 
 data WireValue = forall a. Wireable a => WireValue a
 
@@ -62,3 +74,50 @@ f <|$|> wv = f <$> castWireValue wv
 
 (<|*|>) :: (Wireable a, MonadFail m) => m (a -> b) -> WireValue -> m b
 mf <|*|> wv = mf <*> castWireValue wv
+
+
+data WireType
+  = WtTime
+  | WtWord8 | WtWord32 | WtWord64
+  | WtInt32 | WtInt64
+  | WtFloat | WtDouble
+  | WtString
+  | WtList WireType
+  | WtMaybe WireType
+  | WtPair WireType WireType
+  deriving (Show, Eq, Ord)
+
+mkWithWtProxy "withWtProxy" [''Wireable]
+
+wireValueWireType :: WireValue -> WireType
+wireValueWireType (WireValue a) = go $ typeOf a
+  where
+    go :: TypeRep -> WireType
+    go tr | tc == f @Time = WtTime
+          | tc == f @Word8 = WtWord8
+          | tc == f @Word32 = WtWord32
+          | tc == f @Word64 = WtWord64
+          | tc == f @Int32 = WtInt32
+          | tc == f @Int64 = WtInt64
+          | tc == f @Float = WtFloat
+          | tc == f @Double = WtDouble
+          | tc == f @Text = WtString
+          | tc == f @[] = WtList $ go $ head $ typeRepArgs tr
+          | tc == f @Maybe = WtMaybe $ go $ head $ typeRepArgs tr
+          | tc == f @(,) =
+            twoHead (\tr1 tr2 -> WtPair (go tr1) (go tr2)) $ typeRepArgs tr
+          | otherwise = error $ show tc
+      where tc = typeRepTyCon tr
+    -- NB: this needs AllowAmbiguousTypes
+    f :: forall a. Typeable a => TyCon
+    f = typeRepTyCon $ typeRep $ Proxy @a
+    twoHead :: (a -> a -> r) -> [a] -> r
+    twoHead g (a1:a2:_) = g a1 a2
+    twoHead _ _ = error "Must give two-arg typerep"
+
+withWvValue :: forall r. WireValue -> (forall a. Wireable a => a -> r) -> r
+withWvValue wv f = withWtProxy wt g
+  where
+    wt = wireValueWireType wv
+    g :: forall a. Wireable a => Proxy a -> r
+    g _ = f $ fromJust $ castWireValue @a wv
