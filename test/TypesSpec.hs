@@ -85,8 +85,6 @@ instance Arbitrary Text where
 class Arbitrary a => PickyArbitrary a where
   pArbitrary :: Gen a
   pArbitrary = arbitrary
-  pShrink :: a -> [a]
-  pShrink = shrink
 
 instance PickyArbitrary Time
 instance PickyArbitrary Word8
@@ -136,7 +134,7 @@ instance Arbitrary WireValue where
   shrink wv = withPArbWvValue wv f
     where
       f :: forall a. (PickyArbitrary a, Wireable a) => a -> [WireValue]
-      f a = WireValue <$> pShrink a
+      f a = WireValue <$> shrink a
 
 roundTripWireValue
   :: forall m. MonadFail m => WireValue -> m Bool
