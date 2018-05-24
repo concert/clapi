@@ -6,6 +6,7 @@
   , Rank2Types
   , ScopedTypeVariables
   , StandaloneDeriving
+  , TemplateHaskell
   , TypeApplications
 #-}
 
@@ -27,6 +28,7 @@ import Data.Typeable
 
 import Clapi.Serialisation.Base (Encodable)
 import Clapi.Types.Base (Time(..))
+import Clapi.Types.WireTH (mkWithWtProxy)
 import Clapi.Util (proxyF, proxyF3)
 
 cast' :: forall b a m. (Typeable a, Typeable b, MonadFail m) => a -> m b
@@ -84,23 +86,7 @@ data WireType
   | WtPair WireType WireType
   deriving (Show, Eq, Ord)
 
-withWtProxy :: WireType -> (forall a. Wireable a => Proxy a -> r) -> r
-withWtProxy wt f = case wt of
-  WtTime -> f $ Proxy @Time
-  WtWord8 -> f $ Proxy @Word8
-  WtWord32 -> f $ Proxy @Word32
-  WtWord64 -> f $ Proxy @Word64
-  WtInt32 -> f $ Proxy @Int32
-  WtInt64 -> f $ Proxy @Int64
-  WtFloat -> f $ Proxy @Float
-  WtDouble -> f $ Proxy @Double
-  WtString -> f $ Proxy @Text
-  WtList wt' -> withWtProxy wt' $ f . proxyF (Proxy @[])
-  WtMaybe wt' -> withWtProxy wt' $ f . proxyF (Proxy @Maybe)
-  WtPair wt1 wt2 ->
-    withWtProxy wt1 $ \p1 ->
-      withWtProxy wt2 $ \p2 ->
-        f $ proxyF3 (Proxy @(,)) p1 p2
+withWtProxy = $(mkWithWtProxy [''Wireable])
 
 wireValueWireType :: WireValue -> WireType
 wireValueWireType (WireValue a) = go $ typeOf a

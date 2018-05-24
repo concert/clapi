@@ -48,6 +48,7 @@ library
                      , Clapi.Types.Tree
                      , Clapi.Types.TreeTypeProxy
                      , Clapi.Types.Wire
+                     , Clapi.Types.WireTH
                      , Clapi.Types.UniqList
                      , Clapi.Tree
                      , Clapi.Validator
