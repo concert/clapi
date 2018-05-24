@@ -15,7 +15,7 @@ module Clapi.Types.Wire
   , WireValue(..), castWireValue
   , (<|$|>), (<|*|>)
   , cast'
-  , WireType(..), wireValueWireType, withWtProxy
+  , WireType(..), wireValueWireType, withWtProxy, withWvValue
   ) where
 
 import Prelude hiding (fail)
@@ -25,6 +25,7 @@ import Data.Int
 import Data.Text (Text)
 import Data.Word
 import Data.Typeable
+import Data.Maybe (fromJust)
 
 import Clapi.Serialisation.Base (Encodable)
 import Clapi.Types.Base (Time(..))
@@ -113,3 +114,10 @@ wireValueWireType (WireValue a) = go $ typeOf a
     twoHead :: (a -> a -> r) -> [a] -> r
     twoHead g (a1:a2:_) = g a1 a2
     twoHead _ _ = error "Must give two-arg typerep"
+
+withWvValue :: forall r. WireValue -> (forall a. Wireable a => a -> r) -> r
+withWvValue wv f = withWtProxy wt g
+  where
+    wt = wireValueWireType wv
+    g :: forall a. Wireable a => Proxy a -> r
+    g _ = f $ fromJust $ castWireValue @a wv

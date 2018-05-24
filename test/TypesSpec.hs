@@ -1,7 +1,12 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE
+    ExistentialQuantification
+  , OverloadedStrings
+  , Rank2Types
+  , ScopedTypeVariables
+  , TemplateHaskell
+  , TypeApplications
+#-}
 
 module TypesSpec where
 
@@ -24,13 +29,15 @@ import Data.Int (Int32, Int64)
 
 import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
-  ( Time(..), WireValue(..), Wireable, castWireValue, Liberty
+  ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Liberty
   , InterpolationLimit, Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
   , wireValueWireType, withWtProxy)
+import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
 import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))
+import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
 smallListOf g = do
@@ -70,51 +77,43 @@ instance Arbitrary Time where
 arbitraryTextNoNull :: Gen Text
 arbitraryTextNoNull = Text.filter (/= '\NUL') <$> arbitrary @Text
 
+instance Arbitrary WireType where
+  arbitrary = oneof
+    [ return WtTime
+    , return WtWord8, return WtWord32, return WtWord64
+    , return WtInt32, return WtInt64
+    , return WtFloat, return WtDouble
+    , return WtString
+    , WtList <$> arbitrary, WtMaybe <$> arbitrary
+    , WtPair <$> arbitrary <*> arbitrary
+    ]
+
+mkWithWtProxy "withArbitraryWtProxy" [''Arbitrary, ''Wireable]
+
+withArbitraryWvValue
+  :: forall r. WireValue -> (forall a. (Arbitrary a, Wireable a) => a -> r) -> r
+withArbitraryWvValue wv f = withArbitraryWtProxy wt g
+  where
+    wt = wireValueWireType wv
+    g :: forall a. (Arbitrary a, Wireable a) => Proxy a -> r
+    g _ = f $ fromJust $ castWireValue @a wv
+
+
 instance Arbitrary WireValue where
-  arbitrary = pickConcrete
+  arbitrary = do
+      wt <- arbitrary @WireType
+      withArbitraryWtProxy wt f
     where
-      pickConcrete = do
-        concT <- arbitraryBoundedEnum
-        depth <- choose (0, 2)
-        case concT of
-          WcTime -> contain depth (arbitrary @Time)
-          WcWord8 -> contain depth (arbitrary @Word8)
-          WcWord32 -> contain depth (arbitrary @Word32)
-          WcWord64 -> contain depth (arbitrary @Word64)
-          WcInt32 -> contain depth (arbitrary @Int32)
-          WcInt64 -> contain depth (arbitrary @Int64)
-          WcFloat -> contain depth (arbitrary @Float)
-          WcDouble -> contain depth (arbitrary @Double)
-          WcString -> contain depth arbitraryTextNoNull
-      contain :: Wireable a => Int -> Gen a -> Gen WireValue
-      contain 0 g = WireValue <$> g
-      contain depth g = oneof
-        [ contain (depth - 1) $ smallListOf g
-        , contain (depth - 1) $ maybeOf g
-        ]
-  shrink wv = let (concT, contTs) = unpackWireType $ wireValueWireType wv in
-      case concT of
-          WcTime -> lThing contTs (Proxy @Time)
-          WcWord8 -> lThing contTs (Proxy @Word8)
-          WcWord32 -> lThing contTs (Proxy @Word32)
-          WcWord64 -> lThing contTs (Proxy @Word64)
-          WcInt32 -> lThing contTs (Proxy @Int32)
-          WcInt64 -> lThing contTs (Proxy @Int64)
-          WcFloat -> lThing contTs (Proxy @Float)
-          WcDouble -> lThing contTs (Proxy @Double)
-          WcString -> lThing contTs (Proxy @Text)
+      f :: forall a. (Arbitrary a, Wireable a) => Proxy a -> Gen WireValue
+      f _ = WireValue <$> arbitrary @a
+  shrink wv = withArbitraryWvValue wv f
     where
-      lThing
-        :: forall a. (Wireable a, Arbitrary a) => [WireContainerType]
-        -> Proxy a -> [WireValue]
-      lThing [] _ = fmap WireValue $ shrink @a $ fromJust $ castWireValue wv
-      lThing (contT:contTs) _ = case contT of
-        WcList -> lThing contTs (Proxy @[a])
-        WcMaybe -> lThing contTs (Proxy @(Maybe a))
+      f :: forall a. (Arbitrary a, Wireable a) => a -> [WireValue]
+      f a = WireValue <$> shrink a
 
 roundTripWireValue
   :: forall m. MonadFail m => WireValue -> m Bool
-roundTripWireValue wv = withWireTypeProxy go $ wireValueWireType wv
+roundTripWireValue wv = withWtProxy (wireValueWireType wv) go
   where
     -- This may be the most poncing around with types I've done for the least
     -- value of testing ever!
