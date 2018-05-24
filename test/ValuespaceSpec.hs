@@ -9,7 +9,6 @@ import Test.Hspec
 import Test.QuickCheck (
     Arbitrary(..), Gen, Property, arbitrary, oneof, elements, listOf, listOf1,
     arbitraryBoundedEnum, vector, vectorOf, property)
-import Test.QuickCheck.Instances ()
 
 import Data.Maybe (fromJust)
 import Data.Either (either, isRight)

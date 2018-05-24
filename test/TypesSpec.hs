@@ -14,7 +14,6 @@ import Test.Hspec
 import Test.QuickCheck
   ( Arbitrary(..), Gen, property, elements, choose, arbitraryBoundedEnum, oneof
   , listOf, shuffle)
-import Test.QuickCheck.Instances ()
 
 import System.Random (Random)
 import Data.Maybe (fromJust)
@@ -75,7 +74,34 @@ instance Arbitrary Time where
   arbitrary = liftM2 Time arbitrary arbitrary
 
 arbitraryTextNoNull :: Gen Text
-arbitraryTextNoNull = Text.filter (/= '\NUL') <$> arbitrary @Text
+arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$> arbitrary
+
+instance Arbitrary Text where
+  arbitrary = arbitraryTextNoNull
+
+-- | An Arbitrary class where we can be more picky about exactly what we
+--   generate. Specifically, we want only small lists and text without \NUL
+--   characters.
+class Arbitrary a => PickyArbitrary a where
+  pArbitrary :: Gen a
+  pArbitrary = arbitrary
+  pShrink :: a -> [a]
+  pShrink = shrink
+
+instance PickyArbitrary Time
+instance PickyArbitrary Word8
+instance PickyArbitrary Word32
+instance PickyArbitrary Word64
+instance PickyArbitrary Int32
+instance PickyArbitrary Int64
+instance PickyArbitrary Float
+instance PickyArbitrary Double
+instance PickyArbitrary Text where
+  pArbitrary = arbitraryTextNoNull
+instance PickyArbitrary a => PickyArbitrary [a] where
+  pArbitrary = smallListOf pArbitrary
+instance PickyArbitrary a => PickyArbitrary (Maybe a)
+instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b)
 
 instance Arbitrary WireType where
   arbitrary = oneof
@@ -88,28 +114,29 @@ instance Arbitrary WireType where
     , WtPair <$> arbitrary <*> arbitrary
     ]
 
-mkWithWtProxy "withArbitraryWtProxy" [''Arbitrary, ''Wireable]
+mkWithWtProxy "withPArbWtProxy" [''PickyArbitrary, ''Wireable]
 
-withArbitraryWvValue
-  :: forall r. WireValue -> (forall a. (Arbitrary a, Wireable a) => a -> r) -> r
-withArbitraryWvValue wv f = withArbitraryWtProxy wt g
+withPArbWvValue
+  :: forall r. WireValue
+  -> (forall a. (PickyArbitrary a, Wireable a) => a -> r) -> r
+withPArbWvValue wv f = withPArbWtProxy wt g
   where
     wt = wireValueWireType wv
-    g :: forall a. (Arbitrary a, Wireable a) => Proxy a -> r
+    g :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> r
     g _ = f $ fromJust $ castWireValue @a wv
 
 
 instance Arbitrary WireValue where
   arbitrary = do
       wt <- arbitrary @WireType
-      withArbitraryWtProxy wt f
+      withPArbWtProxy wt f
     where
-      f :: forall a. (Arbitrary a, Wireable a) => Proxy a -> Gen WireValue
-      f _ = WireValue <$> arbitrary @a
-  shrink wv = withArbitraryWvValue wv f
+      f :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> Gen WireValue
+      f _ = WireValue <$> pArbitrary @a
+  shrink wv = withPArbWvValue wv f
     where
-      f :: forall a. (Arbitrary a, Wireable a) => a -> [WireValue]
-      f a = WireValue <$> shrink a
+      f :: forall a. (PickyArbitrary a, Wireable a) => a -> [WireValue]
+      f a = WireValue <$> pShrink a
 
 roundTripWireValue
   :: forall m. MonadFail m => WireValue -> m Bool

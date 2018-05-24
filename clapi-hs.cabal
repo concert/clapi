@@ -119,7 +119,6 @@ test-suite clapi-hs-test
                      , network
                      , network-simple
                      , QuickCheck
-                     , quickcheck-instances
                      , random
                      , text
                      , transformers
