@@ -1,5 +1,8 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE
+    PatternSynonyms
+  , DataKinds
+#-}
 
 module Clapi.Types.Digests where
 
@@ -16,11 +19,16 @@ import Data.Word (Word32)
 import Clapi.Types.AssocList
   (AssocList, alNull, alEmpty, alFromList, alFmapWithKey, alValues, alKeysSet)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Liberty, TupleDefinition)
+import Clapi.Types.Definitions
+    (TreeDefinition, ClientPermission, Mandatoriness, TupleDefinition, StructDefinition)
 import Clapi.Types.Messages
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern (:/))
+import Clapi.Types.Path (Seg, Path, pattern (:</), pattern (:/))
+import Clapi.Types.TypeName
+  ( TypeName, ChildTypeName, TypeNamespace(..), AnyTypeName, typeNameCons
+  , atnNamespace, TypeNameParseable)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (WireValue)
+import Clapi.Types.Registrations (Registrations)
 
 data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq)
 data DefOp d = OpDefine {odDef :: d} | OpUndefine deriving (Show, Eq)
@@ -46,7 +54,8 @@ type ContainerOps = Map Path (Map Seg (Maybe Attributee, SequenceOp Seg))
 
 data TrpDigest = TrpDigest
   { trpdNamespace :: Seg
-  , trpdDefinitions :: Map Seg (DefOp Definition)
+  , trpdTreeDefs :: Map Seg (DefOp TreeDefinition)
+  , trpdCreateDefs :: Map Seg (DefOp (StructDefinition Mandatoriness))
   , trpdValueDefs :: Map Seg (DefOp TupleDefinition)
   , trpdData :: DataDigest
   , trpdContainerOps :: ContainerOps
@@ -54,17 +63,18 @@ data TrpDigest = TrpDigest
   } deriving (Show, Eq)
 
 trpDigest :: Seg -> TrpDigest
-trpDigest ns = TrpDigest ns mempty mempty alEmpty mempty mempty
+trpDigest ns = TrpDigest ns mempty mempty mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
-trpdRemovedPaths (TrpDigest ns _ _ _ cOps _) = (ns :</) <$> Map.foldlWithKey f [] cOps
+trpdRemovedPaths d = ((trpdNamespace d) :</) <$> Map.foldlWithKey f [] (trpdContainerOps d)
   where
     f acc p segMap = acc ++
       (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
 
 trpdNull :: TrpDigest -> Bool
-trpdNull (TrpDigest _ns defs valDefs dd cops errs) =
-    null defs && null valDefs && alNull dd && null cops && null errs
+trpdNull (TrpDigest _ns treeDefs createDefs valDefs dd cops errs) =
+    null treeDefs && null createDefs && null valDefs && null valDefs
+    && alNull dd && null cops && null errs
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
@@ -73,11 +83,11 @@ data FrpDigest = FrpDigest
   } deriving (Show, Eq)
 
 data FrpErrorDigest = FrpErrorDigest
-  { frpedErrors :: Map (ErrorIndex TypeName) [Text]
+  { frpedErrors :: Map (ErrorIndex AnyTypeName) [Text]
   } deriving (Show, Eq)
 
 data TrcDigest = TrcDigest
-  { trcdTypeSubs :: Map TypeName SubOp
+  { trcdTypeSubs :: Map AnyTypeName SubOp
   , trcdDataSubs :: Map Path SubOp
   , trcdData :: DataDigest
   , trcdContainerOps :: ContainerOps
@@ -87,17 +97,19 @@ trcdEmpty :: TrcDigest
 trcdEmpty = TrcDigest mempty mempty alEmpty mempty
 
 data FrcDigest = FrcDigest
-  { frcdTypeUnsubs :: Set TypeName
-  , frcdDataUnsubs :: Set Path
-  , frcdDefinitions :: Map TypeName (DefOp Definition)
-  , frcdTypeAssignments :: Map Path (TypeName, Liberty)
+  { frcdUnsubs :: DroppedRegistrations
+  , frcdTreeDefs :: Map (TypeName 'TnTree) (DefOp TreeDefinition)
+  , frcdCreateDefs :: Map (TypeName 'TnCreate) (DefOp (StructDefinition Mandatoriness))
+  , frcdValueDefs :: Map (TypeName 'TnValue) (DefOp TupleDefinition)
+  , frcdTypeAssignments :: Map Path (ChildTypeName 'TnTree, ClientPermission)
   , frcdData :: DataDigest
   , frcdContainerOps :: ContainerOps
-  , frcdErrors :: Map (ErrorIndex TypeName) [Text]
+  , frcdErrors :: Map (ErrorIndex AnyTypeName) [Text]
   } deriving (Show, Eq)
 
 frcdEmpty :: FrcDigest
-frcdEmpty = FrcDigest mempty mempty mempty mempty alEmpty mempty mempty
+frcdEmpty = FrcDigest
+    mempty mempty mempty mempty mempty alEmpty mempty mempty
 
 newtype TrprDigest = TrprDigest {trprdNamespace :: Seg} deriving (Show, Eq)
 
@@ -115,7 +127,7 @@ data FrDigest
 
 trcdNamespaces :: TrcDigest -> Set Seg
 trcdNamespaces (TrcDigest ts ds dd co) =
-    (Set.map tnNamespace $ Map.keysSet ts)
+    (Set.map atnNamespace $ Map.keysSet ts)
     <> pathKeyNss (Map.keysSet ds) <> pathKeyNss (alKeysSet dd)
     <> pathKeyNss (Map.keysSet co)
   where
@@ -125,9 +137,9 @@ trcdNamespaces (TrcDigest ts ds dd co) =
     pNs _ = Nothing
 
 frcdNull :: FrcDigest -> Bool
-frcdNull (FrcDigest tyUns datUns defs tas dd cops errs) =
-  null tyUns && null datUns && null defs && null tas && null dd && null cops
-  && null errs
+frcdNull (FrcDigest unsubs treeDefs createDefs valDefs tas dd cops errs) =
+  unsubs == mempty && null treeDefs && null createDefs && null valDefs
+  && null tas && null dd && null cops && null errs
 
 -- | "Split" because kinda like :: Map k1 a -> Map k2 (Map k3 a)
 splitMap :: (Ord a, Ord b) => [(a, (b, c))] -> Map a (Map b c)
@@ -172,10 +184,10 @@ produceContOpMessages = mconcat . Map.elems . Map.mapWithKey
       SoAbsent -> MsgAbsent p targ att
 
 
-qualifyDefMessage :: Seg -> DefMessage Seg d -> DefMessage TypeName d
+qualifyDefMessage :: TypeNameParseable a => Seg -> DefMessage Seg d -> DefMessage (TypeName a) d
 qualifyDefMessage ns dm = case dm of
-  MsgDefine s d -> MsgDefine (TypeName ns s) d
-  MsgUndefine s -> MsgUndefine $ TypeName ns s
+  MsgDefine s d -> MsgDefine (typeNameCons ns s) d
+  MsgUndefine s -> MsgUndefine $ typeNameCons ns s
 
 digestDefMessages :: Ord a => [DefMessage a d] -> Map a (DefOp d)
 digestDefMessages = Map.fromList . fmap procMsg
@@ -190,7 +202,7 @@ produceDefMessages = Map.elems . Map.mapWithKey
      OpDefine def -> MsgDefine a def
      OpUndefine -> MsgUndefine a)
 
-digestSubMessages :: [SubMessage] -> (Map TypeName SubOp, Map Path SubOp)
+digestSubMessages :: [SubMessage] -> (Map AnyTypeName SubOp, Map Path SubOp)
 digestSubMessages msgs =
   let (tss, dss) = partitionEithers $ fmap procMsg msgs in
     (Map.fromList tss, Map.fromList dss)
@@ -201,7 +213,7 @@ digestSubMessages msgs =
       MsgUnsubscribe p -> Right $ (p, OpUnsubscribe)
       MsgTypeUnsubscribe tn -> Left $ (tn, OpUnsubscribe)
 
-produceSubMessages :: Map TypeName SubOp -> Map Path SubOp -> [SubMessage]
+produceSubMessages :: Map AnyTypeName SubOp -> Map Path SubOp -> [SubMessage]
 produceSubMessages tySubs datSubs = tySubMsgs ++ datSubMsgs
   where
     tySubMsgs = Map.elems $ Map.mapWithKey (\tn op -> case op of
@@ -212,12 +224,12 @@ produceSubMessages tySubs datSubs = tySubMsgs ++ datSubMsgs
       OpUnsubscribe -> MsgUnsubscribe p) datSubs
 
 
-digestTypeMessages :: [TypeMessage] -> Map Path (TypeName, Liberty)
+digestTypeMessages :: [TypeMessage] -> Map Path (ChildTypeName 'TnTree, ClientPermission)
 digestTypeMessages = Map.fromList . fmap procMsg
   where
     procMsg (MsgAssignType p tn lib) = (p, (tn, lib))
 
-produceTypeMessages :: Map Path (TypeName, Liberty) -> [TypeMessage]
+produceTypeMessages :: Map Path (ChildTypeName 'TnTree, ClientPermission) -> [TypeMessage]
 produceTypeMessages = Map.elems . Map.mapWithKey
   (\p (tn, l) -> MsgAssignType p tn l)
 
@@ -237,9 +249,10 @@ digestToRelayBundle trb = case trb of
     Trcb b -> Trcd $ digestToRelayClientBundle b
   where
     digestToRelayProviderBundle :: ToRelayProviderBundle -> TrpDigest
-    digestToRelayProviderBundle (ToRelayProviderBundle ns errs defs valDefs dat cont) =
+    digestToRelayProviderBundle (ToRelayProviderBundle ns errs treeDefs createDefs valDefs dat cont) =
       TrpDigest ns
-        (digestDefMessages defs)
+        (digestDefMessages treeDefs)
+        (digestDefMessages createDefs)
         (digestDefMessages valDefs)
         (digestDataUpdateMessages dat)
         (digestContOpMessages cont)
@@ -264,10 +277,15 @@ produceToRelayBundle trd = case trd of
     Trprd d -> Trpr $ produceToRelayProviderRelinquish d
     Trcd d -> Trcb $ produceToRelayClientBundle d
   where
-    produceToRelayProviderBundle (TrpDigest ns defs valueDefs dat cops errs) =
+    produceToRelayProviderBundle (TrpDigest ns treeDefs createDefs valDefs dat cops errs) =
       ToRelayProviderBundle
-        ns (produceErrMessages errs) (produceDefMessages defs) (produceDefMessages valueDefs)
-        (produceDataUpdateMessages dat) (produceContOpMessages cops)
+        ns
+        (produceErrMessages errs)
+        (produceDefMessages treeDefs)
+        (produceDefMessages createDefs)
+        (produceDefMessages valDefs)
+        (produceDataUpdateMessages dat)
+        (produceContOpMessages cops)
 
     produceToRelayProviderRelinquish (TrprDigest ns) =
       ToRelayProviderRelinquish ns
@@ -292,15 +310,20 @@ digestFromRelayBundle frb = case frb of
     digestFromRelayProviderErrorBundle (FromRelayProviderErrorBundle errs) =
         FrpErrorDigest $ digestErrMessages errs
 
-    digestFromRelayClientBundle (FromRelayClientBundle tSubs dSubs errs defs tas dums coms) =
+    digestFromRelayClientBundle b =
         FrcDigest
-          (Set.fromList tSubs)
-          (Set.fromList dSubs)
-          (digestDefMessages defs)
-          (digestTypeMessages tas)
-          (digestDataUpdateMessages dums)
-          (digestContOpMessages coms)
-          (digestErrMessages errs)
+          (DroppedRegistrations $ ClientRegistrations
+            (Set.fromList $ frcbTreeTypeUnsubs b)
+            (Set.fromList $ frcbCreateTypeUnsubs b)
+            (Set.fromList $ frcbValueTypeUnsubs b)
+            (Set.fromList $ frcbDataUnsubs b))
+          (digestDefMessages $ frcbTreeDefinitions b)
+          (digestDefMessages $ frcbCreateDefinitions b)
+          (digestDefMessages $ frcbValueDefinitions b)
+          (digestTypeMessages $ frcbTypeAssignments b)
+          (digestDataUpdateMessages $ frcbData b)
+          (digestContOpMessages $ frcbContMsgs b)
+          (digestErrMessages $ frcbErrors b)
 
 produceFromRelayBundle :: FrDigest -> FromRelayBundle
 produceFromRelayBundle frd = case frd of
@@ -319,10 +342,15 @@ produceFromRelayBundle frd = case frd of
       FromRelayProviderErrorBundle $ produceErrMessages errs
 
     produceFromRelayClientBundle :: FrcDigest -> FromRelayClientBundle
-    produceFromRelayClientBundle (FrcDigest tyUns datUns defs tas dd co errs) =
+    produceFromRelayClientBundle (FrcDigest (DroppedRegistrations unsubs) treeDefs createDefs valDefs tas dd co errs) =
       FromRelayClientBundle
-        (Set.toList tyUns) (Set.toList datUns) (produceErrMessages errs)
-        (produceDefMessages defs) (produceTypeMessages tas)
+        (Set.toList $ crTreeTy unsubs)
+        (Set.toList $ crCreateTy unsubs)
+        (Set.toList $ crValueTy unsubs)
+        (Set.toList $ crData unsubs)
+        (produceErrMessages errs)
+        (produceDefMessages treeDefs) (produceDefMessages createDefs)
+        (produceDefMessages valDefs) (produceTypeMessages tas)
         (produceDataUpdateMessages dd) (produceContOpMessages co)
 
 -- The following are slightly different (and more internal to the relay), they
@@ -330,7 +358,7 @@ produceFromRelayBundle frd = case frd of
 
 data InboundClientDigest = InboundClientDigest
   { icdGets :: Set Path
-  , icdTypeGets :: Set TypeName
+  , icdTypeGets :: Set AnyTypeName
   , icdContainerOps :: ContainerOps
   , icdData :: DataDigest
   } deriving (Show, Eq)
@@ -358,18 +386,21 @@ data InboundDigest
 
 data OutboundClientDigest = OutboundClientDigest
   { ocdContainerOps :: ContainerOps
-  , ocdDefinitions :: Map TypeName (DefOp Definition)
-  , ocdTypeAssignments :: Map Path (TypeName, Liberty)
+  , ocdTreeDefs :: Map (TypeName 'TnTree) (DefOp TreeDefinition)
+  , ocdCreateDefs :: Map (TypeName 'TnCreate) (DefOp (StructDefinition Mandatoriness))
+  , ocdValueDefs :: Map (TypeName 'TnValue) (DefOp TupleDefinition)
+  , ocdTypeAssignments :: Map Path (ChildTypeName 'TnTree, ClientPermission)
   , ocdData :: DataDigest
-  , ocdErrors :: Map (ErrorIndex TypeName) [Text]
+  , ocdErrors :: Map (ErrorIndex AnyTypeName) [Text]
   } deriving (Show, Eq)
 
 outboundClientDigest :: OutboundClientDigest
-outboundClientDigest = OutboundClientDigest mempty mempty mempty alEmpty mempty
+outboundClientDigest = OutboundClientDigest mempty mempty mempty mempty mempty alEmpty mempty
 
 ocdNull :: OutboundClientDigest -> Bool
-ocdNull (OutboundClientDigest cops defs tas dd errs) =
-    null cops && null defs && null tas && alNull dd && null errs
+ocdNull (OutboundClientDigest cops treeDefs createDefs valDefs tas dd errs) =
+    null cops && null treeDefs && null createDefs && null valDefs && null tas &&
+    alNull dd && null errs
 
 type OutboundClientInitialisationDigest = OutboundClientDigest
 

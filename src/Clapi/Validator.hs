@@ -1,7 +1,10 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE
+    ScopedTypeVariables
+  , TypeApplications
+  , TupleSections
+  , DataKinds
+#-}
 
 module Clapi.Validator where
 
@@ -17,11 +20,12 @@ import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
 import Clapi.Types (UniqList, mkUniqList, WireValue, Time, Wireable, (<|$|>))
-import Clapi.Types.Path (Seg, Path, TypeName)
+import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( TreeType(..), TreeConcreteType(..), TreeContainerTypeName(..), typeEnumOf
   , contTContainedType, Bounds, boundsMin, boundsMax)
+import Clapi.Types.TypeName (ChildTypeName, TypeNamespace(TnTree))
 import Clapi.TextSerialisation (ttFromText)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
@@ -46,7 +50,7 @@ unpackTreeType tt = let (c, ts) = inner tt in (c, reverse ts)
 
 -- FIXME: If we had first class tree values we would be able to guarantee that
 -- a ref thing was the right type
-extractTypeAssertion :: TreeType -> WireValue -> [(TypeName, Path)]
+extractTypeAssertion :: TreeType -> WireValue -> [(ChildTypeName 'TnTree, Path)]
 extractTypeAssertion tt wv =
   let
     (concT, contTs) = unpackTreeType tt

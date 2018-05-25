@@ -12,7 +12,3 @@ instance Encodable Path.Seg where
 instance Encodable Path.Path where
   builder = builder . Path.toText
   parser = parser >>= Path.fromText
-
-instance Encodable Path.TypeName where
-  builder = builder . Path.typeNameToText
-  parser = parser >>= Path.typeNameFromText

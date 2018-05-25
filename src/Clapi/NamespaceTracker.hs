@@ -1,6 +1,9 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE
+    OverloadedStrings
+  , PatternSynonyms
+  , DataKinds
+#-}
 
 module Clapi.NamespaceTracker where
 
@@ -17,7 +20,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 
-
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 import Clapi.Types.AssocList
@@ -29,11 +31,12 @@ import Clapi.Types.Digests
   , DefOp(..), SubOp(..), frcdNull, trcdNamespaces
   , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
   , OutboundClientDigest(..), OutboundClientInitialisationDigest
-  , OutboundProviderDigest(..))
+  , OutboundProviderDigest(..), ClientRegistrations(..), DroppedRegistrations(..))
 import Clapi.Types () -- Either String a MonadFail instance
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:/), pattern Root)
+import Clapi.Types.Path (Seg, Path, pattern (:/), pattern Root)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.TypeName (ChildTypeName, TypeNamespace(..), TypeName, AnyTypeName, atnWithTn)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 import Clapi.Util (flattenNestedMaps)
@@ -52,8 +55,7 @@ type NstProtocol m i = Protocol
 data NstState i
   = NstState
   { nstOwners :: Map Seg i
-  , nstTypeRegistrations :: Mos i TypeName
-  , nstDataRegistrations :: Mos i Path
+  , nstRegistrations :: Map i ClientRegistrations
   } deriving Show
 
 
@@ -186,14 +188,20 @@ toInboundClientDigest i trcd =
     isSub OpSubscribe = True
     isSub OpUnsubscribe = False
     (dSubs, dUnsubs) = mapPair Map.keysSet $ Map.partition isSub $ trcdDataSubs trcd
-    (tSubs, tUnsubs) = mapPair Map.keysSet $ Map.partition isSub $ trcdTypeSubs trcd
+    (tSubs, tUnsubs) = mapPair Map.keysSet $ Map.partition isSub $ trcdTreeTySubs trcd
   in do
     nsts <- get
-    put nsts{
-      nstDataRegistrations = Mos.difference
-        (nstDataRegistrations nsts) (Map.singleton i dUnsubs),
-      nstTypeRegistrations = Mos.difference
-        (nstTypeRegistrations nsts) (Map.singleton i tUnsubs)}
+    put nsts {nstRegistrations = regs'}
+      -- { nstDataRegistrations = Mos.difference
+      --   (nstDataRegistrations nsts) (Map.singleton i dUnsubs)
+      -- , nstTypeRegistrations = NstTypeRegistrations
+      --   (Mos.difference
+      --       (nsttrTree $ nstTypeRegistrations nsts) (Map.singleton i ttUnsubs))
+      --   (Mos.difference
+      --       (nsttrCreate $ nstTypeRegistrations nsts) (Map.singleton i ctUnsubs))
+      --   (Mos.difference
+      --       (nsttrValue $ nstValueTypeRegistrations nsts) (Map.singleton i vtUnsubs))
+      -- }
     let icd = InboundClientDigest
           (Set.difference dSubs $
             Map.findWithDefault mempty i $ nstDataRegistrations nsts)
@@ -201,11 +209,7 @@ toInboundClientDigest i trcd =
             Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
           (trcdContainerOps trcd)
           (trcdData trcd)
-    let frcd = frcdEmpty
-          { frcdTypeUnsubs = Set.intersection tUnsubs $
-              Map.findWithDefault mempty i $ nstTypeRegistrations nsts
-          , frcdDataUnsubs = Set.intersection dUnsubs $
-            Map.findWithDefault mempty i $ nstDataRegistrations nsts}
+    let frcd = frcdEmpty {frcdUnsubs = Registrations.intersection unsubs (Map.findWithDefault mempty i $ nstRegistrations nsts)
     return (icd, frcd)
   where
     mapPair f (a, b) = (f a, f b)
@@ -244,19 +248,20 @@ subResponse (OutboundClientDigest cOps defs tas dd errs) =
 unsubDeleted
   :: (Monad m, Ord i) => OutboundClientDigest
   -> StateT (NstState i) m
-       (Mos i TypeName, Mos i TypeName, Mos i Path, Mos i Path)
+       (Mos i AnyTypeName, Mos i AnyTypeName, Mos i Path, Mos i Path)
 unsubDeleted d = do
     nsts <- get
     let (tUnsubs, tRemainingSubs) = Mos.partition
           (`Set.member` allUndefTys) $ nstTypeRegistrations nsts
     let (dUnsubs, dRemainingSubs) = Mos.partition
           (`Path.isChildOfAny` allDeletePaths) $ nstDataRegistrations nsts
-    put $ nsts
-      { nstDataRegistrations = dRemainingSubs
-      , nstTypeRegistrations = tRemainingSubs}
+    put $ nsts {nstRegistrations = regs'}
     return (tUnsubs, tRemainingSubs, dUnsubs, dRemainingSubs)
   where
-    allUndefTys = Map.keysSet $ Map.filter isUndefTy $ ocdDefinitions d
+    allUndefs f = Map.keysSet $ Map.filter isUndefTy $ f d
+    treeUndefs = allUndefs ocdTypeDefs
+    createUndefs = allUndefs ocdCreateDefs
+    valueUndefs = allUndefs ocdValueDefs
     isUndefTy defOp = case defOp of
       OpUndefine -> True
       _ -> False
@@ -269,11 +274,11 @@ unsubDeleted d = do
 broadcastClientDigest
   :: (Ord i, Monad m)
   => OutboundClientDigest
-  -> (Mos i TypeName, Mos i TypeName, Mos i Path, Mos i Path)
+  -> Map i DroppedRegistrations -> Map i ClientRegistrations
   -> NstProtocol m i ()
-broadcastClientDigest d (tUnsubs, tRemSubs, dUnsubs, dRemSubs) = do
+broadcastClientDigest d unsubs subs = do
     let fromRelayClientDigests = Map.filter (not . frcdNull) $ zipMaps4
-          (produceFromRelayClientDigest d) dUnsubs tUnsubs dRemSubs tRemSubs
+          (produceFromRelayClientDigest d) unsubs subs
     void $ sequence $ Map.mapWithKey sendRevWithI fromRelayClientDigests
   where
     sendRevWithI i frcd = sendRev $ Right $ ServerData i $ Frcd frcd
@@ -303,22 +308,29 @@ frpdsByNamespace (OutboundProviderDigest contOps dd) =
     zipMapsWithKey mempty alEmpty f casByNs ddByNs
 
 produceFromRelayClientDigest
-  :: OutboundClientDigest -> Set Path -> Set TypeName
-  -> Set Path -> Set TypeName -> FrcDigest
+  :: OutboundClientDigest -> DroppedRegistrations -> ClientRegistrations
+  -> FrcDigest
 produceFromRelayClientDigest
-  (OutboundClientDigest cOps defs tas dd errs) pUsubs tUsubs ps tns = FrcDigest
-    tUsubs pUsubs
-    (Map.restrictKeys defs tns)
+  (OutboundClientDigest cOps treeDefs createDefs valDefs tas dd errs) unsubs subs = FrcDigest
+    unsubs
+    (Map.restrictKeys treeDefs treeSubs)
+    (Map.restrictKeys createDefs createSubs)
+    (Map.restrictKeys valDefs valSubs)
     (Map.restrictKeys tas ps)
     (alFilterKey (`Set.member` ps) dd)
     (Map.restrictKeys cOps ps)
     (Map.filterWithKey relevantErr errs)
   where
+    ClientRegistrations treeSubs createSubs valSubs ps = subs
     relevantErr ei _ = case ei of
       GlobalError -> True
       PathError p -> p `Set.member` ps
       TimePointError p _ -> p `Set.member` ps
-      TypeError tn -> tn `Set.member` tns
+      TypeError atn -> atnWithTn
+        (`Set.member` treeSubs)
+        (`Set.member` createSubs)
+        (`Set.member` valSubs)
+        atn
 
 liftedWaitThen ::
   (Monad m, MonadTrans t, Monad (t (Protocol a a' b' b m))) =>

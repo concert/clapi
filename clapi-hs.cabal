@@ -30,6 +30,7 @@ library
                      , Clapi.Serialisation.Definitions
                      , Clapi.Serialisation.Messages
                      , Clapi.Serialisation.Path
+                     , Clapi.Serialisation.TypeName
                      , Clapi.Serialisation.Wire
                      , Clapi.Server
                      , Clapi.TaggedData
@@ -44,6 +45,7 @@ library
                      , Clapi.Types.Digests
                      , Clapi.Types.Dkmap
                      , Clapi.Types.Messages
+                     , Clapi.Types.Registrations
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
                      , Clapi.Types.Tree

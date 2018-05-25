@@ -8,8 +8,7 @@ module Clapi.Types.Path (
     pathP, segP, toText, fromText,
     splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
-    isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
-    TypeName(..), typeNameP, typeNameToText, typeNameFromText) where
+    isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths) where
 
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
@@ -100,25 +99,6 @@ isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
 childPaths :: Functor f => Path -> f Seg -> f Path
 childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
-
-data TypeName = TypeName {tnNamespace :: Seg, tnName :: Seg} deriving (Eq, Ord)
-
-qualSepChar :: Char
-qualSepChar = ':'
-
-typeNameToText :: TypeName -> Text
-typeNameToText (TypeName ns s) =
-  unSeg ns <> Text.singleton qualSepChar <> unSeg s
-
-instance Show TypeName where
-  show = Text.unpack . typeNameToText
-
-typeNameP :: Parser TypeName
-typeNameP = TypeName <$> segP <*> (DAT.char qualSepChar >> segP)
-
-typeNameFromText :: MonadFail m => Text -> m TypeName
-typeNameFromText =
-  either fail return . DAT.parseOnly (typeNameP <* DAT.endOfInput)
 
 parentPath :: Path -> Maybe Path
 parentPath p = case p of

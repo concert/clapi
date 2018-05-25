@@ -31,10 +31,11 @@ import Clapi.Types.Digests
   , OutboundClientDigest(..), OutboundClientInitialisationDigest, ocdNull, opdNull
   , InboundClientDigest(..), OutboundProviderDigest(..)
   , DataDigest, ContainerOps)
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern Root, parentPath)
-import Clapi.Types.Definitions (Liberty, Definition)
+import Clapi.Types.Path (Seg, Path, pattern (:</), pattern Root, parentPath)
+import Clapi.Types.Definitions ()
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.TypeName (TypeName)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupDef

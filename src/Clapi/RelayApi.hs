@@ -15,7 +15,7 @@ import qualified Data.Text as Text
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types
   ( TrDigest(..), TrpDigest(..), FrDigest(..), FrpDigest(..), WireValue(..)
-  , TimeStamped(..), Liberty(..), TupleDefinition(..))
+  , TimeStamped(..), ClientPermission(..), TupleDefinition(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)

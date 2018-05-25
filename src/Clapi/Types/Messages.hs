@@ -1,5 +1,9 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE
+   PatternSynonyms
+ , DataKinds
+ , DeriveFunctor
+#-}
 
 module Clapi.Types.Messages where
 
@@ -7,8 +11,13 @@ import Data.Text (Text)
 import Data.Word (Word32)
 
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, TupleDefinition, Liberty)
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
+import Clapi.Types.Definitions
+  ( TreeDefinition, TupleDefinition, Mandatoriness, ClientPermission
+  , StructDefinition)
+import Clapi.Types.Path (Seg, Path, pattern (:</))
+import Clapi.Types.TypeName
+  ( TypeName, ChildTypeName(..), TypeNamespace(..), rawChildTypeName, ChildSeg
+  , promoteChildSeg, AnyTypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Wire (WireValue)
 
@@ -20,21 +29,21 @@ data ErrorIndex a
   | PathError Path
   | TimePointError Path TpId
   | TypeError a
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Functor)
 
-splitErrIdx :: ErrorIndex TypeName -> Maybe (Seg, ErrorIndex Seg)
+splitErrIdx :: ErrorIndex (ChildTypeName a) -> Maybe (Seg, ErrorIndex Seg)
 splitErrIdx ei = case ei of
   GlobalError -> Nothing
   PathError p -> fmap PathError <$> Path.splitHead p
   TimePointError p tpid -> fmap (flip TimePointError tpid) <$> Path.splitHead p
-  TypeError (TypeName ns s) -> Just (ns, TypeError s)
+  TypeError ctn -> Just $ TypeError <$> rawChildTypeName ctn
 
-namespaceErrIdx :: Seg -> ErrorIndex Seg -> ErrorIndex TypeName
+namespaceErrIdx :: Seg -> ErrorIndex (ChildSeg a) -> ErrorIndex (ChildTypeName a)
 namespaceErrIdx ns ei = case ei of
   GlobalError -> GlobalError
   PathError p -> PathError $ ns :</ p
   TimePointError p tpid -> TimePointError (ns :</ p) tpid
-  TypeError s -> TypeError $ TypeName ns s
+  TypeError s -> TypeError $ promoteChildSeg ns s
 
 data MsgError a
   = MsgError {errIndex :: ErrorIndex a, errMsgTxt :: Text} deriving (Eq, Show)
@@ -46,12 +55,12 @@ data DefMessage a d
 
 data SubMessage
   = MsgSubscribe {subMsgPath :: Path}
-  | MsgTypeSubscribe {subMsgTypeName :: TypeName}
+  | MsgTypeSubscribe {subMsgTypeName :: AnyTypeName}
   | MsgUnsubscribe {subMsgPath :: Path}
-  | MsgTypeUnsubscribe {subMsgTypeName :: TypeName}
+  | MsgTypeUnsubscribe {subMsgTypeName :: AnyTypeName}
   deriving (Eq, Show)
 
-data TypeMessage = MsgAssignType Path TypeName Liberty deriving (Show, Eq)
+data TypeMessage = MsgAssignType Path (ChildTypeName 'TnTree) ClientPermission deriving (Show, Eq)
 
 data DataUpdateMessage
   = MsgConstSet
@@ -91,7 +100,8 @@ data ContainerUpdateMessage
 data ToRelayProviderBundle = ToRelayProviderBundle
   { trpbNamespace :: Seg
   , trpbErrors :: [MsgError Seg]
-  , trpbDefinitions :: [DefMessage Seg Definition]
+  , trpbTreeDefs :: [DefMessage Seg TreeDefinition]
+  , trpbCreateDefs :: [DefMessage Seg (StructDefinition Mandatoriness)]
   , trpbValueDefs :: [DefMessage Seg TupleDefinition]
   , trpbData :: [DataUpdateMessage]
   , trpbContMsgs :: [ContainerUpdateMessage]
@@ -107,7 +117,7 @@ data FromRelayProviderBundle = FromRelayProviderBundle
   } deriving (Show, Eq)
 
 data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
-  { frpebErrors :: [MsgError TypeName]
+  { frpebErrors :: [MsgError AnyTypeName]
   } deriving (Eq, Show)
 
 data ToRelayClientBundle = ToRelayClientBundle
@@ -117,10 +127,14 @@ data ToRelayClientBundle = ToRelayClientBundle
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
-  { frcbTypeUnsubs :: [TypeName]
+  { frcbTreeTypeUnsubs :: [TypeName 'TnTree]
+  , frcbCreateTypeUnsubs :: [TypeName 'TnCreate]
+  , frcbValueTypeUnsubs :: [TypeName 'TnValue]
   , frcbDataUnsubs :: [Path]
-  , frcbErrors :: [MsgError TypeName]
-  , frcbDefinitions :: [DefMessage TypeName Definition]
+  , frcbErrors :: [MsgError AnyTypeName]
+  , frcbTreeDefinitions :: [DefMessage (TypeName 'TnTree) TreeDefinition]
+  , frcbCreateDefinitions :: [DefMessage (TypeName 'TnCreate) (StructDefinition Mandatoriness)]
+  , frcbValueDefinitions :: [DefMessage (TypeName 'TnValue) TupleDefinition]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]
   , frcbContMsgs :: [ContainerUpdateMessage]

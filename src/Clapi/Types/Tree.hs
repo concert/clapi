@@ -1,7 +1,10 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE
+    ScopedTypeVariables
+  , MultiParamTypeClasses
+  , FunctionalDependencies
+  , DataKinds
+#-}
 
 module Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
@@ -11,6 +14,7 @@ module Clapi.Types.Tree
   , tcEnum
   , ttTime, ttEnum, ttWord32, ttWord64, ttInt32, ttInt64, ttDouble, ttFloat
   , ttString, ttRef, ttValidatorDesc
+  , RefTarget
   ) where
 
 import Prelude hiding (fail)
@@ -22,8 +26,11 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.Types.Path (Seg, mkSeg, TypeName)
+import Clapi.Types.Path (Seg, mkSeg)
+import Clapi.Types.TypeName (ChildTypeName, TypeNamespace(TnTree))
 import Clapi.Util (uncamel)
+
+type RefTarget = ChildTypeName 'TnTree
 
 
 data Bounds a
@@ -67,7 +74,7 @@ data TreeConcreteType
   | TcFloat (Bounds Float)
   | TcDouble (Bounds Double)
   | TcString Text
-  | TcRef TypeName
+  | TcRef RefTarget
   | TcValidatorDesc
   deriving (Show, Eq, Ord)
 
@@ -142,7 +149,7 @@ ttDouble = TtConc . TcDouble
 ttString :: Text -> TreeType
 ttString = TtConc . TcString
 
-ttRef :: TypeName -> TreeType
+ttRef :: RefTarget -> TreeType
 ttRef = TtConc . TcRef
 
 ttValidatorDesc :: TreeType

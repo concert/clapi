@@ -6,6 +6,7 @@ module Clapi.Serialisation.Definitions where
 import Clapi.Serialisation.Base
   (Encodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
 import Clapi.Serialisation.Path ()
+import Clapi.Serialisation.TypeName ()
 import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
