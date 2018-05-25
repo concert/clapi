@@ -30,7 +30,7 @@ import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), Interpolation(..), WireValue(..)
   , TreeType(..) , OfMetaType, Liberty(..)
   , tupleDef, structDef, arrayDef, ErrorIndex(..)
-  , toWireValues, valuesToDef, defDispatch, metaType, Definition(..)
+  , defDispatch, metaType, Definition(..)
   , StructDefinition(strDefTypes)
   , TrpDigest(..), DefOp(..), DataChange(..), TypeName(..))
 import qualified Clapi.Types.Path as Path
