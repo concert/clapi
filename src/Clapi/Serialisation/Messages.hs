@@ -86,20 +86,27 @@ instance (Encodable ident, Encodable def)
 
 data SubMsgType
   = SubMsgTSub
+  | SubMsgTPostTypeSub
   | SubMsgTTypeSub
   | SubMsgTUnsub
-  | SubMsgTTypeUnsub deriving (Enum, Bounded)
+  | SubMsgTPostTypeUnsub
+  | SubMsgTTypeUnsub
+  deriving (Enum, Bounded)
 
 subMsgTaggedData :: TaggedData SubMsgType SubMessage
 subMsgTaggedData = taggedData typeToTag msgToType
   where
-    typeToTag (SubMsgTSub) = [btq|s|]
-    typeToTag (SubMsgTTypeSub) = [btq|S|]
-    typeToTag (SubMsgTUnsub) = [btq|u|]
-    typeToTag (SubMsgTTypeUnsub) = [btq|U|]
+    typeToTag (SubMsgTSub) = [btq|S|]
+    typeToTag (SubMsgTPostTypeSub) = [btq|P|]
+    typeToTag (SubMsgTTypeSub) = [btq|T|]
+    typeToTag (SubMsgTUnsub) = [btq|s|]
+    typeToTag (SubMsgTPostTypeUnsub) = [btq|p|]
+    typeToTag (SubMsgTTypeUnsub) = [btq|t|]
     msgToType (MsgSubscribe _) = SubMsgTSub
+    msgToType (MsgPostTypeSubscribe _) = SubMsgTPostTypeSub
     msgToType (MsgTypeSubscribe _) = SubMsgTTypeSub
     msgToType (MsgUnsubscribe _) = SubMsgTUnsub
+    msgToType (MsgPostTypeUnsubscribe _) = SubMsgTPostTypeUnsub
     msgToType (MsgTypeUnsubscribe _) = SubMsgTTypeUnsub
 
 instance Encodable SubMessage where
@@ -108,10 +115,14 @@ instance Encodable SubMessage where
         MsgUnsubscribe p -> builder p
         MsgTypeSubscribe t -> builder t
         MsgTypeUnsubscribe t -> builder t
+        MsgPostTypeSubscribe t -> builder t
+        MsgPostTypeUnsubscribe t -> builder t
     parser = tdTaggedParser subMsgTaggedData $ \e -> case e of
         (SubMsgTSub) -> MsgSubscribe <$> parser
+        (SubMsgTPostTypeSub) -> MsgPostTypeSubscribe <$> parser
         (SubMsgTTypeSub) -> MsgTypeSubscribe <$> parser
         (SubMsgTUnsub) -> MsgUnsubscribe <$> parser
+        (SubMsgTPostTypeUnsub) -> MsgPostTypeUnsubscribe <$> parser
         (SubMsgTTypeUnsub) -> MsgTypeUnsubscribe <$> parser
 
 instance Encodable TypeMessage where

@@ -47,10 +47,14 @@ data DefMessage ident def
   | MsgUndefine ident
   deriving (Show, Eq)
 
+-- FIXME: might be nicer to break this up into sub and unsub values typed by
+-- what they are subscriptions for:
 data SubMessage
   = MsgSubscribe {subMsgPath :: Path}
+  | MsgPostTypeSubscribe {subMsgTypeName :: TypeName}
   | MsgTypeSubscribe {subMsgTypeName :: TypeName}
   | MsgUnsubscribe {subMsgPath :: Path}
+  | MsgPostTypeUnsubscribe {subMsgTypeName :: TypeName}
   | MsgTypeUnsubscribe {subMsgTypeName :: TypeName}
   deriving (Eq, Show)
 
