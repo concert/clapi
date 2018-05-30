@@ -49,12 +49,7 @@ helloP :: Path
 helloP = [pathq|/hello|]
 
 ocdEmpty :: OutboundClientDigest
-ocdEmpty = OutboundClientDigest
-  { ocdContainerOps = mempty
-  , ocdDefinitions = mempty
-  , ocdTypeAssignments = mempty
-  , ocdData = alEmpty
-  , ocdErrors = mempty}
+ocdEmpty = outboundClientDigest
 
 -- Collects responses until the identified client disconnects
 collectAllResponsesUntil ::
@@ -137,27 +132,20 @@ spec = do
                   , icdData = alEmpty
                   }))
                 return i
-            sendRev (i, Ocid $ OutboundClientDigest
-              { ocdContainerOps = mempty
-              , ocdDefinitions = Map.singleton helloTn helloDef0
-              , ocdTypeAssignments = mempty
+            sendRev (i, Ocid $ ocdEmpty
+              { ocdDefinitions = Map.singleton helloTn helloDef0
               , ocdData = alSingleton helloP $ textChange "f"
-              , ocdErrors = mempty})
-            sendRev (i, Ocd $ OutboundClientDigest
-              { ocdContainerOps = mempty
-              , ocdDefinitions = mempty
-              , ocdTypeAssignments = mempty
-              , ocdData = alFromList
+              })
+            sendRev (i, Ocd $ ocdEmpty
+              { ocdData = alFromList
                 [ (helloP, textChange "t")
                 , ([pathq|/nowhere|], textChange "banana")
                 ]
-              , ocdErrors = mempty})
-            sendRev (i, Ocd $ OutboundClientDigest
-              { ocdContainerOps = mempty
-              , ocdDefinitions = Map.singleton helloTn helloDef1
-              , ocdTypeAssignments = mempty
+              })
+            sendRev (i, Ocd $ ocdEmpty
+              { ocdDefinitions = Map.singleton helloTn helloDef1
               , ocdData = alSingleton helloP $ textChange "w"
-              , ocdErrors = mempty})
+              })
             waitThenFwdOnly $ const return ()
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
@@ -267,12 +255,12 @@ spec = do
               { frcdData = alSingleton helloP $ textChange "a" }
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) ->
-                sendRev (i, Ocid $ outboundClientDigest
+                sendRev (i, Ocid $ ocdEmpty
                   { ocdErrors = Map.singleton (PathError helloP) ["pants"] })
             waitThenFwdOnly $ \(i, _) -> do
-                sendRev (i, Ocid $ outboundClientDigest
+                sendRev (i, Ocid $ ocdEmpty
                   { ocdData = alSingleton helloP $ textChange "i" })
-                sendRev (i, Ocd $ outboundClientDigest
+                sendRev (i, Ocd $ ocdEmpty
                   { ocdData = alSingleton helloP $ textChange "a" })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
