@@ -160,8 +160,8 @@ lookupTypeName :: MonadFail m => Path -> TypeAssignmentMap -> m TypeName
 lookupTypeName p = note "Type name not found" . Mos.getDependency p
 
 defForPath :: MonadFail m => Path -> Valuespace -> m Definition
-defForPath p (Valuespace _ defs tas _) =
-  lookupTypeName p tas >>= flip lookupDef defs
+defForPath p vs =
+  lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
 
 getLiberty :: MonadFail m => Path -> Valuespace -> m Liberty
 getLiberty path vs = case path of
@@ -270,7 +270,8 @@ validateVs t v = do
       -> Map Path (Maybe (Set TpId)) -> Valuespace
       -> Either (Map (ErrorIndex TypeName) [ValidationErr])
            (Map Path TypeName, TypeClaimsByPath, Valuespace)
-    inner newTas newRefClaims tainted vs@(Valuespace tree _ oldTyAssns _) =
+    inner newTas newRefClaims tainted vs =
+      let tree = vsTree vs; oldTyAssns = vsTyAssns vs in
       case Map.toAscList tainted of
         [] -> return (newTas, newRefClaims, vs)
         ((path, invalidatedTps):_) ->
