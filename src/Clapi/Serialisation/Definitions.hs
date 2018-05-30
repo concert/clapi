@@ -12,7 +12,7 @@ import Clapi.TH (btq)
 import Clapi.Types.Definitions
   ( Liberty(..), Required(..), MetaType(..), metaType
   , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
-  , Definition(..), defDispatch)
+  , Definition(..), defDispatch, PostDefinition(..))
 import Clapi.Types.Tree (TreeType)
 
 libertyTaggedData :: TaggedData Liberty Liberty
@@ -74,3 +74,7 @@ instance Encodable Definition where
     Tuple -> TupleDef <$> parser
     Struct -> StructDef <$> parser
     Array -> ArrayDef <$> parser
+
+instance Encodable PostDefinition where
+  builder (PostDefinition doc args) = builder doc <<>> builder args
+  parser = PostDefinition <$> parser <*> parser

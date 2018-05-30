@@ -6,6 +6,7 @@ module Clapi.Types.Definitions where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
+import Data.Map (Map)
 import Data.Text (Text)
 
 import Data.Maybe.Clapi (note)
@@ -24,6 +25,11 @@ class OfMetaType metaType where
   metaType :: metaType -> MetaType
   childTypeFor :: Seg -> metaType -> Maybe TypeName
   childLibertyFor :: MonadFail m => metaType -> Seg -> m Liberty
+
+data PostDefinition = PostDefinition
+  { postDefDoc :: Text
+  , postDefArgs :: Map Seg (TreeType, Required)
+  } deriving (Show, Eq)
 
 data TupleDefinition = TupleDefinition
   { tupDefDoc :: Text
