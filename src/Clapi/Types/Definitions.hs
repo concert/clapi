@@ -16,6 +16,7 @@ import Clapi.Types.Path (Seg, TypeName)
 import Clapi.Types.Tree (TreeType(..))
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
+data Required = Required | Optional deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 

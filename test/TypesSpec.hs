@@ -31,7 +31,7 @@ import Clapi.Types
   ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Liberty
   , InterpolationLimit, Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
-  , wireValueWireType, withWtProxy)
+  , wireValueWireType, withWtProxy, Required)
 import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
@@ -65,6 +65,9 @@ instance Arbitrary TypeName where
   arbitrary = TypeName <$> arbitrary <*> arbitrary
 
 instance Arbitrary Liberty where
+    arbitrary = arbitraryBoundedEnum
+
+instance Arbitrary Required where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary InterpolationLimit where

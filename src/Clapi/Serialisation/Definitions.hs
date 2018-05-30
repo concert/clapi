@@ -10,7 +10,7 @@ import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
 import Clapi.Types.Definitions
-  ( Liberty(..), MetaType(..), metaType
+  ( Liberty(..), Required(..), MetaType(..), metaType
   , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
   , Definition(..), defDispatch)
 import Clapi.Types.Tree (TreeType)
@@ -26,6 +26,17 @@ libertyTaggedData = taggedData toTag id
 instance Encodable Liberty where
   builder = tdTaggedBuilder libertyTaggedData $ const $ return mempty
   parser = tdTaggedParser libertyTaggedData return
+
+requiredTaggedData :: TaggedData Required Required
+requiredTaggedData = taggedData toTag id
+  where
+    toTag r = case r of
+      Required -> [btq|r|]
+      Optional -> [btq|o|]
+
+instance Encodable Required where
+  builder = tdTaggedBuilder requiredTaggedData $ const $ return mempty
+  parser = tdTaggedParser requiredTaggedData return
 
 -- FIXME: do we want to serialise the type to text first?!
 instance Encodable TreeType where
