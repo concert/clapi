@@ -19,6 +19,7 @@ data ErrorIndex a
   = GlobalError
   | PathError Path
   | TimePointError Path TpId
+  | PostTypeError a
   | TypeError a
   deriving (Show, Eq, Ord)
 
@@ -27,6 +28,7 @@ splitErrIdx ei = case ei of
   GlobalError -> Nothing
   PathError p -> fmap PathError <$> Path.splitHead p
   TimePointError p tpid -> fmap (flip TimePointError tpid) <$> Path.splitHead p
+  PostTypeError (TypeName ns s) -> Just (ns, PostTypeError s)
   TypeError (TypeName ns s) -> Just (ns, TypeError s)
 
 namespaceErrIdx :: Seg -> ErrorIndex Seg -> ErrorIndex TypeName
@@ -34,6 +36,7 @@ namespaceErrIdx ns ei = case ei of
   GlobalError -> GlobalError
   PathError p -> PathError $ ns :</ p
   TimePointError p tpid -> TimePointError (ns :</ p) tpid
+  PostTypeError s -> PostTypeError (TypeName ns s)
   TypeError s -> TypeError $ TypeName ns s
 
 data MsgError a

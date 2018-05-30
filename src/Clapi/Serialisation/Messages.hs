@@ -24,6 +24,7 @@ data ErrIdxType
   = EitGlobal
   | EitPath
   | EitTimePoint
+  | EitPostTypeName
   | EitTypeName
   deriving (Enum, Bounded)
 
@@ -34,11 +35,13 @@ errIdxTaggedData = taggedData typeToTag eiToType
       EitGlobal -> [btq|g|]
       EitPath -> [btq|p|]
       EitTimePoint -> [btq|t|]
+      EitPostTypeName -> [btq|c|]  -- "create"
       EitTypeName -> [btq|n|]
     eiToType ei = case ei of
       GlobalError -> EitGlobal
       PathError _ -> EitPath
       TimePointError _ _ -> EitTimePoint
+      PostTypeError _ -> EitPostTypeName
       TypeError _ -> EitTypeName
 
 instance Encodable a => Encodable (ErrorIndex a) where
@@ -46,11 +49,13 @@ instance Encodable a => Encodable (ErrorIndex a) where
     GlobalError -> return mempty
     PathError p -> builder p
     TimePointError p tpid -> builder p <<>> builder tpid
+    PostTypeError tn -> builder tn
     TypeError tn -> builder tn
   parser = tdTaggedParser errIdxTaggedData $ \eit -> case eit of
     EitGlobal -> return GlobalError
     EitPath -> PathError <$> parser
     EitTimePoint -> TimePointError <$> parser <*> parser
+    EitPostTypeName -> PostTypeError <$> parser
     EitTypeName -> TypeError <$> parser
 
 
