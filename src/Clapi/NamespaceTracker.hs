@@ -248,8 +248,6 @@ subResponse (OutboundClientDigest cOps postDefs defs tas dd errs) =
     (pathsInError, postTypesInError, typesInError) =
         foldl collectError mempty $ Map.keys errs
     collectError (pie, ptie, tie) ei = case ei of
-        -- FIXME: err index can't differentiate between POST types and normal
-        -- types.
         PathError p -> (Set.insert p pie, ptie, tie)
         PostTypeError t -> (pie, Set.insert t ptie, tie)
         TypeError t -> (pie, ptie, Set.insert t tie)
