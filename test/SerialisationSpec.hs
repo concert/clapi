@@ -43,7 +43,8 @@ instance Arbitrary Interpolation where
       , return ILinear
       , IBezier <$> arbitrary <*> arbitrary]
 
-instance Arbitrary a => Arbitrary (DefMessage a) where
+instance (Arbitrary ident, Arbitrary def)
+    => Arbitrary (DefMessage ident def) where
   arbitrary = oneof
     [ MsgDefine <$> arbitrary <*> arbitrary
     , MsgUndefine <$> arbitrary

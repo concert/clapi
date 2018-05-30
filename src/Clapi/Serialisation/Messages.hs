@@ -60,7 +60,7 @@ instance Encodable a => Encodable (MsgError a) where
 
 data DefMsgType = DefMsgTDef | DefMsgTUndef deriving (Enum, Bounded)
 
-defMsgTaggedData :: TaggedData DefMsgType (DefMessage a)
+defMsgTaggedData :: TaggedData DefMsgType (DefMessage a def)
 defMsgTaggedData = taggedData typeToTag msgToType
   where
     typeToTag ty = case ty of
@@ -70,7 +70,8 @@ defMsgTaggedData = taggedData typeToTag msgToType
       MsgDefine _ _ -> DefMsgTDef
       MsgUndefine _ -> DefMsgTUndef
 
-instance Encodable a => Encodable (DefMessage a) where
+instance (Encodable ident, Encodable def)
+  => Encodable (DefMessage ident def) where
     builder = tdTaggedBuilder defMsgTaggedData $ \msg -> case msg of
       MsgDefine tn def -> builder tn <<>> builder def
       MsgUndefine tn -> builder tn

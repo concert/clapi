@@ -39,9 +39,9 @@ namespaceErrIdx ns ei = case ei of
 data MsgError a
   = MsgError {errIndex :: ErrorIndex a, errMsgTxt :: Text} deriving (Eq, Show)
 
-data DefMessage a
-  = MsgDefine a Definition
-  | MsgUndefine a
+data DefMessage ident def
+  = MsgDefine ident def
+  | MsgUndefine ident
   deriving (Show, Eq)
 
 data SubMessage
@@ -91,7 +91,7 @@ data ContainerUpdateMessage
 data ToRelayProviderBundle = ToRelayProviderBundle
   { trpbNamespace :: Seg
   , trpbErrors :: [MsgError Seg]
-  , trpbDefinitions :: [DefMessage Seg]
+  , trpbDefinitions :: [DefMessage Seg Definition]
   , trpbData :: [DataUpdateMessage]
   , trpbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)
@@ -119,7 +119,7 @@ data FromRelayClientBundle = FromRelayClientBundle
   { frcbTypeUnsubs :: [TypeName]
   , frcbDataUnsubs :: [Path]
   , frcbErrors :: [MsgError TypeName]
-  , frcbDefinitions :: [DefMessage TypeName]
+  , frcbDefinitions :: [DefMessage TypeName Definition]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]
   , frcbContMsgs :: [ContainerUpdateMessage]
