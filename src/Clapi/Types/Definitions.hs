@@ -26,6 +26,8 @@ class OfMetaType metaType where
 
 data TupleDefinition = TupleDefinition
   { tupDefDoc :: Text
+  -- FIXME: this should eventually boil down to a single TreeType (NB remove
+  -- names too and just write more docstring) now that we have pairs:
   , tupDefTypes :: AssocList Seg TreeType
   , tupDefInterpLimit :: InterpolationLimit
   } deriving (Show, Eq)
