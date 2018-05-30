@@ -3,6 +3,7 @@
 
 module Clapi.Types.Messages where
 
+import Data.Map (Map)
 import Data.Text (Text)
 import Data.Word (Word32)
 
@@ -59,6 +60,13 @@ data SubMessage
   deriving (Eq, Show)
 
 data TypeMessage = MsgAssignType Path TypeName Liberty deriving (Show, Eq)
+
+data PostMessage
+  = MsgPost
+  { pMsgPath :: Path
+  , pMsgPlaceholder :: Seg
+  , pMsgArgs :: Map Seg WireValue
+  } deriving (Show, Eq)
 
 data DataUpdateMessage
   = MsgConstSet

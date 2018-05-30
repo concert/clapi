@@ -129,6 +129,10 @@ instance Encodable TypeMessage where
     builder (MsgAssignType p tn l) = builder p <<>> builder tn <<>> builder l
     parser = MsgAssignType <$> parser <*> parser <*> parser
 
+instance Encodable PostMessage where
+    builder (MsgPost p ph args) = builder p <<>> builder ph <<>> builder args
+    parser = MsgPost <$> parser <*> parser <*> parser
+
 data DataUpdateMsgType
   = DUMTConstSet
   | DUMTSet

@@ -19,7 +19,8 @@ import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 import Clapi.Types
   ( Time, Attributee, WireValue
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..), TypeMessage(..)
-  , MsgError(..), TpId, DefMessage(..), ContainerUpdateMessage(..)
+  , PostMessage(..), MsgError(..), TpId, DefMessage(..)
+  , ContainerUpdateMessage(..)
   , ToRelayClientBundle(..), ToRelayProviderBundle(..)
   , FromRelayClientBundle(..), FromRelayProviderBundle(..)
   , FromRelayProviderErrorBundle(..), ToRelayProviderRelinquish(..)
@@ -59,6 +60,9 @@ instance Arbitrary SubMessage where
 
 instance Arbitrary TypeMessage where
   arbitrary = MsgAssignType <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary PostMessage where
+  arbitrary = MsgPost <$> arbitrary <*> arbitrary <*> arbitrary
 
 genAttributee :: Gen (Maybe Attributee)
 genAttributee = oneof [return Nothing, Just <$> arbitraryTextNoNull]
