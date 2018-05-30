@@ -349,6 +349,15 @@ opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
     classifyDc (ConstChange {}) = Nothing
     classifyDc (TimeChange m) = Just $ Map.keysSet m
 
+
+updateNsDefs
+  :: Map Seg (DefOp def) -> Maybe (Map Seg def) -> Maybe (Map Seg def)
+updateNsDefs defOps = Just . maybe newDefs (\existingDefs ->
+    Map.union newDefs $ Map.withoutKeys existingDefs $ Map.keysSet unDefs)
+  where
+    (unDefs, defs) = Map.partition isUndef defOps
+    newDefs = odDef <$> defs
+
 processToRelayProviderDigest
   :: TrpDigest -> Valuespace
   -> Either (Map (ErrorIndex TypeName) [Text]) (Map Path TypeName, Valuespace)
@@ -367,16 +376,8 @@ processToRelayProviderDigest trpd vs =
     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
     xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
       fmap tpRemovals $ alToMap qData
-    (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
-    postDefs' = vsPostDefs vs
-    defs' =
-      let
-        newDefs = odDef <$> defOps
-        updateNsDefs Nothing = Just newDefs
-        updateNsDefs (Just existingDefs) = Just $ Map.union newDefs $
-          Map.withoutKeys existingDefs (Map.keysSet undefOps)
-      in
-        Map.alter updateNsDefs ns (vsTyDefs vs)
+    defs' = Map.alter (updateNsDefs $ trpdDefinitions trpd) ns (vsTyDefs vs)
+    postDefs' = Map.alter (updateNsDefs $ trpdPostDefs trpd) ns (vsPostDefs vs)
     (updateErrs, tree') = Tree.updateTreeWithDigest qCops qData (vsTree vs)
   in do
     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
