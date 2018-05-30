@@ -8,7 +8,7 @@ import Data.Text (Text)
 import Data.Word (Word32)
 
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Liberty)
+import Clapi.Types.Definitions (Definition, Liberty, PostDefinition)
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Wire (WireValue)
@@ -106,6 +106,7 @@ data ContainerUpdateMessage
 data ToRelayProviderBundle = ToRelayProviderBundle
   { trpbNamespace :: Seg
   , trpbErrors :: [MsgError Seg]
+  , trpbPostDefs :: [DefMessage Seg PostDefinition]
   , trpbDefinitions :: [DefMessage Seg Definition]
   , trpbData :: [DataUpdateMessage]
   , trpbContMsgs :: [ContainerUpdateMessage]
@@ -116,6 +117,7 @@ data ToRelayProviderRelinquish
 
 data FromRelayProviderBundle = FromRelayProviderBundle
   { frpbNamespace :: Seg
+  , frpbPosts :: [PostMessage]
   , frpbData :: [DataUpdateMessage]
   , frpbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)
@@ -126,14 +128,17 @@ data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
 
 data ToRelayClientBundle = ToRelayClientBundle
   { trcbSubs :: [SubMessage]
+  , trcbPosts :: [PostMessage]
   , trcbData :: [DataUpdateMessage]
   , trcbContMsgs :: [ContainerUpdateMessage]
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
-  { frcbTypeUnsubs :: [TypeName]
+  { frcbPostTypeUnsubs :: [TypeName]
+  , frcbTypeUnsubs :: [TypeName]
   , frcbDataUnsubs :: [Path]
   , frcbErrors :: [MsgError TypeName]
+  , frcbPostDefs :: [DefMessage TypeName PostDefinition]
   , frcbDefinitions :: [DefMessage TypeName Definition]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]

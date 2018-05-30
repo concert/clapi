@@ -115,12 +115,14 @@ instance Arbitrary a => Arbitrary (MsgError a) where
 
 instance Arbitrary ToRelayProviderBundle where
   arbitrary = ToRelayProviderBundle <$> arbitrary <*> arbitrary <*> arbitrary
-    <*> arbitrary <*> arbitrary
-  shrink (ToRelayProviderBundle n e t d c) =
-    [ToRelayProviderBundle n e' t' d' c' | (e', t', d', c') <- shrink (e, t, d, c)]
+    <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (ToRelayProviderBundle n e pt t d c) =
+    [ToRelayProviderBundle n e' pt' t' d' c' |
+       (e', pt', t', d', c') <- shrink (e, pt, t, d, c)]
 
 instance Arbitrary FromRelayProviderBundle where
   arbitrary = FromRelayProviderBundle <$> arbitrary <*> arbitrary <*> arbitrary
+    <*> arbitrary
 
 instance Arbitrary ToRelayProviderRelinquish where
   arbitrary = ToRelayProviderRelinquish <$> arbitrary
@@ -130,16 +132,18 @@ instance Arbitrary FromRelayProviderErrorBundle where
 
 instance Arbitrary ToRelayClientBundle where
   arbitrary = ToRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary
-  shrink (ToRelayClientBundle s d c) =
-    [ToRelayClientBundle s' d' c' | (s', d', c') <- shrink (s, d, c)]
+    <*> arbitrary
+  shrink (ToRelayClientBundle s p d c) =
+    [ToRelayClientBundle s' p' d' c' | (s', p', d', c') <- shrink (s, p, d, c)]
 
 instance Arbitrary FromRelayClientBundle where
   arbitrary = FromRelayClientBundle <$> arbitrary <*> arbitrary <*> arbitrary
-    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
-  shrink (FromRelayClientBundle tu du e defs tas dd c) =
-    [FromRelayClientBundle tu' du' e' defs' tas' dd' c'
-    | (tu', du', e', defs', tas', dd', c')
-    <- shrink (tu, du, e, defs, tas, dd, c)]
+    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    <*> arbitrary
+  shrink (FromRelayClientBundle ptu tu du e postDefs defs tas dd c) =
+    [FromRelayClientBundle ptu' tu' du' e' postDefs' defs' tas' dd' c'
+    | (ptu', tu', du', e', postDefs', defs', tas', dd', c')
+    <- shrink (ptu, tu, du, e, postDefs, defs, tas, dd, c)]
 
 
 instance Arbitrary ToRelayBundle where

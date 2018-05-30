@@ -37,7 +37,7 @@ import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
 import Clapi.Valuespace
-  ( Valuespace(..), vsRelinquish, vsLookupDef
+  ( Valuespace(..), vsRelinquish, vsLookupPostDef, vsLookupDef
   , processToRelayProviderDigest, processToRelayClientDigest, valuespaceGet
   , getLiberty, rootTypeName)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
@@ -55,14 +55,18 @@ oppifyTimeSeries ts = TimeChange $
   Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
 
 genInitDigest
-  :: Set Path -> Set TypeName -> Valuespace
+  :: Set Path -> Set TypeName -> Set TypeName -> Valuespace
   -> OutboundClientInitialisationDigest
-genInitDigest ps tns vs =
+genInitDigest ps ptns tns vs =
   let
     rtns = Map.fromSet (flip valuespaceGet vs) ps
+    (ptnErrs, postDefs) = mapPartitionEither $
+        Map.fromSet (flip vsLookupPostDef vs) ptns
     (tnErrs, defs) = mapPartitionEither $ Map.fromSet (flip vsLookupDef vs) tns
-    initialOcd = OutboundClientDigest mempty (OpDefine <$> defs) mempty alEmpty
-      (pure . Text.pack <$> Map.mapKeys TypeError tnErrs)
+    errMap = (pure . Text.pack <$> Map.mapKeys TypeError tnErrs) <>
+      (pure . Text.pack <$> Map.mapKeys PostTypeError ptnErrs)
+    initialOcd = OutboundClientDigest mempty
+      (OpDefine <$> postDefs) (OpDefine <$> defs) mempty alEmpty errMap
   in
     Map.foldlWithKey go initialOcd rtns
   where
@@ -131,6 +135,8 @@ relay vs = waitThenFwdOnly fwd
           sendRev (i, Ocd $ OutboundClientDigest
             -- FIXME: Attributing revocation to nobody!
             (Map.singleton Root $ Map.singleton ns (Nothing, SoAbsent))
+            (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $
+               Map.findWithDefault mempty ns $ vsPostDefs vs)
             (Map.insert rootTypeName
               (OpDefine $ fromJust $ vsLookupDef rootTypeName vs') $
               (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $
@@ -139,7 +145,7 @@ relay vs = waitThenFwdOnly fwd
           relay vs'
       where
         handleOwnerSuccess
-            (TrpDigest ns defs dd contOps errs) (updatedTyAssns, vs') =
+            (TrpDigest ns postDefs defs dd contOps errs) (updatedTyAssns, vs') =
           let
             shouldPubRoot =
               Map.member ns defs &&
@@ -148,6 +154,7 @@ relay vs = waitThenFwdOnly fwd
             qDd = maybe (error "Bad sneakers") id $ alMapKeys (ns :</) dd
             qDd' = vsMinimiseDataDigest qDd vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
+            qPostDefs = Map.mapKeys (TypeName ns) postDefs
             qDefs = Map.mapKeys (TypeName ns) defs
             qDefs' = vsMinimiseDefinitions qDefs vs
             qDefs'' = if shouldPubRoot
@@ -167,12 +174,13 @@ relay vs = waitThenFwdOnly fwd
             sendRev (i,
               Ocd $ OutboundClientDigest
                 qContOps''
+                qPostDefs
                 -- FIXME: we need to provide defs for type assignments too.
                 qDefs''
                 mungedTas qDd' errs')
             relay vs'
         handleClientDigest
-            (InboundClientDigest gets typeGets contOps dd) errMap =
+            (InboundClientDigest gets postTypeGets typeGets contOps dd) errMap =
           let
             -- TODO: Be more specific in what we reject (filtering by TpId
             -- rather than entire path)
@@ -188,7 +196,7 @@ relay vs = waitThenFwdOnly fwd
             contOps'' = vsMinimiseContOps contOps' vs
             -- FIXME: above uses errors semantically and shouldn't (thus throws
             -- away valid time point changes)
-            cid = genInitDigest gets typeGets vs
+            cid = genInitDigest gets postTypeGets typeGets vs
             cid' = cid{ocdErrors =
               Map.unionWith (<>) (ocdErrors cid) (fmap (Text.pack . show) <$> errMap)}
             opd = OutboundProviderDigest contOps'' dd''

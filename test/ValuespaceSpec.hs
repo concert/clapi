@@ -61,6 +61,7 @@ validVersionTypeChange vs =
       (alInsert [segq|version|] $ TypeName apiNs [segq|stringVersion|]) vs
   in TrpDigest
     apiNs
+    mempty
     (Map.fromList
       [ ([segq|stringVersion|], OpDefine svd)
       , (apiNs, OpDefine rootDef)
@@ -90,6 +91,7 @@ extendedVs def s dc =
     rootDef = redefApiRoot (alInsert s $ TypeName apiNs s) baseValuespace
     d = TrpDigest
       apiNs
+      mempty
       (Map.fromList
         [ (s, OpDefine def)
         , (apiNs, OpDefine rootDef)])
@@ -115,6 +117,7 @@ refSeg = [segq|ref|]
 emptyArrayD :: Seg -> Valuespace -> TrpDigest
 emptyArrayD s vs = TrpDigest
     apiNs
+    mempty
     (Map.fromList [(s, OpDefine vaDef), (apiNs, OpDefine rootDef)])
     alEmpty
     mempty
@@ -138,7 +141,7 @@ spec = do
         validated `shouldBe` baseValuespace
     it "rechecks on data changes" $
       let
-        d = TrpDigest apiNs mempty
+        d = TrpDigest apiNs mempty mempty
           (alSingleton [pathq|/version|] $
            ConstChange Nothing [WireValue @Text "wrong"])
           mempty mempty
@@ -152,13 +155,14 @@ spec = do
             (alSingleton [segq|versionString|] $ TtString "apple")
             ILUninterpolated
           d = TrpDigest
-            apiNs (Map.singleton [segq|version|] $ OpDefine newDef)
+            apiNs mempty (Map.singleton [segq|version|] $ OpDefine newDef)
             alEmpty mempty mempty
       in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
     it "rechecks on container ops" $
       let
         d = TrpDigest
             apiNs
+            mempty
             mempty
             alEmpty
             (Map.singleton Root $ Map.singleton [segq|version|] (Nothing, SoAbsent))
@@ -198,12 +202,12 @@ spec = do
         let v2ApiDef = redefApiRoot
               (alInsert v2s $ TypeName apiNs [segq|version|]) vs
         vs' <- vsAppliesCleanly
-          (TrpDigest apiNs (Map.singleton apiNs $ OpDefine v2ApiDef)
+          (TrpDigest apiNs mempty (Map.singleton apiNs $ OpDefine v2ApiDef)
             v2Val mempty mempty)
           vs
         -- Update the ref to point at new version:
         vs'' <- vsAppliesCleanly
-          (TrpDigest apiNs mempty
+          (TrpDigest apiNs mempty mempty
             (alSingleton (Root :/ refSeg)
              $ ConstChange Nothing [WireValue $ Path.toText [pathq|/api/v2|]])
             mempty mempty)
@@ -216,6 +220,7 @@ spec = do
         badChild = TrpDigest
           apiNs
           mempty
+          mempty
           (alSingleton [pathq|/arr/bad|] $
             ConstChange Nothing [WireValue ("boo" :: Text)])
           mempty
@@ -223,12 +228,14 @@ spec = do
         goodChild = TrpDigest
           apiNs
           mempty
+          mempty
           (alSingleton [pathq|/arr/mehearties|] $
             ConstChange Nothing [WireValue @Word32 3, WireValue @Word32 4, WireValue @Int32 3])
           mempty
           mempty
         removeGoodChild = TrpDigest
           apiNs
+          mempty
           mempty
           alEmpty
           (Map.singleton [pathq|/arr|] $ Map.singleton [segq|mehearties|] (Nothing, SoAbsent))
@@ -244,6 +251,7 @@ spec = do
         rootDef = redefApiRoot (alInsert [segq|unfilled|] $ TypeName apiNs [segq|version|]) baseValuespace
         missingChild = TrpDigest
           apiNs
+          mempty
           (Map.singleton apiNs $ OpDefine rootDef)
           alEmpty
           mempty
@@ -255,6 +263,7 @@ spec = do
         fooRootDef = arrayDef "frd" (TypeName apiNs [segq|version|]) Cannot
         claimFoo = TrpDigest
           fs
+          mempty
           (Map.singleton fs $ OpDefine fooRootDef)
           alEmpty
           mempty

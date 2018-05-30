@@ -24,8 +24,9 @@ import Clapi.Types
 import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
   ( OutboundDigest(..), InboundDigest(..)
-  , InboundClientDigest(..), OutboundClientDigest(..), outboundClientDigest
-  , OutboundProviderDigest(..), SubOp(..), DefOp(..))
+  , InboundClientDigest(..), inboundClientDigest
+  , OutboundClientDigest(..), outboundClientDigest
+  , OutboundProviderDigest(..), frpDigest, SubOp(..), DefOp(..))
 import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -125,11 +126,8 @@ spec = do
         helloDef1 = OpDefine $ tupleDef "Hoyo" alEmpty ILUninterpolated
         fauxRelay = do
             i <- waitThenFwdOnly $ \(i, d) -> do
-                lift (d `shouldBe` Icd (InboundClientDigest
+                lift (d `shouldBe` Icd (inboundClientDigest
                   { icdGets = Set.singleton helloP
-                  , icdTypeGets = mempty
-                  , icdContainerOps = mempty
-                  , icdData = alEmpty
                   }))
                 return i
             sendRev (i, Ocid $ ocdEmpty
@@ -228,10 +226,8 @@ spec = do
             expectRev $ Left $ Map.fromList
               [ (helloS, alice)
               ] -- FIXME: should API be owned?
-            expectRev $ Right $ ServerData alice $ Frpd $ FrpDigest
-              { frpdNamespace = helloS
-              , frpdData = alSingleton Root $ textChange "x"
-              , frpdContainerOps = mempty
+            expectRev $ Right $ ServerData alice $ Frpd (frpDigest helloS)
+              { frpdData = alSingleton Root $ textChange "x"
               }
         fauxRelay = do
             waitThenFwdOnly $ \(i, d) -> sendRev (i, Opd $ OutboundProviderDigest
