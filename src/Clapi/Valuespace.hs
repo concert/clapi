@@ -53,7 +53,7 @@ import Clapi.Types.AssocList
   , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
-  , StructDefinition(..), defDispatch, childLibertyFor
+  , StructDefinition(..), PostDefinition(..), defDispatch, childLibertyFor
   , childTypeFor)
 import Clapi.Types.Digests
   ( DefOp(..), isUndef, ContainerOps, DataChange(..), isRemove, DataDigest
@@ -74,6 +74,7 @@ type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
 
 data Valuespace = Valuespace
   { vsTree :: RoseTree [WireValue]
+  , vsPostDefs :: DefMap PostDefinition
   , vsTyDefs :: DefMap Definition
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
@@ -130,7 +131,8 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
       vsTree vs
 
 baseValuespace :: Valuespace
-baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseTas mempty
+baseValuespace = unsafeValidateVs $
+    Valuespace baseTree mempty baseDefs baseTas mempty
   where
     vseg = [segq|version|]
     version = RtConstData Nothing
@@ -172,7 +174,7 @@ getLiberty path vs = case path of
 valuespaceGet
   :: MonadFail m => Path -> Valuespace
   -> m (Definition, TypeName, Liberty, RoseTreeNode [WireValue])
-valuespaceGet p vs@(Valuespace tree defs tas _) = do
+valuespaceGet p vs@(Valuespace tree _ defs tas _) = do
     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
     tn <- lookupTypeName p tas
     def <- lookupDef tn defs
@@ -358,6 +360,7 @@ processToRelayProviderDigest trpd vs =
     xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
       fmap tpRemovals $ alToMap qData
     (undefOps, defOps) = Map.partition isUndef (trpdDefinitions trpd)
+    postDefs' = vsPostDefs vs
     defs' =
       let
         newDefs = odDef <$> defOps
@@ -371,7 +374,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' defs' tas xrefs'
+      Valuespace tree' postDefs' defs' tas xrefs'
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
@@ -490,12 +493,13 @@ validateWireValues tts wvs =
 
 -- FIXME: The VS you get back from this can be invalid WRT refs/inter NS types
 vsRelinquish :: Seg -> Valuespace -> Valuespace
-vsRelinquish ns (Valuespace tree defs tas xrefs) =
+vsRelinquish ns (Valuespace tree postDefs defs tas xrefs) =
   let
     nsp = Root :/ ns
   in
     Valuespace
       (Tree.treeDelete nsp tree)
+      (Map.delete ns postDefs)
       (Map.delete ns defs)
       (Mos.filterDeps
        (\p (TypeName ns' _) -> not $ p `Path.isChildOf` nsp || ns == ns') tas)
