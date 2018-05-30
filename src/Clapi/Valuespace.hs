@@ -66,7 +66,7 @@ import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
-type DefMap = Map Seg (Map Seg Definition)
+type DefMap def = Map Seg (Map Seg def)
 type TypeAssignmentMap = Mos.Dependencies Path TypeName
 type Referer = Path
 type Referee = Path
@@ -74,7 +74,7 @@ type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
 
 data Valuespace = Valuespace
   { vsTree :: RoseTree [WireValue]
-  , vsTyDefs :: DefMap
+  , vsTyDefs :: DefMap Definition
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
   } deriving (Eq, Show)
@@ -144,7 +144,7 @@ baseValuespace = unsafeValidateVs $ Valuespace baseTree baseDefs baseTas mempty
       ]
     baseTas = Mos.dependenciesFromMap $ Map.singleton Root rootTypeName
 
-lookupDef :: MonadFail m => TypeName -> DefMap -> m Definition
+lookupDef :: MonadFail m => TypeName -> DefMap Definition -> m Definition
 lookupDef tn@(TypeName ns s) defs = note "Missing def" $
     (Map.lookup ns defs >>= Map.lookup s) <|>
     if tn == rootTypeName then Just rootDef else Nothing
@@ -400,7 +400,9 @@ processToRelayClientDigest reords dd vs =
     foldl (Map.unionWith (<>)) refErrs $ fmap (Map.mapKeys PathError)
       [fmap (fmap $ GenericErr . Text.unpack) updateErrs, validationErrs, cannotErrs, mustErrs]
 
-fillTyAssns :: DefMap -> TypeAssignmentMap -> [Path] -> (TypeAssignmentMap, Set Path)
+fillTyAssns
+  :: DefMap Definition -> TypeAssignmentMap -> [Path]
+  -> (TypeAssignmentMap, Set Path)
 fillTyAssns defs = inner mempty
   where
     inner freshlyAssigned tam paths = case paths of
