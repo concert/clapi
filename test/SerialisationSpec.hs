@@ -53,8 +53,10 @@ instance (Arbitrary ident, Arbitrary def)
 
 instance Arbitrary SubMessage where
   arbitrary = oneof
-      [ MsgTypeSubscribe <$> arbitrary
+      [ MsgPostTypeSubscribe <$> arbitrary
+      , MsgTypeSubscribe <$> arbitrary
       , MsgSubscribe <$> arbitrary
+      , MsgPostTypeUnsubscribe <$> arbitrary
       , MsgTypeUnsubscribe <$> arbitrary
       , MsgUnsubscribe <$> arbitrary]
 
@@ -106,6 +108,7 @@ instance Arbitrary a => Arbitrary (ErrorIndex a) where
     [ return GlobalError
     , PathError <$> arbitrary
     , TimePointError <$> arbitrary <*> arbitrary
+    , PostTypeError <$> arbitrary
     , TypeError <$> arbitrary
     ]
 
