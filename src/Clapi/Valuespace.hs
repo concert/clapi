@@ -8,9 +8,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Clapi.Valuespace
-  ( Valuespace, vsTree, vsTyDefs
+  ( Valuespace, vsTree, vsTyDefs, vsPostDefs
   , baseValuespace
-  , vsLookupDef, valuespaceGet, getLiberty
+  , vsLookupPostDef, vsLookupDef, valuespaceGet, getLiberty
   , apiNs, rootTypeName, apiTypeName, dnSeg
   , processToRelayProviderDigest, processToRelayClientDigest
   , validateVs, unsafeValidateVs
@@ -145,6 +145,14 @@ baseValuespace = unsafeValidateVs $
       , (dnSeg, TupleDef displayNameDef)
       ]
     baseTas = Mos.dependenciesFromMap $ Map.singleton Root rootTypeName
+
+lookupPostDef
+  :: MonadFail m => TypeName -> DefMap PostDefinition -> m PostDefinition
+lookupPostDef (TypeName ns s) defs = note "Missing post def" $
+    Map.lookup ns defs >>= Map.lookup s
+
+vsLookupPostDef :: MonadFail m => TypeName -> Valuespace -> m PostDefinition
+vsLookupPostDef tn vs = lookupPostDef tn $ vsPostDefs vs
 
 lookupDef :: MonadFail m => TypeName -> DefMap Definition -> m Definition
 lookupDef tn@(TypeName ns s) defs = note "Missing def" $
