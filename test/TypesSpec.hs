@@ -29,9 +29,9 @@ import Data.Int (Int32, Int64)
 import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
   ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Liberty
-  , InterpolationLimit, Definition(..), StructDefinition(..)
+  , InterpolationLimit, PostDefinition(..), Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
-  , wireValueWireType, withWtProxy)
+  , wireValueWireType, withWtProxy, Required)
 import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
@@ -65,6 +65,9 @@ instance Arbitrary TypeName where
   arbitrary = TypeName <$> arbitrary <*> arbitrary
 
 instance Arbitrary Liberty where
+    arbitrary = arbitraryBoundedEnum
+
+instance Arbitrary Required where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary InterpolationLimit where
@@ -153,6 +156,9 @@ spec = do
 
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = alFromMap <$> arbitrary
+
+instance Arbitrary PostDefinition where
+  arbitrary = PostDefinition <$> arbitrary <*> arbitrary
 
 instance Arbitrary Definition where
     arbitrary =

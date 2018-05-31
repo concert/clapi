@@ -45,6 +45,7 @@ relayApiProto selfAddr =
   where
     publishRelayApi = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
       rns
+      mempty
       (Map.fromList $ fmap OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
              (alSingleton [segq|commit_hash|] $ TtString "banana")
@@ -134,7 +135,7 @@ relayApiProto selfAddr =
               (Map.singleton cSeg (Nothing, SoAbsent)) cops
             steadyState timingMap' ownerMap'
         pubUpdate dd co = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
-          rns mempty dd co mempty
+          rns mempty mempty dd co mempty
         rev (Left ownerAddrs) = do
           let ownerMap' = pathNameFor <$> ownerAddrs
           if elem selfAddr $ Map.elems ownerAddrs
@@ -183,6 +184,6 @@ relayApiProto selfAddr =
         -- This function trusts that the valuespace has completely validated the
         -- actions the client can perform (i.e. can only change the name of a
         -- client)
-        handleApiRequest (FrpDigest ns dd cops) =
+        handleApiRequest (FrpDigest ns posts dd cops) =
           sendFwd $ ClientData selfAddr $ Trpd $
-          TrpDigest ns mempty dd cops mempty
+          TrpDigest ns mempty mempty dd cops mempty

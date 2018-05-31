@@ -6,6 +6,8 @@ module Clapi.Serialisation.Base where
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (liftM2)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Functor.Identity
 
 import Data.Word
@@ -99,6 +101,10 @@ listParser dec = do
 instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
   builder = builder . unUniqList
   parser = parser >>= mkUniqList
+
+instance (Ord k, Encodable k, Encodable v) => Encodable (Map k v) where
+  builder = builder . Map.toList
+  parser = Map.fromList <$> parser
 
 (<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
 (<<>>) = liftM2 (<>)

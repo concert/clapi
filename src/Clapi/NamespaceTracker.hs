@@ -52,13 +52,14 @@ type NstProtocol m i = Protocol
 data NstState i
   = NstState
   { nstOwners :: Map Seg i
+  , nstPostTypeRegistrations :: Mos i TypeName
   , nstTypeRegistrations :: Mos i TypeName
   , nstDataRegistrations :: Mos i Path
   } deriving Show
 
 
 nstProtocol :: (Monad m, Ord i) => NstProtocol m i ()
-nstProtocol = evalStateT nstProtocol_ $ NstState mempty mempty mempty
+nstProtocol = evalStateT nstProtocol_ $ NstState mempty mempty mempty mempty
 
 nstProtocol_ :: (Monad m, Ord i) => StateT (NstState i) (NstProtocol m i) ()
 nstProtocol_ = forever $ liftedWaitThen fwd rev
@@ -92,7 +93,7 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
         >> (lift $ sendRev $ Right $ ServerDisconnect i) >> handleDisconnect i
 
 nonClaim :: TrpDigest -> Bool
-nonClaim (TrpDigest _ _ dd cops _) = dd == alEmpty && null cops
+nonClaim trpd = trpdData trpd == alEmpty && null (trpdContainerOps trpd)
 
 updateOwners
   :: Monad m => Map Seg i ->  StateT (NstState i) (NstProtocol m i) ()
@@ -186,23 +187,30 @@ toInboundClientDigest i trcd =
     isSub OpSubscribe = True
     isSub OpUnsubscribe = False
     (dSubs, dUnsubs) = mapPair Map.keysSet $ Map.partition isSub $ trcdDataSubs trcd
+    (ptSubs, ptUnsubs) = mapPair Map.keysSet $ Map.partition isSub $ trcdPostTypeSubs trcd
     (tSubs, tUnsubs) = mapPair Map.keysSet $ Map.partition isSub $ trcdTypeSubs trcd
   in do
     nsts <- get
     put nsts{
       nstDataRegistrations = Mos.difference
         (nstDataRegistrations nsts) (Map.singleton i dUnsubs),
+      nstPostTypeRegistrations = Mos.difference
+        (nstPostTypeRegistrations nsts) (Map.singleton i ptUnsubs),
       nstTypeRegistrations = Mos.difference
         (nstTypeRegistrations nsts) (Map.singleton i tUnsubs)}
     let icd = InboundClientDigest
           (Set.difference dSubs $
             Map.findWithDefault mempty i $ nstDataRegistrations nsts)
+          (Set.difference ptSubs $
+            Map.findWithDefault mempty i $ nstPostTypeRegistrations nsts)
           (Set.difference tSubs $
             Map.findWithDefault mempty i $ nstTypeRegistrations nsts)
           (trcdContainerOps trcd)
           (trcdData trcd)
     let frcd = frcdEmpty
-          { frcdTypeUnsubs = Set.intersection tUnsubs $
+          { frcdPostTypeUnsubs = Set.intersection ptUnsubs $
+              Map.findWithDefault mempty i $ nstPostTypeRegistrations nsts
+          , frcdTypeUnsubs = Set.intersection tUnsubs $
               Map.findWithDefault mempty i $ nstTypeRegistrations nsts
           , frcdDataUnsubs = Set.intersection dUnsubs $
             Map.findWithDefault mempty i $ nstDataRegistrations nsts}
@@ -223,39 +231,54 @@ handleDisconnect i = do
 registerSubs
   :: (Ord i, Monad m)
   => i -> OutboundClientInitialisationDigest -> StateT (NstState i) m ()
-registerSubs i (OutboundClientDigest cas defs _tas dd _errs) = modify go
+registerSubs i (OutboundClientDigest cas postDefs defs _tas dd _errs) =
+    modify go
   where
     newDRegsForI = Set.union (Map.keysSet cas) (alKeysSet dd)
-    go (NstState owners tRegs dRegs) = NstState owners
+    go (NstState owners ptRegs tRegs dRegs) = NstState owners
+      (Map.insertWith (<>) i (Map.keysSet postDefs) ptRegs)
       (Map.insertWith (<>) i (Map.keysSet defs) tRegs)
       (Map.insertWith (<>) i newDRegsForI dRegs)
 
 subResponse :: OutboundClientInitialisationDigest -> FrcDigest
-subResponse (OutboundClientDigest cOps defs tas dd errs) =
-    FrcDigest typesInError pathsInError defs tas dd cOps errs
+subResponse (OutboundClientDigest cOps postDefs defs tas dd errs) =
+    FrcDigest postTypesInError typesInError pathsInError postDefs defs tas dd
+    cOps errs
   where
-    (pathsInError, typesInError) =
+    (pathsInError, postTypesInError, typesInError) =
         foldl collectError mempty $ Map.keys errs
-    collectError (pie, tie) ei = case ei of
-        PathError p -> (Set.insert p pie, tie)
-        TypeError t -> (pie, Set.insert t tie)
-        _ -> (pie, tie)
+    collectError (pie, ptie, tie) ei = case ei of
+        PathError p -> (Set.insert p pie, ptie, tie)
+        PostTypeError t -> (pie, Set.insert t ptie, tie)
+        TypeError t -> (pie, ptie, Set.insert t tie)
+        _ -> (pie, ptie, tie)
 
 unsubDeleted
   :: (Monad m, Ord i) => OutboundClientDigest
   -> StateT (NstState i) m
-       (Mos i TypeName, Mos i TypeName, Mos i Path, Mos i Path)
+       ( Mos i TypeName, Mos i TypeName
+       , Mos i TypeName, Mos i TypeName
+       , Mos i Path, Mos i Path)
 unsubDeleted d = do
     nsts <- get
+    let (ptUnsubs, ptRemainingSubs) = Mos.partition
+          (`Set.member` allUndefPTys) $ nstPostTypeRegistrations nsts
     let (tUnsubs, tRemainingSubs) = Mos.partition
           (`Set.member` allUndefTys) $ nstTypeRegistrations nsts
     let (dUnsubs, dRemainingSubs) = Mos.partition
           (`Path.isChildOfAny` allDeletePaths) $ nstDataRegistrations nsts
     put $ nsts
       { nstDataRegistrations = dRemainingSubs
-      , nstTypeRegistrations = tRemainingSubs}
-    return (tUnsubs, tRemainingSubs, dUnsubs, dRemainingSubs)
+      , nstPostTypeRegistrations = ptRemainingSubs
+      , nstTypeRegistrations = tRemainingSubs
+      }
+    return
+      ( ptUnsubs, tUnsubs
+      , ptRemainingSubs, tRemainingSubs
+      , dUnsubs, dRemainingSubs
+      )
   where
+    allUndefPTys = Map.keysSet $ Map.filter isUndefTy $ ocdPostDefs d
     allUndefTys = Map.keysSet $ Map.filter isUndefTy $ ocdDefinitions d
     isUndefTy defOp = case defOp of
       OpUndefine -> True
@@ -269,11 +292,15 @@ unsubDeleted d = do
 broadcastClientDigest
   :: (Ord i, Monad m)
   => OutboundClientDigest
-  -> (Mos i TypeName, Mos i TypeName, Mos i Path, Mos i Path)
+  -> ( Mos i TypeName, Mos i TypeName
+     , Mos i TypeName, Mos i TypeName
+     , Mos i Path, Mos i Path)
   -> NstProtocol m i ()
-broadcastClientDigest d (tUnsubs, tRemSubs, dUnsubs, dRemSubs) = do
-    let fromRelayClientDigests = Map.filter (not . frcdNull) $ zipMaps4
-          (produceFromRelayClientDigest d) dUnsubs tUnsubs dRemSubs tRemSubs
+broadcastClientDigest d
+  (ptUnsubs, tUnsubs, ptRemSubs, tRemSubs, dUnsubs, dRemSubs) = do
+    let fromRelayClientDigests = Map.filter (not . frcdNull) $ zipMaps6
+          (produceFromRelayClientDigest d) dUnsubs ptUnsubs tUnsubs dRemSubs
+          ptRemSubs tRemSubs
     void $ sequence $ Map.mapWithKey sendRevWithI fromRelayClientDigests
   where
     sendRevWithI i frcd = sendRev $ Right $ ServerData i $ Frcd frcd
@@ -298,16 +325,20 @@ frpdsByNamespace (OutboundProviderDigest contOps dd) =
     (_, ddByNs) = nestAlByKey Path.splitHead dd
     -- FIXME: whacking the global stuff to everybody isn't quite right - we need
     -- to know who originated the opd?
-    f ns contOps' dd' = FrpDigest ns dd' (contOps' <> rootCOps)
+    -- FIXME: this will need to have some POST data in it at some point!
+    posts = mempty
+    f ns contOps' dd' = FrpDigest ns posts  dd' (contOps' <> rootCOps)
   in
     zipMapsWithKey mempty alEmpty f casByNs ddByNs
 
 produceFromRelayClientDigest
-  :: OutboundClientDigest -> Set Path -> Set TypeName
-  -> Set Path -> Set TypeName -> FrcDigest
+  :: OutboundClientDigest -> Set Path -> Set TypeName -> Set TypeName
+  -> Set Path -> Set TypeName -> Set TypeName -> FrcDigest
 produceFromRelayClientDigest
-  (OutboundClientDigest cOps defs tas dd errs) pUsubs tUsubs ps tns = FrcDigest
-    tUsubs pUsubs
+  (OutboundClientDigest cOps postDefs defs tas dd errs) pUsubs ptUnsubs tUsubs
+  ps ptns tns = FrcDigest
+    ptUnsubs tUsubs pUsubs
+    (Map.restrictKeys postDefs ptns)
     (Map.restrictKeys defs tns)
     (Map.restrictKeys tas ps)
     (alFilterKey (`Set.member` ps) dd)
@@ -318,6 +349,7 @@ produceFromRelayClientDigest
       GlobalError -> True
       PathError p -> p `Set.member` ps
       TimePointError p _ -> p `Set.member` ps
+      PostTypeError tn -> tn `Set.member` ptns
       TypeError tn -> tn `Set.member` tns
 
 liftedWaitThen ::
@@ -350,6 +382,15 @@ zipMaps4
   -> Map k e
 zipMaps4 f ma mb mc md = zipMaps (\(a, b) (c, d) -> f a b c d)
   (zipMaps (,) ma mb) (zipMaps (,) mc md)
+
+zipMaps6
+  :: (Ord k, Monoid a, Monoid b, Monoid c, Monoid d, Monoid e, Monoid f)
+  => (a -> b -> c -> d -> e -> f -> g) -> Map k a -> Map k b -> Map k c
+  -> Map k d -> Map k e -> Map k f -> Map k g
+zipMaps6 fun ma mb mc md me mf =
+  zipMaps (\(a, (b, c)) (d, (e, f)) -> fun a b c d e f)
+  (zipMaps (,) ma (zipMaps (,) mb mc))
+  (zipMaps (,) md (zipMaps (,) me mf))
 
 nestMapsByKey
   :: (Ord k, Ord k0, Ord k1)

@@ -96,7 +96,7 @@ spec = describe "the relay protocol" $ do
           }
         test = do
           sendFwd ((), Icd $
-            InboundClientDigest (Set.singleton p) mempty mempty alEmpty)
+            InboundClientDigest (Set.singleton p) mempty mempty mempty alEmpty)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay baseValuespace
     it "should have container ops for implicitly created children" $
@@ -146,8 +146,8 @@ spec = describe "the relay protocol" $ do
     it "should not send empty ocids/opds to client requests" $
       let
         test = do
-            sendFwd (1, Icd $ InboundClientDigest mempty mempty mempty alEmpty)
-            sendFwd (2, Icd $ InboundClientDigest (Set.singleton [pathq|/whatevz|]) mempty mempty alEmpty)
+            sendFwd (1, Icd $ InboundClientDigest mempty mempty mempty mempty alEmpty)
+            sendFwd (2, Icd $ InboundClientDigest (Set.singleton [pathq|/whatevz|]) mempty mempty mempty alEmpty)
             waitThenRevOnly $ lift . (`shouldSatisfy` (== (2 :: Int)) . fst)
       in runEffect $ test <<-> relay baseValuespace
   where
