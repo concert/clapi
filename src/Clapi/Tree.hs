@@ -1,11 +1,9 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE
+    DeriveFoldable
+  , DeriveFunctor
+  , TemplateHaskell
+  , TypeFamilies
+#-}
 
 module Clapi.Tree where
 

@@ -1,6 +1,5 @@
 {-# LANGUAGE
     Rank2Types
-  , TypeApplications
 #-}
 
 module Clapi.Types.TreeTypeProxy

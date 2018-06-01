@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE TupleSections #-}
-
 module Data.Map.Mos where
 
 import qualified Data.Map as Map

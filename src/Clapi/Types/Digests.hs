@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE PatternSynonyms #-}
-
 module Clapi.Types.Digests where
 
 import Data.Foldable (foldl')

@@ -1,7 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-
 module Clapi.NamespaceTracker where
 
 import Prelude hiding (fail)

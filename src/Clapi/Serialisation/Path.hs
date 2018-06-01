@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
     GeneralizedNewtypeDeriving
   , StandaloneDeriving

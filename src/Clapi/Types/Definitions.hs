@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE Rank2Types #-}
 
 module Clapi.Types.Definitions where

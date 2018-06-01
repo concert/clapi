@@ -1,11 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE
-    QuasiQuotes
-  , OverloadedStrings
-  , PatternSynonyms
-  , TypeApplications
-  , ScopedTypeVariables
-#-}
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 

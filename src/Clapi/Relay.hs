@@ -1,8 +1,4 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Clapi.Relay where
 

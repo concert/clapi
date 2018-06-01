@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE DeriveFoldable #-}
 
 module Clapi.Types.UniqList

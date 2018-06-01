@@ -18,7 +18,7 @@ spec = do
     it "Smashed together" $ smashed `shouldBe` (Set.fromList [lyricFwd, lyricRev])
   where
     basicResult = runState (runEffect $ source <<-> cat <<-> sink) []
-    source = (mapM_ sendFwd $ fmap Just "abc") >> sendFwd Nothing
+    source = (mapM_ sendFwd $ fmap Just ("abc" :: String)) >> sendFwd Nothing
     sink = forever $ wait >>= \(Fwd a) -> (lift $ modify (a:))
     cat = waitThenFwdOnly (maybe (return ()) (\a -> sendFwd a >> cat))
     blk = (replicateM 2 $ wait >>= send) >> return "done!"

@@ -1,10 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# OPTIONS_HADDOCK prune #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Clapi.Valuespace

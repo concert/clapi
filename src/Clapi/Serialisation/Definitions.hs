@@ -1,5 +1,4 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Clapi.Serialisation.Definitions where
 

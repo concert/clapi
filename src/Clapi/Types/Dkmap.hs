@@ -1,9 +1,9 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE
+    DeriveFoldable
+  , DeriveFunctor
+  , TemplateHaskell
+  , TypeFamilies
+#-}
 
 module Clapi.Types.Dkmap where
 

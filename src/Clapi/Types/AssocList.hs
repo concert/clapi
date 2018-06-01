@@ -1,8 +1,8 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE
+    DeriveTraversable
+  , DeriveFoldable
+  , DeriveFunctor
+#-}
 
 module Clapi.Types.AssocList
   ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList, alNull

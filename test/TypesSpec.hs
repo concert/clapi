@@ -1,13 +1,10 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
     ExistentialQuantification
   , GeneralizedNewtypeDeriving
-  , OverloadedStrings
   , Rank2Types
-  , ScopedTypeVariables
   , StandaloneDeriving
   , TemplateHaskell
-  , TypeApplications
 #-}
 
 module TypesSpec where

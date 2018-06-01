@@ -1,7 +1,5 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
-    QuasiQuotes
-  , TemplateHaskell
+    TemplateHaskell
 #-}
 
 module Clapi.TH (segq, pathq, btq) where

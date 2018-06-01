@@ -1,6 +1,8 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE
+    TypeSynonymInstances
+  , FlexibleInstances
+#-}
 
 module Clapi.Serialisation.Messages where
 

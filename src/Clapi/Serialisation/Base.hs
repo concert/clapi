@@ -1,7 +1,5 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-} {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE
     GeneralizedNewtypeDeriving
-  , ScopedTypeVariables
   , StandaloneDeriving
 #-}
 

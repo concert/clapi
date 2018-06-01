@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
 module NamespaceTrackerSpec where
 
 import Test.Hspec

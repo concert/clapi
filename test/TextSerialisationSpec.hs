@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module TextSerialisationSpec where
 
 import Test.Hspec
