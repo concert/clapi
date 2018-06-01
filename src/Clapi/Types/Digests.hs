@@ -20,7 +20,8 @@ import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty, PostDefinition)
 import Clapi.Types.Messages
 import Clapi.Types.Path
-  (Seg, Path, TypeName(..), tTnNamespace, pattern (:</), pattern (:/))
+  ( Seg, Path, TypeName(..), tTnNamespace, pattern (:</), pattern (:/)
+  , Namespace(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (WireValue)
 
@@ -50,7 +51,7 @@ data PostOp
   = OpPost {opPath :: Path, opArgs :: Map Seg WireValue} deriving (Show, Eq)
 
 data TrpDigest = TrpDigest
-  { trpdNamespace :: Seg
+  { trpdNamespace :: Namespace
   , trpdPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , trpdDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
   , trpdData :: DataDigest
@@ -58,12 +59,13 @@ data TrpDigest = TrpDigest
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
   } deriving (Show, Eq)
 
-trpDigest :: Seg -> TrpDigest
+trpDigest :: Namespace -> TrpDigest
 trpDigest ns = TrpDigest ns mempty mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
-    (trpdNamespace trpd :</) <$> Map.foldlWithKey f [] (trpdContainerOps trpd)
+    ((unNamespace $ trpdNamespace trpd) :</) <$>
+    Map.foldlWithKey f [] (trpdContainerOps trpd)
   where
     f acc p segMap = acc ++
       (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
@@ -73,14 +75,14 @@ trpdNull (TrpDigest _ns postDefs defs dd cops errs) =
   null postDefs && null defs && alNull dd && null cops && null errs
 
 data FrpDigest = FrpDigest
-  { frpdNamespace :: Seg
+  { frpdNamespace :: Namespace
   -- FIXME: this is tosh! It should possibly remain [PostMessage]
   , frpdPosts :: Map Seg PostOp
   , frpdData :: DataDigest
   , frpdContainerOps :: ContainerOps
   } deriving (Show, Eq)
 
-frpDigest :: Seg -> FrpDigest
+frpDigest :: Namespace -> FrpDigest
 frpDigest ns = FrpDigest ns mempty alEmpty mempty
 
 data FrpErrorDigest = FrpErrorDigest
@@ -116,7 +118,9 @@ frcdEmpty :: FrcDigest
 frcdEmpty = FrcDigest mempty mempty mempty mempty mempty mempty alEmpty mempty
   mempty
 
-newtype TrprDigest = TrprDigest {trprdNamespace :: Seg} deriving (Show, Eq)
+newtype TrprDigest
+  = TrprDigest {trprdNamespace :: Namespace}
+  deriving (Show, Eq)
 
 data TrDigest
   = Trpd TrpDigest
@@ -130,7 +134,7 @@ data FrDigest
   | Frcd FrcDigest
   deriving (Show, Eq)
 
-trcdNamespaces :: TrcDigest -> Set Seg
+trcdNamespaces :: TrcDigest -> Set Namespace
 trcdNamespaces (TrcDigest pts ts ds posts dd co) =
     (Set.map tTnNamespace $ Map.keysSet pts)
     <> (Set.map tTnNamespace $ Map.keysSet ts)
@@ -140,7 +144,7 @@ trcdNamespaces (TrcDigest pts ts ds posts dd co) =
   where
     pathKeyNss = onlyJusts . Set.map pNs
     onlyJusts = Set.map fromJust . Set.delete Nothing
-    pNs (ns :</ _) = Just ns
+    pNs (ns :</ _) = Just $ Namespace ns
     pNs _ = Nothing
 
 frcdNull :: FrcDigest -> Bool
@@ -191,7 +195,7 @@ produceContOpMessages = mconcat . Map.elems . Map.mapWithKey
       SoAbsent -> MsgAbsent p targ att
 
 
-qualifyDefMessage :: Seg -> DefMessage Seg def -> DefMessage TypeName def
+qualifyDefMessage :: Namespace -> DefMessage Seg def -> DefMessage TypeName def
 qualifyDefMessage ns dm = case dm of
   MsgDefine s d -> MsgDefine (TypeName ns s) d
   MsgUndefine s -> MsgUndefine $ TypeName ns s

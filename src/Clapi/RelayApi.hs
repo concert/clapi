@@ -1,8 +1,11 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE
+    QuasiQuotes
+  , OverloadedStrings
+  , PatternSynonyms
+  , TypeApplications
+  , ScopedTypeVariables
+#-}
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 
@@ -21,10 +24,12 @@ import Clapi.Types
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
-import Clapi.Types.Digests (DefOp(OpDefine), DataChange(..), FrcDigest(..))
+import Clapi.Types.Digests
+  (DefOp(OpDefine), DataChange(..), FrcDigest(..), DataDigest, ContainerOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path
-  (Seg, TypeName(..), tTypeName, pattern Root, pattern (:/), pattern (:</))
+  ( Seg, TypeName(..), tTypeName, pattern Root, pattern (:/), pattern (:</)
+  , Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (castWireValue)
@@ -37,11 +42,13 @@ class PathSegable a where
     pathNameFor :: a -> Seg
 
 relayApiProto ::
-    (Ord i, PathSegable i) =>
+    forall i. (Ord i, PathSegable i) =>
     i ->
     Protocol
-        (ClientEvent i (TimeStamped TrDigest)) (ClientEvent i TrDigest)
-        (ServerEvent i FrDigest) (Either (Map Seg i) (ServerEvent i FrDigest))
+        (ClientEvent i (TimeStamped TrDigest))
+        (ClientEvent i TrDigest)
+        (ServerEvent i FrDigest)
+        (Either (Map Namespace i) (ServerEvent i FrDigest))
         IO ()
 relayApiProto selfAddr =
     publishRelayApi >> steadyState mempty mempty
@@ -92,11 +99,18 @@ relayApiProto selfAddr =
         ])
       mempty
       mempty
-    rns = [segq|relay|]
+    rns = Namespace [segq|relay|]
     clock_diff = [segq|clock_diff|]
     selfSeg = pathNameFor selfAddr
     selfClientPath = Root :/ [segq|clients|] :/ selfSeg
     staticAl = alFromMap . Map.fromList
+    steadyState
+      :: Map Seg TimeDelta -> Map Namespace Seg -> Protocol
+            (ClientEvent i (TimeStamped TrDigest))
+            (ClientEvent i TrDigest)
+            (ServerEvent i FrDigest)
+            (Either (Map Namespace i) (ServerEvent i FrDigest))
+            IO ()
     steadyState timingMap ownerMap = waitThen fwd rev
       where
         fwd ce = case ce of
@@ -147,7 +161,8 @@ relayApiProto selfAddr =
               uncurry pubUpdate $ ownerChangeInfo ownerMap'
               steadyState timingMap ownerMap'
             else
-              return () -- The relay API did something invalid and got kicked out
+              -- The relay API did something invalid and got kicked out
+              return ()
         rev (Right se) = do
           case se of
             ServerData cAddr d ->
@@ -161,12 +176,14 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
+        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps)
         ownerChangeInfo ownerMap' =
             ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
                 (const (Nothing, SoAbsent)) <$>
-                  ownerMap `Map.difference` ownerMap')
-        toOwnerPath s = [pathq|/owners|] :/ s
+                  Map.mapKeys unNamespace (ownerMap `Map.difference` ownerMap'))
+        toOwnerPath :: Namespace -> Path.Path
+        toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
           WireValue $ Path.toText $ Root :/ selfSeg :/ [segq|clients|] :/ ns]
         viewAs i dd =

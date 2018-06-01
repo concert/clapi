@@ -33,7 +33,8 @@ import Clapi.Types.Digests
   , InboundClientDigest(..), OutboundProviderDigest(..)
   , DataDigest, ContainerOps)
 import Clapi.Types.Path
-  (Seg, Path, TypeName(..), qualify,  pattern (:</), pattern Root, parentPath)
+  ( Seg, Path, TypeName(..), qualify,  pattern (:</), pattern Root, parentPath
+  , Namespace(..))
 import Clapi.Types.Definitions (Liberty, Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -142,7 +143,8 @@ relay vs = waitThenFwdOnly fwd
           let vs' = vsRelinquish ns vs
           sendRev (i, Ocd $ OutboundClientDigest
             -- FIXME: Attributing revocation to nobody!
-            (Map.singleton Root $ Map.singleton ns (Nothing, SoAbsent))
+            (Map.singleton Root $
+               Map.singleton (unNamespace ns) (Nothing, SoAbsent))
             (fmap (const OpUndefine) $ Map.mapKeys (qualify ns) $
                Map.findWithDefault mempty ns $ vsPostDefs vs)
             (Map.insert rootTypeName
@@ -156,10 +158,11 @@ relay vs = waitThenFwdOnly fwd
             (TrpDigest ns postDefs defs dd contOps errs) (updatedTyAssns, vs') =
           let
             shouldPubRoot =
-              Map.member (Tagged ns) defs &&
+              Map.member (Tagged $ unNamespace ns) defs &&
               Map.notMember ns (vsTyDefs vs)
             rootDef = fromJust $ vsLookupDef rootTypeName vs'
-            qDd = maybe (error "Bad sneakers") id $ alMapKeys (ns :</) dd
+            qDd = maybe (error "Bad sneakers") id $
+              alMapKeys (unNamespace ns :</) dd
             qDd' = vsMinimiseDataDigest qDd vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
             qPostDefs = Map.mapKeys (qualify ns) postDefs
@@ -168,7 +171,7 @@ relay vs = waitThenFwdOnly fwd
             qDefs'' = if shouldPubRoot
               then Map.insert rootTypeName (OpDefine rootDef) qDefs'
               else qDefs'
-            qContOps = Map.mapKeys (ns :</) contOps
+            qContOps = Map.mapKeys (unNamespace ns :</) contOps
             qContOps' = vsMinimiseContOps qContOps vs
             mungedTas = Map.mapWithKey
               (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns

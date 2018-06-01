@@ -33,7 +33,8 @@ import Clapi.Types.Digests
   , OutboundProviderDigest(..))
 -- Also `Either String a` MonadFail instance:
 import Clapi.Types (Definition, PostDefinition)
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:/), pattern Root)
+import Clapi.Types.Path
+  (Path, TypeName(..), pattern (:/), pattern Root, Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -47,13 +48,13 @@ newtype Originator i = Originator i deriving (Eq, Show)
 type NstProtocol m i = Protocol
     (ClientEvent i TrDigest)
     ((Originator i, InboundDigest))
-    (Either (Map Seg i) (ServerEvent i FrDigest))
+    (Either (Map Namespace i) (ServerEvent i FrDigest))
     ((Originator i, OutboundDigest))
     m
 
 data NstState i
   = NstState
-  { nstOwners :: Map Seg i
+  { nstOwners :: Map Namespace i
   , nstPostTypeRegistrations :: Mos i (Tagged PostDefinition TypeName)
   , nstTypeRegistrations :: Mos i (Tagged Definition TypeName)
   , nstDataRegistrations :: Mos i Path
@@ -98,17 +99,19 @@ nonClaim :: TrpDigest -> Bool
 nonClaim trpd = trpdData trpd == alEmpty && null (trpdContainerOps trpd)
 
 updateOwners
-  :: Monad m => Map Seg i ->  StateT (NstState i) (NstProtocol m i) ()
+  :: Monad m => Map Namespace i ->  StateT (NstState i) (NstProtocol m i) ()
 updateOwners owners = do
   modify $ \nsts -> nsts {nstOwners = owners}
   lift $ sendRev $ Left owners
 
 throwOutProvider
   :: (Ord i, Monad m)
-  => i -> Set Seg -> String -> StateT (NstState i) (NstProtocol m i) ()
+  => i -> Set Namespace -> String -> StateT (NstState i) (NstProtocol m i) ()
 throwOutProvider i nss msg = do
   lift $ sendRev $ Right $ ServerData i $ Frped $ FrpErrorDigest $
-    Set.foldl (\acc ns -> Map.insert (PathError $ Root :/ ns) [Text.pack msg] acc) mempty nss
+    Set.foldl (\acc ns ->
+      Map.insert (PathError $ Root :/ unNamespace ns) [Text.pack msg] acc)
+    mempty nss
   lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
 
@@ -149,7 +152,7 @@ claimNamespace i d failureAction successAction = get >>= either
 
 relinquishNamespace
   :: (Eq i, Monad m)
-  => i -> Seg
+  => i -> Namespace
   -> (String -> StateT (NstState i) (NstProtocol m i) ())
   -> StateT (NstState i) (NstProtocol m i) ()
   -> StateT (NstState i) (NstProtocol m i) ()
@@ -170,7 +173,8 @@ relinquishNamespace i ns failureAction successAction = get >>= either
             else fail "You're not the owner"
 
 guardNsClientDigest
-  :: Eq i => i -> TrcDigest -> StateT (NstState i) (Either (Set Seg, String)) ()
+  :: Eq i
+  => i -> TrcDigest -> StateT (NstState i) (Either (Set Namespace, String)) ()
 guardNsClientDigest i d =
   let
     nss = trcdNamespaces d
@@ -324,7 +328,7 @@ dispatchProviderDigest d =
           $ Map.lookup ns $ nstOwners nsts
     void $ sequence $ Map.mapWithKey dispatch $ frpdsByNamespace d
 
-frpdsByNamespace :: OutboundProviderDigest -> Map Seg FrpDigest
+frpdsByNamespace :: OutboundProviderDigest -> Map Namespace FrpDigest
 frpdsByNamespace (OutboundProviderDigest contOps dd) =
   let
     (rootCOps, casByNs) = nestMapsByKey Path.splitHead contOps
@@ -335,7 +339,9 @@ frpdsByNamespace (OutboundProviderDigest contOps dd) =
     posts = mempty
     f ns contOps' dd' = FrpDigest ns posts  dd' (contOps' <> rootCOps)
   in
-    zipMapsWithKey mempty alEmpty f casByNs ddByNs
+    zipMapsWithKey mempty alEmpty f
+      (Map.mapKeys Namespace casByNs)
+      (Map.mapKeys Namespace ddByNs)
 
 produceFromRelayClientDigest
   :: OutboundClientDigest -> Set Path -> Set (Tagged PostDefinition TypeName)
@@ -413,7 +419,8 @@ nestMapsByKey f = Map.foldlWithKey g mempty
 
 nestAlByKey
   :: (Ord k, Ord k0, Ord k1)
-  => (k -> Maybe (k0, k1)) -> AssocList k a -> (AssocList k a, Map k0 (AssocList k1 a))
+  => (k -> Maybe (k0, k1)) -> AssocList k a
+  -> (AssocList k a, Map k0 (AssocList k1 a))
 nestAlByKey f = alFoldlWithKey g (alEmpty, mempty)
   where
     g (unsplit, nested) k val = case f k of

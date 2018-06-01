@@ -3,6 +3,7 @@
 
 module Clapi.Types.Messages where
 
+import Data.Bifunctor (bimap)
 import Data.Map (Map)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -11,7 +12,7 @@ import Data.Word (Word32)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty, PostDefinition)
 import Clapi.Types.Path
-  (Seg, Path, TypeName(..), qualify, unqualify, pattern (:</))
+  (Seg, Path, TypeName(..), qualify, unqualify, pattern (:</), Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Wire (WireValue)
 
@@ -26,19 +27,20 @@ data ErrorIndex a
   | TypeError (Tagged Definition a)
   deriving (Show, Eq, Ord)
 
-splitErrIdx :: ErrorIndex TypeName -> Maybe (Seg, ErrorIndex Seg)
+splitErrIdx :: ErrorIndex TypeName -> Maybe (Namespace, ErrorIndex Seg)
 splitErrIdx ei = case ei of
   GlobalError -> Nothing
-  PathError p -> fmap PathError <$> Path.splitHead p
-  TimePointError p tpid -> fmap (flip TimePointError tpid) <$> Path.splitHead p
+  PathError p -> bimap Namespace PathError <$> Path.splitHead p
+  TimePointError p tpid -> bimap Namespace (flip TimePointError tpid) <$>
+    Path.splitHead p
   PostTypeError tn -> Just $ fmap PostTypeError $ unqualify tn
   TypeError tn -> Just $ fmap TypeError $ unqualify tn
 
-namespaceErrIdx :: Seg -> ErrorIndex Seg -> ErrorIndex TypeName
+namespaceErrIdx :: Namespace -> ErrorIndex Seg -> ErrorIndex TypeName
 namespaceErrIdx ns ei = case ei of
   GlobalError -> GlobalError
-  PathError p -> PathError $ ns :</ p
-  TimePointError p tpid -> TimePointError (ns :</ p) tpid
+  PathError p -> PathError $ unNamespace ns :</ p
+  TimePointError p tpid -> TimePointError (unNamespace ns :</ p) tpid
   PostTypeError s -> PostTypeError $ qualify ns s
   TypeError s -> TypeError $ qualify ns s
 
@@ -109,7 +111,7 @@ data ContainerUpdateMessage
   deriving (Eq, Show)
 
 data ToRelayProviderBundle = ToRelayProviderBundle
-  { trpbNamespace :: Seg
+  { trpbNamespace :: Namespace
   , trpbErrors :: [MsgError Seg]
   , trpbPostDefs :: [DefMessage (Tagged PostDefinition Seg) PostDefinition]
   , trpbDefinitions :: [DefMessage (Tagged Definition Seg) Definition]
@@ -118,10 +120,10 @@ data ToRelayProviderBundle = ToRelayProviderBundle
   } deriving (Show, Eq)
 
 data ToRelayProviderRelinquish
-  = ToRelayProviderRelinquish Seg deriving (Show, Eq)
+  = ToRelayProviderRelinquish Namespace deriving (Show, Eq)
 
 data FromRelayProviderBundle = FromRelayProviderBundle
-  { frpbNamespace :: Seg
+  { frpbNamespace :: Namespace
   , frpbPosts :: [PostMessage]
   , frpbData :: [DataUpdateMessage]
   , frpbContMsgs :: [ContainerUpdateMessage]

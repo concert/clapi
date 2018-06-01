@@ -62,13 +62,13 @@ import Clapi.Types.Digests
 import Clapi.Types.Messages (ErrorIndex(..))
 import Clapi.Types.Path
   ( Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..)
-  , qualify, unqualify, tTnNamespace)
+  , tTypeName, qualify, unqualify, tTnNamespace, Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
-type DefMap def = Map Seg (Map (Tagged def Seg) def)
+type DefMap def = Map Namespace (Map (Tagged def Seg) def)
 type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition TypeName)
 type Referer = Path
 type Referee = Path
@@ -98,12 +98,12 @@ removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
     updateTpMap (Just tpSet) = let tpSet' = Set.difference tpSet tpids in
       if null tpSet' then Nothing else Just $ Just tpSet'
 
-apiNs :: Seg
-apiNs = [segq|api|]
+apiNs :: Namespace
+apiNs = Namespace [segq|api|]
 
 rootTypeName, apiTypeName :: Tagged Definition TypeName
 rootTypeName = Tagged $ TypeName apiNs [segq|root|]
-apiTypeName = Tagged $ TypeName apiNs apiNs
+apiTypeName = Tagged $ TypeName apiNs $ unNamespace apiNs
 
 apiDef :: StructDefinition
 apiDef = StructDefinition "Information about CLAPI itself" $
@@ -140,9 +140,10 @@ baseValuespace = unsafeValidateVs $
     version = RtConstData Nothing
       [WireValue @Word32 0, WireValue @Word32 1, WireValue @Int32 (-1023)]
     baseTree =
-      treeInsert Nothing (Root :/ apiNs :/ vseg) version Tree.RtEmpty
+      treeInsert Nothing (Root :/ unNamespace apiNs :/ vseg) version
+      Tree.RtEmpty
     baseDefs = Map.singleton apiNs $ Map.fromList
-      [ (Tagged apiNs, StructDef apiDef)
+      [ (Tagged $ unNamespace apiNs, StructDef apiDef)
       , (Tagged vseg, TupleDef versionDef)
       , (Tagged dnSeg, TupleDef displayNameDef)
       ]
@@ -169,7 +170,8 @@ lookupDef tn defs = note "Missing def" $
     (ns, s) = unqualify tn
     -- NB: We generate the root def on the fly when people ask about it
     rootDef = StructDef $ StructDefinition "root def doc" $ alFromMap $
-      Map.mapWithKey (\k _ -> (Tagged $ TypeName k k, Cannot)) defs
+      Map.mapWithKey (\k _ -> (tTypeName (Namespace k) k, Cannot)) $
+      Map.mapKeys unNamespace defs
 
 vsLookupDef
   :: MonadFail m => Tagged Definition TypeName -> Valuespace -> m Definition
@@ -389,8 +391,8 @@ processToRelayProviderDigest trpd vs =
     redefdPaths = mconcat $
       fmap (\s -> Mos.getDependants (qualify ns s) tas) $ Map.keys $
       trpdDefinitions trpd
-    qData = fromJust $ alMapKeys (ns :</) $ trpdData trpd
-    qCops = Map.mapKeys (ns :</) $ trpdContainerOps trpd
+    qData = fromJust $ alMapKeys (unNamespace ns :</) $ trpdData trpd
+    qCops = Map.mapKeys (unNamespace ns :</) $ trpdContainerOps trpd
     updatedPaths = opsTouched qCops qData
     tpRemovals :: DataChange -> Set TpId
     tpRemovals (ConstChange {})= mempty
@@ -525,10 +527,10 @@ validateWireValues tts wvs =
     vr tt wv = validate tt wv >> extractTypeAssertions tt wv
 
 -- FIXME: The VS you get back from this can be invalid WRT refs/inter NS types
-vsRelinquish :: Seg -> Valuespace -> Valuespace
+vsRelinquish :: Namespace -> Valuespace -> Valuespace
 vsRelinquish ns (Valuespace tree postDefs defs tas xrefs) =
   let
-    nsp = Root :/ ns
+    nsp = Root :/ unNamespace ns
   in
     Valuespace
       (Tree.treeDelete nsp tree)

@@ -36,7 +36,8 @@ import Clapi.Types
   , TrpDigest(..), DefOp(..), DataChange(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path
-  (Path(..), pattern (:/), pattern Root, Seg, TypeName(..), tTypeName)
+  ( Path(..), pattern (:/), pattern Root, Seg, TypeName(..), tTypeName
+  , Namespace(..))
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
   , processToRelayClientDigest, apiNs, vsRelinquish, ValidationErr(..))
@@ -66,7 +67,7 @@ validVersionTypeChange vs =
     mempty
     (Map.fromList
       [ (Tagged [segq|stringVersion|], OpDefine svd)
-      , (Tagged apiNs, OpDefine rootDef)
+      , (Tagged $ unNamespace apiNs, OpDefine rootDef)
       ])
     (alSingleton [pathq|/version|]
       $ ConstChange Nothing [WireValue ("pear" :: Text)])
@@ -83,9 +84,8 @@ redefApiRoot
   -> Valuespace -> Definition
 redefApiRoot f vs = structDef "Frigged by test" $ (, Cannot) <$> f currentKids
   where
-    currentKids = fst <$>
-      (grabDefTypes $ grabApi Tagged $ grabApi id $ vsTyDefs vs)
-    grabApi f = fromJust . Map.lookup (f apiNs)
+    currentKids = fmap fst $ grabDefTypes $ fromJust $
+      Map.lookup apiNs (vsTyDefs vs) >>= Map.lookup (Tagged $ unNamespace apiNs)
     grabDefTypes (StructDef sd) = strDefTypes sd
     grabDefTypes _ = error "API ns root type not a struct!"
 
@@ -98,7 +98,7 @@ extendedVs def s dc =
       mempty
       (Map.fromList
         [ (Tagged s, OpDefine def)
-        , (Tagged apiNs, OpDefine rootDef)])
+        , (Tagged $ unNamespace apiNs, OpDefine rootDef)])
       (alSingleton (Root :/ s) dc)
       mempty
       mempty
@@ -110,7 +110,7 @@ vsWithXRef =
     newNodeDef = tupleDef
       "for test"
       (alSingleton [segq|daRef|] $ TtRef $
-        TypeName [segq|api|] [segq|version|])
+        TypeName (Namespace [segq|api|]) [segq|version|])
       ILUninterpolated
     newVal = ConstChange Nothing [WireValue $ Path.toText [pathq|/api/version|]]
   in extendedVs newNodeDef refSeg newVal
@@ -124,7 +124,7 @@ emptyArrayD s vs = TrpDigest
     mempty
     (Map.fromList
      [ (Tagged s, OpDefine vaDef)
-     , (Tagged apiNs, OpDefine rootDef)])
+     , (Tagged $ unNamespace apiNs, OpDefine rootDef)])
     alEmpty
     mempty
     mempty
@@ -138,7 +138,7 @@ spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $
       let
-        apiTn = TypeName [segq|api|]
+        apiTn = TypeName $ Namespace [segq|api|]
         allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
           vsTree baseValuespace
         validated = either (error . show) snd $
@@ -197,7 +197,8 @@ spec = do
     it "xref referee type change errors" $ do
       -- Change the type of the instance referenced in a cross reference
       vs <- vsWithXRef
-      vsProviderErrorsOn vs (validVersionTypeChange vs) [Root :/ apiNs :/ refSeg]
+      vsProviderErrorsOn vs (validVersionTypeChange vs)
+        [Root :/ unNamespace apiNs :/ refSeg]
     it "xref old references do not error" $
       let
         v2s = [segq|v2|]
@@ -210,7 +211,7 @@ spec = do
               (alInsert v2s $ tTypeName apiNs [segq|version|]) vs
         vs' <- vsAppliesCleanly
           (TrpDigest apiNs mempty
-            (Map.singleton (Tagged apiNs) $ OpDefine v2ApiDef)
+            (Map.singleton (Tagged $ unNamespace apiNs) $ OpDefine v2ApiDef)
             v2Val mempty mempty)
           vs
         -- Update the ref to point at new version:
@@ -262,7 +263,7 @@ spec = do
         missingChild = TrpDigest
           apiNs
           mempty
-          (Map.singleton (Tagged apiNs) $ OpDefine rootDef)
+          (Map.singleton (Tagged $ unNamespace apiNs) $ OpDefine rootDef)
           alEmpty
           mempty
           mempty
@@ -272,7 +273,7 @@ spec = do
         fs = [segq|foo|]
         fooRootDef = arrayDef "frd" (tTypeName apiNs [segq|version|]) Cannot
         claimFoo = TrpDigest
-          fs
+          (Namespace fs)
           mempty
           (Map.singleton (Tagged fs) $ OpDefine fooRootDef)
           alEmpty
@@ -280,7 +281,7 @@ spec = do
           mempty
       in do
         vs <- vsAppliesCleanly claimFoo baseValuespace
-        vsRelinquish fs vs `shouldBe` baseValuespace
+        vsRelinquish (Namespace fs) vs `shouldBe` baseValuespace
     describe "Client" $
         it "Can create new array entries" $
           let

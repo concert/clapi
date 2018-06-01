@@ -38,7 +38,7 @@ import Clapi.Types
 import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
-import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))
+import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..), Namespace(..))
 import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
@@ -212,3 +212,4 @@ instance Arbitrary TreeType where
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
 
 deriving instance Arbitrary a => Arbitrary (Tagged t a)
+deriving instance Arbitrary Namespace

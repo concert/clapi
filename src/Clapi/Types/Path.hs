@@ -10,6 +10,7 @@ module Clapi.Types.Path (
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
     NodePath, TypePath,
+    Namespace(..),
     TypeName(..), tTypeName, tTnNamespace, tTnName, qualify, unqualify,
     typeNameP, typeNameToText, typeNameFromText) where
 
@@ -107,18 +108,20 @@ childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
 type NodePath = Path
 type TypePath = Path
 
-data TypeName = TypeName {tnNamespace :: Seg, tnName :: Seg} deriving (Eq, Ord)
+newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
+data TypeName
+  = TypeName {tnNamespace :: Namespace, tnName :: Seg} deriving (Eq, Ord)
 
-qualify :: Seg -> Tagged a Seg -> Tagged a TypeName
+qualify :: Namespace -> Tagged a Seg -> Tagged a TypeName
 qualify ns (Tagged s) = Tagged $ TypeName ns s
 
-unqualify :: Tagged a TypeName -> (Seg, Tagged a Seg)
+unqualify :: Tagged a TypeName -> (Namespace, Tagged a Seg)
 unqualify (Tagged (TypeName ns s)) = (ns, Tagged s)
 
-tTypeName :: Seg -> Seg -> Tagged a TypeName
+tTypeName :: Namespace -> Seg -> Tagged a TypeName
 tTypeName ns s = Tagged $ TypeName ns s
 
-tTnNamespace :: Tagged a TypeName -> Seg
+tTnNamespace :: Tagged a TypeName -> Namespace
 tTnNamespace = tnNamespace . unTagged
 
 tTnName :: Tagged a TypeName -> Tagged a Seg
@@ -129,13 +132,13 @@ qualSepChar = ':'
 
 typeNameToText :: TypeName -> Text
 typeNameToText (TypeName ns s) =
-  unSeg ns <> Text.singleton qualSepChar <> unSeg s
+  unSeg (unNamespace ns) <> Text.singleton qualSepChar <> unSeg s
 
 instance Show TypeName where
   show = Text.unpack . typeNameToText
 
 typeNameP :: Parser TypeName
-typeNameP = TypeName <$> segP <*> (DAT.char qualSepChar >> segP)
+typeNameP = TypeName <$> (Namespace <$> segP) <*> (DAT.char qualSepChar >> segP)
 
 typeNameFromText :: MonadFail m => Text -> m TypeName
 typeNameFromText =
