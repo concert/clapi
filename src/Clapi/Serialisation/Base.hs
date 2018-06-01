@@ -1,5 +1,9 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-} {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE
+    GeneralizedNewtypeDeriving
+  , ScopedTypeVariables
+  , StandaloneDeriving
+#-}
 
 module Clapi.Serialisation.Base where
 
@@ -84,9 +88,7 @@ instance Encodable a => Encodable (Identity a) where
   builder = builder . runIdentity
   parser = Identity <$> parser
 
-instance Encodable a => Encodable (Tagged t a) where
-  builder (Tagged a) = builder a
-  parser = Tagged <$> parser
+deriving instance Encodable a => Encodable (Tagged t a)
 
 instance Encodable a => Encodable [a] where
   builder = listBuilder builder

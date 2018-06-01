@@ -1,9 +1,11 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     ExistentialQuantification
+  , GeneralizedNewtypeDeriving
   , OverloadedStrings
   , Rank2Types
   , ScopedTypeVariables
+  , StandaloneDeriving
   , TemplateHaskell
   , TypeApplications
 #-}
@@ -209,6 +211,4 @@ instance Arbitrary TreeType where
 
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
 
-instance Arbitrary a => Arbitrary (Tagged t a) where
-  arbitrary = Tagged <$> arbitrary
-  shrink = fmap Tagged . shrink . unTagged
+deriving instance Arbitrary a => Arbitrary (Tagged t a)
