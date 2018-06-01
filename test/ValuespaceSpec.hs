@@ -6,32 +6,24 @@
 module ValuespaceSpec where
 
 import Test.Hspec
-import Test.QuickCheck (
-    Arbitrary(..), Gen, Property, arbitrary, oneof, elements, listOf, listOf1,
-    arbitraryBoundedEnum, vector, vectorOf, property)
 
 import Data.Maybe (fromJust)
 import Data.Either (either, isRight)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Word
 import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import qualified Data.Map.Mos as Mos
 import Clapi.TH
-import Clapi.Types.AssocList
-  ( alFromMap, AssocList, mkAssocList, alSingleton, alEmpty, alFromList
-  , alInsert)
+import Clapi.Types.AssocList (AssocList, alSingleton, alEmpty, alInsert)
 import Clapi.Types
-  ( InterpolationLimit(ILUninterpolated), Interpolation(..), WireValue(..)
-  , TreeType(..) , OfMetaType, Liberty(..)
+  ( InterpolationLimit(ILUninterpolated), WireValue(..)
+  , TreeType(..), Liberty(..)
   , tupleDef, structDef, arrayDef, ErrorIndex(..)
-  , defDispatch, metaType, Definition(..)
+  , Definition(..)
   , StructDefinition(strDefTypes)
   , TrpDigest(..), DefOp(..), DataChange(..))
 import qualified Clapi.Types.Path as Path
@@ -43,7 +35,7 @@ import Clapi.Valuespace
   , processToRelayClientDigest, apiNs, vsRelinquish, ValidationErr(..))
 import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Tree (RoseTree(RtEmpty), RoseTreeNodeType(..))
+import Clapi.Tree (RoseTreeNodeType(..))
 
 deriving instance Eq RoseTreeNodeType
 deriving instance Eq ValidationErr
@@ -130,15 +122,14 @@ emptyArrayD s vs = TrpDigest
     mempty
   where
     vaDef = arrayDef "for test" (tTypeName apiNs [segq|version|]) May
-    rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s)
-      baseValuespace
+    -- FIXME: is vs always baseValuespace?
+    rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s) vs
 
 spec :: Spec
 spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $
       let
-        apiTn = TypeName $ Namespace [segq|api|]
         allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
           vsTree baseValuespace
         validated = either (error . show) snd $
