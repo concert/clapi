@@ -9,6 +9,7 @@ import Control.Monad (liftM2)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Functor.Identity
+import Data.Tagged (Tagged(..))
 
 import Data.Word
 import Data.Int
@@ -82,6 +83,10 @@ instance Encodable Text where
 instance Encodable a => Encodable (Identity a) where
   builder = builder . runIdentity
   parser = Identity <$> parser
+
+instance Encodable a => Encodable (Tagged t a) where
+  builder (Tagged a) = builder a
+  parser = Tagged <$> parser
 
 instance Encodable a => Encodable [a] where
   builder = listBuilder builder

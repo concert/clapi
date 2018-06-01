@@ -10,6 +10,7 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Monoid
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
 
@@ -18,7 +19,8 @@ import Clapi.Types.AssocList
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty, PostDefinition)
 import Clapi.Types.Messages
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern (:/))
+import Clapi.Types.Path
+  (Seg, Path, TypeName(..), tTnNamespace, pattern (:</), pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (WireValue)
 
@@ -49,8 +51,8 @@ data PostOp
 
 data TrpDigest = TrpDigest
   { trpdNamespace :: Seg
-  , trpdPostDefs :: Map Seg (DefOp PostDefinition)
-  , trpdDefinitions :: Map Seg (DefOp Definition)
+  , trpdPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
+  , trpdDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
   , trpdData :: DataDigest
   , trpdContainerOps :: ContainerOps
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
@@ -72,6 +74,7 @@ trpdNull (TrpDigest _ns postDefs defs dd cops errs) =
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Seg
+  -- FIXME: this is tosh! It should possibly remain [PostMessage]
   , frpdPosts :: Map Seg PostOp
   , frpdData :: DataDigest
   , frpdContainerOps :: ContainerOps
@@ -85,9 +88,10 @@ data FrpErrorDigest = FrpErrorDigest
   } deriving (Show, Eq)
 
 data TrcDigest = TrcDigest
-  { trcdPostTypeSubs :: Map TypeName SubOp
-  , trcdTypeSubs :: Map TypeName SubOp
+  { trcdPostTypeSubs :: Map (Tagged PostDefinition TypeName) SubOp
+  , trcdTypeSubs :: Map (Tagged Definition TypeName) SubOp
   , trcdDataSubs :: Map Path SubOp
+  -- FIXME: this is tosh! It should possibly remain [PostMessage]
   , trcdPosts :: Map Seg PostOp
   , trcdData :: DataDigest
   , trcdContainerOps :: ContainerOps
@@ -97,12 +101,12 @@ trcdEmpty :: TrcDigest
 trcdEmpty = TrcDigest mempty mempty mempty mempty alEmpty mempty
 
 data FrcDigest = FrcDigest
-  { frcdPostTypeUnsubs :: Set TypeName
-  , frcdTypeUnsubs :: Set TypeName
+  { frcdPostTypeUnsubs :: Set (Tagged PostDefinition TypeName)
+  , frcdTypeUnsubs :: Set (Tagged Definition TypeName)
   , frcdDataUnsubs :: Set Path
-  , frcdPostDefs :: Map TypeName (DefOp PostDefinition)
-  , frcdDefinitions :: Map TypeName (DefOp Definition)
-  , frcdTypeAssignments :: Map Path (TypeName, Liberty)
+  , frcdPostDefs :: Map (Tagged PostDefinition TypeName) (DefOp PostDefinition)
+  , frcdDefinitions :: Map (Tagged Definition TypeName) (DefOp Definition)
+  , frcdTypeAssignments :: Map Path (Tagged Definition TypeName, Liberty)
   , frcdData :: DataDigest
   , frcdContainerOps :: ContainerOps
   , frcdErrors :: Map (ErrorIndex TypeName) [Text]
@@ -128,8 +132,8 @@ data FrDigest
 
 trcdNamespaces :: TrcDigest -> Set Seg
 trcdNamespaces (TrcDigest pts ts ds posts dd co) =
-    (Set.map tnNamespace $ Map.keysSet pts)
-    <> (Set.map tnNamespace $ Map.keysSet ts)
+    (Set.map tTnNamespace $ Map.keysSet pts)
+    <> (Set.map tTnNamespace $ Map.keysSet ts)
     <> pathKeyNss (Map.keysSet ds)
     <> pathKeyNss (Set.fromList $ Map.elems $ opPath <$> posts)
     <> pathKeyNss (alKeysSet dd) <> pathKeyNss (Map.keysSet co)
@@ -192,21 +196,26 @@ qualifyDefMessage ns dm = case dm of
   MsgDefine s d -> MsgDefine (TypeName ns s) d
   MsgUndefine s -> MsgUndefine $ TypeName ns s
 
-digestDefMessages :: Ord a => [DefMessage a def] -> Map a (DefOp def)
+digestDefMessages
+  :: Ord a => [DefMessage (Tagged def a) def] -> Map (Tagged def a) (DefOp def)
 digestDefMessages = Map.fromList . fmap procMsg
   where
     procMsg msg = case msg of
       MsgDefine a def -> (a, OpDefine def)
       MsgUndefine a -> (a, OpUndefine)
 
-produceDefMessages :: Map a (DefOp def) -> [DefMessage a def]
+produceDefMessages
+  :: Map (Tagged def a) (DefOp def) -> [DefMessage (Tagged def a) def]
 produceDefMessages = Map.elems . Map.mapWithKey
   (\a op -> case op of
      OpDefine def -> MsgDefine a def
      OpUndefine -> MsgUndefine a)
 
 digestSubMessages
-  :: [SubMessage] -> (Map TypeName SubOp, Map TypeName SubOp, Map Path SubOp)
+  :: [SubMessage]
+  -> ( Map (Tagged PostDefinition TypeName) SubOp
+     , Map (Tagged Definition TypeName) SubOp
+     , Map Path SubOp)
 digestSubMessages msgs = foldl' procMsg mempty msgs
   where
     procMsg (post, ty, dat) msg = case msg of
@@ -218,7 +227,9 @@ digestSubMessages msgs = foldl' procMsg mempty msgs
       MsgTypeUnsubscribe tn -> (post, Map.insert tn OpUnsubscribe ty, dat)
 
 produceSubMessages
-  :: Map TypeName SubOp -> Map TypeName SubOp -> Map Path SubOp -> [SubMessage]
+  :: Map (Tagged PostDefinition TypeName) SubOp
+  -> Map (Tagged Definition TypeName) SubOp
+  -> Map Path SubOp -> [SubMessage]
 produceSubMessages pTySubs tySubs datSubs =
     pTySubMsgs ++ tySubMsgs ++ datSubMsgs
   where
@@ -233,12 +244,14 @@ produceSubMessages pTySubs tySubs datSubs =
       OpUnsubscribe -> MsgUnsubscribe p) datSubs
 
 
-digestTypeMessages :: [TypeMessage] -> Map Path (TypeName, Liberty)
+digestTypeMessages
+  :: [TypeMessage] -> Map Path (Tagged Definition TypeName, Liberty)
 digestTypeMessages = Map.fromList . fmap procMsg
   where
     procMsg (MsgAssignType p tn lib) = (p, (tn, lib))
 
-produceTypeMessages :: Map Path (TypeName, Liberty) -> [TypeMessage]
+produceTypeMessages
+  :: Map Path (Tagged Definition TypeName, Liberty) -> [TypeMessage]
 produceTypeMessages = Map.elems . Map.mapWithKey
   (\p (tn, l) -> MsgAssignType p tn l)
 
@@ -372,8 +385,8 @@ produceFromRelayBundle frd = case frd of
 
 data InboundClientDigest = InboundClientDigest
   { icdGets :: Set Path
-  , icdPostTypeGets :: Set TypeName
-  , icdTypeGets :: Set TypeName
+  , icdPostTypeGets :: Set (Tagged PostDefinition TypeName)
+  , icdTypeGets :: Set (Tagged Definition TypeName)
   , icdContainerOps :: ContainerOps
   , icdData :: DataDigest
   } deriving (Show, Eq)
@@ -404,9 +417,9 @@ data InboundDigest
 
 data OutboundClientDigest = OutboundClientDigest
   { ocdContainerOps :: ContainerOps
-  , ocdPostDefs :: Map TypeName (DefOp PostDefinition)
-  , ocdDefinitions :: Map TypeName (DefOp Definition)
-  , ocdTypeAssignments :: Map Path (TypeName, Liberty)
+  , ocdPostDefs :: Map (Tagged PostDefinition TypeName) (DefOp PostDefinition)
+  , ocdDefinitions :: Map (Tagged Definition TypeName) (DefOp Definition)
+  , ocdTypeAssignments :: Map Path (Tagged Definition TypeName, Liberty)
   , ocdData :: DataDigest
   , ocdErrors :: Map (ErrorIndex TypeName) [Text]
   } deriving (Show, Eq)

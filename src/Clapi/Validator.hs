@@ -9,16 +9,18 @@ module Clapi.Validator where
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (void)
+import Data.Bifunctor (first)
 import Data.Word (Word8)
 import Data.Monoid ((<>))
 import Data.Proxy
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
-import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue)
+import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue, Definition)
 import Clapi.Types.Path (Seg, Path, TypeName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (Bounds, boundsMin, boundsMax, TreeType(..))
@@ -38,8 +40,10 @@ inBounds b n = go (boundsMin b) (boundsMax b)
     go (Just lo) (Just hi) = gte lo >> lte hi
 
 extractTypeAssertions
-  :: MonadFail m => TreeType -> WireValue -> m [(TypeName, Path)]
-extractTypeAssertions tt = withWireable (extractTypeAssertions' tt) tt
+  :: MonadFail m
+  => TreeType -> WireValue -> m [(Tagged Definition TypeName, Path)]
+extractTypeAssertions tt = fmap (fmap $ first Tagged) .
+  withWireable (extractTypeAssertions' tt) tt
 
 extractTypeAssertions'
   :: forall a m . (Wireable a, MonadFail m)

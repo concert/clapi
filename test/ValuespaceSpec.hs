@@ -12,6 +12,7 @@ import Test.QuickCheck (
 
 import Data.Maybe (fromJust)
 import Data.Either (either, isRight)
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word
@@ -32,9 +33,10 @@ import Clapi.Types
   , tupleDef, structDef, arrayDef, ErrorIndex(..)
   , defDispatch, metaType, Definition(..)
   , StructDefinition(strDefTypes)
-  , TrpDigest(..), DefOp(..), DataChange(..), TypeName(..))
+  , TrpDigest(..), DefOp(..), DataChange(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
+import Clapi.Types.Path
+  (Path(..), pattern (:/), pattern Root, Seg, TypeName(..), tTypeName)
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
   , processToRelayClientDigest, apiNs, vsRelinquish, ValidationErr(..))
@@ -58,13 +60,13 @@ validVersionTypeChange vs =
       "Stringy" (alSingleton [segq|vstr|] $ TtString "pear")
       ILUninterpolated
     rootDef = redefApiRoot
-      (alInsert [segq|version|] $ TypeName apiNs [segq|stringVersion|]) vs
+      (alInsert [segq|version|] $ tTypeName apiNs [segq|stringVersion|]) vs
   in TrpDigest
     apiNs
     mempty
     (Map.fromList
-      [ ([segq|stringVersion|], OpDefine svd)
-      , (apiNs, OpDefine rootDef)
+      [ (Tagged [segq|stringVersion|], OpDefine svd)
+      , (Tagged apiNs, OpDefine rootDef)
       ])
     (alSingleton [pathq|/version|]
       $ ConstChange Nothing [WireValue ("pear" :: Text)])
@@ -76,25 +78,27 @@ vsAppliesCleanly d vs = either (fail . show) (return . snd) $
   processToRelayProviderDigest d vs
 
 redefApiRoot
-  :: (AssocList Seg TypeName -> AssocList Seg TypeName) -> Valuespace
-  -> Definition
+  :: (AssocList Seg (Tagged Definition TypeName)
+      -> AssocList Seg (Tagged Definition TypeName))
+  -> Valuespace -> Definition
 redefApiRoot f vs = structDef "Frigged by test" $ (, Cannot) <$> f currentKids
   where
-    currentKids = fst <$> (grabDefTypes $ grabApi $ grabApi $ vsTyDefs vs)
-    grabApi = fromJust . Map.lookup apiNs
+    currentKids = fst <$>
+      (grabDefTypes $ grabApi Tagged $ grabApi id $ vsTyDefs vs)
+    grabApi f = fromJust . Map.lookup (f apiNs)
     grabDefTypes (StructDef sd) = strDefTypes sd
     grabDefTypes _ = error "API ns root type not a struct!"
 
 extendedVs :: MonadFail m => Definition -> Seg -> DataChange -> m Valuespace
 extendedVs def s dc =
   let
-    rootDef = redefApiRoot (alInsert s $ TypeName apiNs s) baseValuespace
+    rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s) baseValuespace
     d = TrpDigest
       apiNs
       mempty
       (Map.fromList
-        [ (s, OpDefine def)
-        , (apiNs, OpDefine rootDef)])
+        [ (Tagged s, OpDefine def)
+        , (Tagged apiNs, OpDefine rootDef)])
       (alSingleton (Root :/ s) dc)
       mempty
       mempty
@@ -118,13 +122,15 @@ emptyArrayD :: Seg -> Valuespace -> TrpDigest
 emptyArrayD s vs = TrpDigest
     apiNs
     mempty
-    (Map.fromList [(s, OpDefine vaDef), (apiNs, OpDefine rootDef)])
+    (Map.fromList
+     [ (Tagged s, OpDefine vaDef)
+     , (Tagged apiNs, OpDefine rootDef)])
     alEmpty
     mempty
     mempty
   where
-    vaDef = arrayDef "for test" (TypeName apiNs [segq|version|]) May
-    rootDef = redefApiRoot (alInsert s $ TypeName apiNs s)
+    vaDef = arrayDef "for test" (tTypeName apiNs [segq|version|]) May
+    rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s)
       baseValuespace
 
 spec :: Spec
@@ -155,7 +161,8 @@ spec = do
             (alSingleton [segq|versionString|] $ TtString "apple")
             ILUninterpolated
           d = TrpDigest
-            apiNs mempty (Map.singleton [segq|version|] $ OpDefine newDef)
+            apiNs mempty
+            (Map.singleton (Tagged [segq|version|]) $ OpDefine newDef)
             alEmpty mempty mempty
       in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
     it "rechecks on container ops" $
@@ -200,9 +207,10 @@ spec = do
         vs <- vsWithXRef
         -- Add another version node:
         let v2ApiDef = redefApiRoot
-              (alInsert v2s $ TypeName apiNs [segq|version|]) vs
+              (alInsert v2s $ tTypeName apiNs [segq|version|]) vs
         vs' <- vsAppliesCleanly
-          (TrpDigest apiNs mempty (Map.singleton apiNs $ OpDefine v2ApiDef)
+          (TrpDigest apiNs mempty
+            (Map.singleton (Tagged apiNs) $ OpDefine v2ApiDef)
             v2Val mempty mempty)
           vs
         -- Update the ref to point at new version:
@@ -248,11 +256,13 @@ spec = do
         vs'' `shouldBe` vs
     it "Errors on struct with missing child" $
       let
-        rootDef = redefApiRoot (alInsert [segq|unfilled|] $ TypeName apiNs [segq|version|]) baseValuespace
+        rootDef = redefApiRoot
+          (alInsert [segq|unfilled|] $ tTypeName apiNs [segq|version|])
+          baseValuespace
         missingChild = TrpDigest
           apiNs
           mempty
-          (Map.singleton apiNs $ OpDefine rootDef)
+          (Map.singleton (Tagged apiNs) $ OpDefine rootDef)
           alEmpty
           mempty
           mempty
@@ -260,11 +270,11 @@ spec = do
     it "Relinquish" $
       let
         fs = [segq|foo|]
-        fooRootDef = arrayDef "frd" (TypeName apiNs [segq|version|]) Cannot
+        fooRootDef = arrayDef "frd" (tTypeName apiNs [segq|version|]) Cannot
         claimFoo = TrpDigest
           fs
           mempty
-          (Map.singleton fs $ OpDefine fooRootDef)
+          (Map.singleton (Tagged fs) $ OpDefine fooRootDef)
           alEmpty
           mempty
           mempty

@@ -10,6 +10,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Map.Mol as Mol
 import qualified Data.Set as Set
+import Data.Tagged (Tagged(..))
 import qualified Data.Text as T
 import Data.Void
 
@@ -27,7 +28,7 @@ import Clapi.Types.Digests
   , InboundClientDigest(..), inboundClientDigest
   , OutboundClientDigest(..), outboundClientDigest
   , OutboundProviderDigest(..), frpDigest, SubOp(..), DefOp(..))
-import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
+import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..), tTypeName)
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -92,7 +93,8 @@ spec = do
           [ trcdEmpty
               {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
           , trcdEmpty
-              {trcdTypeSubs = Map.singleton (TypeName helloS helloS) OpSubscribe}
+              {trcdTypeSubs = Map.singleton
+                (tTypeName helloS helloS) OpSubscribe}
           ]
         forTest subD = do
             claimHello alice
@@ -110,7 +112,7 @@ spec = do
             subHello alice
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
               { frcdData = alSingleton helloP $ textChange "f"
-              , frcdDefinitions = Map.singleton helloTn helloDef0
+              , frcdDefinitions = Map.singleton (Tagged helloTn) helloDef0
               }
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
               { frcdData = alSingleton helloP $ textChange "t" }
@@ -120,7 +122,7 @@ spec = do
               { frcdDataUnsubs = Set.singleton helloP
               }
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdDefinitions = Map.singleton helloTn helloDef1
+              { frcdDefinitions = Map.singleton (Tagged helloTn) helloDef1
               }
         helloDef0 = OpDefine $ tupleDef "Yoho" alEmpty ILUninterpolated
         helloDef1 = OpDefine $ tupleDef "Hoyo" alEmpty ILUninterpolated
@@ -131,7 +133,7 @@ spec = do
                   }))
                 return i
             sendRev (i, Ocid $ ocdEmpty
-              { ocdDefinitions = Map.singleton helloTn helloDef0
+              { ocdDefinitions = Map.singleton (Tagged helloTn) helloDef0
               , ocdData = alSingleton helloP $ textChange "f"
               })
             sendRev (i, Ocd $ ocdEmpty
@@ -141,7 +143,7 @@ spec = do
                 ]
               })
             sendRev (i, Ocd $ ocdEmpty
-              { ocdDefinitions = Map.singleton helloTn helloDef1
+              { ocdDefinitions = Map.singleton (Tagged helloTn) helloDef1
               , ocdData = alSingleton helloP $ textChange "w"
               })
             waitThenFwdOnly $ const return ()

@@ -4,12 +4,14 @@
 module Clapi.Types.Messages where
 
 import Data.Map (Map)
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
 
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Liberty, PostDefinition)
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</))
+import Clapi.Types.Path
+  (Seg, Path, TypeName(..), qualify, unqualify, pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Wire (WireValue)
 
@@ -20,8 +22,8 @@ data ErrorIndex a
   = GlobalError
   | PathError Path
   | TimePointError Path TpId
-  | PostTypeError a
-  | TypeError a
+  | PostTypeError (Tagged PostDefinition a)
+  | TypeError (Tagged Definition a)
   deriving (Show, Eq, Ord)
 
 splitErrIdx :: ErrorIndex TypeName -> Maybe (Seg, ErrorIndex Seg)
@@ -29,16 +31,16 @@ splitErrIdx ei = case ei of
   GlobalError -> Nothing
   PathError p -> fmap PathError <$> Path.splitHead p
   TimePointError p tpid -> fmap (flip TimePointError tpid) <$> Path.splitHead p
-  PostTypeError (TypeName ns s) -> Just (ns, PostTypeError s)
-  TypeError (TypeName ns s) -> Just (ns, TypeError s)
+  PostTypeError tn -> Just $ fmap PostTypeError $ unqualify tn
+  TypeError tn -> Just $ fmap TypeError $ unqualify tn
 
 namespaceErrIdx :: Seg -> ErrorIndex Seg -> ErrorIndex TypeName
 namespaceErrIdx ns ei = case ei of
   GlobalError -> GlobalError
   PathError p -> PathError $ ns :</ p
   TimePointError p tpid -> TimePointError (ns :</ p) tpid
-  PostTypeError s -> PostTypeError (TypeName ns s)
-  TypeError s -> TypeError $ TypeName ns s
+  PostTypeError s -> PostTypeError $ qualify ns s
+  TypeError s -> TypeError $ qualify ns s
 
 data MsgError a
   = MsgError {errIndex :: ErrorIndex a, errMsgTxt :: Text} deriving (Eq, Show)
@@ -52,14 +54,17 @@ data DefMessage ident def
 -- what they are subscriptions for:
 data SubMessage
   = MsgSubscribe {subMsgPath :: Path}
-  | MsgPostTypeSubscribe {subMsgTypeName :: TypeName}
-  | MsgTypeSubscribe {subMsgTypeName :: TypeName}
+  | MsgPostTypeSubscribe {subMsgPostTypeName :: Tagged PostDefinition TypeName}
+  | MsgTypeSubscribe {subMsgTypeName :: Tagged Definition TypeName}
   | MsgUnsubscribe {subMsgPath :: Path}
-  | MsgPostTypeUnsubscribe {subMsgTypeName :: TypeName}
-  | MsgTypeUnsubscribe {subMsgTypeName :: TypeName}
+  | MsgPostTypeUnsubscribe
+    {subMsgPostTypeName :: Tagged PostDefinition TypeName}
+  | MsgTypeUnsubscribe {subMsgTypeName :: Tagged Definition TypeName}
   deriving (Eq, Show)
 
-data TypeMessage = MsgAssignType Path TypeName Liberty deriving (Show, Eq)
+data TypeMessage
+  = MsgAssignType Path (Tagged Definition TypeName) Liberty
+  deriving (Show, Eq)
 
 data PostMessage
   = MsgPost
@@ -106,8 +111,8 @@ data ContainerUpdateMessage
 data ToRelayProviderBundle = ToRelayProviderBundle
   { trpbNamespace :: Seg
   , trpbErrors :: [MsgError Seg]
-  , trpbPostDefs :: [DefMessage Seg PostDefinition]
-  , trpbDefinitions :: [DefMessage Seg Definition]
+  , trpbPostDefs :: [DefMessage (Tagged PostDefinition Seg) PostDefinition]
+  , trpbDefinitions :: [DefMessage (Tagged Definition Seg) Definition]
   , trpbData :: [DataUpdateMessage]
   , trpbContMsgs :: [ContainerUpdateMessage]
   } deriving (Show, Eq)
@@ -134,12 +139,12 @@ data ToRelayClientBundle = ToRelayClientBundle
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
-  { frcbPostTypeUnsubs :: [TypeName]
-  , frcbTypeUnsubs :: [TypeName]
+  { frcbPostTypeUnsubs :: [Tagged PostDefinition TypeName]
+  , frcbTypeUnsubs :: [Tagged Definition TypeName]
   , frcbDataUnsubs :: [Path]
   , frcbErrors :: [MsgError TypeName]
-  , frcbPostDefs :: [DefMessage TypeName PostDefinition]
-  , frcbDefinitions :: [DefMessage TypeName Definition]
+  , frcbPostDefs :: [DefMessage (Tagged PostDefinition TypeName) PostDefinition]
+  , frcbDefinitions :: [DefMessage (Tagged Definition TypeName) Definition]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]
   , frcbContMsgs :: [ContainerUpdateMessage]

@@ -15,6 +15,7 @@ import Data.Map.Strict.Merge (merge, zipWithMatched, mapMissing)
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Tagged (Tagged)
 import qualified Data.Text as Text
 
 
@@ -30,7 +31,8 @@ import Clapi.Types.Digests
   , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
   , OutboundClientDigest(..), OutboundClientInitialisationDigest
   , OutboundProviderDigest(..))
-import Clapi.Types () -- Either String a MonadFail instance
+-- Also `Either String a` MonadFail instance:
+import Clapi.Types (Definition, PostDefinition)
 import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:/), pattern Root)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -52,8 +54,8 @@ type NstProtocol m i = Protocol
 data NstState i
   = NstState
   { nstOwners :: Map Seg i
-  , nstPostTypeRegistrations :: Mos i TypeName
-  , nstTypeRegistrations :: Mos i TypeName
+  , nstPostTypeRegistrations :: Mos i (Tagged PostDefinition TypeName)
+  , nstTypeRegistrations :: Mos i (Tagged Definition TypeName)
   , nstDataRegistrations :: Mos i Path
   } deriving Show
 
@@ -256,8 +258,10 @@ subResponse (OutboundClientDigest cOps postDefs defs tas dd errs) =
 unsubDeleted
   :: (Monad m, Ord i) => OutboundClientDigest
   -> StateT (NstState i) m
-       ( Mos i TypeName, Mos i TypeName
-       , Mos i TypeName, Mos i TypeName
+       ( Mos i (Tagged PostDefinition TypeName)
+       , Mos i (Tagged Definition TypeName)
+       , Mos i (Tagged PostDefinition TypeName)
+       , Mos i (Tagged Definition TypeName)
        , Mos i Path, Mos i Path)
 unsubDeleted d = do
     nsts <- get
@@ -292,8 +296,10 @@ unsubDeleted d = do
 broadcastClientDigest
   :: (Ord i, Monad m)
   => OutboundClientDigest
-  -> ( Mos i TypeName, Mos i TypeName
-     , Mos i TypeName, Mos i TypeName
+  -> ( Mos i (Tagged PostDefinition TypeName)
+     , Mos i (Tagged Definition TypeName)
+     , Mos i (Tagged PostDefinition TypeName)
+     , Mos i (Tagged Definition TypeName)
      , Mos i Path, Mos i Path)
   -> NstProtocol m i ()
 broadcastClientDigest d
@@ -332,8 +338,10 @@ frpdsByNamespace (OutboundProviderDigest contOps dd) =
     zipMapsWithKey mempty alEmpty f casByNs ddByNs
 
 produceFromRelayClientDigest
-  :: OutboundClientDigest -> Set Path -> Set TypeName -> Set TypeName
-  -> Set Path -> Set TypeName -> Set TypeName -> FrcDigest
+  :: OutboundClientDigest -> Set Path -> Set (Tagged PostDefinition TypeName)
+  -> Set (Tagged Definition TypeName)
+  -> Set Path -> Set (Tagged PostDefinition TypeName)
+  -> Set (Tagged Definition TypeName) -> FrcDigest
 produceFromRelayClientDigest
   (OutboundClientDigest cOps postDefs defs tas dd errs) pUsubs ptUnsubs tUsubs
   ps ptns tns = FrcDigest

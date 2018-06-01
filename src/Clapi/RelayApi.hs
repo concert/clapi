@@ -6,10 +6,12 @@
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 
-import Data.Text (Text)
 import Control.Monad.Trans (lift)
+import Data.Bifunctor (bimap)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Tagged (Tagged(..))
+import Data.Text (Text)
 import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -21,7 +23,8 @@ import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests (DefOp(OpDefine), DataChange(..), FrcDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/), pattern (:</))
+import Clapi.Types.Path
+  (Seg, TypeName(..), tTypeName, pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (castWireValue)
@@ -46,7 +49,7 @@ relayApiProto selfAddr =
     publishRelayApi = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
       rns
       mempty
-      (Map.fromList $ fmap OpDefine <$>
+      (Map.fromList $ bimap Tagged OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
              (alSingleton [segq|commit_hash|] $ TtString "banana")
              ILUninterpolated)
@@ -56,26 +59,27 @@ relayApiProto selfAddr =
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
-             [ (dnSeg, (TypeName apiNs dnSeg, May))
-             , (clock_diff, (TypeName rns clock_diff, Cannot))
+             [ (dnSeg, (tTypeName apiNs dnSeg, May))
+             , (clock_diff, (tTypeName rns clock_diff, Cannot))
              ])
         , ([segq|clients|], arrayDef "Info about the connected clients"
-             (TypeName rns [segq|client_info|]) Cannot)
+             (tTypeName rns [segq|client_info|]) Cannot)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
+               -- FIXME: want to make Ref's TypeName tagged...
                $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
-             (TypeName rns [segq|owner_info|]) Cannot)
+             (tTypeName rns [segq|owner_info|]) Cannot)
         , ([segq|self|], tupleDef "Which client you are"
              (alSingleton [segq|info|]
                $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
-          [ ([segq|build|], (TypeName rns [segq|build|], Cannot))
-          , ([segq|clients|], (TypeName rns [segq|clients|], Cannot))
-          , ([segq|owners|], (TypeName rns [segq|owners|], Cannot))
-          , ([segq|self|], (TypeName rns [segq|self|], Cannot))])
+          [ ([segq|build|], (tTypeName rns [segq|build|], Cannot))
+          , ([segq|clients|], (tTypeName rns [segq|clients|], Cannot))
+          , ([segq|owners|], (tTypeName rns [segq|owners|], Cannot))
+          , ([segq|self|], (tTypeName rns [segq|self|], Cannot))])
         ])
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])

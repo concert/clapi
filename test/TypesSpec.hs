@@ -21,6 +21,7 @@ import Control.Monad (replicateM, liftM2)
 import Control.Monad.Fail (MonadFail)
 import Data.List (inits)
 import Data.Proxy
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word8, Word32, Word64)
@@ -207,3 +208,7 @@ instance Arbitrary TreeType where
 
 
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
+
+instance Arbitrary a => Arbitrary (Tagged t a) where
+  arbitrary = Tagged <$> arbitrary
+  shrink = fmap Tagged . shrink . unTagged

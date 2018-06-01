@@ -10,7 +10,8 @@ module Clapi.Types.Path (
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
     NodePath, TypePath,
-    TypeName(..), typeNameP, typeNameToText, typeNameFromText) where
+    TypeName(..), tTypeName, tTnNamespace, tTnName, qualify, unqualify,
+    typeNameP, typeNameToText, typeNameFromText) where
 
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
@@ -18,6 +19,7 @@ import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
 import Data.Monoid
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)
@@ -106,6 +108,21 @@ type NodePath = Path
 type TypePath = Path
 
 data TypeName = TypeName {tnNamespace :: Seg, tnName :: Seg} deriving (Eq, Ord)
+
+qualify :: Seg -> Tagged a Seg -> Tagged a TypeName
+qualify ns (Tagged s) = Tagged $ TypeName ns s
+
+unqualify :: Tagged a TypeName -> (Seg, Tagged a Seg)
+unqualify (Tagged (TypeName ns s)) = (ns, Tagged s)
+
+tTypeName :: Seg -> Seg -> Tagged a TypeName
+tTypeName ns s = Tagged $ TypeName ns s
+
+tTnNamespace :: Tagged a TypeName -> Seg
+tTnNamespace = tnNamespace . unTagged
+
+tTnName :: Tagged a TypeName -> Tagged a Seg
+tTnName = Tagged . tnName . unTagged
 
 qualSepChar :: Char
 qualSepChar = ':'

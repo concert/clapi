@@ -75,6 +75,7 @@ library
                      , scientific
                      , split
                      , stm
+                     , tagged
                      , template-haskell
                      , th-lift
                      , th-lift-instances
@@ -120,6 +121,7 @@ test-suite clapi-hs-test
                      , network-simple
                      , QuickCheck
                      , random
+                     , tagged
                      , text
                      , transformers
                      , unagi-chan
