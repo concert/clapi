@@ -95,7 +95,7 @@ genInitDigest ps ptns tns vs =
           d' {
             ocdContainerOps = Map.insert p
               (Map.fromList $ zipWith3
-                (\s a att -> (s, (att, SoPresentAfter a)))
+                (\s a att -> (s, (att, SoMoveAfter a)))
                 kidSegs (Nothing : (Just <$> kidSegs)) kidAtts)
             (ocdContainerOps d')
           }
@@ -106,18 +106,18 @@ genInitDigest ps ptns tns vs =
 
 contDiff
   :: AssocList Seg (Maybe Attributee) -> AssocList Seg (Maybe Attributee)
-  -> Map Seg (Maybe Attributee, SequenceOp Seg)
+  -> Map Seg (Maybe Attributee, SequenceOp Seg args)
 contDiff a b = merge
     asAbsent preserveMissing dropMatched (aftersFor a) (aftersFor b)
   where
-    asAfter (acc, prev) k ma = ((k, (ma, SoPresentAfter prev)) : acc, Just k)
+    asAfter (acc, prev) k ma = ((k, (ma, SoMoveAfter prev)) : acc, Just k)
     aftersFor = Map.fromList . fst . alFoldlWithKey asAfter ([], Nothing)
     dropMatched = zipWithMaybeMatched $ const $ const $ const Nothing
     asAbsent = mapMissing $ \_ (ma, _) -> (ma, SoAbsent)
 
 mayContDiff
   :: Maybe (RoseTreeNode a) -> AssocList Seg (Maybe Attributee)
-  -> Maybe (Map Seg (Maybe Attributee, SequenceOp Seg))
+  -> Maybe (Map Seg (Maybe Attributee, SequenceOp Seg args))
 mayContDiff ma kb = case ma of
     Just (RtnChildren ka) -> if ka == kb
         then Nothing
@@ -226,5 +226,5 @@ vsMinimiseDataDigest :: DataDigest -> Valuespace -> DataDigest
 vsMinimiseDataDigest dd _ = dd
 
 -- FIXME: Worst case implementation
-vsMinimiseContOps :: ContainerOps -> Valuespace -> ContainerOps
+vsMinimiseContOps :: ContainerOps args -> Valuespace -> ContainerOps args
 vsMinimiseContOps contOps _ = contOps

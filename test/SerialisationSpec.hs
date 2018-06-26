@@ -92,9 +92,9 @@ instance Arbitrary DataUpdateMessage where
   shrink (MsgRemove p t a) = [MsgRemove p' t a' | (p', a') <- shrink (p, a)]
 
 
-instance Arbitrary ContainerUpdateMessage where
+instance Arbitrary args => Arbitrary (ContainerUpdateMessage args) where
   arbitrary = oneof
-    [ MsgCreateAfter <$> arbitrary <*> smallListOf arbitrary <*> arbitrary
+    [ MsgCreateAfter <$> arbitrary <*> arbitrary <*> arbitrary
       <*> arbitrary <*> arbitrary
     , MsgMoveAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
     , MsgAbsent <$> arbitrary <*> arbitrary <*> genAttributee

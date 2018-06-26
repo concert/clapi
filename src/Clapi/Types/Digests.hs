@@ -42,7 +42,8 @@ data DataChange
   deriving (Show, Eq)
 type DataDigest = AssocList Path DataChange
 
-type ContainerOps = Map Path (Map Seg (Maybe Attributee, SequenceOp Seg))
+type ContainerOps args
+  = Map Path (Map Seg (Maybe Attributee, SequenceOp Seg args))
 
 data PostOp
   = OpPost {opPath :: Path, opArgs :: Map Seg WireValue} deriving (Show, Eq)
@@ -52,7 +53,7 @@ data TrpDigest = TrpDigest
   , trpdPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , trpdDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
   , trpdData :: DataDigest
-  , trpdContainerOps :: ContainerOps
+  , trpdContainerOps :: ContainerOps ()
   , trpdErrors :: Map (ErrorIndex Seg) [Text]
   } deriving (Show, Eq)
 
@@ -74,7 +75,7 @@ trpdNull (TrpDigest _ns postDefs defs dd cops errs) =
 data FrpDigest = FrpDigest
   { frpdNamespace :: Namespace
   , frpdData :: DataDigest
-  , frpdContainerOps :: ContainerOps
+  , frpdContainerOps :: ContainerOps [WireValue]
   } deriving (Show, Eq)
 
 frpDigest :: Namespace -> FrpDigest
@@ -89,7 +90,7 @@ data TrcDigest = TrcDigest
   , trcdTypeSubs :: Map (Tagged Definition TypeName) SubOp
   , trcdDataSubs :: Map Path SubOp
   , trcdData :: DataDigest
-  , trcdContainerOps :: ContainerOps
+  , trcdContainerOps :: ContainerOps [WireValue]
   } deriving (Show, Eq)
 
 trcdEmpty :: TrcDigest
@@ -103,7 +104,7 @@ data FrcDigest = FrcDigest
   , frcdDefinitions :: Map (Tagged Definition TypeName) (DefOp Definition)
   , frcdTypeAssignments :: Map Path (Tagged Definition TypeName, Liberty)
   , frcdData :: DataDigest
-  , frcdContainerOps :: ContainerOps
+  , frcdContainerOps :: ContainerOps ()
   , frcdErrors :: Map (ErrorIndex TypeName) [Text]
   } deriving (Show, Eq)
 
@@ -171,19 +172,19 @@ produceDataUpdateMessages = mconcat . alValues . alFmapWithKey procDc
         OpSet t wvs i -> MsgSet p tpid t wvs i att
         OpRemove -> MsgRemove p tpid att) : msgs) [] m
 
-digestContOpMessages :: [ContainerUpdateMessage] -> ContainerOps
+digestContOpMessages :: [ContainerUpdateMessage args] -> ContainerOps argsg
 digestContOpMessages = splitMap . fmap procMsg
   where
     procMsg msg = case msg of
-      MsgMoveAfter p targ ref att -> (p, (targ, (att, SoPresentAfter ref)))
+      MsgMoveAfter p targ ref att -> (p, (targ, (att, SoMoveAfter ref)))
       MsgAbsent p targ att -> (p, (targ, (att, SoAbsent)))
 
-produceContOpMessages :: ContainerOps -> [ContainerUpdateMessage]
+produceContOpMessages :: ContainerOps args -> [ContainerUpdateMessage args]
 produceContOpMessages = mconcat . Map.elems . Map.mapWithKey
     (\p -> Map.elems . Map.mapWithKey (procCo p))
   where
     procCo p targ (att, co) = case co of
-      SoPresentAfter ref -> MsgMoveAfter p targ ref att
+      SoMoveAfter ref -> MsgMoveAfter p targ ref att
       SoAbsent -> MsgAbsent p targ att
 
 
@@ -370,7 +371,7 @@ data InboundClientDigest = InboundClientDigest
   { icdGets :: Set Path
   , icdPostTypeGets :: Set (Tagged PostDefinition TypeName)
   , icdTypeGets :: Set (Tagged Definition TypeName)
-  , icdContainerOps :: ContainerOps
+  , icdContainerOps :: ContainerOps [WireValue]
   , icdData :: DataDigest
   } deriving (Show, Eq)
 
@@ -399,7 +400,7 @@ data InboundDigest
   deriving (Show, Eq)
 
 data OutboundClientDigest = OutboundClientDigest
-  { ocdContainerOps :: ContainerOps
+  { ocdContainerOps :: ContainerOps ()
   , ocdPostDefs :: Map (Tagged PostDefinition TypeName) (DefOp PostDefinition)
   , ocdDefinitions :: Map (Tagged Definition TypeName) (DefOp Definition)
   , ocdTypeAssignments :: Map Path (Tagged Definition TypeName, Liberty)
@@ -419,7 +420,7 @@ ocdNull (OutboundClientDigest cops postDefs defs tas dd errs) =
 type OutboundClientInitialisationDigest = OutboundClientDigest
 
 data OutboundProviderDigest = OutboundProviderDigest
-  { opdContainerOps :: ContainerOps
+  { opdContainerOps :: ContainerOps [WireValue]
   , opdData :: DataDigest
   } deriving (Show, Eq)
 

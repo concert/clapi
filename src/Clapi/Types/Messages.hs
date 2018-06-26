@@ -85,10 +85,10 @@ data DataUpdateMessage
       }
    deriving (Eq, Show)
 
-data ContainerUpdateMessage
+data ContainerUpdateMessage args
   = MsgCreateAfter
       { cuMsgPath :: Path
-      , cuMsgArgs :: [WireValue]
+      , cuMsgArgs :: args
       , cuMsgPlaceholder :: Seg
       , cuMsgRef :: Maybe Seg
       , cuMsgAttributee :: Maybe Attributee
@@ -112,7 +112,7 @@ data ToRelayProviderBundle = ToRelayProviderBundle
   , trpbPostDefs :: [DefMessage (Tagged PostDefinition Seg) PostDefinition]
   , trpbDefinitions :: [DefMessage (Tagged Definition Seg) Definition]
   , trpbData :: [DataUpdateMessage]
-  , trpbContMsgs :: [ContainerUpdateMessage]
+  , trpbContMsgs :: [ContainerUpdateMessage ()]
   } deriving (Show, Eq)
 
 data ToRelayProviderRelinquish
@@ -121,7 +121,7 @@ data ToRelayProviderRelinquish
 data FromRelayProviderBundle = FromRelayProviderBundle
   { frpbNamespace :: Namespace
   , frpbData :: [DataUpdateMessage]
-  , frpbContMsgs :: [ContainerUpdateMessage]
+  , frpbContMsgs :: [ContainerUpdateMessage [WireValue]]
   } deriving (Show, Eq)
 
 data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
@@ -131,7 +131,7 @@ data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
 data ToRelayClientBundle = ToRelayClientBundle
   { trcbSubs :: [SubMessage]
   , trcbData :: [DataUpdateMessage]
-  , trcbContMsgs :: [ContainerUpdateMessage]
+  , trcbContMsgs :: [ContainerUpdateMessage [WireValue]]
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
@@ -143,7 +143,7 @@ data FromRelayClientBundle = FromRelayClientBundle
   , frcbDefinitions :: [DefMessage (Tagged Definition TypeName) Definition]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]
-  , frcbContMsgs :: [ContainerUpdateMessage]
+  , frcbContMsgs :: [ContainerUpdateMessage ()]
   } deriving (Show, Eq)
 
 data ToRelayBundle

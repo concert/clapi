@@ -168,7 +168,7 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
-        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps)
+        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps args)
         ownerChangeInfo ownerMap' =
             ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
@@ -198,5 +198,8 @@ relayApiProto selfAddr =
         -- actions the client can perform (i.e. can only change the name of a
         -- client)
         handleApiRequest (FrpDigest ns dd cops) =
-          sendFwd $ ClientData selfAddr $ Trpd $
-          TrpDigest ns mempty mempty dd cops mempty
+          let
+            cops' = (fmap . fmap . fmap . fmap) (const ()) cops
+          in
+            sendFwd $ ClientData selfAddr $ Trpd $
+            TrpDigest ns mempty mempty dd cops' mempty

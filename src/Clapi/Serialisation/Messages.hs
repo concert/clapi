@@ -173,7 +173,7 @@ data ContainerUpdateMsgType
   | CUMTAbsent
   deriving (Enum, Bounded)
 
-cumtTaggedData :: TaggedData ContainerUpdateMsgType ContainerUpdateMessage
+cumtTaggedData :: TaggedData ContainerUpdateMsgType (ContainerUpdateMessage args)
 cumtTaggedData = taggedData typeToTag msgToType
   where
     typeToTag CUMTCreateAfter = [btq|+|]
@@ -183,7 +183,9 @@ cumtTaggedData = taggedData typeToTag msgToType
     msgToType (MsgMoveAfter {}) = CUMTMoveAfter
     msgToType (MsgAbsent {}) = CUMTAbsent
 
-cumtParser :: ContainerUpdateMsgType -> Parser ContainerUpdateMessage
+cumtParser
+  :: Encodable args => ContainerUpdateMsgType
+  -> Parser (ContainerUpdateMessage args)
 cumtParser e = case e of
   CUMTCreateAfter -> MsgCreateAfter
     <$> parser <*> parser <*> parser <*> parser <*> parser
@@ -191,7 +193,8 @@ cumtParser e = case e of
     MsgMoveAfter <$> parser <*> parser <*> parser <*> parser
   CUMTAbsent -> MsgAbsent <$> parser <*> parser <*> parser
 
-cumtBuilder :: MonadFail m => ContainerUpdateMessage -> m Builder
+cumtBuilder
+  :: (Encodable args, MonadFail m) => ContainerUpdateMessage args -> m Builder
 cumtBuilder msg = case msg of
   MsgCreateAfter p args ph r a ->
     builder p <<>> builder args <<>> builder ph <<>> builder r <<>> builder a
@@ -200,7 +203,7 @@ cumtBuilder msg = case msg of
   MsgAbsent p t a ->
     builder p <<>> builder t <<>> builder a
 
-instance Encodable ContainerUpdateMessage where
+instance Encodable args => Encodable (ContainerUpdateMessage args) where
     parser = tdTaggedParser cumtTaggedData cumtParser
     builder = tdTaggedBuilder cumtTaggedData cumtBuilder
 
@@ -218,6 +221,10 @@ trBundleTaggedData = taggedData typeToTag bundleToType
       Trpb _ -> TrbtProvider
       Trpr _ -> TrbtProviderRelinquish
       Trcb _ -> TrbtClient
+
+instance Encodable () where
+  builder _ = return mempty
+  parser = return ()
 
 instance Encodable ToRelayBundle where
     builder = tdTaggedBuilder trBundleTaggedData $ \bund -> case bund of

@@ -69,7 +69,8 @@ treePaths p t = case t of
 
 treeApplyReorderings
   :: MonadFail m
-  => Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a -> m (RoseTree a)
+  => Map Seg (Maybe Attributee, SequenceOp Seg args) -> RoseTree a
+  -> m (RoseTree a)
 treeApplyReorderings contOps (RtContainer children) =
   let
     attMap = fst <$> contOps
@@ -143,7 +144,7 @@ treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
 
 -- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
-  :: ContainerOps -> DataDigest -> RoseTree [WireValue]
+  :: ContainerOps args -> DataDigest -> RoseTree [WireValue]
   -> (Map Path [Text], RoseTree [WireValue])
 updateTreeWithDigest contOps dd = runState $ do
     errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
@@ -151,7 +152,7 @@ updateTreeWithDigest contOps dd = runState $ do
     return $ Map.filter (not . null) $ Map.unionWith (<>) errs errs'
   where
     applyContOp
-      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg)
+      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg args)
       -> State (RoseTree [WireValue]) [Text]
     applyContOp np m = do
       eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
