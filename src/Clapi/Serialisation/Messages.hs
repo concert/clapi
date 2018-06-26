@@ -168,26 +168,33 @@ instance Encodable DataUpdateMessage where
 
 
 data ContainerUpdateMsgType
-  = CUMTMoveAfter
+  = CUMTCreateAfter
+  | CUMTMoveAfter
   | CUMTAbsent
   deriving (Enum, Bounded)
 
 cumtTaggedData :: TaggedData ContainerUpdateMsgType ContainerUpdateMessage
 cumtTaggedData = taggedData typeToTag msgToType
   where
+    typeToTag CUMTCreateAfter = [btq|+|]
     typeToTag CUMTMoveAfter = [btq|>|]
     typeToTag CUMTAbsent = [btq|-|]
+    msgToType (MsgCreateAfter {}) = CUMTCreateAfter
     msgToType (MsgMoveAfter {}) = CUMTMoveAfter
     msgToType (MsgAbsent {}) = CUMTAbsent
 
 cumtParser :: ContainerUpdateMsgType -> Parser ContainerUpdateMessage
 cumtParser e = case e of
+  CUMTCreateAfter -> MsgCreateAfter
+    <$> parser <*> parser <*> parser <*> parser <*> parser
   CUMTMoveAfter ->
     MsgMoveAfter <$> parser <*> parser <*> parser <*> parser
   CUMTAbsent -> MsgAbsent <$> parser <*> parser <*> parser
 
 cumtBuilder :: MonadFail m => ContainerUpdateMessage -> m Builder
 cumtBuilder msg = case msg of
+  MsgCreateAfter p args ph r a ->
+    builder p <<>> builder args <<>> builder ph <<>> builder r <<>> builder a
   MsgMoveAfter p t r a ->
     builder p <<>> builder t <<>> builder r <<>> builder a
   MsgAbsent p t a ->

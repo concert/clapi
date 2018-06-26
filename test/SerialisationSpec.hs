@@ -94,7 +94,9 @@ instance Arbitrary DataUpdateMessage where
 
 instance Arbitrary ContainerUpdateMessage where
   arbitrary = oneof
-    [ MsgMoveAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
+    [ MsgCreateAfter <$> arbitrary <*> smallListOf arbitrary <*> arbitrary
+      <*> arbitrary <*> arbitrary
+    , MsgMoveAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
     , MsgAbsent <$> arbitrary <*> arbitrary <*> genAttributee
     ]
 
