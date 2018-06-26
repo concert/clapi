@@ -9,7 +9,6 @@ module Clapi.Types.Path (
     splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
-    NodePath, TypePath,
     Namespace(..),
     TypeName(..), tTypeName, tTnNamespace, tTnName, qualify, unqualify,
     typeNameP, typeNameToText, typeNameFromText) where
@@ -104,9 +103,6 @@ isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
 childPaths :: Functor f => Path -> f Seg -> f Path
 childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
-
-type NodePath = Path
-type TypePath = Path
 
 newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
 data TypeName

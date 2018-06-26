@@ -27,8 +27,7 @@ import Clapi.Types.AssocList
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
-    Seg, Path, pattern Root, pattern (:/), pattern (:</),
-    NodePath)
+    Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
   ( DataDigest, ContainerOps, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
@@ -152,13 +151,13 @@ updateTreeWithDigest contOps dd = runState $ do
     return $ Map.filter (not . null) $ Map.unionWith (<>) errs errs'
   where
     applyContOp
-      :: NodePath -> Map Seg (Maybe Attributee, SequenceOp Seg)
+      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg)
       -> State (RoseTree [WireValue]) [Text]
     applyContOp np m = do
       eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
       either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
     applyDd
-      :: NodePath -> DataChange
+      :: Path -> DataChange
       -> State (RoseTree [WireValue]) [Text]
     applyDd np dc = case dc of
       ConstChange att wv -> do
@@ -166,7 +165,7 @@ updateTreeWithDigest contOps dd = runState $ do
         return []
       TimeChange m -> mconcat <$> (mapM (applyTc np) $ Map.toList m)
     applyTc
-      :: NodePath
+      :: Path
       -> (TpId, (Maybe Attributee, TimeSeriesDataOp))
       -> State (RoseTree [WireValue]) [Text]
     applyTc np (tpId, (att, op)) = case op of
