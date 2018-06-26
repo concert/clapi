@@ -1,6 +1,3 @@
-{-# LANGUAGE
-    TypeApplications
-#-}
 module Clapi.Types.WireTH where
 
 import Language.Haskell.TH

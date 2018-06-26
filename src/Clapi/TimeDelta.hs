@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Clapi.TimeDelta where -- (TimeDelta, getDelta, tdZero) where

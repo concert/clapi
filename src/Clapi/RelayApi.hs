@@ -1,15 +1,12 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 
-import Data.Text (Text)
 import Control.Monad.Trans (lift)
+import Data.Bifunctor (bimap)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Tagged (Tagged(..))
+import Data.Text (Text)
 import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -19,9 +16,12 @@ import Clapi.Types
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
-import Clapi.Types.Digests (DefOp(OpDefine), DataChange(..), FrcDigest(..))
+import Clapi.Types.Digests
+  (DefOp(OpDefine), DataChange(..), FrcDigest(..), DataDigest, ContainerOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Seg, TypeName(..), pattern Root, pattern (:/), pattern (:</))
+import Clapi.Types.Path
+  ( Seg, TypeName(..), tTypeName, pattern Root, pattern (:/), pattern (:</)
+  , Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (castWireValue)
@@ -34,11 +34,13 @@ class PathSegable a where
     pathNameFor :: a -> Seg
 
 relayApiProto ::
-    (Ord i, PathSegable i) =>
+    forall i. (Ord i, PathSegable i) =>
     i ->
     Protocol
-        (ClientEvent i (TimeStamped TrDigest)) (ClientEvent i TrDigest)
-        (ServerEvent i FrDigest) (Either (Map Seg i) (ServerEvent i FrDigest))
+        (ClientEvent i (TimeStamped TrDigest))
+        (ClientEvent i TrDigest)
+        (ServerEvent i FrDigest)
+        (Either (Map Namespace i) (ServerEvent i FrDigest))
         IO ()
 relayApiProto selfAddr =
     publishRelayApi >> steadyState mempty mempty
@@ -46,7 +48,7 @@ relayApiProto selfAddr =
     publishRelayApi = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
       rns
       mempty
-      (Map.fromList $ fmap OpDefine <$>
+      (Map.fromList $ bimap Tagged OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
              (alSingleton [segq|commit_hash|] $ TtString "banana")
              ILUninterpolated)
@@ -56,26 +58,27 @@ relayApiProto selfAddr =
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
-             [ (dnSeg, (TypeName apiNs dnSeg, May))
-             , (clock_diff, (TypeName rns clock_diff, Cannot))
+             [ (dnSeg, (tTypeName apiNs dnSeg, May))
+             , (clock_diff, (tTypeName rns clock_diff, Cannot))
              ])
         , ([segq|clients|], arrayDef "Info about the connected clients"
-             (TypeName rns [segq|client_info|]) Cannot)
+             (tTypeName rns [segq|client_info|]) Cannot)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
+               -- FIXME: want to make Ref's TypeName tagged...
                $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
-             (TypeName rns [segq|owner_info|]) Cannot)
+             (tTypeName rns [segq|owner_info|]) Cannot)
         , ([segq|self|], tupleDef "Which client you are"
              (alSingleton [segq|info|]
                $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
-          [ ([segq|build|], (TypeName rns [segq|build|], Cannot))
-          , ([segq|clients|], (TypeName rns [segq|clients|], Cannot))
-          , ([segq|owners|], (TypeName rns [segq|owners|], Cannot))
-          , ([segq|self|], (TypeName rns [segq|self|], Cannot))])
+          [ ([segq|build|], (tTypeName rns [segq|build|], Cannot))
+          , ([segq|clients|], (tTypeName rns [segq|clients|], Cannot))
+          , ([segq|owners|], (tTypeName rns [segq|owners|], Cannot))
+          , ([segq|self|], (tTypeName rns [segq|self|], Cannot))])
         ])
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
@@ -88,11 +91,18 @@ relayApiProto selfAddr =
         ])
       mempty
       mempty
-    rns = [segq|relay|]
+    rns = Namespace [segq|relay|]
     clock_diff = [segq|clock_diff|]
     selfSeg = pathNameFor selfAddr
     selfClientPath = Root :/ [segq|clients|] :/ selfSeg
     staticAl = alFromMap . Map.fromList
+    steadyState
+      :: Map Seg TimeDelta -> Map Namespace Seg -> Protocol
+            (ClientEvent i (TimeStamped TrDigest))
+            (ClientEvent i TrDigest)
+            (ServerEvent i FrDigest)
+            (Either (Map Namespace i) (ServerEvent i FrDigest))
+            IO ()
     steadyState timingMap ownerMap = waitThen fwd rev
       where
         fwd ce = case ce of
@@ -143,7 +153,8 @@ relayApiProto selfAddr =
               uncurry pubUpdate $ ownerChangeInfo ownerMap'
               steadyState timingMap ownerMap'
             else
-              return () -- The relay API did something invalid and got kicked out
+              -- The relay API did something invalid and got kicked out
+              return ()
         rev (Right se) = do
           case se of
             ServerData cAddr d ->
@@ -157,12 +168,14 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
+        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps)
         ownerChangeInfo ownerMap' =
             ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
                 (const (Nothing, SoAbsent)) <$>
-                  ownerMap `Map.difference` ownerMap')
-        toOwnerPath s = [pathq|/owners|] :/ s
+                  Map.mapKeys unNamespace (ownerMap `Map.difference` ownerMap'))
+        toOwnerPath :: Namespace -> Path.Path
+        toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
           WireValue $ Path.toText $ Root :/ selfSeg :/ [segq|clients|] :/ ns]
         viewAs i dd =

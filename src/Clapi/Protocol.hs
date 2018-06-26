@@ -1,8 +1,5 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE PatternSynonyms #-}
+
 module Clapi.Protocol where -- (
 --  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<<->)
 -- ) where

@@ -10,7 +10,9 @@ module Clapi.Types.Path (
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
     NodePath, TypePath,
-    TypeName(..), typeNameP, typeNameToText, typeNameFromText) where
+    Namespace(..),
+    TypeName(..), tTypeName, tTnNamespace, tTnName, qualify, unqualify,
+    typeNameP, typeNameToText, typeNameFromText) where
 
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
@@ -18,6 +20,7 @@ import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
 import Data.Monoid
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)
@@ -105,20 +108,37 @@ childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
 type NodePath = Path
 type TypePath = Path
 
-data TypeName = TypeName {tnNamespace :: Seg, tnName :: Seg} deriving (Eq, Ord)
+newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
+data TypeName
+  = TypeName {tnNamespace :: Namespace, tnName :: Seg} deriving (Eq, Ord)
+
+qualify :: Namespace -> Tagged a Seg -> Tagged a TypeName
+qualify ns (Tagged s) = Tagged $ TypeName ns s
+
+unqualify :: Tagged a TypeName -> (Namespace, Tagged a Seg)
+unqualify (Tagged (TypeName ns s)) = (ns, Tagged s)
+
+tTypeName :: Namespace -> Seg -> Tagged a TypeName
+tTypeName ns s = Tagged $ TypeName ns s
+
+tTnNamespace :: Tagged a TypeName -> Namespace
+tTnNamespace = tnNamespace . unTagged
+
+tTnName :: Tagged a TypeName -> Tagged a Seg
+tTnName = Tagged . tnName . unTagged
 
 qualSepChar :: Char
 qualSepChar = ':'
 
 typeNameToText :: TypeName -> Text
 typeNameToText (TypeName ns s) =
-  unSeg ns <> Text.singleton qualSepChar <> unSeg s
+  unSeg (unNamespace ns) <> Text.singleton qualSepChar <> unSeg s
 
 instance Show TypeName where
   show = Text.unpack . typeNameToText
 
 typeNameP :: Parser TypeName
-typeNameP = TypeName <$> segP <*> (DAT.char qualSepChar >> segP)
+typeNameP = TypeName <$> (Namespace <$> segP) <*> (DAT.char qualSepChar >> segP)
 
 typeNameFromText :: MonadFail m => Text -> m TypeName
 typeNameFromText =

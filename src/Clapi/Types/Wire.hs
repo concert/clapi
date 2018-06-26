@@ -1,13 +1,10 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     AllowAmbiguousTypes
   , ExistentialQuantification
   , PolyKinds
   , Rank2Types
-  , ScopedTypeVariables
   , StandaloneDeriving
   , TemplateHaskell
-  , TypeApplications
 #-}
 
 module Clapi.Types.Wire

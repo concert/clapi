@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
 module NamespaceTrackerSpec where
 
 import Test.Hspec
@@ -10,6 +7,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Map.Mol as Mol
 import qualified Data.Set as Set
+import Data.Tagged (Tagged(..))
 import qualified Data.Text as T
 import Data.Void
 
@@ -17,8 +15,8 @@ import Clapi.TH
 import Clapi.Types
     ( InterpolationLimit(..), WireValue(..)
     , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
-    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty, TrcDigest(..)
-    , frcdEmpty, FrcDigest(..)
+    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty
+    , TrcDigest(..), frcdEmpty, FrcDigest(..)
     , ErrorIndex(..)
     , DataChange(..))
 import Clapi.Types.Definitions (tupleDef)
@@ -27,7 +25,8 @@ import Clapi.Types.Digests
   , InboundClientDigest(..), inboundClientDigest
   , OutboundClientDigest(..), outboundClientDigest
   , OutboundProviderDigest(..), frpDigest, SubOp(..), DefOp(..))
-import Clapi.Types.Path (Path, Seg, pattern Root, TypeName(..))
+import Clapi.Types.Path
+  (Path, Seg, pattern Root, TypeName(..), tTypeName, Namespace(..))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -71,7 +70,7 @@ spec = do
         forTest = do
             claimHello alice
             expectRev $ Left $ Map.fromList
-              [ (helloS, alice)
+              [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
             claimHello bob
             expectErrors bob $ Map.singleton
@@ -81,7 +80,7 @@ spec = do
     it "Rejects empty claim" $
       let
         forTest = do
-            sendFwd $ ClientData alice $ Trpd $ trpDigest helloS
+            sendFwd $ ClientData alice $ Trpd $ trpDigest $ Namespace helloS
             expectErrors alice $ Map.singleton
                 (PathError helloP) ["Empty claim"]
             expectRev $ Right $ ServerDisconnect alice
@@ -92,12 +91,13 @@ spec = do
           [ trcdEmpty
               {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
           , trcdEmpty
-              {trcdTypeSubs = Map.singleton (TypeName helloS helloS) OpSubscribe}
+              {trcdTypeSubs = Map.singleton
+                (tTypeName (Namespace helloS) helloS) OpSubscribe}
           ]
         forTest subD = do
             claimHello alice
             expectRev $ Left $ Map.fromList
-              [ (helloS, alice)
+              [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
             sendFwd $ ClientData alice $ Trcd subD
             expectErrors alice $ Map.singleton
@@ -110,7 +110,7 @@ spec = do
             subHello alice
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
               { frcdData = alSingleton helloP $ textChange "f"
-              , frcdDefinitions = Map.singleton helloTn helloDef0
+              , frcdDefinitions = Map.singleton (Tagged helloTn) helloDef0
               }
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
               { frcdData = alSingleton helloP $ textChange "t" }
@@ -120,7 +120,7 @@ spec = do
               { frcdDataUnsubs = Set.singleton helloP
               }
             expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdDefinitions = Map.singleton helloTn helloDef1
+              { frcdDefinitions = Map.singleton (Tagged helloTn) helloDef1
               }
         helloDef0 = OpDefine $ tupleDef "Yoho" alEmpty ILUninterpolated
         helloDef1 = OpDefine $ tupleDef "Hoyo" alEmpty ILUninterpolated
@@ -131,7 +131,7 @@ spec = do
                   }))
                 return i
             sendRev (i, Ocid $ ocdEmpty
-              { ocdDefinitions = Map.singleton helloTn helloDef0
+              { ocdDefinitions = Map.singleton (Tagged helloTn) helloDef0
               , ocdData = alSingleton helloP $ textChange "f"
               })
             sendRev (i, Ocd $ ocdEmpty
@@ -141,7 +141,7 @@ spec = do
                 ]
               })
             sendRev (i, Ocd $ ocdEmpty
-              { ocdDefinitions = Map.singleton helloTn helloDef1
+              { ocdDefinitions = Map.singleton (Tagged helloTn) helloDef1
               , ocdData = alSingleton helloP $ textChange "w"
               })
             waitThenFwdOnly $ const return ()
@@ -178,7 +178,7 @@ spec = do
               ]}
             claimHello alice
             expectRev $ Left $ Map.fromList
-              [ (helloS, alice)
+              [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
             sendFwd $ ClientDisconnect alice
             expectRev $ Left $ Map.fromList
@@ -197,7 +197,7 @@ spec = do
                 })
             waitThenFwdOnly $ const return ()
             waitThenFwdOnly $ \(i, d) -> do
-              lift $ d `shouldBe` Iprd (TrprDigest helloS)
+              lift $ d `shouldBe` Iprd (TrprDigest $ Namespace helloS)
               sendRev (i, Ocd $ ocdEmpty
                 {ocdContainerOps = Map.singleton Root $
                   Map.singleton helloS (Nothing, SoAbsent)})
@@ -216,7 +216,7 @@ spec = do
               { trcdDataSubs = Map.singleton helloP OpUnsubscribe }
             claimHello bob
             expectRev $ Left $ Map.fromList
-              [ (helloS, bob)
+              [ (Namespace helloS, bob)
               ] -- FIXME: should API be owned?
       in runEffect $ forTest <<-> nstProtocol <<-> blackHoleRelay
     it "Forwards client mutations to provider" $
@@ -224,9 +224,10 @@ spec = do
         forTest = do
             claimHello alice
             expectRev $ Left $ Map.fromList
-              [ (helloS, alice)
+              [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
-            expectRev $ Right $ ServerData alice $ Frpd (frpDigest helloS)
+            expectRev $ Right $ ServerData alice $
+              Frpd (frpDigest $ Namespace helloS)
               { frpdData = alSingleton Root $ textChange "x"
               }
         fauxRelay = do
@@ -266,7 +267,7 @@ spec = do
         forTest = do
             claimHello alice
             expectRev $ Left $ Map.fromList
-              [ (helloS, alice)
+              [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
             expectRev $ Right $ ServerData alice $ Frped errD
             expectRev $ Right $ ServerDisconnect alice
@@ -274,7 +275,9 @@ spec = do
               [] -- FIXME: should API be owned?
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) -> sendRev (i, Ope errD)
-            waitThenFwdOnly $ \m -> lift $ m `shouldBe` (Originator alice, Iprd $ TrprDigest helloS)
+            waitThenFwdOnly $ \m -> lift $
+              m `shouldBe` (Originator alice, Iprd $ TrprDigest $
+               Namespace helloS)
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
   where
@@ -283,9 +286,10 @@ spec = do
     expectRev e = waitThenRevOnly $ \e' -> lift $ e' `shouldBe` e
     expectErrors addr =
         expectRev . Right . ServerData addr . Frped . FrpErrorDigest
-    claimHello addr = sendFwd $ ClientData addr $ Trpd $ (trpDigest helloS)
+    claimHello addr = sendFwd $ ClientData addr $ Trpd $
+      (trpDigest $ Namespace helloS)
       {trpdData = alSingleton Root $ textChange "yo"}
     subHello addr = sendFwd $ ClientData addr $ Trcd $ trcdEmpty
       {trcdDataSubs = Map.singleton helloP OpSubscribe}
     textChange s = ConstChange Nothing [WireValue (s :: T.Text)]
-    helloTn = TypeName helloS helloS
+    helloTn = TypeName (Namespace helloS) helloS

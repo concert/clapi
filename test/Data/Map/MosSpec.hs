@@ -1,5 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Data.Map.MosSpec where
 
 import Test.Hspec
@@ -38,8 +36,8 @@ spec = do
       let
         ds0 = mempty
         ds1 = Mos.setDependencies (Map.fromList [('a', 1), ('b', 1), ('c', 2)]) ds0
-        ds2 = Mos.delDependencies "ac" ds1
-        ds3 = Mos.delDependencies "b" ds2
+        ds2 = Mos.delDependencies ['a', 'c'] ds1
+        ds3 = Mos.delDependencies ['b'] ds2
       in do
         assertDep 'a' 1 ds1
         assertDep 'b' 1 ds1
@@ -66,8 +64,15 @@ spec = do
         (Mos.dependenciesFromList [(1, "hi"), (2, "ho"), (3, "silver")])
         `shouldBe` Mos.dependenciesFromList [(1, "hi"), (3, "silver")]
 
+assertDep :: Char -> Int -> Mos.Dependencies Char Int -> Expectation
 assertDep k a ds = Mos.getDependency k ds `shouldBe` Just a
+
+assertNoDep :: Char -> Mos.Dependencies Char Int -> Expectation
 assertNoDep k ds = Mos.getDependency k ds `shouldBe` Nothing
+
+assertRevDeps :: Int -> [Char] -> Mos.Dependencies Char Int -> Expectation
 assertRevDeps a ks ds =
     Mos.getDependants a ds `shouldBe` Set.fromList ks
+
+assertNoRevDeps :: Int -> Mos.Dependencies Char Int -> Expectation
 assertNoRevDeps a ds = Mos.getDependants a ds `shouldBe` mempty

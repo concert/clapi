@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE FlexibleInstances #-}
-
 module Clapi.Serialisation (module X) where
 
 import Clapi.Serialisation.Base as X

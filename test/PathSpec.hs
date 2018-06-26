@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
 module PathSpec where
 
 import Test.Hspec
@@ -10,7 +8,7 @@ import Data.Either (isLeft)
 import Clapi.TH (pathq, segq)
 import Clapi.Types (CanFail)
 import Clapi.Types.Path
-  ( Path(..), Seg, pattern Root, pattern (:/), pattern (:</), fromText, toText
+  ( Path(..), pattern Root, pattern (:/), pattern (:</), fromText, toText
   , isChildOf, joinSegs)
 
 

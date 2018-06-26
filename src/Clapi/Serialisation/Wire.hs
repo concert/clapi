@@ -1,8 +1,6 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
     ScopedTypeVariables
-  , QuasiQuotes
-  , TypeApplications
 #-}
 
 module Clapi.Serialisation.Wire where

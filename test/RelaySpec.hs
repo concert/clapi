@@ -1,10 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
-
 module RelaySpec where
 
 import Test.Hspec
@@ -14,6 +7,7 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Word
 import Data.Maybe (fromJust)
+import Data.Tagged (Tagged(..))
 
 import Clapi.TH
 import Clapi.Protocol (waitThenRevOnly, sendFwd, runEffect, (<<->))
@@ -29,7 +23,8 @@ import Clapi.Types.Digests
   , OutboundClientDigest(..), outboundClientDigest, TrprDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (ErrorIndex(..))
-import Clapi.Types.Path (pattern Root, TypeName(..), pattern (:/), pattern (:</))
+import Clapi.Types.Path
+  (pattern Root, tTypeName, pattern (:/), pattern (:</), Namespace(..))
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
@@ -43,24 +38,25 @@ spec = describe "the relay protocol" $ do
         fooDef = tupleDef "Some Word32"
           (alSingleton [segq|value|] (TtWord32 unbounded)) ILUninterpolated
         dd = alSingleton Root $ ConstChange bob [WireValue (42 :: Word32)]
-        inDig = Ipd $ (trpDigest foo)
-          { trpdDefinitions = Map.singleton foo $ OpDefine fooDef
+        inDig = Ipd $ (trpDigest $ Namespace foo)
+          { trpdDefinitions = Map.singleton (Tagged foo) $ OpDefine fooDef
           , trpdData = dd
           }
         extendedRootDef = structDef "root def doc" $ alFromList
-          [ (apiNs, (TypeName apiNs apiNs, Cannot))
-          , (foo, (TypeName foo foo, Cannot))
+          [ (unNamespace apiNs, (tTypeName apiNs (unNamespace apiNs), Cannot))
+          , (foo, (tTypeName (Namespace foo) foo, Cannot))
           ]
         expectedOutDig = Ocd $ outboundClientDigest
           { ocdData = qualify foo dd
           , ocdDefinitions = Map.fromList
-            [ (TypeName foo foo, OpDefine fooDef)
-            , (TypeName apiNs [segq|root|], OpDefine extendedRootDef)
+            [ (tTypeName (Namespace foo) foo, OpDefine fooDef)
+            , (tTypeName apiNs [segq|root|], OpDefine extendedRootDef)
             ]
           , ocdTypeAssignments = Map.insert
-            [pathq|/foo|] (TypeName foo foo, Cannot) mempty
+            [pathq|/foo|] (tTypeName (Namespace foo) foo, Cannot) mempty
           , ocdContainerOps = Map.singleton Root $
-              Map.singleton foo (Nothing, SoPresentAfter (Just apiNs))
+              Map.singleton foo
+              (Nothing, SoPresentAfter (Just $ unNamespace apiNs))
           }
         test = do
           sendFwd ((), inDig)
@@ -71,21 +67,22 @@ spec = describe "the relay protocol" $ do
         vsWithStuff = unsafeValidateVs $ baseValuespace
           { vsTree = treeInsert bob fooP (RtConstData bob []) $
               vsTree baseValuespace
-          , vsTyDefs = Map.insert foo
-              (Map.singleton foo $ tupleDef "Thing" alEmpty ILUninterpolated) $
+          , vsTyDefs = Map.insert (Namespace foo)
+              (Map.singleton (Tagged foo) $
+                 tupleDef "Thing" alEmpty ILUninterpolated) $
               vsTyDefs baseValuespace
           }
         expectedOutDig = Ocd $ outboundClientDigest
           { ocdDefinitions = Map.fromList
             [ (rootTypeName, OpDefine $ fromJust $
                 vsLookupDef rootTypeName baseValuespace)
-            , (TypeName foo foo, OpUndefine)
+            , (tTypeName (Namespace foo) foo, OpUndefine)
             ]
           , ocdContainerOps = Map.singleton Root $
               Map.singleton foo (Nothing, SoAbsent)
           }
         test = do
-          sendFwd ((), Iprd $ TrprDigest foo)
+          sendFwd ((), Iprd $ TrprDigest $ Namespace foo)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay vsWithStuff
     it "should reject subscriptions to non-existant paths" $
@@ -103,21 +100,23 @@ spec = describe "the relay protocol" $ do
       let
         kid = [segq|kid|]
         tyDefs = Map.fromList
-          [ (foo, arrayDef "arr" (TypeName foo kid) Cannot)
-          , (kid, tupleDef "kid" alEmpty ILUninterpolated)
+          [ (Tagged foo, arrayDef "arr" (tTypeName (Namespace foo) kid) Cannot)
+          , (Tagged kid, tupleDef "kid" alEmpty ILUninterpolated)
           ]
         vsWithStuff = unsafeValidateVs $ baseValuespace
           { vsTree = treeInsert bob fooP (RtContainer alEmpty) $ vsTree baseValuespace
-          , vsTyDefs = Map.insert foo tyDefs $ vsTyDefs baseValuespace
+          , vsTyDefs = Map.insert (Namespace foo) tyDefs $
+               vsTyDefs baseValuespace
           }
         dd = alSingleton (Root :/ kid) $ ConstChange Nothing []
-        inDig = Ipd $ (trpDigest foo)
+        inDig = Ipd $ (trpDigest $ Namespace foo)
           { trpdData = dd
           }
         qKid = fooP :/ kid
         expectedOutDig = Ocd $ outboundClientDigest
           { ocdData = qualify foo dd
-          , ocdTypeAssignments = Map.singleton qKid (TypeName foo kid, Cannot)
+          , ocdTypeAssignments = Map.singleton qKid
+              (tTypeName (Namespace foo) kid, Cannot)
           , ocdContainerOps = Map.singleton fooP $
             Map.singleton kid (Nothing, SoPresentAfter Nothing)
           }
@@ -131,14 +130,14 @@ spec = describe "the relay protocol" $ do
           { vsTree = treeInsert bob fooP
               (RtConstData bob [WireValue (3 :: Word32)]) $
               vsTree baseValuespace
-          , vsTyDefs = Map.insert foo
-              (Map.singleton foo $ tupleDef "Thing"
+          , vsTyDefs = Map.insert (Namespace foo)
+              (Map.singleton (Tagged foo) $ tupleDef "Thing"
                 (alSingleton foo $ TtWord32 unbounded) ILUninterpolated) $
               vsTyDefs baseValuespace
           }
         dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
         test = do
-            sendFwd ((), Ipd $ (trpDigest foo) {trpdData = dd})
+            sendFwd ((), Ipd $ (trpDigest $ Namespace foo) {trpdData = dd})
             waitThenRevOnly $
               lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = qualify foo dd})) .
               snd

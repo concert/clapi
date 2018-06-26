@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE Rank2Types #-}
 
 module Clapi.Types.Definitions where
@@ -7,6 +5,7 @@ module Clapi.Types.Definitions where
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Map (Map)
+import Data.Tagged (Tagged)
 import Data.Text (Text)
 
 import Data.Maybe.Clapi (note)
@@ -23,7 +22,7 @@ data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
 class OfMetaType metaType where
   metaType :: metaType -> MetaType
-  childTypeFor :: Seg -> metaType -> Maybe TypeName
+  childTypeFor :: Seg -> metaType -> Maybe (Tagged Definition TypeName)
   childLibertyFor :: MonadFail m => metaType -> Seg -> m Liberty
 
 data PostDefinition = PostDefinition
@@ -46,7 +45,7 @@ instance OfMetaType TupleDefinition where
 
 data StructDefinition = StructDefinition
   { strDefDoc :: Text
-  , strDefTypes :: AssocList Seg (TypeName, Liberty)
+  , strDefTypes :: AssocList Seg (Tagged Definition TypeName, Liberty)
   } deriving (Show, Eq)
 
 instance OfMetaType StructDefinition where
@@ -58,7 +57,7 @@ instance OfMetaType StructDefinition where
 
 data ArrayDefinition = ArrayDefinition
   { arrDefDoc :: Text
-  , arrDefChildType :: TypeName
+  , arrDefChildType :: Tagged Definition TypeName
   , arrDefChildLiberty :: Liberty
   } deriving (Show, Eq)
 
@@ -77,10 +76,11 @@ data Definition
 tupleDef :: Text -> AssocList Seg TreeType -> InterpolationLimit -> Definition
 tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
 
-structDef :: Text -> AssocList Seg (TypeName, Liberty) -> Definition
+structDef
+  :: Text -> AssocList Seg (Tagged Definition TypeName, Liberty) -> Definition
 structDef doc types = StructDef $ StructDefinition doc types
 
-arrayDef :: Text -> TypeName -> Liberty -> Definition
+arrayDef :: Text -> Tagged Definition TypeName -> Liberty -> Definition
 arrayDef doc tn lib = ArrayDef $ ArrayDefinition doc tn lib
 
 defDispatch :: (forall a. OfMetaType a => a -> r) -> Definition -> r

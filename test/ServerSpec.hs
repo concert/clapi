@@ -1,7 +1,5 @@
 {-# LANGUAGE
-      OverloadedStrings
-    , ScopedTypeVariables
-    , LambdaCase
+    LambdaCase
 #-}
 module ServerSpec where
 

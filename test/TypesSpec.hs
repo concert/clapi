@@ -1,11 +1,10 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
     ExistentialQuantification
-  , OverloadedStrings
+  , GeneralizedNewtypeDeriving
   , Rank2Types
-  , ScopedTypeVariables
+  , StandaloneDeriving
   , TemplateHaskell
-  , TypeApplications
 #-}
 
 module TypesSpec where
@@ -21,6 +20,7 @@ import Control.Monad (replicateM, liftM2)
 import Control.Monad.Fail (MonadFail)
 import Data.List (inits)
 import Data.Proxy
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word8, Word32, Word64)
@@ -35,7 +35,7 @@ import Clapi.Types
 import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
-import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..))
+import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..), Namespace(..))
 import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
@@ -207,3 +207,6 @@ instance Arbitrary TreeType where
 
 
 data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
+
+deriving instance Arbitrary a => Arbitrary (Tagged t a)
+deriving instance Arbitrary Namespace

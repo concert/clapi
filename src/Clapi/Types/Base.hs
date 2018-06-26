@@ -1,6 +1,7 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE
+    DeriveLift
+  , GeneralizedNewtypeDeriving
+#-}
 
 module Clapi.Types.Base
   ( Tag, unTag, mkTag

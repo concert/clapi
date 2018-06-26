@@ -15,6 +15,15 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
+  ghc-options:         -Wall
+  default-extensions:
+                       PatternSynonyms
+                     , OverloadedStrings
+                     , QuasiQuotes
+                     , ScopedTypeVariables
+                     , TupleSections
+                     , TypeApplications
+                     , ViewPatterns
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
@@ -75,6 +84,7 @@ library
                      , scientific
                      , split
                      , stm
+                     , tagged
                      , template-haskell
                      , th-lift
                      , th-lift-instances
@@ -105,6 +115,15 @@ test-suite clapi-hs-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
+  ghc-options:         -Wall
+  default-extensions:
+                       PatternSynonyms
+                     , OverloadedStrings
+                     , QuasiQuotes
+                     , ScopedTypeVariables
+                     , TupleSections
+                     , TypeApplications
+                     , ViewPatterns
   build-depends:       base
                      , attoparsec
                      , bytestring
@@ -120,6 +139,7 @@ test-suite clapi-hs-test
                      , network-simple
                      , QuickCheck
                      , random
+                     , tagged
                      , text
                      , transformers
                      , unagi-chan

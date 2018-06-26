@@ -1,5 +1,7 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-} {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE
+    GeneralizedNewtypeDeriving
+  , StandaloneDeriving
+#-}
 
 module Clapi.Serialisation.Base where
 
@@ -9,6 +11,7 @@ import Control.Monad (liftM2)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Functor.Identity
+import Data.Tagged (Tagged(..))
 
 import Data.Word
 import Data.Int
@@ -82,6 +85,8 @@ instance Encodable Text where
 instance Encodable a => Encodable (Identity a) where
   builder = builder . runIdentity
   parser = Identity <$> parser
+
+deriving instance Encodable a => Encodable (Tagged t a)
 
 instance Encodable a => Encodable [a] where
   builder = listBuilder builder

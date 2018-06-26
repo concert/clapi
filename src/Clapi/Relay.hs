@@ -1,8 +1,4 @@
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Clapi.Relay where
 
@@ -15,6 +11,7 @@ import qualified Data.Set as Set
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Monoid
 import Data.Set (Set)
+import Data.Tagged (Tagged(..))
 import qualified Data.Text as Text
 import Data.Void (Void)
 
@@ -31,8 +28,10 @@ import Clapi.Types.Digests
   , OutboundClientDigest(..), OutboundClientInitialisationDigest, ocdNull, opdNull
   , InboundClientDigest(..), OutboundProviderDigest(..)
   , DataDigest, ContainerOps)
-import Clapi.Types.Path (Seg, Path, TypeName(..), pattern (:</), pattern Root, parentPath)
-import Clapi.Types.Definitions (Liberty, Definition)
+import Clapi.Types.Path
+  ( Seg, Path, TypeName(..), qualify,  pattern (:</), pattern Root, parentPath
+  , Namespace(..))
+import Clapi.Types.Definitions (Liberty, Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
@@ -55,7 +54,8 @@ oppifyTimeSeries ts = TimeChange $
   Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
 
 genInitDigest
-  :: Set Path -> Set TypeName -> Set TypeName -> Valuespace
+  :: Set Path -> Set (Tagged PostDefinition TypeName)
+  -> Set (Tagged Definition TypeName) -> Valuespace
   -> OutboundClientInitialisationDigest
 genInitDigest ps ptns tns vs =
   let
@@ -72,7 +72,12 @@ genInitDigest ps ptns tns vs =
   where
     go
       :: OutboundClientInitialisationDigest -> Path
-      -> Either String (Definition, TypeName, Liberty, RoseTreeNode [WireValue])
+      -> Either
+          String
+          ( Definition
+          , Tagged Definition TypeName
+          , Liberty
+          , RoseTreeNode [WireValue])
       -> OutboundClientInitialisationDigest
     go d p (Left errStr) = d {
         ocdErrors = Map.unionWith (<>) (ocdErrors d)
@@ -134,12 +139,13 @@ relay vs = waitThenFwdOnly fwd
           let vs' = vsRelinquish ns vs
           sendRev (i, Ocd $ OutboundClientDigest
             -- FIXME: Attributing revocation to nobody!
-            (Map.singleton Root $ Map.singleton ns (Nothing, SoAbsent))
-            (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $
+            (Map.singleton Root $
+               Map.singleton (unNamespace ns) (Nothing, SoAbsent))
+            (fmap (const OpUndefine) $ Map.mapKeys (qualify ns) $
                Map.findWithDefault mempty ns $ vsPostDefs vs)
             (Map.insert rootTypeName
               (OpDefine $ fromJust $ vsLookupDef rootTypeName vs') $
-              (fmap (const OpUndefine) $ Map.mapKeys (TypeName ns) $
+              (fmap (const OpUndefine) $ Map.mapKeys (qualify ns) $
                  Map.findWithDefault mempty ns $ vsTyDefs vs))
             mempty alEmpty mempty)
           relay vs'
@@ -148,19 +154,20 @@ relay vs = waitThenFwdOnly fwd
             (TrpDigest ns postDefs defs dd contOps errs) (updatedTyAssns, vs') =
           let
             shouldPubRoot =
-              Map.member ns defs &&
+              Map.member (Tagged $ unNamespace ns) defs &&
               Map.notMember ns (vsTyDefs vs)
             rootDef = fromJust $ vsLookupDef rootTypeName vs'
-            qDd = maybe (error "Bad sneakers") id $ alMapKeys (ns :</) dd
+            qDd = maybe (error "Bad sneakers") id $
+              alMapKeys (unNamespace ns :</) dd
             qDd' = vsMinimiseDataDigest qDd vs
             errs' = Map.mapKeys (namespaceErrIdx ns) errs
-            qPostDefs = Map.mapKeys (TypeName ns) postDefs
-            qDefs = Map.mapKeys (TypeName ns) defs
+            qPostDefs = Map.mapKeys (qualify ns) postDefs
+            qDefs = Map.mapKeys (qualify ns) defs
             qDefs' = vsMinimiseDefinitions qDefs vs
             qDefs'' = if shouldPubRoot
               then Map.insert rootTypeName (OpDefine rootDef) qDefs'
               else qDefs'
-            qContOps = Map.mapKeys (ns :</) contOps
+            qContOps = Map.mapKeys (unNamespace ns :</) contOps
             qContOps' = vsMinimiseContOps qContOps vs
             mungedTas = Map.mapWithKey
               (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
@@ -210,7 +217,8 @@ relay vs = waitThenFwdOnly fwd
 
 -- FIXME: Worst case implementation
 vsMinimiseDefinitions
-  :: Map TypeName (DefOp def) -> Valuespace -> Map TypeName (DefOp def)
+  :: Map (Tagged def TypeName) (DefOp def) -> Valuespace
+  -> Map (Tagged def TypeName) (DefOp def)
 vsMinimiseDefinitions defs _ = defs
 
 -- FIXME: Worst case implementation

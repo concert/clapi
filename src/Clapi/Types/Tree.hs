@@ -53,6 +53,8 @@ data TreeType
   | TtFloat (Bounds Float)
   | TtDouble (Bounds Double)
   | TtString Text
+  -- FIXME: kinda want this to be TtRef (Tagged Definition TypeName) but that
+  -- creates an import loop:
   | TtRef TypeName
   | TtList TreeType
   | TtSet TreeType

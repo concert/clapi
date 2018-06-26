@@ -6,41 +6,36 @@
 module ValuespaceSpec where
 
 import Test.Hspec
-import Test.QuickCheck (
-    Arbitrary(..), Gen, Property, arbitrary, oneof, elements, listOf, listOf1,
-    arbitraryBoundedEnum, vector, vectorOf, property)
 
 import Data.Maybe (fromJust)
 import Data.Either (either, isRight)
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Word
 import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Control.Monad (replicateM)
 import Control.Monad.Fail (MonadFail)
 
-import qualified Data.Map.Mos as Mos
 import Clapi.TH
-import Clapi.Types.AssocList
-  ( alFromMap, AssocList, mkAssocList, alSingleton, alEmpty, alFromList
-  , alInsert)
+import Clapi.Types.AssocList (AssocList, alSingleton, alEmpty, alInsert)
 import Clapi.Types
-  ( InterpolationLimit(ILUninterpolated), Interpolation(..), WireValue(..)
-  , TreeType(..) , OfMetaType, Liberty(..)
+  ( InterpolationLimit(ILUninterpolated), WireValue(..)
+  , TreeType(..), Liberty(..)
   , tupleDef, structDef, arrayDef, ErrorIndex(..)
-  , defDispatch, metaType, Definition(..)
+  , Definition(..)
   , StructDefinition(strDefTypes)
-  , TrpDigest(..), DefOp(..), DataChange(..), TypeName(..))
+  , TrpDigest(..), DefOp(..), DataChange(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Path (Path(..), pattern (:/), pattern Root, Seg)
+import Clapi.Types.Path
+  ( Path(..), pattern (:/), pattern Root, Seg, TypeName(..), tTypeName
+  , Namespace(..))
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
   , processToRelayClientDigest, apiNs, vsRelinquish, ValidationErr(..))
 import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Tree (RoseTree(RtEmpty), RoseTreeNodeType(..))
+import Clapi.Tree (RoseTreeNodeType(..))
 
 deriving instance Eq RoseTreeNodeType
 deriving instance Eq ValidationErr
@@ -58,13 +53,13 @@ validVersionTypeChange vs =
       "Stringy" (alSingleton [segq|vstr|] $ TtString "pear")
       ILUninterpolated
     rootDef = redefApiRoot
-      (alInsert [segq|version|] $ TypeName apiNs [segq|stringVersion|]) vs
+      (alInsert [segq|version|] $ tTypeName apiNs [segq|stringVersion|]) vs
   in TrpDigest
     apiNs
     mempty
     (Map.fromList
-      [ ([segq|stringVersion|], OpDefine svd)
-      , (apiNs, OpDefine rootDef)
+      [ (Tagged [segq|stringVersion|], OpDefine svd)
+      , (Tagged $ unNamespace apiNs, OpDefine rootDef)
       ])
     (alSingleton [pathq|/version|]
       $ ConstChange Nothing [WireValue ("pear" :: Text)])
@@ -76,25 +71,26 @@ vsAppliesCleanly d vs = either (fail . show) (return . snd) $
   processToRelayProviderDigest d vs
 
 redefApiRoot
-  :: (AssocList Seg TypeName -> AssocList Seg TypeName) -> Valuespace
-  -> Definition
+  :: (AssocList Seg (Tagged Definition TypeName)
+      -> AssocList Seg (Tagged Definition TypeName))
+  -> Valuespace -> Definition
 redefApiRoot f vs = structDef "Frigged by test" $ (, Cannot) <$> f currentKids
   where
-    currentKids = fst <$> (grabDefTypes $ grabApi $ grabApi $ vsTyDefs vs)
-    grabApi = fromJust . Map.lookup apiNs
+    currentKids = fmap fst $ grabDefTypes $ fromJust $
+      Map.lookup apiNs (vsTyDefs vs) >>= Map.lookup (Tagged $ unNamespace apiNs)
     grabDefTypes (StructDef sd) = strDefTypes sd
     grabDefTypes _ = error "API ns root type not a struct!"
 
 extendedVs :: MonadFail m => Definition -> Seg -> DataChange -> m Valuespace
 extendedVs def s dc =
   let
-    rootDef = redefApiRoot (alInsert s $ TypeName apiNs s) baseValuespace
+    rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s) baseValuespace
     d = TrpDigest
       apiNs
       mempty
       (Map.fromList
-        [ (s, OpDefine def)
-        , (apiNs, OpDefine rootDef)])
+        [ (Tagged s, OpDefine def)
+        , (Tagged $ unNamespace apiNs, OpDefine rootDef)])
       (alSingleton (Root :/ s) dc)
       mempty
       mempty
@@ -106,7 +102,7 @@ vsWithXRef =
     newNodeDef = tupleDef
       "for test"
       (alSingleton [segq|daRef|] $ TtRef $
-        TypeName [segq|api|] [segq|version|])
+        TypeName (Namespace [segq|api|]) [segq|version|])
       ILUninterpolated
     newVal = ConstChange Nothing [WireValue $ Path.toText [pathq|/api/version|]]
   in extendedVs newNodeDef refSeg newVal
@@ -118,21 +114,22 @@ emptyArrayD :: Seg -> Valuespace -> TrpDigest
 emptyArrayD s vs = TrpDigest
     apiNs
     mempty
-    (Map.fromList [(s, OpDefine vaDef), (apiNs, OpDefine rootDef)])
+    (Map.fromList
+     [ (Tagged s, OpDefine vaDef)
+     , (Tagged $ unNamespace apiNs, OpDefine rootDef)])
     alEmpty
     mempty
     mempty
   where
-    vaDef = arrayDef "for test" (TypeName apiNs [segq|version|]) May
-    rootDef = redefApiRoot (alInsert s $ TypeName apiNs s)
-      baseValuespace
+    vaDef = arrayDef "for test" (tTypeName apiNs [segq|version|]) May
+    -- FIXME: is vs always baseValuespace?
+    rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s) vs
 
 spec :: Spec
 spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $
       let
-        apiTn = TypeName [segq|api|]
         allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
           vsTree baseValuespace
         validated = either (error . show) snd $
@@ -155,7 +152,8 @@ spec = do
             (alSingleton [segq|versionString|] $ TtString "apple")
             ILUninterpolated
           d = TrpDigest
-            apiNs mempty (Map.singleton [segq|version|] $ OpDefine newDef)
+            apiNs mempty
+            (Map.singleton (Tagged [segq|version|]) $ OpDefine newDef)
             alEmpty mempty mempty
       in vsProviderErrorsOn baseValuespace d [[pathq|/api/version|]]
     it "rechecks on container ops" $
@@ -190,7 +188,8 @@ spec = do
     it "xref referee type change errors" $ do
       -- Change the type of the instance referenced in a cross reference
       vs <- vsWithXRef
-      vsProviderErrorsOn vs (validVersionTypeChange vs) [Root :/ apiNs :/ refSeg]
+      vsProviderErrorsOn vs (validVersionTypeChange vs)
+        [Root :/ unNamespace apiNs :/ refSeg]
     it "xref old references do not error" $
       let
         v2s = [segq|v2|]
@@ -200,9 +199,10 @@ spec = do
         vs <- vsWithXRef
         -- Add another version node:
         let v2ApiDef = redefApiRoot
-              (alInsert v2s $ TypeName apiNs [segq|version|]) vs
+              (alInsert v2s $ tTypeName apiNs [segq|version|]) vs
         vs' <- vsAppliesCleanly
-          (TrpDigest apiNs mempty (Map.singleton apiNs $ OpDefine v2ApiDef)
+          (TrpDigest apiNs mempty
+            (Map.singleton (Tagged $ unNamespace apiNs) $ OpDefine v2ApiDef)
             v2Val mempty mempty)
           vs
         -- Update the ref to point at new version:
@@ -248,11 +248,13 @@ spec = do
         vs'' `shouldBe` vs
     it "Errors on struct with missing child" $
       let
-        rootDef = redefApiRoot (alInsert [segq|unfilled|] $ TypeName apiNs [segq|version|]) baseValuespace
+        rootDef = redefApiRoot
+          (alInsert [segq|unfilled|] $ tTypeName apiNs [segq|version|])
+          baseValuespace
         missingChild = TrpDigest
           apiNs
           mempty
-          (Map.singleton apiNs $ OpDefine rootDef)
+          (Map.singleton (Tagged $ unNamespace apiNs) $ OpDefine rootDef)
           alEmpty
           mempty
           mempty
@@ -260,17 +262,17 @@ spec = do
     it "Relinquish" $
       let
         fs = [segq|foo|]
-        fooRootDef = arrayDef "frd" (TypeName apiNs [segq|version|]) Cannot
+        fooRootDef = arrayDef "frd" (tTypeName apiNs [segq|version|]) Cannot
         claimFoo = TrpDigest
-          fs
+          (Namespace fs)
           mempty
-          (Map.singleton fs $ OpDefine fooRootDef)
+          (Map.singleton (Tagged fs) $ OpDefine fooRootDef)
           alEmpty
           mempty
           mempty
       in do
         vs <- vsAppliesCleanly claimFoo baseValuespace
-        vsRelinquish fs vs `shouldBe` baseValuespace
+        vsRelinquish (Namespace fs) vs `shouldBe` baseValuespace
     describe "Client" $
         it "Can create new array entries" $
           let
