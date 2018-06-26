@@ -73,14 +73,12 @@ trpdNull (TrpDigest _ns postDefs defs dd cops errs) =
 
 data FrpDigest = FrpDigest
   { frpdNamespace :: Namespace
-  -- FIXME: this is tosh! It should possibly remain [PostMessage]
-  , frpdPosts :: Map Seg PostOp
   , frpdData :: DataDigest
   , frpdContainerOps :: ContainerOps
   } deriving (Show, Eq)
 
 frpDigest :: Namespace -> FrpDigest
-frpDigest ns = FrpDigest ns mempty alEmpty mempty
+frpDigest ns = FrpDigest ns alEmpty mempty
 
 data FrpErrorDigest = FrpErrorDigest
   { frpedErrors :: Map (ErrorIndex TypeName) [Text]
@@ -90,14 +88,12 @@ data TrcDigest = TrcDigest
   { trcdPostTypeSubs :: Map (Tagged PostDefinition TypeName) SubOp
   , trcdTypeSubs :: Map (Tagged Definition TypeName) SubOp
   , trcdDataSubs :: Map Path SubOp
-  -- FIXME: this is tosh! It should possibly remain [PostMessage]
-  , trcdPosts :: Map Seg PostOp
   , trcdData :: DataDigest
   , trcdContainerOps :: ContainerOps
   } deriving (Show, Eq)
 
 trcdEmpty :: TrcDigest
-trcdEmpty = TrcDigest mempty mempty mempty mempty alEmpty mempty
+trcdEmpty = TrcDigest mempty mempty mempty alEmpty mempty
 
 data FrcDigest = FrcDigest
   { frcdPostTypeUnsubs :: Set (Tagged PostDefinition TypeName)
@@ -132,11 +128,10 @@ data FrDigest
   deriving (Show, Eq)
 
 trcdNamespaces :: TrcDigest -> Set Namespace
-trcdNamespaces (TrcDigest pts ts ds posts dd co) =
+trcdNamespaces (TrcDigest pts ts ds dd co) =
     (Set.map tTnNamespace $ Map.keysSet pts)
     <> (Set.map tTnNamespace $ Map.keysSet ts)
     <> pathKeyNss (Map.keysSet ds)
-    <> pathKeyNss (Set.fromList $ Map.elems $ opPath <$> posts)
     <> pathKeyNss (alKeysSet dd) <> pathKeyNss (Map.keysSet co)
   where
     pathKeyNss = onlyJusts . Set.map pNs
@@ -180,7 +175,7 @@ digestContOpMessages :: [ContainerUpdateMessage] -> ContainerOps
 digestContOpMessages = splitMap . fmap procMsg
   where
     procMsg msg = case msg of
-      MsgPresentAfter p targ ref att -> (p, (targ, (att, SoPresentAfter ref)))
+      MsgMoveAfter p targ ref att -> (p, (targ, (att, SoPresentAfter ref)))
       MsgAbsent p targ att -> (p, (targ, (att, SoAbsent)))
 
 produceContOpMessages :: ContainerOps -> [ContainerUpdateMessage]
@@ -188,7 +183,7 @@ produceContOpMessages = mconcat . Map.elems . Map.mapWithKey
     (\p -> Map.elems . Map.mapWithKey (procCo p))
   where
     procCo p targ (att, co) = case co of
-      SoPresentAfter ref -> MsgPresentAfter p targ ref att
+      SoPresentAfter ref -> MsgMoveAfter p targ ref att
       SoAbsent -> MsgAbsent p targ att
 
 
@@ -265,16 +260,6 @@ produceErrMessages :: Map (ErrorIndex a) [Text] -> [MsgError a]
 produceErrMessages =
   mconcat . Map.elems . Map.mapWithKey (\ei errs -> MsgError ei <$> errs)
 
-digestPostMessages :: [PostMessage] -> Map Seg PostOp
-digestPostMessages = Map.fromList . fmap pmToPo
-  where
-    pmToPo (MsgPost path ph args) = (ph, OpPost path args)
-
-producePostMessages :: Map Seg PostOp -> [PostMessage]
-producePostMessages = fmap (uncurry poToPm) . Map.toList
-  where
-    poToPm ph (OpPost path args) = MsgPost path ph args
-
 digestToRelayBundle :: ToRelayBundle -> TrDigest
 digestToRelayBundle trb = case trb of
     Trpb b -> Trpd $ digestToRelayProviderBundle b
@@ -296,14 +281,13 @@ digestToRelayBundle trb = case trb of
       TrprDigest ns
 
     digestToRelayClientBundle :: ToRelayClientBundle -> TrcDigest
-    digestToRelayClientBundle (ToRelayClientBundle subs postMsgs dat cont) =
+    digestToRelayClientBundle (ToRelayClientBundle subs dat cont) =
       let
         (postTySubs, tySubs, datSubs) = digestSubMessages subs
-        postD = digestPostMessages postMsgs
         dd = digestDataUpdateMessages dat
         co = digestContOpMessages cont
       in
-        TrcDigest postTySubs tySubs datSubs postD dd co
+        TrcDigest postTySubs tySubs datSubs dd co
 
 produceToRelayBundle :: TrDigest -> ToRelayBundle
 produceToRelayBundle trd = case trd of
@@ -320,14 +304,13 @@ produceToRelayBundle trd = case trd of
     produceToRelayProviderRelinquish (TrprDigest ns) =
       ToRelayProviderRelinquish ns
 
-    produceToRelayClientBundle (TrcDigest pTySubs tySubs datSubs postD dd co) =
+    produceToRelayClientBundle (TrcDigest pTySubs tySubs datSubs dd co) =
       let
         subs = produceSubMessages pTySubs tySubs datSubs
-        postMsgs = producePostMessages postD
         dat = produceDataUpdateMessages dd
         cont = produceContOpMessages co
       in
-        ToRelayClientBundle subs postMsgs dat cont
+        ToRelayClientBundle subs dat cont
 
 digestFromRelayBundle :: FromRelayBundle -> FrDigest
 digestFromRelayBundle frb = case frb of
@@ -335,9 +318,8 @@ digestFromRelayBundle frb = case frb of
     Frpeb b -> Frped $ digestFromRelayProviderErrorBundle b
     Frcb b -> Frcd $ digestFromRelayClientBundle b
   where
-    digestFromRelayProviderBundle (FromRelayProviderBundle ns posts dums coms) =
-        FrpDigest ns (digestPostMessages posts) (digestDataUpdateMessages dums)
-          (digestContOpMessages coms)
+    digestFromRelayProviderBundle (FromRelayProviderBundle ns dums coms) =
+        FrpDigest ns (digestDataUpdateMessages dums) (digestContOpMessages coms)
 
     digestFromRelayProviderErrorBundle (FromRelayProviderErrorBundle errs) =
         FrpErrorDigest $ digestErrMessages errs
@@ -362,8 +344,8 @@ produceFromRelayBundle frd = case frd of
     Frcd d -> Frcb $ produceFromRelayClientBundle d
   where
     produceFromRelayProviderBundle :: FrpDigest -> FromRelayProviderBundle
-    produceFromRelayProviderBundle (FrpDigest ns posts dd co) =
-      FromRelayProviderBundle ns (producePostMessages posts)
+    produceFromRelayProviderBundle (FrpDigest ns dd co) =
+      FromRelayProviderBundle ns
       (produceDataUpdateMessages dd) (produceContOpMessages co)
 
     produceFromRelayProviderErrorBundle

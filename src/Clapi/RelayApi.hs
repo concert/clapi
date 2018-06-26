@@ -197,6 +197,6 @@ relayApiProto selfAddr =
         -- This function trusts that the valuespace has completely validated the
         -- actions the client can perform (i.e. can only change the name of a
         -- client)
-        handleApiRequest (FrpDigest ns posts dd cops) =
+        handleApiRequest (FrpDigest ns dd cops) =
           sendFwd $ ClientData selfAddr $ Trpd $
           TrpDigest ns mempty mempty dd cops mempty
