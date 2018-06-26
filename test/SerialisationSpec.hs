@@ -24,7 +24,7 @@ import Clapi.Types
   , FromRelayProviderErrorBundle(..), ToRelayProviderRelinquish(..)
   , ToRelayBundle(..), FromRelayBundle(..)
   , ErrorIndex(..))
-import Clapi.Types.Path (Path(..), pattern Root)
+import Clapi.Types.Path (Path, pattern Root)
 import Clapi.Serialisation (Encodable(..))
 
 -- Incl. Arbitrary instances of WireValue:
@@ -85,10 +85,10 @@ instance Arbitrary DataUpdateMessage where
   shrink (MsgConstSet Root [] Nothing) = []
   shrink (MsgConstSet p vs a) =
     [MsgConstSet p' vs' a' | (p', vs', a') <- shrink (p, vs, a)]
-  shrink (MsgSet (Path []) _ _ [] _ Nothing) = []
+  shrink (MsgSet Root _ _ [] _ Nothing) = []
   shrink (MsgSet p tpid t vs i a) =
     [MsgSet p' tpid t vs' i a' | (p', vs', a') <- shrink (p, vs, a)]
-  shrink (MsgRemove (Path []) _ Nothing) = []
+  shrink (MsgRemove Root _ Nothing) = []
   shrink (MsgRemove p t a) = [MsgRemove p' t a' | (p', a') <- shrink (p, a)]
 
 

@@ -541,7 +541,9 @@ validateExistingXrefs xrs newTas =
   let
     retypedPaths = Map.keysSet newTas
     invalidated = Map.restrictKeys xrs retypedPaths
-    errText referee = [GenericErr $ "Ref target changed type: " ++ Text.unpack (Path.toText referee)]
+    errText referee = [GenericErr $
+      "Ref target changed type: " ++
+      Text.unpack (Path.toText Path.unSeg referee)]
     refererErrors referee acc referer mTpids = case mTpids of
       Nothing -> Map.insert (PathError referer) (errText referee) acc
       Just tpids -> Set.foldl

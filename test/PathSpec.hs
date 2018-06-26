@@ -9,15 +9,16 @@ import Data.Semigroup ((<>))
 import Clapi.TH (pathq, segq)
 import Clapi.Types (CanFail)
 import Clapi.Types.Path
-  ( Path(..), pattern Root, pattern (:/), pattern (:</), fromText, toText
-  , isChildOf)
+  ( Path'(..), Path, pattern Root, pattern (:/), pattern (:</), fromText, toText
+  , isChildOf, unSeg, segP)
 
 
 spec :: Spec
 spec = do
     describe "Seg Semigroup instance" $ it "Joins segs as expected" $
         [segq|yo|] <> [segq|ho|] <> [segq|ahoy|] `shouldBe` [segq|yo_ho_ahoy|]
-    describe "Quasiquoter" $ it "Produces expected path" $ [pathq|/oi/mate|] `shouldBe` Path [[segq|oi|], [segq|mate|]]
+    describe "Quasiquoter" $ it "Produces expected path" $
+      [pathq|/oi/mate|] `shouldBe` Path' [[segq|oi|], [segq|mate|]]
     describe ":/" $ do
         it "Splits the end off" $ let (p :/ s) = [pathq|/a/b/c|] in do
             p `shouldBe` [pathq|/a/b|]
@@ -46,6 +47,6 @@ spec = do
         it "Parent -> False" $ [pathq|/a/b|] `shouldNotSatisfy` isChildOf [pathq|/a|]
         it "Same path -> True" $ [pathq|/a/b|] `shouldSatisfy` isChildOf [pathq|/a/b|]
   where
-    shouldBeGoodPath t p = (fromText t :: CanFail Path) `shouldBe` Right p
-    shouldBeBadPath t = (fromText t :: CanFail Path) `shouldSatisfy` isLeft
-    rt p = (toText <$> fromText p :: CanFail Text) `shouldBe` Right p
+    shouldBeGoodPath t p = (fromText segP t :: CanFail Path) `shouldBe` Right p
+    shouldBeBadPath t = (fromText segP t :: CanFail Path) `shouldSatisfy` isLeft
+    rt p = (toText unSeg <$> fromText segP p :: CanFail Text) `shouldBe` Right p

@@ -83,7 +83,7 @@ relayApiProto selfAddr =
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             WireValue $ Path.toText $ selfSeg :</ selfClientPath])
+             WireValue $ Path.toText Path.unSeg $ selfSeg :</ selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [WireValue @Float 0.0])
         , ( selfClientPath :/ dnSeg
@@ -177,7 +177,8 @@ relayApiProto selfAddr =
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
-          WireValue $ Path.toText $ Root :/ selfSeg :/ [segq|clients|] :/ ns]
+          WireValue $ Path.toText Path.unSeg $
+          Root :/ selfSeg :/ [segq|clients|] :/ ns]
         viewAs i dd =
           let
             theirSeg = pathNameFor i
