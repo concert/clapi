@@ -30,7 +30,7 @@ import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
   ( DataDigest, ContainerOps, DataChange(..), TimeSeriesDataOp(..))
-import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
+import Clapi.Types.SequenceOps (SequenceOp, updateUniqList, isSoCreate)
 
 type TpId = Word32
 
@@ -74,9 +74,13 @@ treeApplyReorderings
 treeApplyReorderings contOps (RtContainer children) =
   let
     attMap = fst <$> contOps
+    childMap = Map.foldlWithKey'
+        (\acc k att -> Map.insert k (att, RtEmpty) acc)
+        (alToMap children)
+        (fst <$> Map.filter (isSoCreate . snd) contOps)
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
-    RtContainer . alFmapWithKey reattribute . alPickFromMap (alToMap children)
+    RtContainer . alFmapWithKey reattribute . alPickFromMap childMap
     <$> (updateUniqList (snd <$> contOps) $ alKeys children)
 treeApplyReorderings _ _ = fail "Not a container"
 
