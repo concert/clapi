@@ -3,6 +3,7 @@
 module Clapi.Attributor where
 
 import Control.Monad (forever)
+import Data.Bifunctor (first)
 
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Types (Attributee, TrDigest(..), TrcDigest(..), DataChange(..))
@@ -13,11 +14,10 @@ attributor
 attributor u = forever $ waitThen (sendFwd . fmap attributeClient) sendRev
   where
     attributeClient (Trcd d) = Trcd $ d{
-      trcdContainerOps = fmap modPairFst <$> trcdContainerOps d,
+      trcdContainerOps = fmap (first modAttr) <$> trcdContainerOps d,
       trcdData = attributeDc <$> trcdData d}
     attributeClient d = d
     attributeDc dc = case dc of
       ConstChange ma vs -> ConstChange (modAttr ma) vs
-      TimeChange m -> TimeChange $ modPairFst <$> m
-    modPairFst (ma, x) = (modAttr ma, x)
+      TimeChange m -> TimeChange $ first modAttr <$> m
     modAttr = Just . maybe u id
