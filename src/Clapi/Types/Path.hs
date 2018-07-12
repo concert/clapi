@@ -4,12 +4,11 @@
 {-# LANGUAGE DeriveLift #-}
 
 module Clapi.Types.Path (
-    Path(..), Seg, mkSeg, unSeg, joinSegs,
+    Path'(..), Path, Seg, mkSeg, unSeg,
     pathP, segP, toText, fromText,
     splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
     isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
-    NodePath, TypePath,
     Namespace(..),
     TypeName(..), tTypeName, tTnNamespace, tTnName, qualify, unqualify,
     typeNameP, typeNameToText, typeNameFromText) where
@@ -19,7 +18,7 @@ import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
-import Data.Monoid
+import Data.Semigroup
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -41,10 +40,14 @@ segP = fmap (Seg . Text.pack) $ DAT.many1 $ DAT.satisfy isValidSegChar
 mkSeg :: MonadFail m => Text -> m Seg
 mkSeg = either fail return . DAT.parseOnly (segP <* DAT.endOfInput)
 
-joinSegs :: [Seg] -> Seg
-joinSegs = Seg . Text.intercalate (Text.singleton '_') . fmap unSeg
+instance Semigroup Seg where
+  (Seg t1) <> (Seg t2) = Seg (t1 <> Text.singleton '_' <> t2)
 
-newtype Path = Path {unPath :: [Seg]} deriving (Eq, Ord, Lift)
+newtype Placeholder
+  = Placeholder { unPlaceholder :: Seg } deriving (Eq, Ord, Show)
+
+newtype Path' a = Path' {unPath :: [a]} deriving (Eq, Ord, Lift)
+type Path = Path' Seg
 
 sepChar :: Char
 sepChar = '/'
@@ -52,61 +55,58 @@ sepChar = '/'
 sepText :: Text
 sepText = Text.singleton sepChar
 
-instance Show Path where
-    show = Text.unpack . toText
+instance Show a => Show (Path' a) where
+    show = Text.unpack . toText (Text.pack . show)
 
-toText :: Path -> Text
-toText (Path segs) = sepText <> Text.intercalate sepText (fmap unSeg segs)
+toText :: (a -> Text) -> Path' a -> Text
+toText f (Path' as) = sepText <> Text.intercalate sepText (fmap f as)
 
-pattern Root :: Path
-pattern Root = Path []
+pattern Root :: Path' a
+pattern Root = Path' []
 
-splitHead :: Path -> Maybe (Seg, Path)
-splitHead (Path []) = Nothing
-splitHead (Path (seg:segs)) = Just (seg, Path segs)
+splitHead :: Path' a -> Maybe (a, Path' a)
+splitHead (Path' []) = Nothing
+splitHead (Path' (seg:segs)) = Just (seg, Path' segs)
 
-pattern (:</) :: Seg -> Path -> Path
-pattern seg :</ path <- (splitHead -> Just (seg, path)) where
-    seg :</ path = Path $ seg : unPath path
+pattern (:</) :: a -> Path' a -> Path' a
+pattern a :</ path <- (splitHead -> Just (a, path)) where
+    a :</ path = Path' $ a : unPath path
 
-splitTail :: Path -> Maybe (Path, Seg)
-splitTail (Path path) = case path of
-    (y : xs) -> (\(s, ps) -> Just (Path ps, s)) $ go y xs
+splitTail :: Path' a -> Maybe (Path' a, a)
+splitTail (Path' path) = case path of
+    (y : xs) -> (\(s, ps) -> Just (Path' ps, s)) $ go y xs
     [] -> Nothing
   where
-    go :: Seg -> [Seg] -> (Seg, [Seg])
+    go :: a -> [a] -> (a, [a])
     go y xs = case xs of
         [] -> (y, [])
         (z : zs) -> (y :) <$> go z zs
 
-pattern (:/) :: Path -> Seg -> Path
-pattern path :/ seg <- (splitTail -> Just (path, seg)) where
-    path :/ seg = Path $ unPath path ++ [seg]
+pattern (:/) :: Path' a -> a -> Path' a
+pattern path :/ a <- (splitTail -> Just (path, a)) where
+    path :/ a = Path' $ unPath path ++ [a]
 
-pathP :: Parser Path
-pathP = let sepP = DAT.char sepChar in
-    fmap Path $ sepP >> segP `DAT.sepBy` sepP
+pathP :: Parser a -> Parser (Path' a)
+pathP p = let sepP = DAT.char sepChar in
+    fmap Path' $ sepP >> p `DAT.sepBy` sepP
 
-fromText :: MonadFail m => Text -> m Path
-fromText = either fail return . DAT.parseOnly (pathP <* DAT.endOfInput)
+fromText :: MonadFail m => Parser a -> Text -> m (Path' a)
+fromText p = either fail return . DAT.parseOnly (pathP p <* DAT.endOfInput)
 
-isParentOf :: Path -> Path -> Bool
-isParentOf (Path a) (Path b) = isPrefixOf a b
+isParentOf :: Eq a => Path' a -> Path' a -> Bool
+isParentOf (Path' as1) (Path' as2) = isPrefixOf as1 as2
 
-isChildOf :: Path -> Path -> Bool
+isChildOf :: Eq a => Path' a -> Path' a -> Bool
 isChildOf = flip isParentOf
 
-isParentOfAny :: (Functor f, Foldable f) => Path -> f Path -> Bool
+isParentOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
 isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
 
-isChildOfAny :: (Functor f, Foldable f) => Path -> f Path -> Bool
+isChildOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
 isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
-childPaths :: Functor f => Path -> f Seg -> f Path
-childPaths (Path segs) ss = Path . (segs ++) . pure <$> ss
-
-type NodePath = Path
-type TypePath = Path
+childPaths :: Functor f => Path' a -> f a -> f (Path' a)
+childPaths (Path' as1) as2 = Path' . (as1 ++) . pure <$> as2
 
 newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
 data TypeName
@@ -144,7 +144,7 @@ typeNameFromText :: MonadFail m => Text -> m TypeName
 typeNameFromText =
   either fail return . DAT.parseOnly (typeNameP <* DAT.endOfInput)
 
-parentPath :: Path -> Maybe Path
+parentPath :: Path' a -> Maybe (Path' a)
 parentPath p = case p of
   (pp :/ _) -> Just pp
   _ -> Nothing

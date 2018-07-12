@@ -27,11 +27,10 @@ import Clapi.Types.AssocList
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
-    Seg, Path, pattern Root, pattern (:/), pattern (:</),
-    NodePath)
+    Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
   ( DataDigest, ContainerOps, DataChange(..), TimeSeriesDataOp(..))
-import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
+import Clapi.Types.SequenceOps (SequenceOp, updateUniqList, isSoCreate)
 
 type TpId = Word32
 
@@ -70,13 +69,18 @@ treePaths p t = case t of
 
 treeApplyReorderings
   :: MonadFail m
-  => Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a -> m (RoseTree a)
+  => Map Seg (Maybe Attributee, SequenceOp Seg args) -> RoseTree a
+  -> m (RoseTree a)
 treeApplyReorderings contOps (RtContainer children) =
   let
     attMap = fst <$> contOps
+    childMap = Map.foldlWithKey'
+        (\acc k att -> Map.insert k (att, RtEmpty) acc)
+        (alToMap children)
+        (fst <$> Map.filter (isSoCreate . snd) contOps)
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
-    RtContainer . alFmapWithKey reattribute . alPickFromMap (alToMap children)
+    RtContainer . alFmapWithKey reattribute . alPickFromMap childMap
     <$> (updateUniqList (snd <$> contOps) $ alKeys children)
 treeApplyReorderings _ _ = fail "Not a container"
 
@@ -144,7 +148,7 @@ treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
 
 -- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
-  :: ContainerOps -> DataDigest -> RoseTree [WireValue]
+  :: ContainerOps args -> DataDigest -> RoseTree [WireValue]
   -> (Map Path [Text], RoseTree [WireValue])
 updateTreeWithDigest contOps dd = runState $ do
     errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
@@ -152,13 +156,13 @@ updateTreeWithDigest contOps dd = runState $ do
     return $ Map.filter (not . null) $ Map.unionWith (<>) errs errs'
   where
     applyContOp
-      :: NodePath -> Map Seg (Maybe Attributee, SequenceOp Seg)
+      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg args)
       -> State (RoseTree [WireValue]) [Text]
     applyContOp np m = do
       eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
       either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
     applyDd
-      :: NodePath -> DataChange
+      :: Path -> DataChange
       -> State (RoseTree [WireValue]) [Text]
     applyDd np dc = case dc of
       ConstChange att wv -> do
@@ -166,7 +170,7 @@ updateTreeWithDigest contOps dd = runState $ do
         return []
       TimeChange m -> mconcat <$> (mapM (applyTc np) $ Map.toList m)
     applyTc
-      :: NodePath
+      :: Path
       -> (TpId, (Maybe Attributee, TimeSeriesDataOp))
       -> State (RoseTree [WireValue]) [Text]
     applyTc np (tpId, (att, op)) = case op of

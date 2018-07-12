@@ -45,7 +45,7 @@ extractTypeAssertions'
   :: forall a m . (Wireable a, MonadFail m)
   => TreeType -> a -> m [(TypeName, Path)]
 extractTypeAssertions' tt a = case tt of
-  TtRef tn -> cast' a >>= Path.fromText >>= return . pure . (tn,)
+  TtRef tn -> cast' a >>= Path.fromText Path.segP >>= return . pure . (tn,)
   -- FIXME: this need some factoring!
   TtList tt' ->
     let
@@ -97,7 +97,7 @@ validate' tt a = case tt of
     TtFloat b -> checkWith $ inBounds b
     TtDouble b -> checkWith $ inBounds b
     TtString r -> checkWith $ checkString r
-    TtRef _ -> checkWith Path.fromText
+    TtRef _ -> checkWith $ Path.fromText Path.segP
     TtList tt1 -> withTtProxy tt1 $ checkListWith @[] tt1 pure
     TtSet tt1 -> withTtProxy tt1 $
       checkListWith @[] tt1 $ ensureUnique "items"

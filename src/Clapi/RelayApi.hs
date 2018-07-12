@@ -83,7 +83,7 @@ relayApiProto selfAddr =
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             WireValue $ Path.toText $ selfSeg :</ selfClientPath])
+             WireValue $ Path.toText Path.unSeg $ selfSeg :</ selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [WireValue @Float 0.0])
         , ( selfClientPath :/ dnSeg
@@ -168,7 +168,7 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
-        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps)
+        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps args)
         ownerChangeInfo ownerMap' =
             ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
@@ -177,7 +177,8 @@ relayApiProto selfAddr =
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
-          WireValue $ Path.toText $ Root :/ selfSeg :/ [segq|clients|] :/ ns]
+          WireValue $ Path.toText Path.unSeg $
+          Root :/ selfSeg :/ [segq|clients|] :/ ns]
         viewAs i dd =
           let
             theirSeg = pathNameFor i
@@ -197,6 +198,9 @@ relayApiProto selfAddr =
         -- This function trusts that the valuespace has completely validated the
         -- actions the client can perform (i.e. can only change the name of a
         -- client)
-        handleApiRequest (FrpDigest ns posts dd cops) =
-          sendFwd $ ClientData selfAddr $ Trpd $
-          TrpDigest ns mempty mempty dd cops mempty
+        handleApiRequest (FrpDigest ns dd cops) =
+          let
+            cops' = (fmap . fmap . fmap . fmap) (const ()) cops
+          in
+            sendFwd $ ClientData selfAddr $ Trpd $
+            TrpDigest ns mempty mempty dd cops' mempty

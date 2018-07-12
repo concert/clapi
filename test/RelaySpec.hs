@@ -56,7 +56,7 @@ spec = describe "the relay protocol" $ do
             [pathq|/foo|] (tTypeName (Namespace foo) foo, Cannot) mempty
           , ocdContainerOps = Map.singleton Root $
               Map.singleton foo
-              (Nothing, SoPresentAfter (Just $ unNamespace apiNs))
+              (Nothing, SoMoveAfter (Just $ unNamespace apiNs))
           }
         test = do
           sendFwd ((), inDig)
@@ -118,7 +118,7 @@ spec = describe "the relay protocol" $ do
           , ocdTypeAssignments = Map.singleton qKid
               (tTypeName (Namespace foo) kid, Cannot)
           , ocdContainerOps = Map.singleton fooP $
-            Map.singleton kid (Nothing, SoPresentAfter Nothing)
+            Map.singleton kid (Nothing, SoMoveAfter Nothing)
           }
         test = do
           sendFwd ((), inDig)

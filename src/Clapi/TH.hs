@@ -11,7 +11,7 @@ import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
 import Clapi.Types.Base (mkTag)
-import Clapi.Types.Path (fromText, mkSeg)
+import Clapi.Types.Path (fromText, mkSeg, segP)
 
 segq :: QuasiQuoter
 segq = QuasiQuoter {
@@ -22,7 +22,7 @@ segq = QuasiQuoter {
 
 pathq :: QuasiQuoter
 pathq = QuasiQuoter {
-    quoteExp = fromText . pack >=> lift,
+    quoteExp = fromText segP . pack >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}

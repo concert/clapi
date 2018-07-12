@@ -354,7 +354,7 @@ validateVs t v = do
                       oldChildTypes newChildTypes
                     changedChildPaths = Map.mapKeys (path :/) changedChildTypes
 
-opsTouched :: ContainerOps -> DataDigest -> Map Path (Maybe (Set TpId))
+opsTouched :: ContainerOps args -> DataDigest -> Map Path (Maybe (Set TpId))
 opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
   where
     classifyDc :: DataChange -> Maybe (Set TpId)
@@ -409,7 +409,8 @@ validatePath vs p mTpids = do
     validateRoseTreeNode def t mTpids
 
 processToRelayClientDigest
-  :: ContainerOps -> DataDigest -> Valuespace -> Map (ErrorIndex TypeName) [ValidationErr]
+  :: ContainerOps [WireValue] -> DataDigest -> Valuespace
+  -> Map (ErrorIndex TypeName) [ValidationErr]
 processToRelayClientDigest reords dd vs =
   let
     (updateErrs, tree') = Tree.updateTreeWithDigest reords dd (vsTree vs)
@@ -540,7 +541,9 @@ validateExistingXrefs xrs newTas =
   let
     retypedPaths = Map.keysSet newTas
     invalidated = Map.restrictKeys xrs retypedPaths
-    errText referee = [GenericErr $ "Ref target changed type: " ++ Text.unpack (Path.toText referee)]
+    errText referee = [GenericErr $
+      "Ref target changed type: " ++
+      Text.unpack (Path.toText Path.unSeg referee)]
     refererErrors referee acc referer mTpids = case mTpids of
       Nothing -> Map.insert (PathError referer) (errText referee) acc
       Just tpids -> Set.foldl

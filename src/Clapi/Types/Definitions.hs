@@ -4,7 +4,6 @@ module Clapi.Types.Definitions where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Data.Map (Map)
 import Data.Tagged (Tagged)
 import Data.Text (Text)
 
@@ -27,7 +26,7 @@ class OfMetaType metaType where
 
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
-  , postDefArgs :: Map Seg (TreeType, Required)
+  , postDefArgs :: AssocList Seg (TreeType, Required)
   } deriving (Show, Eq)
 
 data TupleDefinition = TupleDefinition

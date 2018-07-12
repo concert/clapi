@@ -5,7 +5,6 @@ module SerialisationSpec where
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.ByteString (ByteString)
-import qualified Data.Map as Map
 import qualified Data.ByteString as BS
 
 import Test.Hspec
@@ -18,14 +17,14 @@ import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 import Clapi.Types
   ( Time, Attributee, WireValue
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..), TypeMessage(..)
-  , PostMessage(..), MsgError(..), TpId, DefMessage(..)
+  , MsgError(..), TpId, DefMessage(..)
   , ContainerUpdateMessage(..)
   , ToRelayClientBundle(..), ToRelayProviderBundle(..)
   , FromRelayClientBundle(..), FromRelayProviderBundle(..)
   , FromRelayProviderErrorBundle(..), ToRelayProviderRelinquish(..)
   , ToRelayBundle(..), FromRelayBundle(..)
   , ErrorIndex(..))
-import Clapi.Types.Path (Path(..), pattern Root)
+import Clapi.Types.Path (Path, pattern Root)
 import Clapi.Serialisation (Encodable(..))
 
 -- Incl. Arbitrary instances of WireValue:
@@ -62,10 +61,6 @@ instance Arbitrary SubMessage where
 instance Arbitrary TypeMessage where
   arbitrary = MsgAssignType <$> arbitrary <*> arbitrary <*> arbitrary
 
-instance Arbitrary PostMessage where
-  arbitrary = MsgPost <$> arbitrary <*> arbitrary <*>
-    (Map.fromList <$> smallListOf arbitrary)
-
 genAttributee :: Gen (Maybe Attributee)
 genAttributee = oneof [return Nothing, Just <$> arbitraryTextNoNull]
 
@@ -90,16 +85,18 @@ instance Arbitrary DataUpdateMessage where
   shrink (MsgConstSet Root [] Nothing) = []
   shrink (MsgConstSet p vs a) =
     [MsgConstSet p' vs' a' | (p', vs', a') <- shrink (p, vs, a)]
-  shrink (MsgSet (Path []) _ _ [] _ Nothing) = []
+  shrink (MsgSet Root _ _ [] _ Nothing) = []
   shrink (MsgSet p tpid t vs i a) =
     [MsgSet p' tpid t vs' i a' | (p', vs', a') <- shrink (p, vs, a)]
-  shrink (MsgRemove (Path []) _ Nothing) = []
+  shrink (MsgRemove Root _ Nothing) = []
   shrink (MsgRemove p t a) = [MsgRemove p' t a' | (p', a') <- shrink (p, a)]
 
 
-instance Arbitrary ContainerUpdateMessage where
+instance Arbitrary args => Arbitrary (ContainerUpdateMessage args) where
   arbitrary = oneof
-    [ MsgPresentAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
+    [ MsgCreateAfter <$> arbitrary <*> arbitrary <*> arbitrary
+      <*> arbitrary <*> arbitrary
+    , MsgMoveAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
     , MsgAbsent <$> arbitrary <*> arbitrary <*> genAttributee
     ]
 
@@ -128,7 +125,6 @@ instance Arbitrary ToRelayProviderBundle where
 instance Arbitrary FromRelayProviderBundle where
   arbitrary = FromRelayProviderBundle <$> arbitrary
     <*> smallListOf arbitrary <*> smallListOf arbitrary
-    <*> smallListOf arbitrary
 
 instance Arbitrary ToRelayProviderRelinquish where
   arbitrary = ToRelayProviderRelinquish <$> arbitrary
@@ -139,9 +135,8 @@ instance Arbitrary FromRelayProviderErrorBundle where
 instance Arbitrary ToRelayClientBundle where
   arbitrary = ToRelayClientBundle <$> smallListOf arbitrary
     <*> smallListOf arbitrary <*> smallListOf arbitrary
-    <*> smallListOf arbitrary
-  shrink (ToRelayClientBundle s p d c) =
-    [ToRelayClientBundle s' p' d' c' | (s', p', d', c') <- shrink (s, p, d, c)]
+  shrink (ToRelayClientBundle s d c) =
+    [ToRelayClientBundle s' d' c' | (s', d', c') <- shrink (s, d, c)]
 
 instance Arbitrary FromRelayClientBundle where
   arbitrary = FromRelayClientBundle <$> smallListOf arbitrary

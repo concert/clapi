@@ -1,7 +1,6 @@
 module Clapi.Types.Messages where
 
 import Data.Bifunctor (bimap)
-import Data.Map (Map)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
@@ -65,13 +64,6 @@ data TypeMessage
   = MsgAssignType Path (Tagged Definition TypeName) Liberty
   deriving (Show, Eq)
 
-data PostMessage
-  = MsgPost
-  { pMsgPath :: Path
-  , pMsgPlaceholder :: Seg
-  , pMsgArgs :: Map Seg WireValue
-  } deriving (Show, Eq)
-
 data DataUpdateMessage
   = MsgConstSet
       { duMsgPath :: Path
@@ -93,8 +85,15 @@ data DataUpdateMessage
       }
    deriving (Eq, Show)
 
-data ContainerUpdateMessage
-  = MsgPresentAfter
+data ContainerUpdateMessage args
+  = MsgCreateAfter
+      { cuMsgPath :: Path
+      , cuMsgArgs :: args
+      , cuMsgPlaceholder :: Seg
+      , cuMsgRef :: Maybe Seg
+      , cuMsgAttributee :: Maybe Attributee
+      }
+  | MsgMoveAfter
       { cuMsgPath :: Path
       , cuMsgTarg :: Seg
       , cuMsgRef :: Maybe Seg
@@ -113,7 +112,7 @@ data ToRelayProviderBundle = ToRelayProviderBundle
   , trpbPostDefs :: [DefMessage (Tagged PostDefinition Seg) PostDefinition]
   , trpbDefinitions :: [DefMessage (Tagged Definition Seg) Definition]
   , trpbData :: [DataUpdateMessage]
-  , trpbContMsgs :: [ContainerUpdateMessage]
+  , trpbContMsgs :: [ContainerUpdateMessage ()]
   } deriving (Show, Eq)
 
 data ToRelayProviderRelinquish
@@ -121,9 +120,8 @@ data ToRelayProviderRelinquish
 
 data FromRelayProviderBundle = FromRelayProviderBundle
   { frpbNamespace :: Namespace
-  , frpbPosts :: [PostMessage]
   , frpbData :: [DataUpdateMessage]
-  , frpbContMsgs :: [ContainerUpdateMessage]
+  , frpbContMsgs :: [ContainerUpdateMessage [WireValue]]
   } deriving (Show, Eq)
 
 data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
@@ -132,9 +130,8 @@ data FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
 
 data ToRelayClientBundle = ToRelayClientBundle
   { trcbSubs :: [SubMessage]
-  , trcbPosts :: [PostMessage]
   , trcbData :: [DataUpdateMessage]
-  , trcbContMsgs :: [ContainerUpdateMessage]
+  , trcbContMsgs :: [ContainerUpdateMessage [WireValue]]
   } deriving (Eq, Show)
 
 data FromRelayClientBundle = FromRelayClientBundle
@@ -146,7 +143,7 @@ data FromRelayClientBundle = FromRelayClientBundle
   , frcbDefinitions :: [DefMessage (Tagged Definition TypeName) Definition]
   , frcbTypeAssignments :: [TypeMessage]
   , frcbData :: [DataUpdateMessage]
-  , frcbContMsgs :: [ContainerUpdateMessage]
+  , frcbContMsgs :: [ContainerUpdateMessage ()]
   } deriving (Show, Eq)
 
 data ToRelayBundle

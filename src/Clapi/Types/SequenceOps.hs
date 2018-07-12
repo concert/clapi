@@ -1,7 +1,10 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# LANGUAGE
+    DeriveFunctor
+#-}
 
 module Clapi.Types.SequenceOps
-  ( SequenceOp(..), isSoAbsent
+  ( SequenceOp(..), isSoAbsent, isSoCreate
   , updateUniqList
   ) where
 
@@ -16,29 +19,37 @@ import Clapi.Types.UniqList
   (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
 import Clapi.Util (ensureUnique)
 
-data SequenceOp i
-  = SoPresentAfter (Maybe i)
+data SequenceOp i d
+  = SoCreateAfter (Maybe i) d
+  | SoMoveAfter (Maybe i)
   | SoAbsent
-  deriving (Show, Eq)
+  deriving (Show, Eq, Functor)
 
-isSoAbsent :: SequenceOp i -> Bool
+isSoAbsent :: SequenceOp i d -> Bool
 isSoAbsent so = case so of
   SoAbsent -> True
   _ -> False
 
+isSoCreate :: SequenceOp i d -> Bool
+isSoCreate so = case so of
+  SoCreateAfter _ _ -> True
+  _ -> False
+
 updateUniqList
   :: (Eq i, Ord i, Show i, MonadFail m)
-  => Map i (SequenceOp i) -> UniqList i -> m (UniqList i)
+  => Map i (SequenceOp i d) -> UniqList i -> m (UniqList i)
 updateUniqList ops ul = do
     ensureUnique "flange" $ Map.elems reorders
     reorderFromDeps reorders $ Map.foldlWithKey foo ul ops
   where
     foo ul' i op = case op of
-      SoPresentAfter _ -> ulInsert i ul'
+      SoCreateAfter _ _ -> ulInsert i ul'
+      SoMoveAfter _ -> ul'
       SoAbsent -> ulDelete i ul'
     reorders = Map.foldlWithKey bar mempty ops
     bar acc i op = case op of
-      SoPresentAfter mi -> Map.insert i mi acc
+      SoCreateAfter mi _ -> Map.insert i mi acc
+      SoMoveAfter mi -> Map.insert i mi acc
       SoAbsent -> acc
 
 getChainStarts ::
@@ -61,22 +72,28 @@ reorderFromDeps m ul =
             (starts, remainder) -> (starts ++) <$> resolveDigest remainder
     applyMoves l starts = foldlM applyMove l starts
 
-applyMove :: (MonadFail m, Ord i, Show i) => [i] -> (i, Maybe i) -> m [i]
+applyMove :: (MonadFail m, Eq i, Show i) => [i] -> (i, Maybe i) -> m [i]
 applyMove l (i, mi) =
     removeElem "Element was not present to move" i l
     >>= insertAfter "Preceeding element not found for move" i mi
-  where
-    insertAfter msg v mAfter ol = case mAfter of
-        Nothing -> return $ v : ol
-        Just after ->
-          let
-            (bl, al) = span (/= after) ol
-          in case al of
-            (a:rl) -> return $ bl ++ [a, v] ++ rl
-            [] -> fail $ msg ++ ": " ++ show after
-    removeElem msg v ol =
+
+
+insertAfter
+  :: (MonadFail m, Eq i, Show i) => String -> i -> Maybe i -> [i] -> m [i]
+insertAfter msg v mAfter ol = case mAfter of
+    Nothing -> return $ v : ol
+    Just after ->
       let
-        (ds, ol') = List.partition (== v) ol
-      in case ds of
-        [_] -> return ol'
-        _ -> fail $ msg ++ ": " ++ show v
+        (bl, al) = span (/= after) ol
+      in case al of
+        (a:rl) -> return $ bl ++ [a, v] ++ rl
+        [] -> fail $ msg ++ ": " ++ show after
+
+removeElem
+  :: (MonadFail m, Eq i, Show i) => String -> i -> [i] -> m [i]
+removeElem msg v ol =
+  let
+    (ds, ol') = List.partition (== v) ol
+  in case ds of
+    [_] -> return ol'
+    _ -> fail $ msg ++ ": " ++ show v

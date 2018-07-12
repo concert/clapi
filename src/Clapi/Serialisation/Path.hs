@@ -1,7 +1,9 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    GeneralizedNewtypeDeriving
+    FlexibleInstances
+  , GeneralizedNewtypeDeriving
   , StandaloneDeriving
+  , TypeSynonymInstances
 #-}
 
 module Clapi.Serialisation.Path where
@@ -14,8 +16,8 @@ instance Encodable Path.Seg where
   parser = parser >>= Path.mkSeg
 
 instance Encodable Path.Path where
-  builder = builder . Path.toText
-  parser = parser >>= Path.fromText
+  builder = builder . Path.toText Path.unSeg
+  parser = parser >>= Path.fromText Path.segP
 
 deriving instance Encodable Path.Namespace
 

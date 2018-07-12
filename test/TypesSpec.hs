@@ -35,7 +35,7 @@ import Clapi.Types
 import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
-import Clapi.Types.Path (Seg, Path(..), mkSeg, TypeName(..), Namespace(..))
+import Clapi.Types.Path (Seg, Path'(..), mkSeg, TypeName(..), Namespace(..))
 import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
@@ -57,9 +57,9 @@ name = fromJust . mkSeg . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 instance Arbitrary Seg where
   arbitrary = name
 
-instance Arbitrary Path where
-  arbitrary = Path <$> smallListOf name
-  shrink (Path names) = fmap Path . drop 1 . reverse . inits $ names
+instance Arbitrary a => Arbitrary (Path' a) where
+  arbitrary = Path' <$> smallListOf arbitrary
+  shrink (Path' names) = fmap Path' . drop 1 . reverse . inits $ names
 
 instance Arbitrary TypeName where
   arbitrary = TypeName <$> arbitrary <*> arbitrary

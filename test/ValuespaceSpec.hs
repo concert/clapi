@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeApplications #-}
@@ -28,7 +29,7 @@ import Clapi.Types
   , TrpDigest(..), DefOp(..), DataChange(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path
-  ( Path(..), pattern (:/), pattern Root, Seg, TypeName(..), tTypeName
+  ( Path, pattern (:/), pattern Root, Seg, TypeName(..), tTypeName
   , Namespace(..))
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
@@ -104,7 +105,8 @@ vsWithXRef =
       (alSingleton [segq|daRef|] $ TtRef $
         TypeName (Namespace [segq|api|]) [segq|version|])
       ILUninterpolated
-    newVal = ConstChange Nothing [WireValue $ Path.toText [pathq|/api/version|]]
+    newVal = ConstChange Nothing
+      [WireValue $ Path.toText Path.unSeg [pathq|/api/version|]]
   in extendedVs newNodeDef refSeg newVal
 
 refSeg :: Seg
@@ -209,7 +211,8 @@ spec = do
         vs'' <- vsAppliesCleanly
           (TrpDigest apiNs mempty mempty
             (alSingleton (Root :/ refSeg)
-             $ ConstChange Nothing [WireValue $ Path.toText [pathq|/api/v2|]])
+             $ ConstChange Nothing
+             [WireValue $ Path.toText Path.unSeg [pathq|/api/v2|]])
             mempty mempty)
           vs'
         (vsAppliesCleanly (validVersionTypeChange vs'') vs''

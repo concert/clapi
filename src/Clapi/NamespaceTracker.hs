@@ -32,7 +32,7 @@ import Clapi.Types (Definition, PostDefinition)
 import Clapi.Types.Path
   (Path, TypeName(..), pattern (:/), pattern Root, Namespace(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps (isSoAbsent)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 import Clapi.Util (flattenNestedMaps)
@@ -288,10 +288,7 @@ unsubDeleted d = do
       OpUndefine -> True
       _ -> False
     allDeletePaths = Map.keys $ flattenNestedMaps (:/) $
-      Map.filter isDeleteCo . fmap snd <$> ocdContainerOps d
-    isDeleteCo co = case co of
-      SoAbsent -> True
-      _ -> False
+      Map.filter isSoAbsent . fmap snd <$> ocdContainerOps d
 
 broadcastClientDigest
   :: (Ord i, Monad m)
@@ -331,9 +328,7 @@ frpdsByNamespace (OutboundProviderDigest contOps dd) =
     (_, ddByNs) = nestAlByKey Path.splitHead dd
     -- FIXME: whacking the global stuff to everybody isn't quite right - we need
     -- to know who originated the opd?
-    -- FIXME: this will need to have some POST data in it at some point!
-    posts = mempty
-    f ns contOps' dd' = FrpDigest ns posts  dd' (contOps' <> rootCOps)
+    f ns contOps' dd' = FrpDigest ns dd' (contOps' <> rootCOps)
   in
     zipMapsWithKey mempty alEmpty f
       (Map.mapKeys Namespace casByNs)
