@@ -11,6 +11,7 @@ module Clapi.Util (
     showItems,
     bound,
     safeToEnum,
+    nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
     proxyF, proxyF3
 ) where
@@ -118,6 +119,17 @@ safeToEnum i =
   in if fromEnum theMin <= i && i <= fromEnum theMax
   then return r
   else fail "enum value out of range"
+
+nestMapsByKey
+  :: (Ord k, Ord k0, Ord k1)
+  => (k -> Maybe (k0, k1)) -> Map k a -> (Map k a, Map k0 (Map k1 a))
+nestMapsByKey f = Map.foldlWithKey g mempty
+  where
+    g (unsplit, nested) k val = case f k of
+      Just (k0, k1) ->
+        ( unsplit
+        , Map.alter (Just . Map.insert k1 val . maybe mempty id) k0 nested)
+      Nothing -> (Map.insert k val unsplit, nested)
 
 flattenNestedMaps
   :: (Ord k0, Ord k1, Ord k2)

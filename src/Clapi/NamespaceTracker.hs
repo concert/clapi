@@ -35,7 +35,7 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (isSoAbsent)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
-import Clapi.Util (flattenNestedMaps)
+import Clapi.Util (flattenNestedMaps, nestMapsByKey)
 
 data Ownership = Owner | Client deriving (Eq, Show)
 
@@ -396,17 +396,6 @@ zipMaps6 fun ma mb mc md me mf =
   zipMaps (\(a, (b, c)) (d, (e, f)) -> fun a b c d e f)
   (zipMaps (,) ma (zipMaps (,) mb mc))
   (zipMaps (,) md (zipMaps (,) me mf))
-
-nestMapsByKey
-  :: (Ord k, Ord k0, Ord k1)
-  => (k -> Maybe (k0, k1)) -> Map k a -> (Map k a, Map k0 (Map k1 a))
-nestMapsByKey f = Map.foldlWithKey g mempty
-  where
-    g (unsplit, nested) k val = case f k of
-      Just (k0, k1) ->
-        ( unsplit
-        , Map.alter (Just . Map.insert k1 val . maybe mempty id) k0 nested)
-      Nothing -> (Map.insert k val unsplit, nested)
 
 nestAlByKey
   :: (Ord k, Ord k0, Ord k1)
