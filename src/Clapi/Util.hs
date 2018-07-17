@@ -3,16 +3,12 @@
 #-}
 
 module Clapi.Util (
-    tagl, tagr,
-    append, (+|),
-    appendIfAbsent, (+|?),
     duplicates, ensureUnique,
     strictZipWith, strictZip, fmtStrictZipError,
     partitionDifference, partitionDifferenceF,
     camel,
     uncamel,
     showItems,
-    mkProxy,
     bound,
     safeToEnum,
     flattenNestedMaps, foldlNestedMaps,
@@ -33,24 +29,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Printf (printf)
 
-
-tagl :: (a -> b) -> a -> (b, a)
-tagl f a = (f a, a)
-
-tagr :: (a -> b) -> a -> (a, b)
-tagr f a = (a, f a)
-
-append :: [a] -> a -> [a]
-append as a = as ++ [a]
-
-(+|) :: [a] -> a -> [a]
-(+|) = append
-
-appendIfAbsent :: (Eq a) => [a] -> a -> [a]
-appendIfAbsent as a | a `elem` as = as
-                    | otherwise = append as a
-(+|?) :: (Eq a) => [a] -> a -> [a]
-(+|?) = appendIfAbsent
 
 duplicates :: forall a. (Ord a) => [a] -> Set.Set a
 duplicates as = Map.keysSet $ Map.filter (>1) theMap
@@ -118,9 +96,6 @@ camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
 
 showItems :: (Foldable f, Show a) => f a -> String
 showItems = intercalate ", " . fmap show . toList
-
-mkProxy :: a -> Proxy a
-mkProxy _ = Proxy
 
 bound :: forall a b m. (Enum a, Enum b, Bounded b, MonadFail m) => a -> m b
 bound i =
