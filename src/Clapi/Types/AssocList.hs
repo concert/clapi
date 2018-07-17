@@ -40,6 +40,12 @@ mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocLis
 unsafeMkAssocList :: [(a, b)] -> AssocList a b
 unsafeMkAssocList = AssocList
 
+instance Eq a => Monoid (AssocList a b) where
+  mempty = AssocList []
+  al1 `mappend` (AssocList l2) =
+    Foldable.foldl' (\acc (a, b) -> alInsert a b acc) al1 l2
+
+-- FIXME: remove at some point now we have defined a monoid instance?
 alEmpty :: AssocList a b
 alEmpty = AssocList []
 
@@ -52,7 +58,7 @@ alFromKeys f as = AssocList $ (\a -> (a, f a)) <$> unUniqList as
 -- | Like `Map.fromList`, in that it doesn't fail but takes the final value for
 --   any duplicated key. Use `mkAssocList` to check for uniqueness.
 alFromList :: Eq a => [(a, b)] -> AssocList a b
-alFromList = foldl (\acc (k, a) -> alInsert k a acc) alEmpty
+alFromList = foldl (\acc (k, a) -> alInsert k a acc) mempty
 
 alFromMap :: Map a b -> AssocList a b
 alFromMap = AssocList . Map.toList
