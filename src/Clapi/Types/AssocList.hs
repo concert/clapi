@@ -10,6 +10,7 @@ module Clapi.Types.AssocList
   , alToMap, alFromZip
   , alCons, alLookup, alInsert, alSetDefault, alDelete
   , alKeys, alKeysSet, alValues
+  , alPartitionWithKey
   , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
   , alAlterF, alAlter, alAdjust
   ) where
@@ -18,6 +19,7 @@ import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
+import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
@@ -109,6 +111,12 @@ alMapKeys f = mkAssocList . fmap (\(a, b) -> (f a, b)) . unAssocList
 
 alFoldlWithKey :: (acc -> k -> b -> acc) -> acc -> AssocList k b -> acc
 alFoldlWithKey f acc = foldl (\acc' (k, b) -> f acc' k b) acc . unAssocList
+
+alPartitionWithKey
+  :: (k -> v -> Bool) -> AssocList k v -> (AssocList k v, AssocList k v)
+alPartitionWithKey f al =
+  let (ys, ns) = List.partition (uncurry f) $ unAssocList al in
+    (AssocList ys, AssocList ns)
 
 alFilterWithKey :: (k -> b -> Bool) -> AssocList k b -> AssocList k b
 alFilterWithKey f = AssocList . filter (uncurry f) . unAssocList
