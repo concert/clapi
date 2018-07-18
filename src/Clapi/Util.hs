@@ -11,6 +11,7 @@ module Clapi.Util (
     showItems,
     bound,
     safeToEnum,
+    mapPartitionEither,
     nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
     proxyF, proxyF3
@@ -19,6 +20,7 @@ module Clapi.Util (
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
+import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Foldable (Foldable, toList)
 import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
@@ -143,6 +145,10 @@ foldlNestedMaps
 foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
+
+mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
+mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
+  (fromLeft undefined <$> ls, fromRight undefined <$> rs)
 
 proxyF :: Proxy a -> Proxy b -> Proxy (a b)
 proxyF _ _ = Proxy

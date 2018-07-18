@@ -1,6 +1,7 @@
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 
+import Control.Monad (void)
 import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap)
 import Data.Map (Map)
@@ -17,7 +18,7 @@ import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
-  (DefOp(OpDefine), DataChange(..), FrcDigest(..), DataDigest, ContainerOps)
+  (DefOp(OpDefine), DataChange(..), FrcUpdateDigest(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path
   ( Seg, TypeName(..), tTypeName, pattern Root, pattern (:/), pattern (:</)
@@ -62,6 +63,7 @@ relayApiProto selfAddr =
              , (clock_diff, (tTypeName rns clock_diff, Cannot))
              ])
         , ([segq|clients|], arrayDef "Info about the connected clients"
+             Nothing
              (tTypeName rns [segq|client_info|]) Cannot)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
@@ -69,6 +71,7 @@ relayApiProto selfAddr =
                $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
+             Nothing
              (tTypeName rns [segq|owner_info|]) Cannot)
         , ([segq|self|], tupleDef "Which client you are"
              (alSingleton [segq|info|]
@@ -97,7 +100,7 @@ relayApiProto selfAddr =
     selfClientPath = Root :/ [segq|clients|] :/ selfSeg
     staticAl = alFromMap . Map.fromList
     steadyState
-      :: Map Seg TimeDelta -> Map Namespace Seg -> Protocol
+      :: Map i TimeDelta -> Map Namespace Seg -> Protocol
             (ClientEvent i (TimeStamped TrDigest))
             (ClientEvent i TrDigest)
             (ServerEvent i FrDigest)
@@ -109,7 +112,7 @@ relayApiProto selfAddr =
           ClientConnect displayName cAddr ->
             let
               cSeg = pathNameFor cAddr
-              timingMap' = Map.insert cSeg tdZero timingMap
+              timingMap' = Map.insert cAddr tdZero timingMap
             in do
               sendFwd (ClientConnect displayName cAddr)
               pubUpdate (alFromList
@@ -125,7 +128,7 @@ relayApiProto selfAddr =
             -- FIXME: this delta thing should probably be in the per client
             -- pipeline, it'd be less jittery and tidy this up
             delta <- lift $ getDelta theirTime
-            let timingMap' = Map.insert cSeg delta timingMap
+            let timingMap' = Map.insert cAddr delta timingMap
             pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
               $ ConstChange Nothing [WireValue $ unTimeDelta delta])
               mempty
@@ -136,7 +139,7 @@ relayApiProto selfAddr =
         removeClient cAddr =
           let
             cSeg = pathNameFor cAddr
-            timingMap' = Map.delete cSeg timingMap
+            timingMap' = Map.delete cAddr timingMap
             -- FIXME: This feels a bit like reimplementing some of the NST
             ownerMap' = Map.filter (/= cSeg) ownerMap
             (dd, cops) = ownerChangeInfo ownerMap'
@@ -159,16 +162,18 @@ relayApiProto selfAddr =
           case se of
             ServerData cAddr d ->
               case d of
-                Frcd frcd ->
-                  sendRev $ ServerData cAddr $ Frcd
-                  $ frcd {frcdData = viewAs cAddr $ frcdData frcd}
+                Frcud frcud ->
+                  sendRev $ ServerData cAddr $ Frcud
+                  $ frcud {frcudData = viewAs cAddr $ frcudData frcud}
+                x@(Frcrd _) -> void $ sequence $ Map.mapWithKey
+                  (\addr _ -> sendRev $ ServerData addr x) timingMap
                 Frpd frpd -> if frpdNamespace frpd == rns
                   then handleApiRequest frpd
                   else sendRev se
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
-        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContainerOps args)
+        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContOps args)
         ownerChangeInfo ownerMap' =
             ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
@@ -183,7 +188,7 @@ relayApiProto selfAddr =
           let
             theirSeg = pathNameFor i
             theirTime = unTimeDelta $ Map.findWithDefault
-              (error "Can't rewrite message for unconnected client") theirSeg
+              (error "Can't rewrite message for unconnected client") i
               timingMap
             alterTime (ConstChange att [wv]) = ConstChange att $ pure
               $ WireValue $ subtract theirTime $ either error id
@@ -196,11 +201,8 @@ relayApiProto selfAddr =
           in
             alFmapWithKey fiddleDataChanges dd
         -- This function trusts that the valuespace has completely validated the
-        -- actions the client can perform (i.e. can only change the name of a
-        -- client)
-        handleApiRequest (FrpDigest ns dd cops) =
-          let
-            cops' = (fmap . fmap . fmap . fmap) (const ()) cops
-          in
-            sendFwd $ ClientData selfAddr $ Trpd $
-            TrpDigest ns mempty mempty dd cops' mempty
+        -- actions the client can perform (i.e. can only change the display name
+        -- of a client)
+        handleApiRequest frpd =
+            sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
+              (frpdNamespace frpd) mempty mempty (frpdData frpd) mempty mempty

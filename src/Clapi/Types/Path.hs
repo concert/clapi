@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveLift #-}
 
 module Clapi.Types.Path (
-    Path'(..), Path, Seg, mkSeg, unSeg,
+    Path'(..), Path, Seg, mkSeg, unSeg, Placeholder(..),
     pathP, segP, toText, fromText,
     splitHead, splitTail, parentPath,
     pattern Root, pattern (:</), pattern (:/),
@@ -113,7 +113,7 @@ data TypeName
   = TypeName {tnNamespace :: Namespace, tnName :: Seg} deriving (Eq, Ord)
 
 qualify :: Namespace -> Tagged a Seg -> Tagged a TypeName
-qualify ns (Tagged s) = Tagged $ TypeName ns s
+qualify ns taggedSeg = fmap (TypeName ns) taggedSeg
 
 unqualify :: Tagged a TypeName -> (Namespace, Tagged a Seg)
 unqualify (Tagged (TypeName ns s)) = (ns, Tagged s)
@@ -125,7 +125,7 @@ tTnNamespace :: Tagged a TypeName -> Namespace
 tTnNamespace = tnNamespace . unTagged
 
 tTnName :: Tagged a TypeName -> Tagged a Seg
-tTnName = Tagged . tnName . unTagged
+tTnName = fmap tnName
 
 qualSepChar :: Char
 qualSepChar = ':'

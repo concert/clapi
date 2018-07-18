@@ -15,6 +15,8 @@ instance Encodable Path.Seg where
   builder = builder . Path.unSeg
   parser = parser >>= Path.mkSeg
 
+deriving instance Encodable Path.Placeholder
+
 instance Encodable Path.Path where
   builder = builder . Path.toText Path.unSeg
   parser = parser >>= Path.fromText Path.segP

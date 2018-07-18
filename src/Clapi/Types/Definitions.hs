@@ -15,7 +15,7 @@ import Clapi.Types.Path (Seg, TypeName)
 import Clapi.Types.Tree (TreeType(..))
 
 data Liberty = Cannot | May | Must deriving (Show, Eq, Enum, Bounded)
-data Required = Required | Optional deriving (Show, Eq, Enum, Bounded)
+data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
@@ -26,7 +26,7 @@ class OfMetaType metaType where
 
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
-  , postDefArgs :: AssocList Seg (TreeType, Required)
+  , postDefArgs :: AssocList Seg TreeType
   } deriving (Show, Eq)
 
 data TupleDefinition = TupleDefinition
@@ -56,14 +56,15 @@ instance OfMetaType StructDefinition where
 
 data ArrayDefinition = ArrayDefinition
   { arrDefDoc :: Text
+  , arrPostType :: Maybe (Tagged PostDefinition TypeName)
   , arrDefChildType :: Tagged Definition TypeName
   , arrDefChildLiberty :: Liberty
   } deriving (Show, Eq)
 
 instance OfMetaType ArrayDefinition where
   metaType _ = Array
-  childTypeFor _ (ArrayDefinition _ tp _) = Just tp
-  childLibertyFor (ArrayDefinition _ _ l) _ = return l
+  childTypeFor _ = Just . arrDefChildType
+  childLibertyFor ad _ = return $ arrDefChildLiberty ad
 
 
 data Definition
@@ -79,8 +80,10 @@ structDef
   :: Text -> AssocList Seg (Tagged Definition TypeName, Liberty) -> Definition
 structDef doc types = StructDef $ StructDefinition doc types
 
-arrayDef :: Text -> Tagged Definition TypeName -> Liberty -> Definition
-arrayDef doc tn lib = ArrayDef $ ArrayDefinition doc tn lib
+arrayDef :: Text
+  -> Maybe (Tagged PostDefinition TypeName) -> Tagged Definition TypeName
+  -> Liberty -> Definition
+arrayDef doc ptn tn lib = ArrayDef $ ArrayDefinition doc ptn tn lib
 
 defDispatch :: (forall a. OfMetaType a => a -> r) -> Definition -> r
 defDispatch f (TupleDef d) = f d

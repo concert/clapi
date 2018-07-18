@@ -1,10 +1,12 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     DeriveFunctor
+  , DeriveFoldable
+  , DeriveTraversable
 #-}
 
 module Clapi.Types.SequenceOps
-  ( SequenceOp(..), isSoAbsent, isSoCreate
+  ( SequenceOp(..), isSoAbsent
   , updateUniqList
   ) where
 
@@ -19,37 +21,29 @@ import Clapi.Types.UniqList
   (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
 import Clapi.Util (ensureUnique)
 
-data SequenceOp i d
-  = SoCreateAfter (Maybe i) d
-  | SoMoveAfter (Maybe i)
+data SequenceOp i
+  = SoAfter (Maybe i)
   | SoAbsent
-  deriving (Show, Eq, Functor)
+  deriving (Show, Eq, Functor, Foldable, Traversable)
 
-isSoAbsent :: SequenceOp i d -> Bool
+isSoAbsent :: SequenceOp i -> Bool
 isSoAbsent so = case so of
   SoAbsent -> True
   _ -> False
 
-isSoCreate :: SequenceOp i d -> Bool
-isSoCreate so = case so of
-  SoCreateAfter _ _ -> True
-  _ -> False
-
 updateUniqList
   :: (Eq i, Ord i, Show i, MonadFail m)
-  => Map i (SequenceOp i d) -> UniqList i -> m (UniqList i)
+  => Map i (SequenceOp i) -> UniqList i -> m (UniqList i)
 updateUniqList ops ul = do
     ensureUnique "flange" $ Map.elems reorders
     reorderFromDeps reorders $ Map.foldlWithKey foo ul ops
   where
     foo ul' i op = case op of
-      SoCreateAfter _ _ -> ulInsert i ul'
-      SoMoveAfter _ -> ul'
+      SoAfter _ -> ulInsert i ul'
       SoAbsent -> ulDelete i ul'
     reorders = Map.foldlWithKey bar mempty ops
     bar acc i op = case op of
-      SoCreateAfter mi _ -> Map.insert i mi acc
-      SoMoveAfter mi -> Map.insert i mi acc
+      SoAfter mi -> Map.insert i mi acc
       SoAbsent -> acc
 
 getChainStarts ::
