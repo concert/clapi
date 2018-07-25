@@ -42,13 +42,14 @@ import Clapi.TH
 import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
 import Clapi.Tree
   ( RoseTree(..), RoseTreeNode(..), treeInsert, treeChildren, TpId
-  , RoseTreeNodeType(..))
+  , RoseTreeNodeType(..), treePaths)
 import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
   ( alKeysSet, alValues, alSingleton, alEmpty
-  , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap)
+  , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap, alPartitionWithKey
+  , alFilterKey)
 import Clapi.Types.Definitions
   ( Definition(..), Liberty(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), PostDefinition(..), defDispatch
@@ -60,9 +61,9 @@ import Clapi.Types.Digests
 import Clapi.Types.Messages (DataErrorIndex(..))
 import Clapi.Types.Path
   ( Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..)
-  , qualify, unqualify, tTnNamespace, Namespace(..), Placeholder)
+  , qualify, unqualify, tTnNamespace, Namespace(..), Placeholder, childPaths)
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
@@ -476,9 +477,14 @@ validateCreateAndCopAfters vs creates cops =
     getCreatedPhs :: Path -> Set Placeholder
     getCreatedPhs p = maybe mempty Map.keysSet $ Map.lookup p creates
 
+    removed :: Path -> Set Seg
+    removed p = case Map.lookup p cops of
+      Nothing -> mempty
+      Just pCops -> Map.keysSet $ Map.filter (isSoAbsent . snd) pCops
+
     getExistingChildSegs :: Path -> Set Seg
     getExistingChildSegs p = case Tree.treeLookupNode p $ vsTree vs of
-      Just (RtnChildren al) -> alKeysSet al
+      Just (RtnChildren al) -> Set.difference (alKeysSet al) (removed p)
       _ -> mempty
 
     -- "Refs" == names referenced by an "after" somewhere
@@ -520,11 +526,10 @@ filterSubMap = merge
 filterByAfterErrs
   :: Map DataErrorIndex [ValidationErr]
   -> Creates -> ContOps (Either Placeholder Seg)
-  -> (Creates, ContOps Seg)
+  -> (Creates, ContOps (Either Placeholder Seg))
 filterByAfterErrs errMap creates cops =
     ( filterSubMap badPhs creates
-    , fmap (Map.mapMaybe $ traverse dropPlaceholder) $
-      filterSubMap badSegs cops)
+    , filterSubMap badSegs cops)
   where
     badKeys = Map.fromList $
       bimap errPath (partitionEithers . fmap key) <$> Map.toList errMap
@@ -536,10 +541,39 @@ filterByAfterErrs errMap creates cops =
     key = \case
       CreateReferencedAbsentName ph _ -> Left ph
       MoveReferencedAbsentName seg _ -> Right seg
-    dropPlaceholder
-      :: SequenceOp (Either Placeholder Seg) -> Maybe (SequenceOp Seg)
-    dropPlaceholder = traverse (either (const Nothing) (Just))
 
+dropPlaceholder
+  :: SequenceOp (Either Placeholder Seg) -> Maybe (SequenceOp Seg)
+dropPlaceholder = traverse (either (const Nothing) (Just))
+
+removedPaths :: ContOps a -> Set Path
+removedPaths cops = Set.fromList $ mconcat $ Map.elems $
+  Map.mapWithKey childPaths $
+  Map.keys . Map.filter isSoAbsent . fmap snd <$> cops
+
+filterDdByDataErrIdx :: [DataErrorIndex] -> DataDigest -> DataDigest
+filterDdByDataErrIdx errIdxs =
+      alFmapWithKey removeBadTps
+    . alFilterKey (not . (`Set.member` constErrs))
+  where
+    (constErrs, tpErrs) = bimap Map.keysSet (Map.mapMaybe id) $
+      Map.partition (== Nothing) errIdxMap
+    errIdxMap :: Map Path (Maybe (Set Word32))
+    errIdxMap = fmap flipSet $ Mos.fromList $ mapMaybe procErrIdx $ errIdxs
+    flipSet :: Eq a => Set (Maybe a) -> Maybe (Set a)
+    flipSet = fmap Set.fromAscList . sequence . Set.toAscList
+    procErrIdx :: DataErrorIndex -> Maybe (Path, Maybe Word32)
+    procErrIdx = \case
+      GlobalError -> Nothing
+      PathError p -> Just (p, Nothing)
+      TimePointError p tpid -> Just (p, Just tpid)
+
+    removeBadTps path change =
+      case Map.lookup path tpErrs of
+        Nothing -> change
+        Just badTpIds -> case change of
+         ConstChange _ _ -> error "internal error: tp errors for const change"
+         TimeChange m -> TimeChange $ Map.withoutKeys m badTpIds
 
 processTrcUpdateDigest
   :: Valuespace -> TrcUpdateDigest
@@ -549,18 +583,22 @@ processTrcUpdateDigest vs trcud =
     ns = unNamespace $ trcudNamespace trcud
     (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
       trcudCreates trcud
-    -- FIXME: need to handle removes before checking the afters!
     afterErrs = validateCreateAndCopAfters vs createsWithValidArgs $
       trcudContOps trcud
     (validCreates, validCops) =
       filterByAfterErrs afterErrs createsWithValidArgs $ trcudContOps trcud
-
+    validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
     -- adding to the front of the path will not break uniqueness
-    updates = fromJust $ alMapKeys (ns :</) $ trcudData trcud
-    (updateErrs, tree') = Tree.updateTreeWithDigest validCops updates $
+    validPaths = Set.difference
+      (maybe mempty (Set.fromList . treePaths Root) $
+        Tree.treeLookup (Root :/ ns) $ vsTree vs) (removedPaths validCops)
+    (pathValidDd, nonExistantSets) = alPartitionWithKey
+      (\p _ -> Set.member p validPaths) $ trcudData trcud
+    (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
       vsTree vs
-    touched = opsTouched validCops updates
-    (tas', newPaths) = fillTyAssns (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
+    touched = opsTouched validSegCops pathValidDd
+    (tas', newPaths) = fillTyAssns
+      (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
     vs' = vs {vsTree = tree', vsTyAssns = tas'}
     touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs') touched
     cannotErrs = const [LibertyErr "Touched a cannot"]
@@ -573,13 +611,17 @@ processTrcUpdateDigest vs trcud =
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
 
-    errMap = Map.unionsWith (<>) $
-      [createErrs, afterErrs] ++ fmap (Map.mapKeys PathError)
+    thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
       , validationErrs, cannotErrs, mustErrs
       ]
-  in
-    (errMap, undefined)
+    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing]
+    frpd = FrpDigest
+      (trcudNamespace trcud)
+      (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
+      validCreates
+      validCops
+  in (errMap, frpd)
 
 fillTyAssns
   :: DefMap Definition -> TypeAssignmentMap -> [Path]
