@@ -41,7 +41,7 @@ import Clapi.Types.Digests
   , OutboundClientSubErrsDigest, OutboundClientInitialisationDigest
   , FrpDigest(..), frpdNull
   , OutboundProviderDigest(..)
-  , DataDigest, ContOps, Creates)
+  , DataDigest, ContOps, Creates, ocsedNull)
 import Clapi.Types.Path
   ( Seg, Path, TypeName(..), qualify, unqualify, pattern (:</), pattern Root
   , parentPath, Namespace(..))
@@ -200,7 +200,7 @@ relay vs = waitThenFwdOnly fwd
     fwd (i, dig) = case dig of
         PnidCgd cgd ->
           let (ocsed, ocids) = genInitDigests cgd vs in do
-            sendRev (i, Ocsed ocsed)
+            unless (ocsedNull ocsed) $ sendRev (i, Ocsed ocsed)
             mapM_ (sendRev . (i,) . Ocid) ocids
             relay vs
         PnidTrcud trcud ->
@@ -214,19 +214,13 @@ relay vs = waitThenFwdOnly fwd
         PnidTrprd (TrprDigest ns) -> do
           -- FIXME: the removal of the namespace _should_ be all the clients
           -- need to be told, rather than any data going away...
-          sendRev (i, Ocrd $
-              FrcRootDigest $ Map.singleton (unNamespace ns) SoAbsent)
           relay $ vsRelinquish ns vs
       where
         handleOwnerSuccess
-            (TrpDigest ns postDefs defs dd contOps errs) (updatedTyAssns, vs') =
+            (TrpDigest ns postDefs defs dd contOps errs) (qUpdatedTyAssns, vs') =
           let
-            shouldPubRoot =
-              Map.member (Tagged $ unNamespace ns) defs &&
-              Map.notMember ns (vsTyDefs vs)
-            qDd = maybe (error "Bad sneakers") id $
-              alMapKeys (unNamespace ns :</) dd
-            qDd' = vsMinimiseDataDigest qDd vs
+            updatedTyAssns = Map.mapKeys (maybe (error "Fix vs mess") snd . Path.splitHead) qUpdatedTyAssns
+            dd' = vsMinimiseDataDigest dd vs
             contOps' = vsMinimiseContOps contOps vs
             mungedTas = Map.mapWithKey
               (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
@@ -242,7 +236,7 @@ relay vs = waitThenFwdOnly fwd
                 (vsMinimiseDefinitions postDefs ns vs)
                 -- FIXME: we need to provide defs for type assignments too.
                 (vsMinimiseDefinitions defs ns vs)
-                mungedTas qDd' contOps'' errs)
+                mungedTas dd' contOps'' errs)
             relay vs'
         -- handleClientDigest
         --     (InboundClientDigest ns gets postTypeGets typeGets contOps dd)

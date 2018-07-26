@@ -32,25 +32,25 @@ import Clapi.NamespaceTracker
 
 spec :: Spec
 spec = describe "the relay protocol" $ do
-    it "should extend the root structure when a namespace is claimed" $
+    it "handles claims" $
       let
         fooDef = tupleDef "Some Word32"
           (alSingleton [segq|value|] (TtWord32 unbounded)) ILUninterpolated
         dd = alSingleton Root $ ConstChange bob [WireValue (42 :: Word32)]
+        inDefs = Map.singleton (Tagged foo) $ OpDefine fooDef
         inDig = PnidTrpd $ (trpdEmpty fooN)
-          { trpdDefinitions = Map.singleton (Tagged foo) $ OpDefine fooDef
+          { trpdDefinitions = inDefs
           , trpdData = dd
           }
-        extendedRootDef = structDef "root def doc" $ alFromList
-          [ (unNamespace apiNs, (tTypeName apiNs (unNamespace apiNs), Cannot))
-          , (foo, (tTypeName (Namespace foo) foo, Cannot))
-          ]
-        expectedOutDig = Ocrd $ FrcRootDigest $ Map.singleton foo $ SoAfter Nothing
+        expectedUpDig = Ocud $ (frcudEmpty fooN)
+          { frcudDefinitions = inDefs
+          , frcudData = dd
+          }
         test = do
           sendFwd ((), inDig)
-          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
+          waitThenRevOnly $ lift . (`shouldBe` expectedUpDig) . snd
       in runEffect $ test <<-> relay baseValuespace
-    it "should send root info on revoke" $
+    it "should handle revoke" $
       let
         vsWithStuff = unsafeValidateVs $ baseValuespace
           { vsTree = treeInsert bob fooP (RtConstData bob []) $
@@ -60,10 +60,12 @@ spec = describe "the relay protocol" $ do
                  tupleDef "Thing" alEmpty ILUninterpolated) $
               vsTyDefs baseValuespace
           }
-        expectedOutDig =
-          Ocrd $ FrcRootDigest $ Map.singleton foo SoAbsent
+        expectedOutDig = Ocsed $
+          Map.singleton (PathSubError $ Root :/ foo) ["Path not found"]
         test = do
           sendFwd ((), PnidTrprd $ TrprDigest fooN)
+          sendFwd ((), PnidCgd $
+            cgdEmpty { cgdDataGets = Set.singleton fooP })
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay vsWithStuff
     it "should reject subscriptions to non-existant paths" $
@@ -96,8 +98,6 @@ spec = describe "the relay protocol" $ do
           { frcudData = dd
           , frcudTypeAssignments =
               Map.singleton (Root :/ kid) (tTypeName fooN kid, Cannot)
-          , frcudContOps = Map.singleton Root $
-            Map.singleton kid (Nothing, SoAfter Nothing)
           }
         test = do
           sendFwd ((), inDig)
@@ -121,7 +121,7 @@ spec = describe "the relay protocol" $ do
               lift . (`shouldBe` (Ocud $ (frcudEmpty fooN) {frcudData = dd})) .
               snd
       in runEffect $ test <<-> relay vsWithInt
-    it "should not send empty ocids/opds to client requests" $
+    it "should not send empty digests to valid client requests" $
       let
         test = do
             sendFwd (1, PnidCgd $ cgdEmpty)

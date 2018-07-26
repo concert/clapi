@@ -11,7 +11,7 @@ import qualified Data.Map as Map
 import Data.Map.Strict.Merge (merge, zipWithMatched, mapMissing)
 import Data.Maybe (mapMaybe)
 import Data.Monoid
-import Data.Set (Set)
+import Data.Set (Set, (\\))
 import qualified Data.Set as Set
 import Data.Tagged (Tagged, untag)
 import qualified Data.Text as Text
@@ -27,14 +27,15 @@ import Clapi.Types.Digests
   , FrpDigest(..), FrpErrorDigest(..)
   , DefOp(..), isUndef, isSub, frcudNull, frcsdNull, frcsdEmpty
   , OutboundDigest(..)
-  , OutboundClientInitialisationDigest, OutboundClientUpdateDigest)
+  , OutboundClientInitialisationDigest, OutboundClientUpdateDigest
+  , FrcRootDigest(..))
 -- Also `Either String a` MonadFail instance:
 import Clapi.Types (Definition, PostDefinition)
 import Clapi.Types.Path
   ( Path, TypeName(..), pattern (:/), pattern (:</), pattern Root
   , Namespace(..), Seg, unqualify, qualify)
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.SequenceOps (isSoAbsent)
+import Clapi.Types.SequenceOps (isSoAbsent, SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 import Clapi.Util (flattenNestedMaps)
@@ -82,25 +83,36 @@ data NstState i
   = NstState
   { nstOwners :: Map Namespace i
   , nstRegs :: Map i ClientRegs
+  -- FIXME: also tracked in the RelayApi:
+  , nstAllClients :: Set i
   } deriving Show
 
 
 nstProtocol :: (Monad m, Ord i) => NstProtocol m i ()
-nstProtocol = evalStateT nstProtocol_ $ NstState mempty mempty
+nstProtocol = evalStateT nstProtocol_ $ NstState mempty mempty mempty
 
 nstProtocol_ :: (Monad m, Ord i) => StateT (NstState i) (NstProtocol m i) ()
 nstProtocol_ = forever $ liftedWaitThen fwd rev
   where
     sendFwd' i d = lift $ sendFwd (Originator i, d)
-    fwd (ClientConnect _ _) = return ()
+    fwd (ClientConnect _ i) = modify $
+      \nsts -> nsts {nstAllClients = Set.insert i $ nstAllClients nsts}
     fwd (ClientData i trd) =
       case trd of
         Trpd d -> claimNamespace i d
           (throwOutProvider i $ Set.singleton $ trpdNamespace d)
-          (sendFwd' i $ PnidTrpd d)
+          (do
+              sendFwd' i $ PnidTrpd d
+              broadcastRev $ Frcrd $ FrcRootDigest $ Map.singleton
+                (unNamespace $ trpdNamespace d) (SoAfter Nothing)
+          )
         Trprd d -> relinquishNamespace i (trprdNamespace d)
           (throwOutProvider i $ Set.singleton $ trprdNamespace d)
-          (sendFwd' i $ PnidTrprd d)
+          (do
+              unsubscribeFromRelinquishedNs (Set.singleton $ trprdNamespace d)
+                >>= lift . multicastRev . fmap Frcsd
+              sendFwd' i $ PnidTrprd d
+          )
         Trcsd d -> guardNsClientSubDigest i d
           (throwOutProvider i)
           (do
@@ -120,11 +132,12 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
         -- FIXME: eventually we may collapse the client/time tracking roles of
         -- the RelayAPI, perhaps to here, and then this, which is really a
         -- broadcast, could happen here. Right now, we don't actually have info
-        -- about all the connected clients:
-        Ocrd d -> send i $ Frcrd d
+        -- about all the connected clients
         Ocud d -> do
-          generateClientDigests d >>= lift . broadcastRev . fmap Frcud
-          unsubDeleted d >>= lift . broadcastRev . fmap Frcsd
+          -- FIXME: Broadcast should go to everyone, not just providers and
+          -- subscribers
+          generateClientDigests d >>= lift . multicastRev . fmap Frcud
+          unsubDeleted d >>= lift . multicastRev . fmap Frcsd
         Opd d -> do
           i' <- maybe (error "no owner for namespace") id .
             Map.lookup (frpdNamespace d) . nstOwners <$> get
@@ -210,6 +223,36 @@ relinquishNamespace i ns failureAction successAction = either
             then return owners'
             else fail "You're not the owner"
 
+unsubscribeFromRelinquishedNs
+  :: Monad m => Set Namespace -> StateT (NstState i) m (Map i FrcSubDigest)
+unsubscribeFromRelinquishedNs nss = do
+    nsts <- get
+    let partdRegs = partitionClientRegs <$> nstRegs nsts
+    put $ nsts {nstRegs = snd <$> partdRegs}
+    pure $
+      Map.filter (not . frcsdNull) $ convertToFrcSubDigest . fst <$> partdRegs
+  where
+    shouldRelinquishPath :: Path -> Bool
+    shouldRelinquishPath p = case Path.splitHead p of
+      Just (ns, _) -> Namespace ns `Set.member` nss
+      Nothing -> False
+
+    shouldRelinquishTn :: Tagged a TypeName -> Bool
+    shouldRelinquishTn = (`Set.member` nss) . tnNamespace . untag
+
+    partitionClientRegs :: ClientRegs -> (ClientRegs, ClientRegs)
+    partitionClientRegs (ClientRegs pt t d) =
+      let
+        (pt1, pt2) = Set.partition shouldRelinquishTn pt
+        (t1, t2) = Set.partition shouldRelinquishTn t
+        (d1, d2) = Set.partition shouldRelinquishPath d
+      in
+        (ClientRegs pt1 t1 d1, ClientRegs pt2 t2 d2)
+
+    convertToFrcSubDigest :: ClientRegs -> FrcSubDigest
+    convertToFrcSubDigest (ClientRegs pt t d) = FrcSubDigest mempty pt t d
+
+
 guardNsClientSubDigest
   :: (Eq i, Monad m)
   => i -> TrcSubDigest
@@ -253,6 +296,8 @@ handleSubDigest i trcsd =
     (ptSubs, ptUnsubs) = partSubs $ trcsdPostTypeSubs trcsd
     (tSubs, tUnsubs) = partSubs $ trcsdTypeSubs trcsd
     (dSubs, dUnsubs) = partSubs $ trcsdDataSubs trcsd
+    removeUnsubs = Just . maybe mempty (\(ClientRegs pt t d) -> ClientRegs
+        (pt \\ ptUnsubs) (t \\ tUnsubs) (d \\ dUnsubs))
   in do
     nsts <- get
     let current = Map.findWithDefault mempty i $ nstRegs nsts
@@ -264,6 +309,7 @@ handleSubDigest i trcsd =
           (Set.intersection ptUnsubs $ crPostTypeRegs current)
           (Set.intersection tUnsubs $ crTypeRegs current)
           (Set.intersection dUnsubs $ crDataRegs current)
+    put $ nsts {nstRegs = Map.alter removeUnsubs i $ nstRegs nsts}
     return (cdg, frcsd)
   where
     mapPair f (a1, a2) = (f a1, f a2)
@@ -273,7 +319,10 @@ handleDisconnect
   :: (Ord i, Monad m) => i -> StateT (NstState i) (NstProtocol m i) ()
 handleDisconnect i = do
     nsts <- get
-    let (removed, remaining) = Map.partition (== i) $ nstOwners nsts
+    let nsts' = nsts {nstAllClients = Set.delete i $ nstAllClients nsts}
+    let (removed, remaining) = Map.partition (== i) $ nstOwners nsts'
+    unsubscribeFromRelinquishedNs (Map.keysSet removed)
+      >>= lift . multicastRev . fmap Frcsd
     unless (null removed) $ updateOwners remaining
     mapM_ send $ Map.keys removed
   where
@@ -300,7 +349,7 @@ unsubDeleted d = do
     nsts <- get
     let results = fmap updateClientReg $ nstRegs nsts
     put nsts{ nstRegs = fmap fst results }
-    return $ fmap snd results
+    return $ Map.filter (not . frcsdNull) $ snd <$> results
   where
     ns = frcudNamespace d
     allUndefPTys = qualifiedUndefs $ frcudPostDefs d
@@ -321,10 +370,13 @@ unsubDeleted d = do
         , FrcSubDigest mempty ptUnsubs tUnsubs dUnsubs
         )
 
-broadcastRev :: Monad m => Map i FrDigest -> NstProtocol m i ()
-broadcastRev = void . sequence . Map.mapWithKey sendRevWithI
+multicastRev :: Monad m => Map i FrDigest -> NstProtocol m i ()
+multicastRev = void . sequence . Map.mapWithKey sendRevWithI
   where
     sendRevWithI i digest = sendRev $ Right $ ServerData i digest
+
+broadcastRev :: Monad m => FrDigest -> StateT (NstState i) (NstProtocol m i) ()
+broadcastRev d = get >>= lift . multicastRev . Map.fromSet (const d) . nstAllClients
 
 generateClientDigests
   :: Monad m

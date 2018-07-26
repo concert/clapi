@@ -27,7 +27,7 @@ import Data.Maybe (fromJust, mapMaybe)
 import Data.Monoid ((<>))
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
+import Data.Tagged (Tagged(..), untag)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
@@ -61,12 +61,15 @@ import Clapi.Types.Digests
 import Clapi.Types.Messages (DataErrorIndex(..))
 import Clapi.Types.Path
   ( Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..)
-  , qualify, unqualify, tTnNamespace, Namespace(..), Placeholder, childPaths)
+  , qualify, unqualify, tTnNamespace, Namespace(..), Placeholder, childPaths
+  , splitHead)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
+
+import Debug.Trace
 
 -- FIXME: this should probably be `Map (Tagged def TypeName) def`
 type DefMap def = Map Namespace (Map (Tagged def Seg) def)
@@ -129,7 +132,7 @@ displayNameDef = TupleDefinition
 unsafeValidateVs :: Valuespace -> Valuespace
 unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
   where
-    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
+    allTainted = Map.delete Root $ Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
       vsTree vs
 
 baseValuespace :: Valuespace
@@ -179,9 +182,19 @@ vsLookupDef
   :: MonadFail m => Tagged Definition TypeName -> Valuespace -> m Definition
 vsLookupDef tn vs = lookupDef tn $ vsTyDefs vs
 
+getNsOfSingletonPath :: Path -> Maybe Namespace
+getNsOfSingletonPath p = case splitHead p of
+    Just (ns, Root) -> Just $ Namespace ns
+    _ -> Nothing
+
+-- FIXME: Should probably be 1 valuespace per NS and we should pass in the root
+-- type path to the constructor
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition TypeName)
-lookupTypeName p = note "Type name not found" . Mos.getDependency p
+lookupTypeName p tam = note "Type name not found" $ maybe
+    (Mos.getDependency p tam)
+    (\ns -> return $ Tagged $ TypeName ns $ unNamespace ns) $
+    getNsOfSingletonPath p
 
 defForPath :: MonadFail m => Path -> Valuespace -> m Definition
 defForPath p vs =
@@ -190,6 +203,7 @@ defForPath p vs =
 getLiberty :: MonadFail m => Path -> Valuespace -> m Liberty
 getLiberty path vs = case path of
   Root :/ _ -> return Cannot
+  s :</ Root -> return Cannot
   p :/ s -> defForPath p vs >>= defDispatch (flip childLibertyFor s)
   _ -> return Cannot
 
@@ -273,11 +287,7 @@ validateVs
        (Map DataErrorIndex [ValidationErr])
        (Map Path (Tagged Definition TypeName), Valuespace)
 validateVs t v = do
-    (newTypeAssns, refClaims, vs) <-
-      -- FIXME: there is now no root type, so how do we change this?
-      -- As the root type is dynamic we always treat it as if it has been
-      -- redefined:
-      inner mempty mempty (Map.insert Root Nothing t) v
+    (newTypeAssns, refClaims, vs) <- inner mempty mempty (traceShow t t) v
     checkRefClaims (vsTyAssns vs) refClaims
     let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
     let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
@@ -390,9 +400,12 @@ processToRelayProviderDigest trpd vs =
   let
     ns = trpdNamespace trpd
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
+    -- FIXME: The fudge here is for dealing with the namespaces being different
+    getPathsWithType s = if Namespace (untag s) == ns
+      then Set.singleton $ Root :/ (unNamespace ns)
+      else Mos.getDependants (qualify ns s) tas
     redefdPaths = mconcat $
-      fmap (\s -> Mos.getDependants (qualify ns s) tas) $ Map.keys $
-      trpdDefinitions trpd
+      fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
     qData = fromJust $ alMapKeys (unNamespace ns :</) $ trpdData trpd
     qCops = Map.mapKeys (unNamespace ns :</) $ trpdContOps trpd
     updatedPaths = opsTouched qCops qData

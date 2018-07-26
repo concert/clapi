@@ -133,7 +133,7 @@ spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $
       let
-        allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
+        allTainted = Map.delete Root $ Map.fromList $ fmap (,Nothing) $ treePaths Root $
           vsTree baseValuespace
         validated = either (error . show) snd $
           validateVs allTainted baseValuespace
@@ -266,13 +266,13 @@ spec = do
     it "Relinquish" $
       let
         fs = [segq|foo|]
-        fooRootDef = arrayDef
-          "frd" Nothing (tTypeName apiNs [segq|version|]) Cannot
+        fooRootDef = structDef "frd" $
+          alSingleton fs (tTypeName apiNs [segq|version|], Cannot)
         claimFoo = TrpDigest
           (Namespace fs)
           mempty
           (Map.singleton (Tagged fs) $ OpDefine fooRootDef)
-          alEmpty
+          (alSingleton (Root :/ fs) $ ConstChange Nothing [WireValue @Word32 1, WireValue @Word32 1, WireValue @Int32 1])
           mempty
           mempty
       in do

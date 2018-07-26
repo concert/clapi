@@ -15,9 +15,9 @@ import Clapi.TH
 import Clapi.Types (InterpolationLimit(..), WireValue(..))
 import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
-import Clapi.Types.Messages (DataErrorIndex(..))
+import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Path
-  (Path, Seg, pattern Root, TypeName(..), tTypeName, Namespace(..))
+  (Path, Seg, pattern Root, TypeName(..), tTypeName, Namespace(..), pattern (:/))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -161,7 +161,8 @@ spec = do
     it "Disowns on owner disconnect" $
       -- And unsubs clients
       let
-        byeP = [pathq|/bye|]
+        byeS = [segq|bye|]
+        byeP = Root :/ byeS
         forTest = do
             sendFwd $ ClientData bob $ Trcsd $ trcsdEmpty
               {trcsdDataSubs = Map.fromList
@@ -172,19 +173,19 @@ spec = do
               (frcudEmpty $ Namespace helloS)
               { frcudData = alSingleton Root $ textChange "f" }
             expectRev $ Right $ ServerData bob $ Frcud $
-              (frcudEmpty $ Namespace [segq|bye|])
+              (frcudEmpty $ Namespace byeS)
               { frcudData = alSingleton Root $ textChange "t" }
             claimHello alice
             expectRev $ Left $ Map.fromList
               [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
             sendFwd $ ClientDisconnect alice
-            expectRev $ Left $ Map.fromList
-              [] -- FIXME: should API be owned?
             expectRev $ Right $ ServerData bob $ Frcsd $ frcsdEmpty
               { frcsdDataUnsubs = Set.singleton helloP }
+            expectRev $ Left $ Map.fromList
+              [] -- FIXME: should API be owned?
             expectRev $ Right $ ServerData bob $ Frcud $
-              (frcudEmpty $ Namespace [segq|bye|])
+              (frcudEmpty $ Namespace byeS)
               { frcudData = alSingleton Root $ textChange "f" }
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) -> do
@@ -192,18 +193,17 @@ spec = do
                   (frcudEmpty $ Namespace helloS)
                   { frcudData = alSingleton Root $ textChange "f" })
                 sendRev (i, Ocid $
-                  (frcudEmpty $ Namespace [segq|bye|])
+                  (frcudEmpty $ Namespace byeS)
                   { frcudData = alSingleton Root $ textChange "t" })
             waitThenFwdOnly $ const return ()
             waitThenFwdOnly $ \(i, d) -> do
               lift $ d `shouldBe` PnidTrprd (TrprDigest $ Namespace helloS)
-              sendRev (i, Ocrd $ FrcRootDigest $ Map.singleton helloS SoAbsent)
               -- To verify the client is unsubscribed:
               sendRev (i, Ocud $
                 (frcudEmpty $ Namespace helloS)
                 { frcudData = alSingleton Root $ textChange "t" })
               sendRev (i, Ocud $
-                (frcudEmpty $ Namespace [segq|bye|])
+                (frcudEmpty $ Namespace byeS)
                 { frcudData = alSingleton Root $ textChange "f" })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
@@ -235,16 +235,13 @@ spec = do
               })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
-    it "Returns client validation errors" $
+    it "Failed subscriptions do not result in continuing to receive data" $
       let
         forTest = do
             subHello alice
-            expectRev $ Right $ ServerData alice $ Frcud $
-              (frcudEmpty $ Namespace helloS)
-              { frcudErrors = Map.singleton (PathError Root) ["pants"] }
-            expectRev $ Right $ ServerData alice $ Frcsd $ frcsdEmpty
-              { frcsdDataUnsubs = Set.singleton helloP
-              }
+            expectRev $ Right $ ServerData alice $ Frcsd $
+              frcsdEmpty
+              { frcsdErrors = Map.singleton (PathSubError helloP) ["pants"] }
             subHello bob
             expectRev $ Right $ ServerData bob $ Frcud $
               (frcudEmpty $ Namespace helloS)
@@ -254,9 +251,8 @@ spec = do
               { frcudData = alSingleton Root $ textChange "a" }
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) ->
-                sendRev (i, Ocid $
-                  (frcudEmpty $ Namespace helloS)
-                  { frcudErrors = Map.singleton (PathError Root) ["pants"] })
+                sendRev (i,
+                  Ocsed $ Map.singleton (PathSubError helloP) ["pants"])
             waitThenFwdOnly $ \(i, _) -> do
                 sendRev (i, Ocid $
                   (frcudEmpty $ Namespace helloS)

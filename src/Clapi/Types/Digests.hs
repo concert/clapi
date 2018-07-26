@@ -532,6 +532,9 @@ type OutboundClientInitialisationDigest = OutboundClientUpdateDigest
 type OutboundClientSubErrsDigest = Map SubErrorIndex [Text]
 type OutboundProviderDigest = FrpDigest
 
+ocsedNull :: OutboundClientSubErrsDigest -> Bool
+ocsedNull = null
+
 -- data OutboundProviderDigest = OutboundProviderDigest
 --   { opdContainerOps :: ContainerOps [WireValue]
 --   , opdData :: DataDigest
@@ -544,7 +547,6 @@ data OutboundDigest
   = Ocid OutboundClientInitialisationDigest
   | Ocsed OutboundClientSubErrsDigest
   | Ocud OutboundClientUpdateDigest
-  | Ocrd FrcRootDigest
   | Opd OutboundProviderDigest
   | Ope FrpErrorDigest
   deriving (Show, Eq)
