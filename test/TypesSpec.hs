@@ -31,11 +31,12 @@ import Clapi.Types
   ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Liberty
   , InterpolationLimit, PostDefinition(..), Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
-  , wireValueWireType, withWtProxy, Required)
+  , wireValueWireType, withWtProxy)
 import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
-import Clapi.Types.Path (Seg, Path'(..), mkSeg, TypeName(..), Namespace(..))
+import Clapi.Types.Path
+  (Seg, Path'(..), mkSeg, TypeName(..), Namespace(..), Placeholder(..))
 import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
@@ -65,9 +66,6 @@ instance Arbitrary TypeName where
   arbitrary = TypeName <$> arbitrary <*> arbitrary
 
 instance Arbitrary Liberty where
-    arbitrary = arbitraryBoundedEnum
-
-instance Arbitrary Required where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary InterpolationLimit where
@@ -169,7 +167,8 @@ instance Arbitrary Definition where
           , StructDef <$>
               (StructDefinition <$> arbitraryTextNoNull <*> arbitrary)
           , ArrayDef <$>
-              (ArrayDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary)
+              (ArrayDefinition <$> arbitraryTextNoNull <*> arbitrary
+               <*> arbitrary <*> arbitrary)
           ]
 
 instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
@@ -210,3 +209,4 @@ data TestEnum = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bou
 
 deriving instance Arbitrary a => Arbitrary (Tagged t a)
 deriving instance Arbitrary Namespace
+deriving instance Arbitrary Placeholder

@@ -12,25 +12,18 @@ import qualified Data.Text as T
 import Data.Void
 
 import Clapi.TH
-import Clapi.Types
-    ( InterpolationLimit(..), WireValue(..)
-    , FrDigest(..), FrpDigest(..), FrpErrorDigest(..)
-    , TrDigest(..), TrpDigest(..), trpDigest, TrprDigest(..), trcdEmpty
-    , TrcDigest(..), frcdEmpty, FrcDigest(..)
-    , ErrorIndex(..)
-    , DataChange(..))
+import Clapi.Types (InterpolationLimit(..), WireValue(..))
 import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
-  ( OutboundDigest(..), InboundDigest(..)
-  , InboundClientDigest(..), inboundClientDigest
-  , OutboundClientDigest(..), outboundClientDigest
-  , OutboundProviderDigest(..), frpDigest, SubOp(..), DefOp(..))
+import Clapi.Types.Messages (DataErrorIndex(..))
 import Clapi.Types.Path
   (Path, Seg, pattern Root, TypeName(..), tTypeName, Namespace(..))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.NamespaceTracker (nstProtocol, Originator(..))
+import Clapi.NamespaceTracker
+  ( nstProtocol, Originator(..), PostNstInboundDigest(..), ClientGetDigest(..)
+  , cgdEmpty)
 import qualified Clapi.Protocol as Protocol
 import Clapi.Protocol
   ( Protocol, sendFwd, sendRev, (<<->), runEffect, waitThenFwdOnly
@@ -47,9 +40,6 @@ helloS = [segq|hello|]
 
 helloP :: Path
 helloP = [pathq|/hello|]
-
-ocdEmpty :: OutboundClientDigest
-ocdEmpty = outboundClientDigest
 
 -- Collects responses until the identified client disconnects
 collectAllResponsesUntil ::
@@ -80,7 +70,7 @@ spec = do
     it "Rejects empty claim" $
       let
         forTest = do
-            sendFwd $ ClientData alice $ Trpd $ trpDigest $ Namespace helloS
+            sendFwd $ ClientData alice $ Trpd $ trpdEmpty $ Namespace helloS
             expectErrors alice $ Map.singleton
                 (PathError helloP) ["Empty claim"]
             expectRev $ Right $ ServerDisconnect alice
@@ -88,10 +78,10 @@ spec = do
     it "Rejects owner subscriptions" $
       let
         subDs =
-          [ trcdEmpty
-              {trcdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
-          , trcdEmpty
-              {trcdTypeSubs = Map.singleton
+          [ trcsdEmpty
+              {trcsdDataSubs = Map.singleton [pathq|/hello|] OpSubscribe}
+          , trcsdEmpty
+              {trcsdTypeSubs = Map.singleton
                 (tTypeName (Namespace helloS) helloS) OpSubscribe}
           ]
         forTest subD = do
@@ -99,7 +89,7 @@ spec = do
             expectRev $ Left $ Map.fromList
               [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
-            sendFwd $ ClientData alice $ Trcd subD
+            sendFwd $ ClientData alice $ Trcsd subD
             expectErrors alice $ Map.singleton
                 (PathError helloP) ["Acted as client on own namespace"]
             expectRev $ Right $ ServerDisconnect alice
@@ -108,41 +98,46 @@ spec = do
       let
         forTest = do
             subHello alice
-            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdData = alSingleton helloP $ textChange "f"
-              , frcdDefinitions = Map.singleton (Tagged helloTn) helloDef0
+            expectRev $ Right $ ServerData alice $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "f"
+              , frcudDefinitions = Map.singleton (Tagged helloS) helloDef0
               }
-            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdData = alSingleton helloP $ textChange "t" }
-            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
-              {trcdDataSubs = Map.singleton helloP OpUnsubscribe}
-            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdDataUnsubs = Set.singleton helloP
-              }
-            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdDefinitions = Map.singleton (Tagged helloTn) helloDef1
+            expectRev $ Right $ ServerData alice $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "t" }
+            sendFwd $ ClientData alice $ Trcsd $ trcsdEmpty
+              { trcsdDataSubs = Map.singleton helloP OpUnsubscribe }
+            expectRev $ Right $ ServerData alice $ Frcsd $ frcsdEmpty
+              { frcsdDataUnsubs = Set.singleton helloP }
+            expectRev $ Right $ ServerData alice $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudDefinitions = Map.singleton (Tagged helloS) helloDef1
               }
         helloDef0 = OpDefine $ tupleDef "Yoho" alEmpty ILUninterpolated
         helloDef1 = OpDefine $ tupleDef "Hoyo" alEmpty ILUninterpolated
         fauxRelay = do
             i <- waitThenFwdOnly $ \(i, d) -> do
-                lift (d `shouldBe` Icd (inboundClientDigest
-                  { icdGets = Set.singleton helloP
+                lift (d `shouldBe` PnidCgd (cgdEmpty
+                  { cgdDataGets = Set.singleton helloP
                   }))
                 return i
-            sendRev (i, Ocid $ ocdEmpty
-              { ocdDefinitions = Map.singleton (Tagged helloTn) helloDef0
-              , ocdData = alSingleton helloP $ textChange "f"
+            sendRev (i, Ocid $
+              (frcudEmpty $ Namespace helloS)
+              { frcudDefinitions = Map.singleton (Tagged helloS) helloDef0
+              , frcudData = alSingleton Root $ textChange "f"
               })
-            sendRev (i, Ocd $ ocdEmpty
-              { ocdData = alFromList
-                [ (helloP, textChange "t")
+            sendRev (i, Ocud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alFromList
+                [ (Root, textChange "t")
                 , ([pathq|/nowhere|], textChange "banana")
                 ]
               })
-            sendRev (i, Ocd $ ocdEmpty
-              { ocdDefinitions = Map.singleton (Tagged helloTn) helloDef1
-              , ocdData = alSingleton helloP $ textChange "w"
+            sendRev (i, Ocud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudDefinitions = Map.singleton (Tagged helloS) helloDef1
+              , frcudData = alSingleton Root $ textChange "w"
               })
             waitThenFwdOnly $ const return ()
             relayNoMore
@@ -153,12 +148,14 @@ spec = do
             subHello alice
             sendFwd $ ClientDisconnect alice
             subHello bob
-            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdData = alSingleton helloP $ textChange "f" }
+            expectRev $ Right $ ServerData bob $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "f" }
         fauxRelay = do
             waitThenFwdOnly $ const return ()
-            waitThenFwdOnly $ \(i, d) -> sendRev (i, Ocid $ ocdEmpty
-              {ocdData = alSingleton helloP $ textChange "f"})
+            waitThenFwdOnly $ \(i, d) -> sendRev (i, Ocid $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "f" })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
     it "Disowns on owner disconnect" $
@@ -166,16 +163,17 @@ spec = do
       let
         byeP = [pathq|/bye|]
         forTest = do
-            sendFwd $ ClientData bob $ Trcd $ trcdEmpty
-              {trcdDataSubs = Map.fromList
+            sendFwd $ ClientData bob $ Trcsd $ trcsdEmpty
+              {trcsdDataSubs = Map.fromList
                 [ (helloP, OpSubscribe)
                 , (byeP, OpSubscribe)
                 ]}
-            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdData = alFromList
-                [ (helloP, textChange "f")
-                , (byeP, textChange "t")
-              ]}
+            expectRev $ Right $ ServerData bob $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "f" }
+            expectRev $ Right $ ServerData bob $ Frcud $
+              (frcudEmpty $ Namespace [segq|bye|])
+              { frcudData = alSingleton Root $ textChange "t" }
             claimHello alice
             expectRev $ Left $ Map.fromList
               [ (Namespace helloS, alice)
@@ -183,37 +181,37 @@ spec = do
             sendFwd $ ClientDisconnect alice
             expectRev $ Left $ Map.fromList
               [] -- FIXME: should API be owned?
-            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdDataUnsubs = Set.singleton helloP }
-            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdData = alSingleton byeP $ textChange "f" }
+            expectRev $ Right $ ServerData bob $ Frcsd $ frcsdEmpty
+              { frcsdDataUnsubs = Set.singleton helloP }
+            expectRev $ Right $ ServerData bob $ Frcud $
+              (frcudEmpty $ Namespace [segq|bye|])
+              { frcudData = alSingleton Root $ textChange "f" }
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) -> do
-                sendRev (i, Ocid $ ocdEmpty
-                  { ocdData = alFromList
-                    [ (helloP, textChange "f")
-                    , (byeP, textChange "t")
-                  ]
-                })
+                sendRev (i, Ocid $
+                  (frcudEmpty $ Namespace helloS)
+                  { frcudData = alSingleton Root $ textChange "f" })
+                sendRev (i, Ocid $
+                  (frcudEmpty $ Namespace [segq|bye|])
+                  { frcudData = alSingleton Root $ textChange "t" })
             waitThenFwdOnly $ const return ()
             waitThenFwdOnly $ \(i, d) -> do
-              lift $ d `shouldBe` Iprd (TrprDigest $ Namespace helloS)
-              sendRev (i, Ocd $ ocdEmpty
-                {ocdContainerOps = Map.singleton Root $
-                  Map.singleton helloS (Nothing, SoAbsent)})
-              sendRev (i, Ocd $ ocdEmpty
-                {ocdData = alFromList
-                  [ (helloP, textChange "t")
-                  , (byeP, textChange "f")
-                  ]
-                })
+              lift $ d `shouldBe` PnidTrprd (TrprDigest $ Namespace helloS)
+              sendRev (i, Ocrd $ FrcRootDigest $ Map.singleton helloS SoAbsent)
+              -- To verify the client is unsubscribed:
+              sendRev (i, Ocud $
+                (frcudEmpty $ Namespace helloS)
+                { frcudData = alSingleton Root $ textChange "t" })
+              sendRev (i, Ocud $
+                (frcudEmpty $ Namespace [segq|bye|])
+                { frcudData = alSingleton Root $ textChange "f" })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
     it "Is idempotent when unsubscribing" $
       let
         forTest = do
-            sendFwd $ ClientData alice $ Trcd $ trcdEmpty
-              { trcdDataSubs = Map.singleton helloP OpUnsubscribe }
+            sendFwd $ ClientData alice $ Trcsd $ trcsdEmpty
+              { trcsdDataSubs = Map.singleton helloP OpUnsubscribe }
             claimHello bob
             expectRev $ Left $ Map.fromList
               [ (Namespace helloS, bob)
@@ -227,13 +225,13 @@ spec = do
               [ (Namespace helloS, alice)
               ] -- FIXME: should API be owned?
             expectRev $ Right $ ServerData alice $
-              Frpd (frpDigest $ Namespace helloS)
+              Frpd (frpdEmpty $ Namespace helloS)
               { frpdData = alSingleton Root $ textChange "x"
               }
         fauxRelay = do
-            waitThenFwdOnly $ \(i, d) -> sendRev (i, Opd $ OutboundProviderDigest
-              { opdContainerOps = mempty
-              , opdData = alSingleton helloP $ textChange "x"
+            waitThenFwdOnly $ \(i, d) -> sendRev (i, Opd $
+              (frpdEmpty $ Namespace helloS)
+              { frpdData = alSingleton Root $ textChange "x"
               })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
@@ -241,29 +239,36 @@ spec = do
       let
         forTest = do
             subHello alice
-            expectRev $ Right $ ServerData alice $ Frcd $ frcdEmpty
-              { frcdErrors = Map.singleton (PathError helloP) ["pants"]
-              , frcdDataUnsubs = Set.singleton helloP
+            expectRev $ Right $ ServerData alice $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudErrors = Map.singleton (PathError Root) ["pants"] }
+            expectRev $ Right $ ServerData alice $ Frcsd $ frcsdEmpty
+              { frcsdDataUnsubs = Set.singleton helloP
               }
             subHello bob
-            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdData = alSingleton helloP $ textChange "i" }
-            expectRev $ Right $ ServerData bob $ Frcd $ frcdEmpty
-              { frcdData = alSingleton helloP $ textChange "a" }
+            expectRev $ Right $ ServerData bob $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "i" }
+            expectRev $ Right $ ServerData bob $ Frcud $
+              (frcudEmpty $ Namespace helloS)
+              { frcudData = alSingleton Root $ textChange "a" }
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) ->
-                sendRev (i, Ocid $ ocdEmpty
-                  { ocdErrors = Map.singleton (PathError helloP) ["pants"] })
+                sendRev (i, Ocid $
+                  (frcudEmpty $ Namespace helloS)
+                  { frcudErrors = Map.singleton (PathError Root) ["pants"] })
             waitThenFwdOnly $ \(i, _) -> do
-                sendRev (i, Ocid $ ocdEmpty
-                  { ocdData = alSingleton helloP $ textChange "i" })
-                sendRev (i, Ocd $ ocdEmpty
-                  { ocdData = alSingleton helloP $ textChange "a" })
+                sendRev (i, Ocid $
+                  (frcudEmpty $ Namespace helloS)
+                  { frcudData = alSingleton Root $ textChange "i" })
+                sendRev (i, Ocud $
+                  (frcudEmpty $ Namespace helloS)
+                  { frcudData = alSingleton Root $ textChange "a" })
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
     it "Returns provider validation errors" $
       let
-        errD = FrpErrorDigest $ Map.singleton (PathError helloP) ["lol"]
+        errD = FrpErrorDigest $ Map.singleton (PathError Root) ["lol"]
         forTest = do
             claimHello alice
             expectRev $ Left $ Map.fromList
@@ -276,7 +281,7 @@ spec = do
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) -> sendRev (i, Ope errD)
             waitThenFwdOnly $ \m -> lift $
-              m `shouldBe` (Originator alice, Iprd $ TrprDigest $
+              m `shouldBe` (Originator alice, PnidTrprd $ TrprDigest $
                Namespace helloS)
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
@@ -287,9 +292,9 @@ spec = do
     expectErrors addr =
         expectRev . Right . ServerData addr . Frped . FrpErrorDigest
     claimHello addr = sendFwd $ ClientData addr $ Trpd $
-      (trpDigest $ Namespace helloS)
+      (trpdEmpty $ Namespace helloS)
       {trpdData = alSingleton Root $ textChange "yo"}
-    subHello addr = sendFwd $ ClientData addr $ Trcd $ trcdEmpty
-      {trcdDataSubs = Map.singleton helloP OpSubscribe}
+    subHello addr = sendFwd $ ClientData addr $ Trcsd $ trcsdEmpty
+      {trcsdDataSubs = Map.singleton helloP OpSubscribe}
     textChange s = ConstChange Nothing [WireValue (s :: T.Text)]
     helloTn = TypeName (Namespace helloS) helloS

@@ -39,7 +39,7 @@ import Clapi.Types.Digests
   , TimeSeriesDataOp(..), DefOp(..)
   , OutboundDigest(..), OutboundClientUpdateDigest
   , OutboundClientSubErrsDigest, OutboundClientInitialisationDigest
-  , FrpDigest(..), frpDigest, frpdNull
+  , FrpDigest(..), frpdNull
   , OutboundProviderDigest(..)
   , DataDigest, ContOps, Creates)
 import Clapi.Types.Path
@@ -162,57 +162,6 @@ genInitDigests (ClientGetDigest ptGets tGets dGets) vs =
     setDefs x = mempty { pfrcudDefinitions = x }
 
 
--- genInitDigest
---   :: Set Path -> Set (Tagged PostDefinition TypeName)
---   -> Set (Tagged Definition TypeName) -> Valuespace
---   -> OutboundClientInitialisationDigest
--- genInitDigest ps ptns tns vs =
---   let
---     rtns = Map.fromSet (flip valuespaceGet vs) ps
---     (ptnErrs, postDefs) = mapPartitionEither $
---         Map.fromSet (flip vsLookupPostDef vs) ptns
---     (tnErrs, defs) = mapPartitionEither $ Map.fromSet (flip vsLookupDef vs) tns
---     errMap = (pure . Text.pack <$> Map.mapKeys TypeError tnErrs) <>
---       (pure . Text.pack <$> Map.mapKeys PostTypeError ptnErrs)
---     initialOcd = OutboundClientDigest mempty
---       (OpDefine <$> postDefs) (OpDefine <$> defs) mempty alEmpty errMap
---   in
---     Map.foldlWithKey go initialOcd rtns
---   where
---     go
---       :: OutboundClientInitialisationDigest -> Path
---       -> Either
---           String
---           ( Definition
---           , Tagged Definition TypeName
---           , Liberty
---           , RoseTreeNode [WireValue])
---       -> OutboundClientInitialisationDigest
---     go d p (Left errStr) = d {
---         ocdErrors = Map.unionWith (<>) (ocdErrors d)
---           (Map.singleton (PathError p) [Text.pack errStr])
---       }
---     go d p (Right (def, tn, lib, rtn)) =
---       let
---         d' = d {
---           ocdDefinitions = Map.insert tn (OpDefine def) (ocdDefinitions d),
---           ocdTypeAssignments = Map.insert p (tn, lib) (ocdTypeAssignments d)}
---       in case rtn of
---         RtnEmpty -> error "Valid tree should not contain empty nodes, but did"
---         RtnChildren kidsAl ->
---           let (kidSegs, kidAtts) = unzip $ unAssocList kidsAl in
---           d' {
---             ocdContainerOps = Map.insert p
---               (Map.fromList $ zipWith3
---                 (\s a att -> (s, (att, SoMoveAfter a)))
---                 kidSegs (Nothing : (Just <$> kidSegs)) kidAtts)
---             (ocdContainerOps d')
---           }
---         RtnConstData att vals -> d'{ocdData =
---           alInsert p (ConstChange att vals) $ ocdData d}
---         RtnDataSeries ts ->
---           d'{ocdData = alInsert p (oppifyTimeSeries ts) $ ocdData d}
-
 contDiff
   :: AssocList Seg (Maybe Attributee) -> AssocList Seg (Maybe Attributee)
   -> Map Seg (Maybe Attributee, SequenceOp Seg)
@@ -233,30 +182,6 @@ mayContDiff ma kb = case ma of
         else Just $ contDiff ka kb
     _ -> Nothing
 
-filterDdByDataErrIdx :: [DataErrorIndex] -> DataDigest -> DataDigest
-filterDdByDataErrIdx errIdxs =
-      alFmapWithKey removeBadTps
-    . alFilterKey (not . (`Set.member` constErrs))
-  where
-    (constErrs, tpErrs) = bimap Map.keysSet (Map.mapMaybe id) $
-      Map.partition (== Nothing) errIdxMap
-    errIdxMap :: Map Path (Maybe (Set Word32))
-    errIdxMap = fmap flipSet $ Mos.fromList $ mapMaybe procErrIdx $ errIdxs
-    flipSet :: Eq a => Set (Maybe a) -> Maybe (Set a)
-    flipSet = fmap Set.fromAscList . sequence . Set.toAscList
-    procErrIdx :: DataErrorIndex -> Maybe (Path, Maybe Word32)
-    procErrIdx = \case
-      GlobalError -> Nothing
-      PathError p -> Just (p, Nothing)
-      TimePointError p tpid -> Just (p, Just tpid)
-
-    removeBadTps path change =
-      case Map.lookup path tpErrs of
-        Nothing -> change
-        Just badTpIds -> case change of
-         ConstChange _ _ -> error "internal error: tp errors for const change"
-         TimeChange m -> TimeChange $ Map.withoutKeys m badTpIds
-
 someFunc
   :: Valuespace -> TrcUpdateDigest
   -> (OutboundClientUpdateDigest, OutboundProviderDigest)
@@ -264,11 +189,6 @@ someFunc vs trcud@(TrcUpdateDigest ns dat creates cops) =
   let
     (errMap, opd) = processTrcUpdateDigest vs trcud
     ocud = (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
-    -- opd = FrpDigest
-    --   ns
-    --   (filterDdByDataErrIdx (Map.keys errMap) dat)
-    --   (undefined creates)
-    --   (undefined cops)
   in
     (ocud, opd)
 

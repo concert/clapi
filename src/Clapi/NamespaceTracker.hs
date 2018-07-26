@@ -44,10 +44,13 @@ data Ownership = Owner | Client deriving (Eq, Show)
 newtype Originator i = Originator i deriving (Eq, Show)
 
 data ClientGetDigest = ClientGetDigest
-  { cdgPostTypeGets :: Set (Tagged PostDefinition TypeName)
-  , cdgTypeGets :: Set (Tagged Definition TypeName)
+  { cgdPostTypeGets :: Set (Tagged PostDefinition TypeName)
+  , cgdTypeGets :: Set (Tagged Definition TypeName)
   , cgdDataGets :: Set Path
   } deriving (Show, Eq)
+
+cgdEmpty :: ClientGetDigest
+cgdEmpty = ClientGetDigest mempty mempty mempty
 
 data PostNstInboundDigest
   = PnidCgd ClientGetDigest

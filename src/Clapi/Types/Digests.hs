@@ -79,8 +79,8 @@ data TrpDigest = TrpDigest
   , trpdErrors :: Map DataErrorIndex [Text]
   } deriving (Show, Eq)
 
-trpDigest :: Namespace -> TrpDigest
-trpDigest ns = TrpDigest ns mempty mempty alEmpty mempty mempty
+trpdEmpty :: Namespace -> TrpDigest
+trpdEmpty ns = TrpDigest ns mempty mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
@@ -101,8 +101,8 @@ data FrpDigest = FrpDigest
   , frpdContOps :: ContOps (Either Placeholder Seg)
   } deriving (Show, Eq)
 
-frpDigest :: Namespace -> FrpDigest
-frpDigest ns = FrpDigest ns mempty mempty mempty
+frpdEmpty :: Namespace -> FrpDigest
+frpdEmpty ns = FrpDigest ns mempty mempty mempty
 
 frpdNull :: FrpDigest -> Bool
 frpdNull (FrpDigest _ dd creates cops) = null dd && null creates && null cops
@@ -116,6 +116,9 @@ data TrcSubDigest = TrcSubDigest
   , trcsdTypeSubs :: Map (Tagged Definition TypeName) SubOp
   , trcsdDataSubs :: Map Path SubOp
   } deriving (Show, Eq)
+
+trcsdEmpty :: TrcSubDigest
+trcsdEmpty = TrcSubDigest mempty mempty mempty
 
 trcsdNamespaces :: TrcSubDigest -> Set Namespace
 trcsdNamespaces (TrcSubDigest ptSubs tSubs dSubs) =
@@ -145,9 +148,9 @@ newtype FrcRootDigest = FrcRootDigest
 
 data FrcSubDigest = FrcSubDigest
   { frcsdErrors :: Map SubErrorIndex [Text]
-  , frcsdPostTypeUnusbs :: Set (Tagged PostDefinition TypeName)
-  , frcsdTypeUnusbs :: Set (Tagged Definition TypeName)
-  , frcsdDataUnusbs :: Set Path
+  , frcsdPostTypeUnsubs :: Set (Tagged PostDefinition TypeName)
+  , frcsdTypeUnsubs :: Set (Tagged Definition TypeName)
+  , frcsdDataUnsubs :: Set Path
   } deriving (Show, Eq)
 
 frcsdNull :: FrcSubDigest -> Bool
