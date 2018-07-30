@@ -69,8 +69,6 @@ import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
-import Debug.Trace
-
 -- FIXME: this should probably be `Map (Tagged def TypeName) def`
 type DefMap def = Map Namespace (Map (Tagged def Seg) def)
 type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition TypeName)
@@ -287,7 +285,7 @@ validateVs
        (Map DataErrorIndex [ValidationErr])
        (Map Path (Tagged Definition TypeName), Valuespace)
 validateVs t v = do
-    (newTypeAssns, refClaims, vs) <- inner mempty mempty (traceShow t t) v
+    (newTypeAssns, refClaims, vs) <- inner mempty mempty t v
     checkRefClaims (vsTyAssns vs) refClaims
     let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
     let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
