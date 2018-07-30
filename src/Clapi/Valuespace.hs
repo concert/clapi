@@ -14,7 +14,7 @@ module Clapi.Valuespace
   ) where
 
 import Prelude hiding (fail)
-import Control.Monad (unless, liftM2)
+import Control.Monad (unless, liftM2, join)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Bifunctor (first, bimap)
 import Data.Either (lefts, partitionEithers)
@@ -435,16 +435,19 @@ validateCreates vs creates = fmap mconcat $
     fmap (ocArgs . snd) <$> creates
   where
     getArgValidator
-      :: Path -> Placeholder -> [WireValue] -> [(Placeholder, String)]
+      :: Path -> Placeholder -> [[WireValue]] -> [(Placeholder, String)]
     getArgValidator path ph =
       either (const . pure . (ph,)) (validatorFromPd ph) $
       postDefForPath path vs
 
     -- FIXME: finer-grained errors from value validation would be preferable
     validatorFromPd
-      :: Placeholder -> PostDefinition -> [WireValue] -> [(Placeholder, String)]
+      :: Placeholder -> PostDefinition -> [[WireValue]] -> [(Placeholder, String)]
     validatorFromPd ph pd = either pure mempty
-      . first (ph,) . validateWireValues (alValues $ postDefArgs pd)
+      . first (ph,)
+      . sequence . join
+      . fmtStrictZipError "post def arg type" "list of wire values"
+      . strictZipWith validateWireValues (alValues $ postDefArgs pd)
 
 validateAndFilterCreates
   :: Valuespace -> Creates -> (Map DataErrorIndex [ValidationErr], Creates)

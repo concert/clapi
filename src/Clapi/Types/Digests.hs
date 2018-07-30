@@ -57,7 +57,9 @@ type DataDigest = AssocList Path DataChange
 
 data CreateOp
   = OpCreate
-  { ocArgs :: [WireValue]
+  -- FIXME: Nested lists of WireValues is a legacy hangover because our tree
+  -- data nodes still contain [WireValue] as a single "value":
+  { ocArgs :: [[WireValue]]
   , ocAfter :: Maybe (Either Placeholder Seg)
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))

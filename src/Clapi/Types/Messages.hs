@@ -81,7 +81,9 @@ data DataUpdateMessage
 
 data ToProviderContainerUpdateMessage
   = TpcumCreateAfter
-      { tpcumArgs :: [WireValue]
+      -- FIXME: nested wire values is a legacy hangover because we still have
+      -- [WireValue] in tree data nodes representing single "values":
+      { tpcumArgs :: [[WireValue]]
       , tpcumPlaceholder :: Placeholder
       , tpcumRef :: Maybe (Either Placeholder Seg)
       , tpcumAtt :: Maybe Attributee

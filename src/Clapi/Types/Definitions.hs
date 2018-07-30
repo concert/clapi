@@ -26,7 +26,9 @@ class OfMetaType metaType where
 
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
-  , postDefArgs :: AssocList Seg TreeType
+  -- FIXME: We really need to stop treating single values as lists of types,
+  -- which makes the "top level" special:
+  , postDefArgs :: AssocList Seg [TreeType]
   } deriving (Show, Eq)
 
 data TupleDefinition = TupleDefinition
