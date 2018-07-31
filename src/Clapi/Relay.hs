@@ -245,32 +245,6 @@ relay vs = waitThenFwdOnly fwd
             unless (null $ frcrdContOps frcrd) $
                 sendRev (i, Ocrd frcrd)
             relay vs'
-        -- handleClientDigest
-        --     (InboundClientDigest ns gets postTypeGets typeGets contOps dd)
-        --     errMap = undefined
-        --   let
-        --     -- TODO: Be more specific in what we reject (filtering by TpId
-        --     -- rather than entire path)
-        --     eidxPath eidx = case eidx of
-        --         PathError p -> Just p
-        --         TimePointError p _ -> Just p
-        --         _ -> Nothing
-        --     errPaths = Set.fromList $ mapMaybe eidxPath $ Map.keys errMap
-        --     dd' = alFilterKey (\k -> not $ Set.member k errPaths) dd
-        --     contOps' = Map.filterWithKey
-        --       (\k _ -> not $ Set.member k errPaths) contOps
-        --     dd'' = vsMinimiseDataDigest dd' vs
-        --     contOps'' = vsMinimiseContOps contOps' vs
-        --     -- FIXME: above uses errors semantically and shouldn't (thus throws
-        --     -- away valid time point changes)
-        --     cid = genInitDigest gets postTypeGets typeGets vs
-        --     cid' = cid{ocdErrors =
-        --       Map.unionWith (<>) (ocdErrors cid) (fmap (Text.pack . show) <$> errMap)}
-        --     opd = OutboundProviderDigest contOps'' dd''
-        --   in do
-        --     unless (ocdNull cid') $ sendRev (i, Ocid cid')
-        --     unless (opdNull opd) $ sendRev (i, Opd opd)
-        --     relay vs
         terminalErrors errMap = do
           sendRev (i, Ope $ FrpErrorDigest errMap)
           relay vs

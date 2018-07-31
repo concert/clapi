@@ -517,18 +517,6 @@ produceFromRelayBundle frd = case frd of
 -- The following are slightly different (and more internal to the relay), they
 -- are not neccessarily intended for a single recipient
 
--- data InboundClientDigest = InboundClientDigest
---   { icdGets :: Set Path
---   , icdPostTypeGets :: Set (Tagged PostDefinition TypeName)
---   , icdTypeGets :: Set (Tagged Definition TypeName)
---   , icdContOps :: ContOps [WireValue]
---   , icdData :: DataDigest
---   } deriving (Show, Eq)
-
--- inboundClientDigest :: InboundClientDigest
--- inboundClientDigest = InboundClientDigest mempty mempty mempty mempty
---   alEmpty
-
 type OutboundClientUpdateDigest = FrcUpdateDigest
 type OutboundClientInitialisationDigest = OutboundClientUpdateDigest
 type OutboundClientSubErrsDigest = Map SubErrorIndex [Text]
@@ -536,14 +524,6 @@ type OutboundProviderDigest = FrpDigest
 
 ocsedNull :: OutboundClientSubErrsDigest -> Bool
 ocsedNull = null
-
--- data OutboundProviderDigest = OutboundProviderDigest
---   { opdContainerOps :: ContainerOps [WireValue]
---   , opdData :: DataDigest
---   } deriving (Show, Eq)
-
--- opdNull :: OutboundProviderDigest -> Bool
--- opdNull (OutboundProviderDigest cops dd) = null cops && alNull dd
 
 data OutboundDigest
   = Ocrid FrcRootDigest  -- "Outbound client root initialisation digest"
