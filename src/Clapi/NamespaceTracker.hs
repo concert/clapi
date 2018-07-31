@@ -40,8 +40,6 @@ import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 import Clapi.Util (flattenNestedMaps)
 
-data Ownership = Owner | Client deriving (Eq, Show)
-
 newtype Originator i = Originator i deriving (Eq, Show)
 
 data ClientGetDigest = ClientGetDigest
