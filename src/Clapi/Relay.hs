@@ -49,13 +49,13 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.Definitions (Liberty, Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
+import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode, treeChildNames)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupPostDef, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
   , getLiberty, ValidationErr)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
-import Clapi.Util (nestMapsByKey, mapPartitionEither)
+import Clapi.Util (nestMapsByKey, mapPartitionEither, partitionDifference)
 
 -- FIXME: Don't like this dependency, even though at some point NST and Relay
 -- need to share this type...
@@ -198,6 +198,10 @@ relay
 relay vs = waitThenFwdOnly fwd
   where
     fwd (i, dig) = case dig of
+        PnidRootGet -> sendRev
+            ( i
+            , Ocrid $ FrcRootDigest $ Map.fromSet (const $ SoAfter Nothing) $
+              Set.fromList $ treeChildNames $ vsTree vs)
         PnidCgd cgd ->
           let (ocsed, ocids) = genInitDigests cgd vs in do
             unless (ocsedNull ocsed) $ sendRev (i, Ocsed ocsed)
@@ -211,10 +215,10 @@ relay vs = waitThenFwdOnly fwd
         PnidTrpd trpd -> either
           terminalErrors
           (handleOwnerSuccess trpd) $ processToRelayProviderDigest trpd vs
-        PnidTrprd (TrprDigest ns) -> do
-          -- FIXME: the removal of the namespace _should_ be all the clients
-          -- need to be told, rather than any data going away...
-          relay $ vsRelinquish ns vs
+        PnidTrprd (TrprDigest ns) ->
+          let vs' = vsRelinquish ns vs in do
+            sendRev (i, Ocrd $ generateRootUpdates vs vs')
+            relay vs'
       where
         handleOwnerSuccess
             (TrpDigest ns postDefs defs dd contOps errs) (qUpdatedTyAssns, vs') =
@@ -230,6 +234,7 @@ relay vs = waitThenFwdOnly fwd
             extraCops = Map.fromAscList $ mapMaybe (\p -> parentPath p >>= getContOps) $
               Set.toAscList $ Map.keysSet updatedTyAssns
             contOps'' = extraCops <> contOps'
+            frcrd = generateRootUpdates vs vs'
           in do
             sendRev (i,
               Ocud $ FrcUpdateDigest ns
@@ -237,6 +242,8 @@ relay vs = waitThenFwdOnly fwd
                 -- FIXME: we need to provide defs for type assignments too.
                 (vsMinimiseDefinitions defs ns vs)
                 mungedTas dd' contOps'' errs)
+            unless (null $ frcrdContOps frcrd) $
+                sendRev (i, Ocrd frcrd)
             relay vs'
         -- handleClientDigest
         --     (InboundClientDigest ns gets postTypeGets typeGets contOps dd)
@@ -281,3 +288,14 @@ vsMinimiseDataDigest dd _ = dd
 -- FIXME: Worst case implementation
 vsMinimiseContOps :: ContOps k -> Valuespace -> ContOps k
 vsMinimiseContOps contOps _ = contOps
+
+generateRootUpdates :: Valuespace -> Valuespace -> FrcRootDigest
+generateRootUpdates vs vs' =
+  let
+    (addedRootNames, removedRootNames) = partitionDifference
+      (Set.fromList $ treeChildNames $ vsTree vs')
+      (Set.fromList $ treeChildNames $ vsTree vs)
+    addedRcos = Map.fromSet (const $ SoAfter Nothing) addedRootNames
+    removedRcos = Map.fromSet (const SoAbsent) removedRootNames
+  in
+    FrcRootDigest $ addedRcos <> removedRcos

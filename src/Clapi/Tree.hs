@@ -58,6 +58,9 @@ treeChildren t = case t of
     RtContainer al -> snd <$> al
     _ -> alEmpty
 
+treeChildNames :: RoseTree a -> [Seg]
+treeChildNames = fmap fst . unAssocList . treeChildren
+
 -- FIXME: define in terms of treeChildren (if even used)
 treePaths :: Path -> RoseTree a -> [Path]
 treePaths p t = case t of

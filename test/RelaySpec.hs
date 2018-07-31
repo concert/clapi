@@ -60,13 +60,15 @@ spec = describe "the relay protocol" $ do
                  tupleDef "Thing" alEmpty ILUninterpolated) $
               vsTyDefs baseValuespace
           }
-        expectedOutDig = Ocsed $
+        expectedOutDig1 = Ocrd $ FrcRootDigest $ Map.singleton foo SoAbsent
+        expectedOutDig2 = Ocsed $
           Map.singleton (PathSubError $ Root :/ foo) ["Path not found"]
         test = do
           sendFwd ((), PnidTrprd $ TrprDigest fooN)
           sendFwd ((), PnidCgd $
             cgdEmpty { cgdDataGets = Set.singleton fooP })
-          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
+          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig1) . snd
+          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig2) . snd
       in runEffect $ test <<-> relay vsWithStuff
     it "should reject subscriptions to non-existant paths" $
       let

@@ -27,15 +27,14 @@ import Clapi.Types.Digests
   , FrpDigest(..), FrpErrorDigest(..)
   , DefOp(..), isUndef, isSub, frcudNull, frcsdNull, frcsdEmpty
   , OutboundDigest(..)
-  , OutboundClientInitialisationDigest, OutboundClientUpdateDigest
-  , FrcRootDigest(..))
+  , OutboundClientInitialisationDigest, OutboundClientUpdateDigest)
 -- Also `Either String a` MonadFail instance:
 import Clapi.Types (Definition, PostDefinition)
 import Clapi.Types.Path
   ( Path, TypeName(..), pattern (:/), pattern (:</), pattern Root
   , Namespace(..), Seg, unqualify, qualify)
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.SequenceOps (isSoAbsent, SequenceOp(..))
+import Clapi.Types.SequenceOps (isSoAbsent)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 import Clapi.Util (flattenNestedMaps)
@@ -52,7 +51,8 @@ cgdEmpty :: ClientGetDigest
 cgdEmpty = ClientGetDigest mempty mempty mempty
 
 data PostNstInboundDigest
-  = PnidCgd ClientGetDigest
+  = PnidRootGet
+  | PnidCgd ClientGetDigest
   | PnidTrcud TrcUpdateDigest
   | PnidTrpd TrpDigest
   | PnidTrprd TrprDigest
@@ -93,17 +93,14 @@ nstProtocol_ :: (Monad m, Ord i) => StateT (NstState i) (NstProtocol m i) ()
 nstProtocol_ = forever $ liftedWaitThen fwd rev
   where
     sendFwd' i d = lift $ sendFwd (Originator i, d)
-    fwd (ClientConnect _ i) = modify $
-      \nsts -> nsts {nstAllClients = Set.insert i $ nstAllClients nsts}
+    fwd (ClientConnect _ i) = do
+      modify $ \nsts -> nsts {nstAllClients = Set.insert i $ nstAllClients nsts}
+      sendFwd' i PnidRootGet
     fwd (ClientData i trd) =
       case trd of
         Trpd d -> claimNamespace i d
           (throwOutProvider i $ Set.singleton $ trpdNamespace d)
-          (do
-              sendFwd' i $ PnidTrpd d
-              broadcastRev $ Frcrd $ FrcRootDigest $ Map.singleton
-                (unNamespace $ trpdNamespace d) (SoAfter Nothing)
-          )
+          (sendFwd' i $ PnidTrpd d)
         Trprd d -> relinquishNamespace i (trprdNamespace d)
           (throwOutProvider i $ Set.singleton $ trprdNamespace d)
           (do
@@ -125,8 +122,10 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
     fwd (ClientDisconnect i) = handleDisconnect i
     rev (Originator i, od) =
       let send i' = lift . sendRev . Right . ServerData i' in case od of
+        Ocrid frcrd -> send i (Frcrd frcrd)
         Ocid d -> registerSubs i d >> send i (Frcud d)
         Ocsed errMap -> send i $ Frcsd $ frcsdEmpty { frcsdErrors = errMap}
+        Ocrd frcrd -> broadcastRev $ Frcrd frcrd
         -- FIXME: eventually we may collapse the client/time tracking roles of
         -- the RelayAPI, perhaps to here, and then this, which is really a
         -- broadcast, could happen here. Right now, we don't actually have info

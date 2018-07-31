@@ -546,8 +546,10 @@ ocsedNull = null
 -- opdNull (OutboundProviderDigest cops dd) = null cops && alNull dd
 
 data OutboundDigest
-  = Ocid OutboundClientInitialisationDigest
+  = Ocrid FrcRootDigest  -- "Outbound client root initialisation digest"
+  | Ocid OutboundClientInitialisationDigest
   | Ocsed OutboundClientSubErrsDigest
+  | Ocrd FrcRootDigest
   | Ocud OutboundClientUpdateDigest
   | Opd OutboundProviderDigest
   | Ope FrpErrorDigest
