@@ -1,5 +1,4 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE StandaloneDeriving, GeneralizedNewtypeDeriving #-}
 
 module SerialisationSpec where
 
@@ -99,7 +98,7 @@ instance Arbitrary DataUpdateMessage where
 
 instance Arbitrary ToProviderContainerUpdateMessage where
   arbitrary = oneof
-    [ TpcumCreateAfter <$> arbitrary <*> arbitrary
+    [ TpcumCreateAfter <$> smallListOf (smallListOf arbitrary) <*> arbitrary
       <*> arbitrary <*> arbitrary
     , TpcumMoveAfter <$> arbitrary <*> arbitrary <*> genAttributee
     , TpcumAbsent <$> arbitrary <*> genAttributee
@@ -151,7 +150,7 @@ instance Arbitrary FromRelayProviderErrorBundle where
   arbitrary = FromRelayProviderErrorBundle <$> smallListOf arbitrary
 
 instance Arbitrary ToRelayClientSubBundle where
-  arbitrary = ToRelayClientSubBundle <$> arbitrary
+  arbitrary = ToRelayClientSubBundle <$> smallListOf arbitrary
 
 instance Arbitrary ToRelayClientUpdateBundle where
   arbitrary = ToRelayClientUpdateBundle <$> arbitrary
@@ -178,7 +177,8 @@ instance Arbitrary FromRelayClientUpdateBundle where
     | (e', postDefs', defs', tas', dd', c')
     <- shrink (e, postDefs, defs, tas, dd, c)]
 
-deriving instance Arbitrary FromRelayClientRootBundle
+instance Arbitrary FromRelayClientRootBundle where
+    arbitrary = FromRelayClientRootBundle <$> smallListOf arbitrary
 
 instance Arbitrary ToRelayBundle where
   arbitrary = oneof
