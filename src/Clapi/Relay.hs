@@ -198,10 +198,12 @@ relay
 relay vs = waitThenFwdOnly fwd
   where
     fwd (i, dig) = case dig of
-        PnidRootGet -> sendRev
-            ( i
-            , Ocrid $ FrcRootDigest $ Map.fromSet (const $ SoAfter Nothing) $
-              Set.fromList $ treeChildNames $ vsTree vs)
+        PnidRootGet -> do
+            sendRev
+              ( i
+              , Ocrid $ FrcRootDigest $ Map.fromSet (const $ SoAfter Nothing) $
+                Set.fromList $ treeChildNames $ vsTree vs)
+            relay vs
         PnidCgd cgd ->
           let (ocsed, ocids) = genInitDigests cgd vs in do
             unless (ocsedNull ocsed) $ sendRev (i, Ocsed ocsed)
