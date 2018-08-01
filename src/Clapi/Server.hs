@@ -17,6 +17,7 @@ import GHC.IO.Exception (IOException)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import Network.Simple.TCP (HostPreference, bindSock)
+import System.IO (hPutStrLn, stderr)
 
 import Clapi.Protocol (Protocol, runProtocolIO)
 import Clapi.PerClientProto
@@ -101,7 +102,9 @@ protocolServer
 protocolServer listenSock getClientProto mainProto onShutdown = do
     (mainI, mainO) <- BQ.newChan 4
     clientMap <- newMVar mempty
-    withAsync (mainP mainO clientMap) (clientP mainI clientMap)
+    withAsync
+      (mainP mainO clientMap >> hPutStrLn stderr "WARNING: main pipeline exited")
+      (clientP mainI clientMap)
   where
     mainP mainChan clientMap = runProtocolIO
         (BQ.readChan mainChan) undefined

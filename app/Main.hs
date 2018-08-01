@@ -14,6 +14,7 @@ import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.Text as T
 import Crypto.Hash.SHA256 (hash)
 import qualified Data.ByteString.Base16 as B16
+import System.IO (hPutStrLn, stderr)
 
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser, digester)
@@ -49,8 +50,9 @@ main =
     withListen onDraining onTerminated HostAny "1234" $ \(lsock, _) ->
         protocolServer lsock perClientProto totalProto (return ())
   where
-    onDraining = putStrLn "Stopped accepting new connections, waiting for existing clients to disconnect..."
-    onTerminated = putStrLn "Forcibly quit"
+    onDraining = hPutStrLn stderr
+      "Stopped accepting new connections, waiting for existing clients to disconnect..."
+    onTerminated = hPutStrLn stderr "Forcibly quit"
     perClientProto addr =
       ("SomeOne", addr, serialiser <<-> digester <<-> attributor "someone")
     totalProto = shower "total"
