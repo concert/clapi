@@ -1,5 +1,6 @@
 {-# LANGUAGE
     GeneralizedNewtypeDeriving
+  , LambdaCase
   , StandaloneDeriving
 #-}
 
@@ -185,3 +186,25 @@ instance Encodable Interpolation where
         ItConstant -> return IConstant
         ItLinear -> return ILinear
         ItBezier -> IBezier <$> parser <*> parser
+
+data LR = L | R deriving (Enum, Bounded)
+
+eitherTaggedData :: TaggedData LR (Either a b)
+eitherTaggedData = taggedData typeToTag valueToType
+  where
+    typeToTag L = [btq|<|]
+    typeToTag R = [btq|>|]
+    valueToType (Left _) = L
+    valueToType (Right _) = R
+
+instance (Encodable a, Encodable b) => Encodable (Either a b) where
+  builder = tdTaggedBuilder eitherTaggedData $ \case
+    Left a -> builder a
+    Right b -> builder b
+  parser = tdTaggedParser eitherTaggedData $ \case
+    L -> Left <$> parser
+    R -> Right <$> parser
+
+instance Encodable () where
+  builder _ = return mempty
+  parser = return ()

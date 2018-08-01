@@ -9,7 +9,7 @@ module Clapi.Tree where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Control.Monad.State (State, get, put, modify, runState)
+import Control.Monad.State (State, get, put, modify, runState, state)
 import Data.Functor.Const (Const(..))
 import Data.Functor.Identity (Identity(..))
 import Data.Map (Map)
@@ -29,8 +29,8 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
-  ( DataDigest, ContainerOps, DataChange(..), TimeSeriesDataOp(..))
-import Clapi.Types.SequenceOps (SequenceOp, updateUniqList, isSoCreate)
+  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
+import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
 
 type TpId = Word32
 
@@ -58,6 +58,9 @@ treeChildren t = case t of
     RtContainer al -> snd <$> al
     _ -> alEmpty
 
+treeChildNames :: RoseTree a -> [Seg]
+treeChildNames = fmap fst . unAssocList . treeChildren
+
 -- FIXME: define in terms of treeChildren (if even used)
 treePaths :: Path -> RoseTree a -> [Path]
 treePaths p t = case t of
@@ -69,7 +72,7 @@ treePaths p t = case t of
 
 treeApplyReorderings
   :: MonadFail m
-  => Map Seg (Maybe Attributee, SequenceOp Seg args) -> RoseTree a
+  => Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a
   -> m (RoseTree a)
 treeApplyReorderings contOps (RtContainer children) =
   let
@@ -77,7 +80,7 @@ treeApplyReorderings contOps (RtContainer children) =
     childMap = Map.foldlWithKey'
         (\acc k att -> Map.insert k (att, RtEmpty) acc)
         (alToMap children)
-        (fst <$> Map.filter (isSoCreate . snd) contOps)
+        (fst <$> contOps)
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
     RtContainer . alFmapWithKey reattribute . alPickFromMap childMap
@@ -146,21 +149,26 @@ treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
     buildChildTree s p =
       fmap ((att,) . RtContainer . alSingleton s) <$> inner p Nothing
 
--- FIXME: Maybe reorder the args to reflect application order?
-updateTreeWithDigest
-  :: ContainerOps args -> DataDigest -> RoseTree [WireValue]
-  -> (Map Path [Text], RoseTree [WireValue])
-updateTreeWithDigest contOps dd = runState $ do
-    errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
-    errs' <- sequence $ Map.mapWithKey applyContOp contOps
-    return $ Map.filter (not . null) $ Map.unionWith (<>) errs errs'
+updateTreeStructure
+  :: ContOps Seg -> RoseTree a -> (Map Path [Text], RoseTree a)
+updateTreeStructure contOps = runState $ do
+    errs <- sequence $ Map.mapWithKey applyContOp contOps
+    return $ Map.filter (not . null) errs
   where
     applyContOp
-      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg args)
-      -> State (RoseTree [WireValue]) [Text]
+      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg)
+      -> State (RoseTree a) [Text]
     applyContOp np m = do
       eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
       either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
+
+updateTreeData
+  :: DataDigest -> RoseTree [WireValue]
+  -> (Map Path [Text], RoseTree [WireValue])
+updateTreeData dd = runState $ do
+    errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
+    return $ Map.filter (not . null) errs
+  where
     applyDd
       :: Path -> DataChange
       -> State (RoseTree [WireValue]) [Text]
@@ -181,6 +189,16 @@ updateTreeWithDigest contOps dd = runState $ do
         either (return . pure . Text.pack) (\vs -> put vs >> return [])
         . treeAdjustF Nothing (treeRemove tpId) np
 
+
+-- FIXME: Maybe reorder the args to reflect application order?
+updateTreeWithDigest
+  :: ContOps Seg -> DataDigest -> RoseTree [WireValue]
+  -> (Map Path [Text], RoseTree [WireValue])
+updateTreeWithDigest contOps dd = runState $ do
+    errs <- state (updateTreeData dd)
+    errs' <- state (updateTreeStructure contOps)
+    return $ Map.unionWith (<>) errs errs'
+
 data RoseTreeNode a
   = RtnEmpty
   | RtnChildren (AssocList Seg (Maybe Attributee))
@@ -188,6 +206,9 @@ data RoseTreeNode a
   | RtnDataSeries (TimeSeries a)
   deriving (Show, Eq)
 
+-- FIXME: perhaps this should return Maybe (RoseTreeNode a), and the RtEmpty
+-- case return Nothing, because the only place we use RtnEmpty we don't actually
+-- want a node!
 roseTreeNode :: RoseTree a -> RoseTreeNode a
 roseTreeNode t = case t of
   RtEmpty -> RtnEmpty

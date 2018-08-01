@@ -17,17 +17,21 @@ import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 import Clapi.Types
   ( Time, Attributee, WireValue
   , Interpolation(..), SubMessage(..), DataUpdateMessage(..), TypeMessage(..)
-  , MsgError(..), TpId, DefMessage(..)
-  , ContainerUpdateMessage(..)
-  , ToRelayClientBundle(..), ToRelayProviderBundle(..)
-  , FromRelayClientBundle(..), FromRelayProviderBundle(..)
+  , DataErrorMessage(..), TpId, DefMessage(..)
+  , ToClientContainerUpdateMessage(..)
+  , ToProviderContainerUpdateMessage(..)
+  , ToRelayClientSubBundle(..), ToRelayClientUpdateBundle(..)
+  , ToRelayProviderBundle(..)
+  , FromRelayClientRootBundle(..), FromRelayClientSubBundle(..)
+  , FromRelayClientUpdateBundle(..)
+  , FromRelayProviderBundle(..)
   , FromRelayProviderErrorBundle(..), ToRelayProviderRelinquish(..)
   , ToRelayBundle(..), FromRelayBundle(..)
-  , ErrorIndex(..))
+  , DataErrorIndex(..), SubErrorMessage(..), SubErrorIndex(..))
 import Clapi.Types.Path (Path, pattern Root)
 import Clapi.Serialisation (Encodable(..))
 
--- Incl. Arbitrary instances of WireValue:
+-- Incl. Arbitrary instances of WireValue, Namespace, Placeholder:
 import TypesSpec (smallListOf, arbitraryTextNoNull)
 
 encode :: (MonadFail m, Encodable a) => a -> m ByteString
@@ -92,26 +96,39 @@ instance Arbitrary DataUpdateMessage where
   shrink (MsgRemove p t a) = [MsgRemove p' t a' | (p', a') <- shrink (p, a)]
 
 
-instance Arbitrary args => Arbitrary (ContainerUpdateMessage args) where
+instance Arbitrary ToProviderContainerUpdateMessage where
   arbitrary = oneof
-    [ MsgCreateAfter <$> arbitrary <*> arbitrary <*> arbitrary
+    [ TpcumCreateAfter <$> smallListOf (smallListOf arbitrary) <*> arbitrary
       <*> arbitrary <*> arbitrary
-    , MsgMoveAfter <$> arbitrary <*> arbitrary <*> arbitrary <*> genAttributee
-    , MsgAbsent <$> arbitrary <*> arbitrary <*> genAttributee
+    , TpcumMoveAfter <$> arbitrary <*> arbitrary <*> genAttributee
+    , TpcumAbsent <$> arbitrary <*> genAttributee
     ]
 
-instance Arbitrary a => Arbitrary (ErrorIndex a) where
+instance Arbitrary ToClientContainerUpdateMessage where
+  arbitrary = oneof
+    [ TccumPresentAfter <$> arbitrary <*> arbitrary <*> genAttributee
+    , TccumAbsent <$> arbitrary <*> genAttributee
+    ]
+
+instance Arbitrary DataErrorIndex where
   arbitrary = oneof
     [ return GlobalError
     , PathError <$> arbitrary
     , TimePointError <$> arbitrary <*> arbitrary
-    , PostTypeError <$> arbitrary
-    , TypeError <$> arbitrary
     ]
 
-instance Arbitrary a => Arbitrary (MsgError a) where
-  arbitrary = MsgError <$> arbitrary <*> arbitraryTextNoNull
+instance Arbitrary SubErrorIndex where
+  arbitrary = oneof
+    [ PathSubError <$> arbitrary
+    , TypeSubError <$> arbitrary
+    , PostTypeSubError <$> arbitrary
+    ]
 
+instance Arbitrary DataErrorMessage where
+  arbitrary = MsgDataError <$> arbitrary <*> arbitraryTextNoNull
+
+instance Arbitrary SubErrorMessage where
+  arbitrary = MsgSubError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary ToRelayProviderBundle where
   arbitrary = ToRelayProviderBundle
@@ -132,43 +149,62 @@ instance Arbitrary ToRelayProviderRelinquish where
 instance Arbitrary FromRelayProviderErrorBundle where
   arbitrary = FromRelayProviderErrorBundle <$> smallListOf arbitrary
 
-instance Arbitrary ToRelayClientBundle where
-  arbitrary = ToRelayClientBundle <$> smallListOf arbitrary
-    <*> smallListOf arbitrary <*> smallListOf arbitrary
-  shrink (ToRelayClientBundle s d c) =
-    [ToRelayClientBundle s' d' c' | (s', d', c') <- shrink (s, d, c)]
+instance Arbitrary ToRelayClientSubBundle where
+  arbitrary = ToRelayClientSubBundle <$> smallListOf arbitrary
 
-instance Arbitrary FromRelayClientBundle where
-  arbitrary = FromRelayClientBundle <$> smallListOf arbitrary
+instance Arbitrary ToRelayClientUpdateBundle where
+  arbitrary = ToRelayClientUpdateBundle <$> arbitrary
     <*> smallListOf arbitrary <*> smallListOf arbitrary
-    <*> smallListOf arbitrary <*> smallListOf arbitrary
-    <*> smallListOf arbitrary <*> smallListOf arbitrary
-    <*> smallListOf arbitrary <*> smallListOf arbitrary
-  shrink (FromRelayClientBundle ptu tu du e postDefs defs tas dd c) =
-    [FromRelayClientBundle ptu' tu' du' e' postDefs' defs' tas' dd' c'
-    | (ptu', tu', du', e', postDefs', defs', tas', dd', c')
-    <- shrink (ptu, tu, du, e, postDefs, defs, tas, dd, c)]
+  shrink (ToRelayClientUpdateBundle n d c) =
+    [ToRelayClientUpdateBundle n d' c' | (d', c') <- shrink (d, c)]
 
+instance Arbitrary FromRelayClientSubBundle where
+  arbitrary = FromRelayClientSubBundle
+    <$> smallListOf arbitrary <*> smallListOf arbitrary
+    <*> smallListOf arbitrary <*> smallListOf arbitrary
+  shrink (FromRelayClientSubBundle e ptu tu du) =
+    [FromRelayClientSubBundle e' ptu' tu' du'
+    | (e', ptu', tu', du')
+    <- shrink (e, ptu, tu, du)]
+
+instance Arbitrary FromRelayClientUpdateBundle where
+  arbitrary = FromRelayClientUpdateBundle <$> arbitrary
+    <*> smallListOf arbitrary <*> smallListOf arbitrary
+    <*> smallListOf arbitrary <*> smallListOf arbitrary
+    <*> smallListOf arbitrary <*> smallListOf arbitrary
+  shrink (FromRelayClientUpdateBundle ns e postDefs defs tas dd c) =
+    [FromRelayClientUpdateBundle ns e' postDefs' defs' tas' dd' c'
+    | (e', postDefs', defs', tas', dd', c')
+    <- shrink (e, postDefs, defs, tas, dd, c)]
+
+instance Arbitrary FromRelayClientRootBundle where
+    arbitrary = FromRelayClientRootBundle <$> smallListOf arbitrary
 
 instance Arbitrary ToRelayBundle where
   arbitrary = oneof
     [ Trpb <$> arbitrary
     , Trpr <$> arbitrary
-    , Trcb <$> arbitrary
+    , Trcsb <$> arbitrary
+    , Trcub <$> arbitrary
     ]
   shrink (Trpb b) = Trpb <$> shrink b
   shrink (Trpr b) = Trpr <$> shrink b
-  shrink (Trcb b) = Trcb <$> shrink b
+  shrink (Trcsb b) = Trcsb <$> shrink b
+  shrink (Trcub b) = Trcub <$> shrink b
 
 instance Arbitrary FromRelayBundle where
   arbitrary = oneof
     [ Frpb <$> arbitrary
     , Frpeb <$> arbitrary
-    , Frcb <$> arbitrary
+    , Frcrb <$> arbitrary
+    , Frcsb <$> arbitrary
+    , Frcub <$> arbitrary
     ]
   shrink (Frpb b) = Frpb <$> shrink b
   shrink (Frpeb b) = Frpeb <$> shrink b
-  shrink (Frcb b) = Frcb <$> shrink b
+  shrink (Frcrb b) = Frcrb <$> shrink b
+  shrink (Frcsb b) = Frcsb <$> shrink b
+  shrink (Frcub b) = Frcub <$> shrink b
 
 
 showBytes :: ByteString -> String

@@ -10,6 +10,7 @@ module Clapi.Types.AssocList
   , alToMap, alFromZip
   , alCons, alLookup, alInsert, alSetDefault, alDelete
   , alKeys, alKeysSet, alValues
+  , alPartitionWithKey
   , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
   , alAlterF, alAlter, alAdjust
   ) where
@@ -18,6 +19,7 @@ import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
+import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
@@ -40,6 +42,12 @@ mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocLis
 unsafeMkAssocList :: [(a, b)] -> AssocList a b
 unsafeMkAssocList = AssocList
 
+instance Eq a => Monoid (AssocList a b) where
+  mempty = AssocList []
+  al1 `mappend` (AssocList l2) =
+    Foldable.foldl' (\acc (a, b) -> alInsert a b acc) al1 l2
+
+-- FIXME: remove at some point now we have defined a monoid instance?
 alEmpty :: AssocList a b
 alEmpty = AssocList []
 
@@ -52,7 +60,7 @@ alFromKeys f as = AssocList $ (\a -> (a, f a)) <$> unUniqList as
 -- | Like `Map.fromList`, in that it doesn't fail but takes the final value for
 --   any duplicated key. Use `mkAssocList` to check for uniqueness.
 alFromList :: Eq a => [(a, b)] -> AssocList a b
-alFromList = foldl (\acc (k, a) -> alInsert k a acc) alEmpty
+alFromList = foldl (\acc (k, a) -> alInsert k a acc) mempty
 
 alFromMap :: Map a b -> AssocList a b
 alFromMap = AssocList . Map.toList
@@ -103,6 +111,12 @@ alMapKeys f = mkAssocList . fmap (\(a, b) -> (f a, b)) . unAssocList
 
 alFoldlWithKey :: (acc -> k -> b -> acc) -> acc -> AssocList k b -> acc
 alFoldlWithKey f acc = foldl (\acc' (k, b) -> f acc' k b) acc . unAssocList
+
+alPartitionWithKey
+  :: (k -> v -> Bool) -> AssocList k v -> (AssocList k v, AssocList k v)
+alPartitionWithKey f al =
+  let (ys, ns) = List.partition (uncurry f) $ unAssocList al in
+    (AssocList ys, AssocList ns)
 
 alFilterWithKey :: (k -> b -> Bool) -> AssocList k b -> AssocList k b
 alFilterWithKey f = AssocList . filter (uncurry f) . unAssocList

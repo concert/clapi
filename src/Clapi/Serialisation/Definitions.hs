@@ -9,7 +9,7 @@ import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
 import Clapi.Types.Definitions
-  ( Liberty(..), Required(..), MetaType(..), metaType
+  ( Liberty(..), Editable(..), MetaType(..), metaType
   , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
   , Definition(..), defDispatch, PostDefinition(..))
 import Clapi.Types.Tree (TreeType)
@@ -26,16 +26,16 @@ instance Encodable Liberty where
   builder = tdTaggedBuilder libertyTaggedData $ const $ return mempty
   parser = tdTaggedParser libertyTaggedData return
 
-requiredTaggedData :: TaggedData Required Required
-requiredTaggedData = taggedData toTag id
+editableTaggedData :: TaggedData Editable Editable
+editableTaggedData = taggedData toTag id
   where
     toTag r = case r of
-      Required -> [btq|r|]
-      Optional -> [btq|o|]
+      Editable -> [btq|w|]
+      ReadOnly -> [btq|r|]
 
-instance Encodable Required where
-  builder = tdTaggedBuilder requiredTaggedData $ const $ return mempty
-  parser = tdTaggedParser requiredTaggedData return
+instance Encodable Editable where
+  builder = tdTaggedBuilder editableTaggedData $ const $ return mempty
+  parser = tdTaggedParser editableTaggedData return
 
 -- FIXME: do we want to serialise the type to text first?!
 instance Encodable TreeType where
@@ -52,9 +52,9 @@ instance Encodable StructDefinition where
   parser = StructDefinition <$> parser <*> parser
 
 instance Encodable ArrayDefinition where
-  builder (ArrayDefinition doc ct cl) =
-    builder doc <<>> builder ct <<>> builder cl
-  parser = ArrayDefinition <$> parser <*> parser <*> parser
+  builder (ArrayDefinition doc ptn ctn cl) =
+    builder doc <<>> builder ptn <<>> builder ctn <<>> builder cl
+  parser = ArrayDefinition <$> parser <*> parser <*> parser <*> parser
 
 defTaggedData :: TaggedData MetaType Definition
 defTaggedData = taggedData typeToTag (defDispatch metaType)

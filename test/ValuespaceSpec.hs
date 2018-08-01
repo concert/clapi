@@ -23,17 +23,18 @@ import Clapi.Types.AssocList (AssocList, alSingleton, alEmpty, alInsert)
 import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), WireValue(..)
   , TreeType(..), Liberty(..)
-  , tupleDef, structDef, arrayDef, ErrorIndex(..)
+  , tupleDef, structDef, arrayDef, DataErrorIndex(..)
   , Definition(..)
   , StructDefinition(strDefTypes)
-  , TrpDigest(..), DefOp(..), DataChange(..))
+  , TrpDigest(..), DefOp(..), DataChange(..)
+  , TrcUpdateDigest(..), trcudEmpty, frpdEmpty)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path
   ( Path, pattern (:/), pattern Root, Seg, TypeName(..), tTypeName
   , Namespace(..))
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
-  , processToRelayClientDigest, apiNs, vsRelinquish, ValidationErr(..))
+  , processTrcUpdateDigest, apiNs, vsRelinquish, ValidationErr(..))
 import Clapi.Tree (treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTreeNodeType(..))
@@ -123,7 +124,7 @@ emptyArrayD s vs = TrpDigest
     mempty
     mempty
   where
-    vaDef = arrayDef "for test" (tTypeName apiNs [segq|version|]) May
+    vaDef = arrayDef "for test" Nothing (tTypeName apiNs [segq|version|]) May
     -- FIXME: is vs always baseValuespace?
     rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s) vs
 
@@ -132,7 +133,7 @@ spec = do
   describe "Validation" $ do
     it "baseValuespace valid" $
       let
-        allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
+        allTainted = Map.delete Root $ Map.fromList $ fmap (,Nothing) $ treePaths Root $
           vsTree baseValuespace
         validated = either (error . show) snd $
           validateVs allTainted baseValuespace
@@ -265,12 +266,13 @@ spec = do
     it "Relinquish" $
       let
         fs = [segq|foo|]
-        fooRootDef = arrayDef "frd" (tTypeName apiNs [segq|version|]) Cannot
+        fooRootDef = structDef "frd" $
+          alSingleton fs (tTypeName apiNs [segq|version|], Cannot)
         claimFoo = TrpDigest
           (Namespace fs)
           mempty
           (Map.singleton (Tagged fs) $ OpDefine fooRootDef)
-          alEmpty
+          (alSingleton (Root :/ fs) $ ConstChange Nothing [WireValue @Word32 1, WireValue @Word32 1, WireValue @Int32 1])
           mempty
           mempty
       in do
@@ -279,8 +281,9 @@ spec = do
     describe "Client" $
         it "Can create new array entries" $
           let
-            dd = alSingleton [pathq|/api/arr/a|] $ ConstChange Nothing
+            dd = alSingleton [pathq|/arr/a|] $ ConstChange Nothing
                 [WireValue @Word32 1, WireValue @Word32 2, WireValue @Int32 3]
+            trcud = (trcudEmpty apiNs) {trcudData = dd}
           in do
             vs <- vsAppliesCleanly (emptyArrayD [segq|arr|] baseValuespace) baseValuespace
-            processToRelayClientDigest mempty dd vs `shouldBe` mempty
+            processTrcUpdateDigest vs trcud `shouldBe` (mempty, frpdEmpty apiNs)

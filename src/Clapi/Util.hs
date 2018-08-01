@@ -3,18 +3,16 @@
 #-}
 
 module Clapi.Util (
-    tagl, tagr,
-    append, (+|),
-    appendIfAbsent, (+|?),
     duplicates, ensureUnique,
     strictZipWith, strictZip, fmtStrictZipError,
     partitionDifference, partitionDifferenceF,
     camel,
     uncamel,
     showItems,
-    mkProxy,
     bound,
     safeToEnum,
+    mapPartitionEither,
+    nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
     proxyF, proxyF3
 ) where
@@ -22,6 +20,7 @@ module Clapi.Util (
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
+import Data.Either (isLeft, fromLeft, fromRight)
 import Data.Foldable (Foldable, toList)
 import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
@@ -33,24 +32,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Printf (printf)
 
-
-tagl :: (a -> b) -> a -> (b, a)
-tagl f a = (f a, a)
-
-tagr :: (a -> b) -> a -> (a, b)
-tagr f a = (a, f a)
-
-append :: [a] -> a -> [a]
-append as a = as ++ [a]
-
-(+|) :: [a] -> a -> [a]
-(+|) = append
-
-appendIfAbsent :: (Eq a) => [a] -> a -> [a]
-appendIfAbsent as a | a `elem` as = as
-                    | otherwise = append as a
-(+|?) :: (Eq a) => [a] -> a -> [a]
-(+|?) = appendIfAbsent
 
 duplicates :: forall a. (Ord a) => [a] -> Set.Set a
 duplicates as = Map.keysSet $ Map.filter (>1) theMap
@@ -119,9 +100,6 @@ camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
 showItems :: (Foldable f, Show a) => f a -> String
 showItems = intercalate ", " . fmap show . toList
 
-mkProxy :: a -> Proxy a
-mkProxy _ = Proxy
-
 bound :: forall a b m. (Enum a, Enum b, Bounded b, MonadFail m) => a -> m b
 bound i =
   let
@@ -144,6 +122,17 @@ safeToEnum i =
   then return r
   else fail "enum value out of range"
 
+nestMapsByKey
+  :: (Ord k, Ord k0, Ord k1)
+  => (k -> Maybe (k0, k1)) -> Map k a -> (Map k a, Map k0 (Map k1 a))
+nestMapsByKey f = Map.foldlWithKey g mempty
+  where
+    g (unsplit, nested) k val = case f k of
+      Just (k0, k1) ->
+        ( unsplit
+        , Map.alter (Just . Map.insert k1 val . maybe mempty id) k0 nested)
+      Nothing -> (Map.insert k val unsplit, nested)
+
 flattenNestedMaps
   :: (Ord k0, Ord k1, Ord k2)
   => (k0 -> k1 -> k2) -> Map k0 (Map k1 v) -> Map k2 v
@@ -156,6 +145,10 @@ foldlNestedMaps
 foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
+
+mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
+mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
+  (fromLeft undefined <$> ls, fromRight undefined <$> rs)
 
 proxyF :: Proxy a -> Proxy b -> Proxy (a b)
 proxyF _ _ = Proxy

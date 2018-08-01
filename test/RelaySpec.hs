@@ -18,51 +18,39 @@ import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
   (arrayDef, structDef, tupleDef, Liberty(..))
 import Clapi.Types.Digests
-  ( DefOp(..), DataChange(..), TrpDigest(..), trpDigest
-  , InboundDigest(..), InboundClientDigest(..), OutboundDigest(..)
-  , OutboundClientDigest(..), outboundClientDigest, TrprDigest(..))
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Messages (ErrorIndex(..))
+import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Path
   (pattern Root, tTypeName, pattern (:/), pattern (:</), Namespace(..))
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
 import Clapi.Valuespace
   ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)
-  , rootTypeName, vsLookupDef)
+  , vsLookupDef)
+import Clapi.NamespaceTracker
+  ( PostNstInboundDigest(..), ClientGetDigest(..), cgdEmpty)
 
 spec :: Spec
 spec = describe "the relay protocol" $ do
-    it "should extend the root structure when a namespace is claimed" $
+    it "handles claims" $
       let
         fooDef = tupleDef "Some Word32"
           (alSingleton [segq|value|] (TtWord32 unbounded)) ILUninterpolated
         dd = alSingleton Root $ ConstChange bob [WireValue (42 :: Word32)]
-        inDig = Ipd $ (trpDigest $ Namespace foo)
-          { trpdDefinitions = Map.singleton (Tagged foo) $ OpDefine fooDef
+        inDefs = Map.singleton (Tagged foo) $ OpDefine fooDef
+        inDig = PnidTrpd $ (trpdEmpty fooN)
+          { trpdDefinitions = inDefs
           , trpdData = dd
           }
-        extendedRootDef = structDef "root def doc" $ alFromList
-          [ (unNamespace apiNs, (tTypeName apiNs (unNamespace apiNs), Cannot))
-          , (foo, (tTypeName (Namespace foo) foo, Cannot))
-          ]
-        expectedOutDig = Ocd $ outboundClientDigest
-          { ocdData = qualify foo dd
-          , ocdDefinitions = Map.fromList
-            [ (tTypeName (Namespace foo) foo, OpDefine fooDef)
-            , (tTypeName apiNs [segq|root|], OpDefine extendedRootDef)
-            ]
-          , ocdTypeAssignments = Map.insert
-            [pathq|/foo|] (tTypeName (Namespace foo) foo, Cannot) mempty
-          , ocdContainerOps = Map.singleton Root $
-              Map.singleton foo
-              (Nothing, SoMoveAfter (Just $ unNamespace apiNs))
+        expectedUpDig = Ocud $ (frcudEmpty fooN)
+          { frcudDefinitions = inDefs
+          , frcudData = dd
           }
         test = do
           sendFwd ((), inDig)
-          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
+          waitThenRevOnly $ lift . (`shouldBe` expectedUpDig) . snd
       in runEffect $ test <<-> relay baseValuespace
-    it "should send root info on revoke" $
+    it "should handle revoke" $
       let
         vsWithStuff = unsafeValidateVs $ baseValuespace
           { vsTree = treeInsert bob fooP (RtConstData bob []) $
@@ -72,53 +60,46 @@ spec = describe "the relay protocol" $ do
                  tupleDef "Thing" alEmpty ILUninterpolated) $
               vsTyDefs baseValuespace
           }
-        expectedOutDig = Ocd $ outboundClientDigest
-          { ocdDefinitions = Map.fromList
-            [ (rootTypeName, OpDefine $ fromJust $
-                vsLookupDef rootTypeName baseValuespace)
-            , (tTypeName (Namespace foo) foo, OpUndefine)
-            ]
-          , ocdContainerOps = Map.singleton Root $
-              Map.singleton foo (Nothing, SoAbsent)
-          }
+        expectedOutDig1 = Ocrd $ FrcRootDigest $ Map.singleton foo SoAbsent
+        expectedOutDig2 = Ocsed $
+          Map.singleton (PathSubError $ Root :/ foo) ["Path not found"]
         test = do
-          sendFwd ((), Iprd $ TrprDigest $ Namespace foo)
-          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
+          sendFwd ((), PnidTrprd $ TrprDigest fooN)
+          sendFwd ((), PnidCgd $
+            cgdEmpty { cgdDataGets = Set.singleton fooP })
+          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig1) . snd
+          waitThenRevOnly $ lift . (`shouldBe` expectedOutDig2) . snd
       in runEffect $ test <<-> relay vsWithStuff
     it "should reject subscriptions to non-existant paths" $
       let
         p = [pathq|/madeup|]
-        expectedOutDig = Ocid $ outboundClientDigest
-          { ocdErrors = Map.singleton (PathError p) ["Path not found"]
-          }
+        expectedOutDig = Ocsed $
+          Map.singleton (PathSubError p) ["Path not found"]
         test = do
-          sendFwd ((), Icd $
-            InboundClientDigest (Set.singleton p) mempty mempty mempty alEmpty)
+          sendFwd ((), PnidCgd $ cgdEmpty {cgdDataGets = Set.singleton p})
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
       in runEffect $ test <<-> relay baseValuespace
     it "should have container ops for implicitly created children" $
       let
         kid = [segq|kid|]
         tyDefs = Map.fromList
-          [ (Tagged foo, arrayDef "arr" (tTypeName (Namespace foo) kid) Cannot)
+          [ ( Tagged foo
+            , arrayDef "arr" Nothing (tTypeName (Namespace foo) kid) Cannot)
           , (Tagged kid, tupleDef "kid" alEmpty ILUninterpolated)
           ]
         vsWithStuff = unsafeValidateVs $ baseValuespace
           { vsTree = treeInsert bob fooP (RtContainer alEmpty) $ vsTree baseValuespace
-          , vsTyDefs = Map.insert (Namespace foo) tyDefs $
+          , vsTyDefs = Map.insert fooN tyDefs $
                vsTyDefs baseValuespace
           }
         dd = alSingleton (Root :/ kid) $ ConstChange Nothing []
-        inDig = Ipd $ (trpDigest $ Namespace foo)
+        inDig = PnidTrpd $ (trpdEmpty fooN)
           { trpdData = dd
           }
-        qKid = fooP :/ kid
-        expectedOutDig = Ocd $ outboundClientDigest
-          { ocdData = qualify foo dd
-          , ocdTypeAssignments = Map.singleton qKid
-              (tTypeName (Namespace foo) kid, Cannot)
-          , ocdContainerOps = Map.singleton fooP $
-            Map.singleton kid (Nothing, SoMoveAfter Nothing)
+        expectedOutDig = Ocud $ (frcudEmpty fooN)
+          { frcudData = dd
+          , frcudTypeAssignments =
+              Map.singleton (Root :/ kid) (tTypeName fooN kid, Cannot)
           }
         test = do
           sendFwd ((), inDig)
@@ -137,20 +118,22 @@ spec = describe "the relay protocol" $ do
           }
         dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
         test = do
-            sendFwd ((), Ipd $ (trpDigest $ Namespace foo) {trpdData = dd})
+            sendFwd ((), PnidTrpd $ (trpdEmpty fooN) {trpdData = dd})
             waitThenRevOnly $
-              lift . (`shouldBe` Ocd (outboundClientDigest {ocdData = qualify foo dd})) .
+              lift . (`shouldBe` (Ocud $ (frcudEmpty fooN) {frcudData = dd})) .
               snd
       in runEffect $ test <<-> relay vsWithInt
-    it "should not send empty ocids/opds to client requests" $
+    it "should not send empty digests to valid client requests" $
       let
         test = do
-            sendFwd (1, Icd $ InboundClientDigest mempty mempty mempty mempty alEmpty)
-            sendFwd (2, Icd $ InboundClientDigest (Set.singleton [pathq|/whatevz|]) mempty mempty mempty alEmpty)
+            sendFwd (1, PnidCgd $ cgdEmpty)
+            sendFwd (2, PnidCgd $ cgdEmpty
+              {cgdDataGets = Set.singleton [pathq|/whatevz|]})
             waitThenRevOnly $ lift . (`shouldSatisfy` (== (2 :: Int)) . fst)
       in runEffect $ test <<-> relay baseValuespace
   where
     foo = [segq|foo|]
     fooP = Root :/ foo
+    fooN = Namespace foo
     bob = Just "bob"
     qualify ns = maybe (error "bad sneakers") id . alMapKeys (ns :</)
