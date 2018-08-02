@@ -145,10 +145,7 @@ postDefForPath p vs = defForPath p vs >>=
 lookupDef
   :: MonadFail m
   => Tagged Definition Seg -> DefMap Definition -> m Definition
-lookupDef s defs = undefined -- note "Missing def" $
---     (Map.lookup ns defs >>= Map.lookup s)
---   where
---     (ns, s) = unqualify tn
+lookupDef s defs = note "Missing def" $ Map.lookup s defs
 
 vsLookupDef
   :: MonadFail m => Tagged Definition Seg -> Valuespace -> m Definition
