@@ -558,7 +558,7 @@ processTrcUpdateDigest vs trcud =
     touched = opsTouched validSegCops pathValidDd
     vs' = vs {vsTree = tree'}
     touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
-    roErrs = const [EditableErr "Touched a cannot"]
+    roErrs = const [EditableErr "Touched read only"]
       <$> Map.filter (== Just ReadOnly) touchedEditabilities
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
