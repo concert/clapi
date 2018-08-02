@@ -55,7 +55,7 @@ data SubMessage
   deriving (Eq, Show)
 
 data TypeMessage
-  = MsgAssignType Path (Tagged Definition TypeName) Editable
+  = MsgAssignType Path (Tagged Definition Seg) Editable
   deriving (Show, Eq)
 
 data DataUpdateMessage

@@ -344,15 +344,15 @@ produceSubMessages pTySubs tySubs datSubs =
 
 
 digestTypeMessages
-  :: [TypeMessage] -> Map Path (Tagged Definition TypeName, Editable)
+  :: [TypeMessage] -> Map Path (Tagged Definition Seg, Editable)
 digestTypeMessages = Map.fromList . fmap procMsg
   where
-    procMsg (MsgAssignType p tn ed) = (p, (tn, ed))
+    procMsg (MsgAssignType p s ed) = (p, (s, ed))
 
 produceTypeMessages
-  :: Map Path (Tagged Definition TypeName, Editable) -> [TypeMessage]
+  :: Map Path (Tagged Definition Seg, Editable) -> [TypeMessage]
 produceTypeMessages = Map.elems . Map.mapWithKey
-  (\p (tn, l) -> MsgAssignType p tn l)
+  (\p (s, l) -> MsgAssignType p s l)
 
 digestDataErrMsgs :: [DataErrorMessage] -> Map DataErrorIndex [Text]
 digestDataErrMsgs = foldl (Map.unionWith (<>)) mempty . fmap procMsg
