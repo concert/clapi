@@ -6,7 +6,7 @@
 module Clapi.Valuespace
   ( Valuespace, vsTree, vsTyDefs, vsPostDefs
   , baseValuespace
-  , vsLookupPostDef, vsLookupDef, valuespaceGet, getLiberty
+  , vsLookupPostDef, vsLookupDef, valuespaceGet, getEditable
   , apiNs, apiTypeName, dnSeg
   , processToRelayProviderDigest, processTrcUpdateDigest
   , validateVs, unsafeValidateVs
@@ -51,9 +51,9 @@ import Clapi.Types.AssocList
   , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap, alPartitionWithKey
   , alFilterKey)
 import Clapi.Types.Definitions
-  ( Definition(..), Liberty(..), TupleDefinition(..)
+  ( Definition(..), Editable(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), PostDefinition(..), defDispatch
-  , childLibertyFor, childTypeFor)
+  , childEditableFor, childTypeFor)
 import Clapi.Types.Digests
   ( DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
   , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates
@@ -108,7 +108,7 @@ apiTypeName = Tagged $ TypeName apiNs $ unNamespace apiNs
 
 apiDef :: StructDefinition
 apiDef = StructDefinition "Information about CLAPI itself" $
-  alSingleton [segq|version|] (Tagged $ TypeName apiNs [segq|version|], Cannot)
+  alSingleton [segq|version|] (Tagged $ TypeName apiNs [segq|version|], ReadOnly)
 
 versionDef :: TupleDefinition
 versionDef = TupleDefinition "The version of CLAPI" (unsafeMkAssocList
@@ -198,25 +198,25 @@ defForPath :: MonadFail m => Path -> Valuespace -> m Definition
 defForPath p vs =
   lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
 
-getLiberty :: MonadFail m => Path -> Valuespace -> m Liberty
-getLiberty path vs = case path of
-  Root :/ _ -> return Cannot
-  s :</ Root -> return Cannot
-  p :/ s -> defForPath p vs >>= defDispatch (flip childLibertyFor s)
-  _ -> return Cannot
+getEditable :: MonadFail m => Path -> Valuespace -> m Editable
+getEditable path vs = case path of
+  Root :/ _ -> return ReadOnly
+  s :</ Root -> return ReadOnly
+  p :/ s -> defForPath p vs >>= defDispatch (flip childEditableFor s)
+  _ -> return ReadOnly
 
 valuespaceGet
   :: MonadFail m => Path -> Valuespace
   -> m ( Definition
        , Tagged Definition TypeName
-       , Liberty
+       , Editable
        , RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _) = do
     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
     tn <- lookupTypeName p tas
     def <- lookupDef tn defs
-    lib <- getLiberty p vs
-    return (def, tn, lib, rtn)
+    ed <- getEditable p vs
+    return (def, tn, ed, rtn)
 
 type RefTypeClaims = Mos (Tagged Definition TypeName) Referee
 type TypeClaimsByPath =
@@ -614,20 +614,15 @@ processTrcUpdateDigest vs trcud =
     (tas', newPaths) = fillTyAssns
       (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
     vs' = vs {vsTree = tree', vsTyAssns = tas'}
-    touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs') touched
-    cannotErrs = const [LibertyErr "Touched a cannot"]
-      <$> Map.filter (== Just Cannot) touchedLiberties
-    -- FIXME: this will change with POST/create
-    mustErrs = const [LibertyErr "Failed to provide a value for must"] <$>
-      ( Map.filter (== Just Must)
-      $ Map.fromSet (flip getLiberty vs') $ Set.fromList
-      $ Tree.treeMissing tree')
+    touchedLiberties = Map.mapWithKey (\k _ -> getEditable k vs') touched
+    cannotErrs = const [EditableErr "Touched a cannot"]
+      <$> Map.filter (== Just ReadOnly) touchedLiberties
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
 
     thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
-      , validationErrs, cannotErrs, mustErrs
+      , validationErrs, cannotErrs
       ]
     errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing]
     frpd = FrpDigest
@@ -671,7 +666,7 @@ data ValidationErr
     { veRttePath :: Path
     , veRtteExpectedType :: Tagged Definition TypeName
     , veRtteTargetType :: Tagged Definition TypeName}
-  | LibertyErr String
+  | EditableErr String
   | CreateReferencedAbsentName Placeholder (Either Placeholder Seg)
   | MoveReferencedAbsentName Seg (Either Placeholder Seg)
   -- FIXME: might want to make more specific creation errors. Currently can

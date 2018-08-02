@@ -22,7 +22,7 @@ import Clapi.TH
 import Clapi.Types.AssocList (AssocList, alSingleton, alEmpty, alInsert)
 import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), WireValue(..)
-  , TreeType(..), Liberty(..)
+  , TreeType(..), Editable(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
   , Definition(..)
   , StructDefinition(strDefTypes)
@@ -76,7 +76,7 @@ redefApiRoot
   :: (AssocList Seg (Tagged Definition TypeName)
       -> AssocList Seg (Tagged Definition TypeName))
   -> Valuespace -> Definition
-redefApiRoot f vs = structDef "Frigged by test" $ (, Cannot) <$> f currentKids
+redefApiRoot f vs = structDef "Frigged by test" $ (, ReadOnly) <$> f currentKids
   where
     currentKids = fmap fst $ grabDefTypes $ fromJust $
       Map.lookup apiNs (vsTyDefs vs) >>= Map.lookup (Tagged $ unNamespace apiNs)
@@ -124,7 +124,7 @@ emptyArrayD s vs = TrpDigest
     mempty
     mempty
   where
-    vaDef = arrayDef "for test" Nothing (tTypeName apiNs [segq|version|]) May
+    vaDef = arrayDef "for test" Nothing (tTypeName apiNs [segq|version|]) Editable
     -- FIXME: is vs always baseValuespace?
     rootDef = redefApiRoot (alInsert s $ tTypeName apiNs s) vs
 
@@ -267,7 +267,7 @@ spec = do
       let
         fs = [segq|foo|]
         fooRootDef = structDef "frd" $
-          alSingleton fs (tTypeName apiNs [segq|version|], Cannot)
+          alSingleton fs (tTypeName apiNs [segq|version|], ReadOnly)
         claimFoo = TrpDigest
           (Namespace fs)
           mempty

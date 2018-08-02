@@ -13,7 +13,7 @@ import qualified Data.Text as Text
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types
   ( TrDigest(..), TrpDigest(..), FrDigest(..), FrpDigest(..), WireValue(..)
-  , TimeStamped(..), Liberty(..))
+  , TimeStamped(..), Editable(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
@@ -59,12 +59,12 @@ relayApiProto selfAddr =
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
-             [ (dnSeg, (tTypeName apiNs dnSeg, May))
-             , (clock_diff, (tTypeName rns clock_diff, Cannot))
+             [ (dnSeg, (tTypeName apiNs dnSeg, Editable))
+             , (clock_diff, (tTypeName rns clock_diff, ReadOnly))
              ])
         , ([segq|clients|], arrayDef "Info about the connected clients"
              Nothing
-             (tTypeName rns [segq|client_info|]) Cannot)
+             (tTypeName rns [segq|client_info|]) ReadOnly)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
                -- FIXME: want to make Ref's TypeName tagged...
@@ -72,16 +72,16 @@ relayApiProto selfAddr =
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
              Nothing
-             (tTypeName rns [segq|owner_info|]) Cannot)
+             (tTypeName rns [segq|owner_info|]) ReadOnly)
         , ([segq|self|], tupleDef "Which client you are"
              (alSingleton [segq|info|]
                $ TtRef $ TypeName rns [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
-          [ ([segq|build|], (tTypeName rns [segq|build|], Cannot))
-          , ([segq|clients|], (tTypeName rns [segq|clients|], Cannot))
-          , ([segq|owners|], (tTypeName rns [segq|owners|], Cannot))
-          , ([segq|self|], (tTypeName rns [segq|self|], Cannot))])
+          [ ([segq|build|], (tTypeName rns [segq|build|], ReadOnly))
+          , ([segq|clients|], (tTypeName rns [segq|clients|], ReadOnly))
+          , ([segq|owners|], (tTypeName rns [segq|owners|], ReadOnly))
+          , ([segq|self|], (tTypeName rns [segq|self|], ReadOnly))])
         ])
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])

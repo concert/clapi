@@ -46,14 +46,14 @@ import Clapi.Types.Path
   ( Seg, Path, TypeName(..), qualify, unqualify, pattern (:</), pattern Root
   , parentPath, Namespace(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Definitions (Liberty, Definition, PostDefinition)
+import Clapi.Types.Definitions (Editable, Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode, treeChildNames)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupPostDef, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
-  , getLiberty, ValidationErr)
+  , getEditable, ValidationErr)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
 import Clapi.Util (nestMapsByKey, mapPartitionEither, partitionDifference)
 
@@ -84,7 +84,7 @@ splitNs = fmap (first Namespace) . Path.splitHead
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
   { pfrcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , pfrcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , pfrcudTypeAssignments :: Map Path (Tagged Definition TypeName, Liberty)
+  , pfrcudTypeAssignments :: Map Path (Tagged Definition TypeName, Editable)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
   , pfrcudErrors :: Map DataErrorIndex [Text]
@@ -134,12 +134,12 @@ genInitDigests (ClientGetDigest ptGets tGets dGets) vs =
       . snd
       . nestMapsByKey splitNs
       . Map.mapMaybeWithKey (\path x -> (mkPfrcud x) . snd <$> splitNs path)
-    mkPfrcud (def, ttn, lib, treeNode) path =
+    mkPfrcud (def, ttn, ed, treeNode) path =
       -- We could assert here that the namespace of the (Tagged TypeName) == ns
       let
         pfrcud = mempty
           { pfrcudDefinitions = Map.singleton (tnName <$> ttn) (OpDefine def)
-          , pfrcudTypeAssignments = Map.singleton path (ttn, lib)
+          , pfrcudTypeAssignments = Map.singleton path (ttn, ed)
           }
       in
         case treeNode of
@@ -229,7 +229,7 @@ relay vs = waitThenFwdOnly fwd
             dd' = vsMinimiseDataDigest dd vs
             contOps' = vsMinimiseContOps contOps vs
             mungedTas = Map.mapWithKey
-              (\p tn -> (tn, either error id $ getLiberty p vs')) updatedTyAssns
+              (\p tn -> (tn, either error id $ getEditable p vs')) updatedTyAssns
             getContOps p = case fromJust $ treeLookupNode p $ vsTree vs' of
               RtnChildren kb -> (p,) <$> mayContDiff (treeLookupNode p $ vsTree vs) kb
               _ -> Nothing

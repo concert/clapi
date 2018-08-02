@@ -9,22 +9,10 @@ import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
 import Clapi.Types.Definitions
-  ( Liberty(..), Editable(..), MetaType(..), metaType
+  ( Editable(..), MetaType(..), metaType
   , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
   , Definition(..), defDispatch, PostDefinition(..))
 import Clapi.Types.Tree (TreeType)
-
-libertyTaggedData :: TaggedData Liberty Liberty
-libertyTaggedData = taggedData toTag id
-  where
-    toTag l = case l of
-      Cannot -> [btq|c|]
-      May -> [btq|m|]
-      Must -> [btq|M|]
-
-instance Encodable Liberty where
-  builder = tdTaggedBuilder libertyTaggedData $ const $ return mempty
-  parser = tdTaggedParser libertyTaggedData return
 
 editableTaggedData :: TaggedData Editable Editable
 editableTaggedData = taggedData toTag id
