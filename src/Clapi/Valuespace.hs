@@ -108,8 +108,8 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
     allTainted = Map.delete Root $ Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
       vsTree vs
 
-baseValuespace :: Valuespace
-baseValuespace = undefined -- unsafeValidateVs $
+baseValuespace :: Seg -> Editable -> Valuespace
+baseValuespace rootType rootEditable = undefined -- unsafeValidateVs $
 --     Valuespace baseTree mempty baseDefs mempty mempty
 --   where
 --     vseg = [segq|version|]
@@ -156,8 +156,6 @@ getNsOfSingletonPath p = case splitHead p of
     Just (ns, Root) -> Just $ Namespace ns
     _ -> Nothing
 
--- FIXME: Should probably be 1 valuespace per NS and we should pass in the root
--- type path to the constructor
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
 lookupTypeName p tam = note "Type name not found" $ Mos.getDependency p tam
