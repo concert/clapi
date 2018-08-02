@@ -136,4 +136,3 @@ spec = describe "the relay protocol" $ do
     fooP = Root :/ foo
     fooN = Namespace foo
     bob = Just "bob"
-    qualify ns = maybe (error "bad sneakers") id . alMapKeys (ns :</)

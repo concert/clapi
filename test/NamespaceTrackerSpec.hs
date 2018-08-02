@@ -296,4 +296,3 @@ spec = do
     subHello addr = sendFwd $ ClientData addr $ Trcsd $ trcsdEmpty
       {trcsdDataSubs = Map.singleton helloP OpSubscribe}
     textChange s = ConstChange Nothing [WireValue (s :: T.Text)]
-    helloTn = TypeName (Namespace helloS) helloS
