@@ -614,15 +614,15 @@ processTrcUpdateDigest vs trcud =
     (tas', newPaths) = fillTyAssns
       (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
     vs' = vs {vsTree = tree', vsTyAssns = tas'}
-    touchedLiberties = Map.mapWithKey (\k _ -> getEditable k vs') touched
-    cannotErrs = const [EditableErr "Touched a cannot"]
-      <$> Map.filter (== Just ReadOnly) touchedLiberties
+    touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
+    roErrs = const [EditableErr "Touched readonly"]
+      <$> Map.filter (== Just ReadOnly) touchedEditabilities
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
 
     thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
-      , validationErrs, cannotErrs
+      , validationErrs, roErrs
       ]
     errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing]
     frpd = FrpDigest
