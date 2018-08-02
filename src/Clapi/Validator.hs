@@ -17,7 +17,7 @@ import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
 import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue, Definition)
-import Clapi.Types.Path (Seg, Path, TypeName)
+import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (Bounds, boundsMin, boundsMax, TreeType(..))
 import Clapi.Types.TreeTypeProxy (withTtProxy)
@@ -37,40 +37,40 @@ inBounds b n = go (boundsMin b) (boundsMax b)
 
 extractTypeAssertions
   :: MonadFail m
-  => TreeType -> WireValue -> m [(Tagged Definition TypeName, Path)]
+  => TreeType -> WireValue -> m [(Tagged Definition Seg, Path)]
 extractTypeAssertions tt = fmap (fmap $ first Tagged) .
   withWireable (extractTypeAssertions' tt) tt
 
 extractTypeAssertions'
   :: forall a m . (Wireable a, MonadFail m)
-  => TreeType -> a -> m [(TypeName, Path)]
+  => TreeType -> a -> m [(Seg, Path)]
 extractTypeAssertions' tt a = case tt of
-  TtRef tn -> cast' a >>= Path.fromText Path.segP >>= return . pure . (tn,)
+  TtRef ts -> cast' a >>= Path.fromText Path.segP >>= return . pure . (ts,)
   -- FIXME: this need some factoring!
   TtList tt' ->
     let
-      g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
+      g :: forall b. Wireable b => Proxy b -> m [(Seg, Path)]
       g _ = cast' @[b] a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
       withTtProxy tt' g
   TtSet tt' ->
     let
-      g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
+      g :: forall b. Wireable b => Proxy b -> m [(Seg, Path)]
       g _ = cast' @[b] a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
       withTtProxy tt' g
   TtOrdSet tt' ->
     let
-      g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
+      g :: forall b. Wireable b => Proxy b -> m [(Seg, Path)]
       g _ = cast' @[b] a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
       withTtProxy tt' g
   TtMaybe tt' ->
     let
-      g :: forall b. Wireable b => Proxy b -> m [(TypeName, Path)]
+      g :: forall b. Wireable b => Proxy b -> m [(Seg, Path)]
       g _ = cast' @(Maybe b) a >>=
         mapM (extractTypeAssertions' tt') >>= return . foldMap id
     in
@@ -78,7 +78,7 @@ extractTypeAssertions' tt a = case tt of
   TtPair tt1 tt2 ->
     let
       g :: forall b c. (Wireable b, Wireable c)
-        => Proxy b -> Proxy c -> m [(TypeName, Path)]
+        => Proxy b -> Proxy c -> m [(Seg, Path)]
       g _ _ = cast' @(b, c) a >>=
         bimapM (extractTypeAssertions' tt1) (extractTypeAssertions' tt2) >>=
         \(r1, r2) -> return (r1 <> r2)

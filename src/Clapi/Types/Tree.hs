@@ -55,7 +55,7 @@ data TreeType
   | TtString Text
   -- FIXME: kinda want this to be TtRef (Tagged Definition TypeName) but that
   -- creates an import loop:
-  | TtRef TypeName
+  | TtRef Seg
   | TtList TreeType
   | TtSet TreeType
   | TtOrdSet TreeType
