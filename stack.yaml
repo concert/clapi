@@ -41,6 +41,8 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
   - attoparsec-binary-0.2
+  - attoparsec-varword-0.1.0.0
+  - bytestring-builder-varword-0.1.0.0
   - containers-0.5.8.1
   - unagi-chan-0.4.0.0
 

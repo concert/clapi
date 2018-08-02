@@ -19,16 +19,18 @@ import Data.Text (Text)
 
 -- For building:
 import Blaze.ByteString.Builder
-  ( Builder, fromWord8, fromWord16be, fromWord64be, fromWord32be , fromInt32be
+  ( Builder, fromWord8, fromWord64be, fromWord32be , fromInt32be
   , fromInt64be)
 import Blaze.ByteString.Builder.Char.Utf8 (fromText)
 import Data.ByteString.Builder (floatBE, doubleBE)
+import qualified Data.ByteString.Builder.VarWord as BVw
 import Data.Monoid
 
 -- For parsing:
 import qualified Data.Attoparsec.ByteString as DAB
+import qualified Data.Attoparsec.VarWord as AVw
 import Data.Attoparsec.ByteString (Parser, anyWord8, count)
-import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
+import Data.Attoparsec.Binary (anyWord32be, anyWord64be)
 import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import Data.Text.Encoding (decodeUtf8With)
 
@@ -40,7 +42,6 @@ import Clapi.Types.Base
   , Interpolation(..), InterpolationType(..), interpolationType)
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
-import Clapi.Util (bound)
 
 class Encodable a where
   builder :: MonadFail m => a -> m Builder
@@ -90,14 +91,13 @@ instance Encodable a => Encodable [a] where
 
 listBuilder :: MonadFail m => (a -> m Builder) -> [a] -> m Builder
 listBuilder enc as = do
-    len <- bound (length as)
     builders <- mapM enc as
-    return $ fromWord16be len <> mconcat builders
+    return $ BVw.denseVarWordBe (length as) <> mconcat builders
 
 listParser :: Parser a -> Parser [a]
 listParser dec = do
-    len <- anyWord16be
-    count (fromIntegral len) dec
+    len <- AVw.denseVarWordBe
+    count len dec
 
 instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
   builder = builder . unUniqList
