@@ -10,7 +10,7 @@ module Clapi.Valuespace
   , vsLookupPostDef, vsLookupDef, valuespaceGet, getEditable
   , processToRelayProviderDigest, processTrcUpdateDigest
   , validateVs, unsafeValidateVs
-  , ValidationErr(..)
+  , ValidationErr(..), ProtoFrpDigest(..)
   ) where
 
 import Prelude hiding (fail)
@@ -18,16 +18,15 @@ import Control.Monad (unless, liftM2, join)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Bifunctor (first, bimap)
 import Data.Either (lefts, partitionEithers)
-import Data.Int
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge
   (merge, preserveMissing, dropMissing, zipWithMatched, zipWithMaybeMatched)
-import Data.Maybe (fromJust, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..), untag)
+import Data.Tagged (Tagged)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
@@ -38,7 +37,6 @@ import qualified Data.Map.Mos as Mos
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.TH
 import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
 import Clapi.Tree
   ( RoseTree(..), RoseTreeNode(..), treeInsert, treeChildren, TpId
@@ -47,25 +45,22 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
-  ( alKeysSet, alValues, alSingleton, alEmpty
-  , unsafeMkAssocList, alMapKeys, alFmapWithKey, alToMap, alPartitionWithKey
-  , alFilterKey)
+  ( alKeysSet, alValues, alEmpty
+  , alFmapWithKey, alToMap, alPartitionWithKey, alFilterKey)
 import Clapi.Types.Definitions
   ( Definition(..), Editable(..), TupleDefinition(..)
   , StructDefinition(..), ArrayDefinition(..), PostDefinition(..), defDispatch
   , childEditableFor, childTypeFor)
 import Clapi.Types.Digests
   ( DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
-  , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates
-  , FrpDigest(..))
+  , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates)
 import Clapi.Types.Messages (DataErrorIndex(..))
 import Clapi.Types.Path
-  ( Seg, Path, pattern (:/), pattern Root, pattern (:</), TypeName(..)
-  , qualify, unqualify, tTnNamespace, Namespace(..), Placeholder, childPaths
-  , splitHead)
+  ( Seg, Path, pattern (:/), pattern Root, pattern (:</)
+  , Placeholder, childPaths)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Types.Tree (TreeType(..), unbounded)
+import Clapi.Types.Tree (TreeType(..))
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
@@ -91,9 +86,6 @@ removeTamSubtree tam p = Mos.filterDependencies (not . flip Path.isChildOf p) ta
 
 removeXrefs :: Referer -> Xrefs -> Xrefs
 removeXrefs referer = fmap (Map.delete referer)
-
-filterXrefs :: (Referer -> Bool) -> Xrefs -> Xrefs
-filterXrefs f = fmap (Map.filterWithKey $ \k _ -> f k)
 
 removeXrefsTps :: Referer -> Set TpId -> Xrefs -> Xrefs
 removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
@@ -140,11 +132,6 @@ lookupDef s defs = note "Missing def" $ Map.lookup s defs
 vsLookupDef
   :: MonadFail m => Tagged Definition Seg -> Valuespace -> m Definition
 vsLookupDef s vs = lookupDef s $ vsTyDefs vs
-
-getNsOfSingletonPath :: Path -> Maybe Namespace
-getNsOfSingletonPath p = case splitHead p of
-    Just (ns, Root) -> Just $ Namespace ns
-    _ -> Nothing
 
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
