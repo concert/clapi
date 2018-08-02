@@ -70,7 +70,7 @@ import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
 -- FIXME: this should probably be `Map (Tagged def Seg) def`
-type DefMap def = Map Namespace (Map (Tagged def Seg) def)
+type DefMap def = Map (Tagged def Seg) def
 type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition Seg)
 type Referer = Path
 type Referee = Path
@@ -126,14 +126,13 @@ baseValuespace = undefined -- unsafeValidateVs $
 
 lookupPostDef
   :: MonadFail m
-  => Tagged PostDefinition TypeName -> DefMap PostDefinition -> m PostDefinition
-lookupPostDef tn defs = let (ns, s) = unqualify tn in note "Missing post def" $
-    Map.lookup ns defs >>= Map.lookup s
+  => Tagged PostDefinition Seg -> DefMap PostDefinition -> m PostDefinition
+lookupPostDef s defs = note "Missing post def" $ Map.lookup s defs
 
 vsLookupPostDef
   :: MonadFail m
   => Tagged PostDefinition Seg -> Valuespace -> m PostDefinition
-vsLookupPostDef s vs = undefined -- lookupPostDef s $ vsPostDefs vs
+vsLookupPostDef s vs = lookupPostDef s $ vsPostDefs vs
 
 postDefForPath :: MonadFail m => Path -> Valuespace -> m PostDefinition
 postDefForPath p vs = defForPath p vs >>=
