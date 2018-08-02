@@ -583,9 +583,15 @@ filterDdByDataErrIdx errIdxs =
          ConstChange _ _ -> error "internal error: tp errors for const change"
          TimeChange m -> TimeChange $ Map.withoutKeys m badTpIds
 
+data ProtoFrpDigest = ProtoFrpDigest
+  { frpdData :: DataDigest
+  , frpdCreates :: Creates
+  , frpdContOps :: ContOps (Either Placeholder Seg)
+  } deriving (Show, Eq)
+
 processTrcUpdateDigest
   :: Valuespace -> TrcUpdateDigest
-  -> (Map DataErrorIndex [ValidationErr], PfrpDigest)
+  -> (Map DataErrorIndex [ValidationErr], ProtoFrpDigest)
 processTrcUpdateDigest vs trcud =
   let
     ns = unNamespace $ trcudNamespace trcud
