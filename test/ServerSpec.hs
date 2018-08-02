@@ -47,7 +47,7 @@ throwAfterCheck threadAction excSelector = do
   a <- async $ throwAfter
     (E.toException $ TestException 0)
     (putMVar resp 'a' >> takeMVar trigger >> threadAction)
-  takeMVar resp
+  _ <- takeMVar resp
   assertAsyncRunning a
   putMVar trigger 'b'
   wait a `shouldThrow` excSelector
@@ -114,16 +114,16 @@ spec = do
             let kill = killThread (asyncThreadId a)
             port <- show . getPort <$> takeMVar addrV
             timeLimit 0.2 $ connect "127.0.0.1" port $ \(csock, _) -> do
-                let chat = send csock "hello" >> recv csock 4096
+                let chat = void $ send csock "hello" >> recv csock 4096
                 -- We have to do some initial chatting to ensure the connection has
                 -- been established before we kill the server, otherwise recv can get a
                 -- "connection reset by peer":
                 chat
                 kill
-                takeMVar addrV
+                _ <- takeMVar addrV
                 -- killing once should just have stopped us listening, but not chatting
                 connect "127.0.0.1" port undefined
-                    `E.catch` (\(e :: E.IOException) -> return ())
+                    `E.catch` (\(_e :: E.IOException) -> return ())
                 chat
                 kill
                 bs <- recv csock 4096
@@ -144,9 +144,9 @@ spec = do
       withListen' $ \(lsock, laddr) -> do
         v <- newEmptyMVar
         withServe lsock (\(hsock, _) -> handler v hsock) $ \a -> do
-          connect "127.0.0.1" (show . getPort $ laddr) $
+          _ <- connect "127.0.0.1" (show . getPort $ laddr) $
             \(csock, _) -> connector a csock
-          timeLimit 0.1 (takeMVar v)
+          _ <- timeLimit 0.1 (takeMVar v)
           runCheck a
     connector0 _ csock = recv csock 4096 >> send csock "bye"
     handler0 v hsock =

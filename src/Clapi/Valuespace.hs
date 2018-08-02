@@ -202,7 +202,7 @@ defForPath p vs =
 getLiberty :: MonadFail m => Path -> Valuespace -> m Liberty
 getLiberty path vs = case path of
   Root :/ _ -> return Cannot
-  s :</ Root -> return Cannot
+  _ns :</ Root -> return Cannot
   p :/ s -> defForPath p vs >>= defDispatch (flip childLibertyFor s)
   _ -> return Cannot
 

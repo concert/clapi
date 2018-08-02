@@ -142,7 +142,7 @@ spec = do
               { frcudDefinitions = Map.singleton (Tagged helloS) helloDef1
               , frcudData = alSingleton Root $ textChange "w"
               })
-            waitThenFwdOnly $ const return ()
+            _ <- waitThenFwdOnly $ const return ()
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
     it "Unsubscribes on client disconnect" $
@@ -155,8 +155,8 @@ spec = do
               (frcudEmpty $ Namespace helloS)
               { frcudData = alSingleton Root $ textChange "f" }
         fauxRelay = do
-            waitThenFwdOnly $ const return ()
-            waitThenFwdOnly $ \(i, d) -> sendRev (i, Ocid $
+            _ <- waitThenFwdOnly $ const return ()
+            waitThenFwdOnly $ \(i, _d) -> sendRev (i, Ocid $
               (frcudEmpty $ Namespace helloS)
               { frcudData = alSingleton Root $ textChange "f" })
             relayNoMore
@@ -198,7 +198,7 @@ spec = do
                 sendRev (i, Ocid $
                   (frcudEmpty $ Namespace byeS)
                   { frcudData = alSingleton Root $ textChange "t" })
-            waitThenFwdOnly $ const return ()
+            _ <- waitThenFwdOnly $ const return ()
             waitThenFwdOnly $ \(i, d) -> do
               lift $ d `shouldBe` PnidTrprd (TrprDigest $ Namespace helloS)
               -- To verify the client is unsubscribed:
@@ -232,7 +232,7 @@ spec = do
               { frpdData = alSingleton Root $ textChange "x"
               }
         fauxRelay = do
-            waitThenFwdOnly $ \(i, d) -> sendRev (i, Opd $
+            waitThenFwdOnly $ \(i, _d) -> sendRev (i, Opd $
               (frpdEmpty $ Namespace helloS)
               { frpdData = alSingleton Root $ textChange "x"
               })
