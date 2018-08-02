@@ -1,6 +1,8 @@
 {-# LANGUAGE
     LambdaCase
+  , OverloadedStrings
 #-}
+
 module ServerSpec where
 
 import Test.Hspec

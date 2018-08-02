@@ -1,3 +1,7 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
+
 module PathSpec where
 
 import Test.Hspec

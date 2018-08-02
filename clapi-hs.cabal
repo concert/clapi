@@ -18,7 +18,6 @@ library
   ghc-options:         -Wall
   default-extensions:
                        PatternSynonyms
-                     , OverloadedStrings
                      , QuasiQuotes
                      , ScopedTypeVariables
                      , TupleSections
@@ -118,7 +117,6 @@ test-suite clapi-hs-test
   ghc-options:         -Wall
   default-extensions:
                        PatternSynonyms
-                     , OverloadedStrings
                      , QuasiQuotes
                      , ScopedTypeVariables
                      , TupleSections

@@ -1,3 +1,7 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
+
 module NamespaceTrackerSpec where
 
 import Test.Hspec

@@ -1,3 +1,7 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
+
 module Clapi.TextSerialisation where
 
 import Prelude hiding (fail)

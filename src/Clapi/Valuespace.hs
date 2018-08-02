@@ -1,6 +1,7 @@
 {-# LANGUAGE
     FlexibleContexts
   , LambdaCase
+  , OverloadedStrings
 #-}
 
 module Clapi.Valuespace
