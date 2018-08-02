@@ -611,9 +611,7 @@ processTrcUpdateDigest vs trcud =
     (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
       vsTree vs
     touched = opsTouched validSegCops pathValidDd
-    (tas', newPaths) = fillTyAssns
-      (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
-    vs' = vs {vsTree = tree', vsTyAssns = tas'}
+    vs' = vs {vsTree = tree'}
     touchedLiberties = Map.mapWithKey (\k _ -> getLiberty k vs') touched
     cannotErrs = const [LibertyErr "Touched a cannot"]
       <$> Map.filter (== Just Cannot) touchedLiberties
@@ -636,29 +634,6 @@ processTrcUpdateDigest vs trcud =
       validCreates
       validCops
   in (errMap, frpd)
-
-fillTyAssns
-  :: DefMap Definition -> TypeAssignmentMap -> [Path]
-  -> (TypeAssignmentMap, Set Path)
-fillTyAssns defs = inner mempty
-  where
-    inner freshlyAssigned tam paths = case paths of
-        [] -> (tam, freshlyAssigned)
-        (p : ps) -> case Mos.getDependency p tam of
-            Just _ -> inner freshlyAssigned tam ps
-            Nothing -> let newAssns = infer p $ fst tam in
-                inner (freshlyAssigned <> Map.keysSet newAssns) (Mos.setDependencies newAssns tam) ps
-    infer p tm = case Path.splitTail p of
-        Nothing -> error "Attempted to infer root in fillTyAssns"
-        Just (pp, cSeg) ->
-          let
-            (mptn, tm') = case Map.lookup pp tm of
-                Just tn -> (Just tn, tm)
-                Nothing -> let ptm = infer pp tm in
-                    (Map.lookup pp ptm, tm <> ptm)
-          in case mptn >>= flip lookupDef defs >>= defDispatch (childTypeFor cSeg) of
-            Just tn -> Map.insert p tn tm'
-            Nothing -> tm'
 
 data ValidationErr
   = GenericErr String
