@@ -551,46 +551,43 @@ data ProtoFrpDigest = ProtoFrpDigest
 processTrcUpdateDigest
   :: Valuespace -> TrcUpdateDigest
   -> (Map DataErrorIndex [ValidationErr], ProtoFrpDigest)
-processTrcUpdateDigest = undefined
---processTrcUpdateDigest vs trcud =
---  let
---    ns = unNamespace $ trcudNamespace trcud
---    (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
---      trcudCreates trcud
---    afterErrs = validateCreateAndCopAfters vs createsWithValidArgs $
---      trcudContOps trcud
---    (validCreates, validCops) =
---      filterByAfterErrs afterErrs createsWithValidArgs $ trcudContOps trcud
---    validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
---    -- adding to the front of the path will not break uniqueness
---    validPaths = Set.difference
---      (maybe mempty (Set.fromList . treePaths Root) $
---        Tree.treeLookup (Root :/ ns) $ vsTree vs) (removedPaths validCops)
---    (pathValidDd, nonExistantSets) = alPartitionWithKey
---      (\p _ -> Set.member p validPaths) $ trcudData trcud
---    (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
---      vsTree vs
---    touched = opsTouched validSegCops pathValidDd
---    vs' = vs {vsTree = tree'}
---    touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
---    roErrs = const [EditableErr "Touched a cannot"]
---      <$> Map.filter (== Just ReadOnly) touchedEditabilities
---    (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
---    refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
---
---    thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
---      [ fmap (GenericErr . Text.unpack) <$> updateErrs
---      , validationErrs, roErrs
---      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
---        $ nonExistantSets
---      ]
---    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
---    frpd = FrpDigest
---      (trcudNamespace trcud)
---      (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
---      validCreates
---      validCops
---  in (errMap, frpd)
+processTrcUpdateDigest vs trcud =
+  let
+    (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
+      trcudCreates trcud
+    afterErrs = validateCreateAndCopAfters vs createsWithValidArgs $
+      trcudContOps trcud
+    (validCreates, validCops) =
+      filterByAfterErrs afterErrs createsWithValidArgs $ trcudContOps trcud
+    validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
+    -- adding to the front of the path will not break uniqueness
+    validPaths = Set.difference
+      (maybe mempty (Set.fromList . treePaths Root) $
+        Tree.treeLookup Root $ vsTree vs) (removedPaths validCops)
+    (pathValidDd, nonExistantSets) = alPartitionWithKey
+      (\p _ -> Set.member p validPaths) $ trcudData trcud
+    (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
+      vsTree vs
+    touched = opsTouched validSegCops pathValidDd
+    vs' = vs {vsTree = tree'}
+    touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
+    roErrs = const [EditableErr "Touched a cannot"]
+      <$> Map.filter (== Just ReadOnly) touchedEditabilities
+    (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
+    refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
+
+    thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
+      [ fmap (GenericErr . Text.unpack) <$> updateErrs
+      , validationErrs, roErrs
+      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
+        $ nonExistantSets
+      ]
+    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
+    pfrpd = ProtoFrpDigest
+      (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
+      validCreates
+      validCops
+  in (errMap, pfrpd)
 
 data ValidationErr
   = GenericErr String
