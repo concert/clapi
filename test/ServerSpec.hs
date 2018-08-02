@@ -171,6 +171,7 @@ spec = do
 getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
+getPort _ = error "Cannot get port for given addr"
 
 withListen' :: ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
 withListen' = withListen (pure ()) (pure ()) HostAny "0"
