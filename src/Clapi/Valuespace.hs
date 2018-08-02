@@ -348,10 +348,10 @@ opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
 
 updateNsDefs
   :: Map (Tagged def Seg) (DefOp def)
-  -> Maybe (Map (Tagged def Seg) def)
-  -> Maybe (Map (Tagged def Seg) def)
-updateNsDefs defOps = Just . maybe newDefs (\existingDefs ->
-    Map.union newDefs $ Map.withoutKeys existingDefs $ Map.keysSet unDefs)
+  -> Map (Tagged def Seg) def
+  -> Map (Tagged def Seg) def
+updateNsDefs defOps existingDefs =
+    Map.union newDefs $ Map.withoutKeys existingDefs $ Map.keysSet unDefs
   where
     (unDefs, defs) = Map.partition isUndef defOps
     newDefs = odDef <$> defs
@@ -361,33 +361,29 @@ processToRelayProviderDigest
   -> Either
       (Map DataErrorIndex [Text])
       (Map Path (Tagged Definition Seg), Valuespace)
-processToRelayProviderDigest trpd vs = undefined
---   let
---     ns = trpdNamespace trpd
---     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
---     -- FIXME: The fudge here is for dealing with the namespaces being different
---     getPathsWithType s = if Namespace (untag s) == ns
---       then Set.singleton $ Root :/ (unNamespace ns)
---       else Mos.getDependants (qualify ns s) tas
---     redefdPaths = mconcat $
---       fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
---     qData = fromJust $ alMapKeys (unNamespace ns :</) $ trpdData trpd
---     qCops = Map.mapKeys (unNamespace ns :</) $ trpdContOps trpd
---     updatedPaths = opsTouched qCops qData
---     tpRemovals :: DataChange -> Set TpId
---     tpRemovals (ConstChange {})= mempty
---     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
---     xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
---       fmap tpRemovals $ alToMap qData
---     defs' = Map.alter (updateNsDefs $ trpdDefinitions trpd) ns (vsTyDefs vs)
---     postDefs' = Map.alter (updateNsDefs $ trpdPostDefs trpd) ns (vsPostDefs vs)
---     (updateErrs, tree') = Tree.updateTreeWithDigest qCops qData (vsTree vs)
---   in do
---     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
---     (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
---       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
---       Valuespace tree' postDefs' defs' tas xrefs'
---     return (updatedTypes, vs')
+processToRelayProviderDigest trpd vs =
+  let
+    tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
+    -- FIXME: The fudge here is for dealing with the namespaces being different
+    getPathsWithType s = Mos.getDependants s tas
+    redefdPaths = mconcat $
+      fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
+    updatedPaths = opsTouched (trpdContOps trpd) $ trpdData trpd
+    tpRemovals :: DataChange -> Set TpId
+    tpRemovals (ConstChange {})= mempty
+    tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
+    xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
+      fmap tpRemovals $ alToMap $ trpdData trpd
+    defs' = updateNsDefs (trpdDefinitions trpd) $ vsTyDefs vs
+    postDefs' = updateNsDefs (trpdPostDefs trpd) $ vsPostDefs vs
+    (updateErrs, tree') = Tree.updateTreeWithDigest
+        (trpdContOps trpd) (trpdData trpd) (vsTree vs)
+  in do
+    unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
+    (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
+      (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
+      Valuespace tree' postDefs' defs' tas xrefs'
+    return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validatePath vs p mTpids = do
