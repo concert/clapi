@@ -629,7 +629,7 @@ processTrcUpdateDigest vs trcud =
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
       , validationErrs, cannotErrs, mustErrs
       ]
-    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing]
+    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
     frpd = FrpDigest
       (trcudNamespace trcud)
       (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
