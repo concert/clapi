@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+
 module Data.Map.MosSpec where
 
 import Test.Hspec
@@ -7,7 +9,6 @@ import qualified Data.Set as Set
 
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 spec :: Spec
