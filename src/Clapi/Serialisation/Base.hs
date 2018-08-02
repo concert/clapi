@@ -19,8 +19,7 @@ import Data.Text (Text)
 
 -- For building:
 import Blaze.ByteString.Builder
-  ( Builder, fromWord8, fromWord64be, fromWord32be , fromInt32be
-  , fromInt64be)
+  ( Builder, fromWord8, fromInt32be, fromInt64be)
 import Blaze.ByteString.Builder.Char.Utf8 (fromText)
 import Data.ByteString.Builder (floatBE, doubleBE)
 import qualified Data.ByteString.Builder.VarWord as BVw
@@ -48,18 +47,19 @@ class Encodable a where
   parser :: Parser a
 
 instance Encodable Time where
-  builder (Time w64 w32) = return $ fromWord64be w64 <> fromWord32be w32
-  parser = Time <$> anyWord64be <*> anyWord32be
+  builder (Time w64 w32) = return $
+    BVw.denseVarWordBe w64 <> BVw.denseVarWordBe w32
+  parser = Time <$> AVw.denseVarWordBe <*> AVw.denseVarWordBe
 
 instance Encodable Word8 where
   builder = return . fromWord8
   parser = anyWord8
 instance Encodable Word32 where
-  builder = return . fromWord32be
-  parser = anyWord32be
+  builder = return . BVw.denseVarWordBe
+  parser = AVw.denseVarWordBe
 instance Encodable Word64 where
-  builder = return . fromWord64be
-  parser = anyWord64be
+  builder = return . BVw.denseVarWordBe
+  parser = AVw.denseVarWordBe
 
 instance Encodable Int32 where
   builder = return . fromInt32be
@@ -175,7 +175,7 @@ interpolationTaggedData = taggedData itToTag interpolationType
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
-        (IBezier a b) -> fromWord32be a <> fromWord32be b
+        (IBezier a b) -> BVw.denseVarWordBe a <> BVw.denseVarWordBe b
         _ -> mempty
     parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
         ItConstant -> return IConstant
