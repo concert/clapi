@@ -626,6 +626,8 @@ processTrcUpdateDigest vs trcud =
     thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
       , validationErrs, cannotErrs, mustErrs
+      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
+        $ nonExistantSets
       ]
     errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
     frpd = FrpDigest
@@ -641,6 +643,7 @@ data ValidationErr
   | BadNodeType {vebntExpected :: RoseTreeNodeType, vebntActual :: RoseTreeNodeType}
   | MissingChild Seg
   | ExtraChild Seg
+  | TouchedNonExistantPath
   | RefTargetNotFound Path
   | RefTargetTypeErr
     { veRttePath :: Path

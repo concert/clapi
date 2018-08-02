@@ -27,7 +27,7 @@ import Clapi.Types
   , Definition(..)
   , StructDefinition(strDefTypes)
   , TrpDigest(..), DefOp(..), DataChange(..)
-  , TrcUpdateDigest(..), trcudEmpty, frpdEmpty)
+  , TrcUpdateDigest(..), trcudEmpty)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path
   ( Path, pattern (:/), pattern Root, Seg, TypeName(..), tTypeName
@@ -47,6 +47,12 @@ vsProviderErrorsOn vs d ps = case (processToRelayProviderDigest d vs) of
     Left errMap -> errMap `shouldSatisfy`
       (\em -> Set.fromList (PathError <$> ps) == Map.keysSet em)
     Right _ -> fail "Did not get expected errors"
+
+vsClientErrorsOn :: Valuespace -> TrcUpdateDigest -> [Path] -> Expectation
+vsClientErrorsOn vs d ps = let (errMap, _) = processTrcUpdateDigest vs d in
+  if (null errMap)
+    then fail "Did not get expected errors"
+    else Map.keysSet errMap `shouldBe` Set.fromList (PathError <$> ps)
 
 validVersionTypeChange :: Valuespace -> TrpDigest
 validVersionTypeChange vs =
@@ -279,11 +285,11 @@ spec = do
         vs <- vsAppliesCleanly claimFoo baseValuespace
         vsRelinquish (Namespace fs) vs `shouldBe` baseValuespace
     describe "Client" $
-        it "Can create new array entries" $
+        it "Cannot itself create new array entries" $
           let
             dd = alSingleton [pathq|/arr/a|] $ ConstChange Nothing
                 [WireValue @Word32 1, WireValue @Word32 2, WireValue @Int32 3]
             trcud = (trcudEmpty apiNs) {trcudData = dd}
           in do
             vs <- vsAppliesCleanly (emptyArrayD [segq|arr|] baseValuespace) baseValuespace
-            processTrcUpdateDigest vs trcud `shouldBe` (mempty, frpdEmpty apiNs)
+            vsClientErrorsOn vs trcud [[pathq|/arr/a|]]
