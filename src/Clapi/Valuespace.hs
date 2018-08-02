@@ -8,10 +8,9 @@ module Clapi.Valuespace
   ( Valuespace, vsTree, vsTyDefs, vsPostDefs
   , baseValuespace
   , vsLookupPostDef, vsLookupDef, valuespaceGet, getEditable
-  , apiNs, apiTypeName, dnSeg
   , processToRelayProviderDigest, processTrcUpdateDigest
   , validateVs, unsafeValidateVs
-  , vsRelinquish, ValidationErr(..)
+  , ValidationErr(..)
   ) where
 
 import Prelude hiding (fail)
@@ -70,9 +69,9 @@ import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
--- FIXME: this should probably be `Map (Tagged def TypeName) def`
+-- FIXME: this should probably be `Map (Tagged def Seg) def`
 type DefMap def = Map Namespace (Map (Tagged def Seg) def)
-type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition TypeName)
+type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition Seg)
 type Referer = Path
 type Referee = Path
 type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
@@ -100,12 +99,6 @@ removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
     updateTpMap Nothing = Just Nothing
     updateTpMap (Just tpSet) = let tpSet' = Set.difference tpSet tpids in
       if null tpSet' then Nothing else Just $ Just tpSet'
-
-apiNs :: Namespace
-apiNs = Namespace [segq|api|]
-
-apiTypeName :: Tagged Definition TypeName
-apiTypeName = Tagged $ TypeName apiNs $ unNamespace apiNs
 
 apiDef :: StructDefinition
 apiDef = StructDefinition "Information about CLAPI itself" $
@@ -158,8 +151,8 @@ lookupPostDef tn defs = let (ns, s) = unqualify tn in note "Missing post def" $
 
 vsLookupPostDef
   :: MonadFail m
-  => Tagged PostDefinition TypeName -> Valuespace -> m PostDefinition
-vsLookupPostDef tn vs = lookupPostDef tn $ vsPostDefs vs
+  => Tagged PostDefinition Seg -> Valuespace -> m PostDefinition
+vsLookupPostDef s vs = lookupPostDef s $ vsPostDefs vs
 
 postDefForPath :: MonadFail m => Path -> Valuespace -> m PostDefinition
 postDefForPath p vs = defForPath p vs >>=
@@ -178,8 +171,8 @@ lookupDef tn defs = note "Missing def" $
     (ns, s) = unqualify tn
 
 vsLookupDef
-  :: MonadFail m => Tagged Definition TypeName -> Valuespace -> m Definition
-vsLookupDef tn vs = lookupDef tn $ vsTyDefs vs
+  :: MonadFail m => Tagged Definition Seg -> Valuespace -> m Definition
+vsLookupDef s vs = lookupDef s $ vsTyDefs vs
 
 getNsOfSingletonPath :: Path -> Maybe Namespace
 getNsOfSingletonPath p = case splitHead p of
@@ -284,7 +277,7 @@ validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
   -> Either
        (Map DataErrorIndex [ValidationErr])
-       (Map Path (Tagged Definition TypeName), Valuespace)
+       (Map Path (Tagged Definition Seg), Valuespace)
 validateVs t v = do
     (newTypeAssns, refClaims, vs) <- inner mempty mempty t v
     checkRefClaims (vsTyAssns vs) refClaims
@@ -394,7 +387,7 @@ processToRelayProviderDigest
   :: TrpDigest -> Valuespace
   -> Either
       (Map DataErrorIndex [Text])
-      (Map Path (Tagged Definition TypeName), Valuespace)
+      (Map Path (Tagged Definition Seg), Valuespace)
 processToRelayProviderDigest trpd vs =
   let
     ns = trpdNamespace trpd
@@ -592,7 +585,7 @@ filterDdByDataErrIdx errIdxs =
 
 processTrcUpdateDigest
   :: Valuespace -> TrcUpdateDigest
-  -> (Map DataErrorIndex [ValidationErr], FrpDigest)
+  -> (Map DataErrorIndex [ValidationErr], PfrpDigest)
 processTrcUpdateDigest vs trcud =
   let
     ns = unNamespace $ trcudNamespace trcud
@@ -643,8 +636,8 @@ data ValidationErr
   | RefTargetNotFound Path
   | RefTargetTypeErr
     { veRttePath :: Path
-    , veRtteExpectedType :: Tagged Definition TypeName
-    , veRtteTargetType :: Tagged Definition TypeName}
+    , veRtteExpectedType :: Tagged Definition Seg
+    , veRtteTargetType :: Tagged Definition Seg}
   | EditableErr String
   | CreateReferencedAbsentName Placeholder (Either Placeholder Seg)
   | MoveReferencedAbsentName Seg (Either Placeholder Seg)
@@ -704,22 +697,8 @@ validateWireValues tts wvs =
   where
     vr tt wv = validate tt wv >> extractTypeAssertions tt wv
 
--- FIXME: The VS you get back from this can be invalid WRT refs/inter NS types
-vsRelinquish :: Namespace -> Valuespace -> Valuespace
-vsRelinquish ns (Valuespace tree postDefs defs tas xrefs) =
-  let
-    nsp = Root :/ unNamespace ns
-  in
-    Valuespace
-      (Tree.treeDelete nsp tree)
-      (Map.delete ns postDefs)
-      (Map.delete ns defs)
-      (Mos.filterDeps
-       (\p ttn -> not $ p `Path.isChildOf` nsp || ns == tTnNamespace ttn) tas)
-      (filterXrefs (\p -> not (p `Path.isChildOf` nsp)) xrefs)
-
 validateExistingXrefs
-  :: Xrefs -> Map Path (Tagged Definition TypeName)
+  :: Xrefs -> Map Path (Tagged Definition Seg)
   -> Map DataErrorIndex [ValidationErr]
 validateExistingXrefs xrs newTas =
   let

@@ -166,7 +166,7 @@ data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
   , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , frcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , frcudTypeAssignments :: Map Path (Tagged Definition TypeName, Editable)
+  , frcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Map DataErrorIndex [Text]

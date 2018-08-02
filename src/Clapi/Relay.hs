@@ -184,30 +184,42 @@ handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
     (ocud, opd)
 
 relay
-  :: Monad m => Valuespace
+  :: Monad m => Map Namespace Valuespace
   -> Protocol (i, PostNstInboundDigest) Void (i, OutboundDigest) Void m ()
-relay vs = waitThenFwdOnly fwd
+relay vsm = waitThenFwdOnly fwd
   where
     fwd (i, dig) = case dig of
         PnidRootGet -> do
             sendRev
               ( i
               , Ocrid $ FrcRootDigest $ Map.fromSet (const $ SoAfter Nothing) $
-                Set.fromList $ treeChildNames $ vsTree vs)
-            relay vs
+                Map.keys vsm)
+            relay vsm
         PnidCgd cgd ->
-          let (ocsed, ocids) = genInitDigests cgd vs in do
+          let (ocsed, ocids) = genInitDigests cgd vsm in do
             unless (ocsedNull ocsed) $ sendRev (i, Ocsed ocsed)
             mapM_ (sendRev . (i,) . Ocid) ocids
-            relay vs
-        PnidTrcud trcud ->
-          let (ocud, opd) = handleTrcud vs trcud in do
+            relay vsm
+        PnidTrcud trcud -> let ns = trcudNamespace trcud) in maybe
+          (do
+            sendRev (i, Ocud $ ocudEmpty
+              { ocudNamespace = ns
+              -- FIXME: Not a global error, NamespaceError?
+              , ocudErrors = Map.singleton GlobalError ["fixthis: Bad namespace"]
+              })
+            relay vsm
+          (\vs -> let (ocud, opd) = handleTrcud vs trcud in do
             sendRev (i, Opd $ opd)
             sendRev (i, Ocud $ ocud)
-            relay vs
-        PnidTrpd trpd -> either
-          terminalErrors
-          (handleOwnerSuccess trpd) $ processToRelayProviderDigest trpd vs
+            relay vsm
+          )
+          (Map.lookup ns vsm)
+        PnidTrpd trpd -> maybe
+          ()
+          (\vs -> either
+            terminalErrors
+            (handleOwnerSuccess trpd) $ processToRelayProviderDigest trpd vs)
+          (Map.lookup ns vsm)
         PnidTrprd (TrprDigest ns) ->
           let vs' = vsRelinquish ns vs in do
             sendRev (i, Ocrd $ generateRootUpdates vs vs')
@@ -237,10 +249,10 @@ relay vs = waitThenFwdOnly fwd
                 mungedTas dd' contOps'' errs)
             unless (null $ frcrdContOps frcrd) $
                 sendRev (i, Ocrd frcrd)
-            relay vs'
+            relay $ Map.insert ns vs' vsm
         terminalErrors errMap = do
           sendRev (i, Ope $ FrpErrorDigest errMap)
-          relay vs
+          relay vsm
 
 -- FIXME: Worst case implementation
 vsMinimiseDefinitions
