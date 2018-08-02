@@ -542,10 +542,10 @@ processTrcUpdateDigest vs trcud =
   let
     (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
       trcudCreates trcud
-    afterErrs = validateCreateAndCopAfters vs createsWithValidArgs $
+    copErrs = validateCreateAndCopAfters vs createsWithValidArgs $
       trcudContOps trcud
     (validCreates, validCops) =
-      filterByAfterErrs afterErrs createsWithValidArgs $ trcudContOps trcud
+      filterByAfterErrs copErrs createsWithValidArgs $ trcudContOps trcud
     validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
     -- adding to the front of the path will not break uniqueness
     validPaths = Set.difference
@@ -563,15 +563,15 @@ processTrcUpdateDigest vs trcud =
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
 
-    thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
+    dataErrs = mappend refErrs $ Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
       , validationErrs, roErrs
-      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
-        $ nonExistantSets
+      , Map.fromSet (const $ [TouchedNonExistantPath]) $
+          alKeysSet nonExistantSets
       ]
-    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
+    errMap = Map.unionsWith (<>) [createErrs, copErrs, dataErrs]
     pfrpd = ProtoFrpDigest
-      (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
+      (filterDdByDataErrIdx (Map.keys dataErrs) pathValidDd)
       validCreates
       validCops
   in (errMap, pfrpd)
