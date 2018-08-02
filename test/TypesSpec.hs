@@ -105,7 +105,7 @@ instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b)
 instance Arbitrary WireType where
   arbitrary = oneof
     [ return WtTime
-    , return WtWord8, return WtWord32, return WtWord64
+    , return WtWord32, return WtWord64
     , return WtInt32, return WtInt64
     , return WtFloat, return WtDouble
     , return WtString

@@ -51,9 +51,6 @@ instance Encodable Time where
     BVw.denseVarWordBe w64 <> BVw.denseVarWordBe w32
   parser = Time <$> AVw.denseVarWordBe <*> AVw.denseVarWordBe
 
-instance Encodable Word8 where
-  builder = return . fromWord8
-  parser = anyWord8
 instance Encodable Word32 where
   builder = return . BVw.denseVarWordBe
   parser = AVw.denseVarWordBe
