@@ -18,7 +18,7 @@ import Clapi.Relay (relay)
 import Clapi.Tree (treeInsert, RoseTree(RtConstData, RtContainer))
 import Clapi.Types.AssocList (alEmpty, alSingleton)
 import Clapi.Types.Base (InterpolationLimit(..))
-import Clapi.Types.Definitions (arrayDef, tupleDef, Liberty(..))
+import Clapi.Types.Definitions (arrayDef, tupleDef, Editable(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Messages (SubErrorIndex(..))
@@ -84,7 +84,7 @@ spec = describe "the relay protocol" $ do
         kid = [segq|kid|]
         tyDefs = Map.fromList
           [ ( Tagged foo
-            , arrayDef "arr" Nothing (tTypeName (Namespace foo) kid) Cannot)
+            , arrayDef "arr" Nothing (tTypeName (Namespace foo) kid) ReadOnly)
           , (Tagged kid, tupleDef "kid" alEmpty ILUninterpolated)
           ]
         vsWithStuff = unsafeValidateVs $ baseValuespace
@@ -99,7 +99,7 @@ spec = describe "the relay protocol" $ do
         expectedOutDig = Ocud $ (frcudEmpty fooN)
           { frcudData = dd
           , frcudTypeAssignments =
-              Map.singleton (Root :/ kid) (tTypeName fooN kid, Cannot)
+              Map.singleton (Root :/ kid) (tTypeName fooN kid, ReadOnly)
           }
         test = do
           sendFwd ((), inDig)

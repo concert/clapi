@@ -21,7 +21,7 @@ import qualified Data.Map.Mol as Mol
 import Clapi.Types.AssocList
   (AssocList, alNull, alEmpty, alFromList, alFmapWithKey, alValues)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Liberty, PostDefinition)
+import Clapi.Types.Definitions (Definition, Editable, PostDefinition)
 import Clapi.Types.Messages
 import Clapi.Types.Path
   ( Seg, Path, TypeName(..), pattern (:</), pattern (:/), Namespace(..)
@@ -166,7 +166,7 @@ data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
   , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , frcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , frcudTypeAssignments :: Map Path (Tagged Definition TypeName, Liberty)
+  , frcudTypeAssignments :: Map Path (Tagged Definition TypeName, Editable)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Map DataErrorIndex [Text]
@@ -344,13 +344,13 @@ produceSubMessages pTySubs tySubs datSubs =
 
 
 digestTypeMessages
-  :: [TypeMessage] -> Map Path (Tagged Definition TypeName, Liberty)
+  :: [TypeMessage] -> Map Path (Tagged Definition TypeName, Editable)
 digestTypeMessages = Map.fromList . fmap procMsg
   where
-    procMsg (MsgAssignType p tn lib) = (p, (tn, lib))
+    procMsg (MsgAssignType p tn ed) = (p, (tn, ed))
 
 produceTypeMessages
-  :: Map Path (Tagged Definition TypeName, Liberty) -> [TypeMessage]
+  :: Map Path (Tagged Definition TypeName, Editable) -> [TypeMessage]
 produceTypeMessages = Map.elems . Map.mapWithKey
   (\p (tn, l) -> MsgAssignType p tn l)
 
