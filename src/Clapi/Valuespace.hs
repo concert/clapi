@@ -82,6 +82,8 @@ data Valuespace = Valuespace
   , vsTyDefs :: DefMap Definition
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
+  , vsRootType :: Tagged Definition Seg
+  , vsRootEditable :: Editable
   } deriving (Eq, Show)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
@@ -108,21 +110,9 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
     allTainted = Map.delete Root $ Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
       vsTree vs
 
-baseValuespace :: Seg -> Editable -> Valuespace
-baseValuespace rootType rootEditable = undefined -- unsafeValidateVs $
---     Valuespace baseTree mempty baseDefs mempty mempty
---   where
---     vseg = [segq|version|]
---     version = RtConstData Nothing
---       [WireValue @Word32 0, WireValue @Word32 1, WireValue @Int32 (-1022)]
---     baseTree =
---       treeInsert Nothing (Root :/ unNamespace apiNs :/ vseg) version
---       Tree.RtEmpty
---     baseDefs = Map.singleton apiNs $ Map.fromList
---       [ (Tagged $ unNamespace apiNs, StructDef apiDef)
---       , (Tagged vseg, TupleDef versionDef)
---       , (Tagged dnSeg, TupleDef displayNameDef)
---       ]
+baseValuespace :: Tagged Definition Seg -> Editable -> Valuespace
+baseValuespace rootType rootEditable = unsafeValidateVs $
+    Valuespace Tree.RtEmpty mempty mempty mempty mempty rootType rootEditable
 
 lookupPostDef
   :: MonadFail m
@@ -177,7 +167,7 @@ valuespaceGet
        , Tagged Definition Seg
        , Editable
        , RoseTreeNode [WireValue])
-valuespaceGet p vs@(Valuespace tree _ defs tas _) = do
+valuespaceGet p vs@(Valuespace tree _ defs tas _ _ _) = do
     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
     ts <- lookupTypeName p tas
     def <- lookupDef ts defs
@@ -382,7 +372,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' postDefs' defs' tas xrefs'
+      Valuespace tree' postDefs' defs' tas xrefs' (vsRootType vs) (vsRootEditable vs)
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
