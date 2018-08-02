@@ -77,7 +77,6 @@ data Valuespace = Valuespace
   , vsTyDefs :: DefMap Definition
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
-  , vsRootType :: Tagged Definition Seg
   , vsRootEditable :: Editable
   } deriving (Eq, Show)
 
@@ -103,8 +102,13 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
       vsTree vs
 
 baseValuespace :: Tagged Definition Seg -> Editable -> Valuespace
-baseValuespace rootType rootEditable = unsafeValidateVs $
-    Valuespace Tree.RtEmpty mempty mempty mempty mempty rootType rootEditable
+baseValuespace rootType rootEditable = unsafeValidateVs $ Valuespace
+    Tree.RtEmpty
+    mempty
+    mempty
+    (Mos.setDependency Root rootType mempty)
+    mempty
+    rootEditable
 
 lookupPostDef
   :: MonadFail m
@@ -154,7 +158,7 @@ valuespaceGet
        , Tagged Definition Seg
        , Editable
        , RoseTreeNode [WireValue])
-valuespaceGet p vs@(Valuespace tree _ defs tas _ _ _) = do
+valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
     ts <- lookupTypeName p tas
     def <- lookupDef ts defs
@@ -358,7 +362,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' postDefs' defs' tas xrefs' (vsRootType vs) (vsRootEditable vs)
+      Valuespace tree' postDefs' defs' tas xrefs' (vsRootEditable vs)
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
