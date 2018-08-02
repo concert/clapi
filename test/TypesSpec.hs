@@ -28,7 +28,7 @@ import Data.Int (Int32, Int64)
 
 import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
-  ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Liberty
+  ( Time(..), WireValue(..), WireType(..), Wireable, castWireValue, Editable
   , InterpolationLimit, PostDefinition(..), Definition(..), StructDefinition(..)
   , TupleDefinition(..), ArrayDefinition(..), AssocList, alFromMap
   , wireValueWireType, withWtProxy)
@@ -65,7 +65,7 @@ instance Arbitrary a => Arbitrary (Path' a) where
 instance Arbitrary TypeName where
   arbitrary = TypeName <$> arbitrary <*> arbitrary
 
-instance Arbitrary Liberty where
+instance Arbitrary Editable where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary InterpolationLimit where
