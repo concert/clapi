@@ -159,11 +159,8 @@ getNsOfSingletonPath p = case splitHead p of
 -- FIXME: Should probably be 1 valuespace per NS and we should pass in the root
 -- type path to the constructor
 lookupTypeName
-  :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition TypeName)
-lookupTypeName p tam = undefined -- note "Type name not found" $ maybe
---     (Mos.getDependency p tam)
---     (\ns -> return $ Tagged $ TypeName ns $ unNamespace ns) $
---     getNsOfSingletonPath p
+  :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
+lookupTypeName p tam = note "Type name not found" $ Mos.getDependency p tam
 
 defForPath :: MonadFail m => Path -> Valuespace -> m Definition
 defForPath p vs =
