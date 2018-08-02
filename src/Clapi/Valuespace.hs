@@ -184,7 +184,7 @@ valuespaceGet p vs@(Valuespace tree _ defs tas _) = do
     ed <- getEditable p vs
     return (def, ts, ed, rtn)
 
-type RefTypeClaims = Mos (Tagged Definition TypeName) Referee
+type RefTypeClaims = Mos (Tagged Definition Seg) Referee
 type TypeClaimsByPath =
   Map Referer (Either RefTypeClaims (Map TpId RefTypeClaims))
 
@@ -216,34 +216,34 @@ partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
 xrefUnion :: Xrefs -> Xrefs -> Xrefs
 xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
--- checkRefClaims
---   :: TypeAssignmentMap
---   -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims))
---   -> Either (Map DataErrorIndex [ValidationErr]) ()
--- checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
---   where
---     errIf m = unless (null m) $ Left m
---     smashErrMap = errIf . Mol.unions . lefts . Map.elems
---     checkRefsAtPath
---       :: Path
---       -> Either RefTypeClaims (Map TpId RefTypeClaims)
---       -> Either (Map DataErrorIndex [ValidationErr]) ()
---     checkRefsAtPath path refClaims =
---       let
---         doCheck eidx = first (Map.singleton eidx . pure @[]) .
---           mapM_ (uncurry checkRef) . Mos.toList
---       in
---         either
---           (doCheck $ PathError path)
---           (smashErrMap .
---            Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
---           refClaims
---     checkRef :: Tagged Definition TypeName -> Path -> Either ValidationErr ()
---     checkRef requiredTn refP = case lookupTypeName refP tyAssns of
---         Nothing -> Left $ RefTargetNotFound refP
---         Just actualTn -> if actualTn == requiredTn
---             then Right ()
---             else Left $ RefTargetTypeErr refP actualTn requiredTn
+checkRefClaims
+  :: TypeAssignmentMap
+  -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims))
+  -> Either (Map DataErrorIndex [ValidationErr]) ()
+checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
+  where
+    errIf m = unless (null m) $ Left m
+    smashErrMap = errIf . Mol.unions . lefts . Map.elems
+    checkRefsAtPath
+      :: Path
+      -> Either RefTypeClaims (Map TpId RefTypeClaims)
+      -> Either (Map DataErrorIndex [ValidationErr]) ()
+    checkRefsAtPath path refClaims =
+      let
+        doCheck eidx = first (Map.singleton eidx . pure @[]) .
+          mapM_ (uncurry checkRef) . Mos.toList
+      in
+        either
+          (doCheck $ PathError path)
+          (smashErrMap .
+           Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
+          refClaims
+    checkRef :: Tagged Definition Seg -> Path -> Either ValidationErr ()
+    checkRef requiredTs refP = case lookupTypeName refP tyAssns of
+        Nothing -> Left $ RefTargetNotFound refP
+        Just actualTs -> if actualTs == requiredTs
+            then Right ()
+            else Left $ RefTargetTypeErr refP actualTs requiredTs
 
 validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
