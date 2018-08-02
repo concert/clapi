@@ -172,8 +172,17 @@ getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
 
+withListen' :: ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
 withListen' = withListen (pure ()) (pure ()) HostAny "0"
+
+withServe
+  :: NS.Socket
+  -> ((NS.Socket, NS.SockAddr) -> IO r)
+  -> (Async () -> IO c)
+  -> IO c
 withServe lsock handler = E.bracket (async $ serve' lsock handler (return ())) cancel
+
+withServe' :: ((NS.Socket, NS.SockAddr) -> IO r) -> (String -> IO a) -> IO a
 withServe' handler io =
     withListen' $ \(lsock, laddr) ->
         withServe lsock handler $ \_ ->
@@ -193,4 +202,5 @@ echo = forever $ waitThen boing undefined
     boing (ClientData addr a) = sendRev (ServerData addr a)
     boing _ = return ()
 
+getCat :: Monad m => a -> (String, a, Protocol x x y y m ())
 getCat addr = ("For Test", addr, cat)
