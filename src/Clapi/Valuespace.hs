@@ -162,8 +162,7 @@ lookupTypeName p tam = note "Type name not found" $ Mos.getDependency p tam
 
 defForPath :: MonadFail m => Path -> Valuespace -> m Definition
 defForPath p vs =
-  undefined
---   lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
+  lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
@@ -179,12 +178,11 @@ valuespaceGet
        , Editable
        , RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _) = do
-    undefined
---     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
---     tn <- lookupTypeName p tas
---     def <- lookupDef tn defs
---     ed <- getEditable p vs
---     return (def, tn, ed, rtn)
+    rtn <- note "Path not found" $ Tree.treeLookupNode p tree
+    ts <- lookupTypeName p tas
+    def <- lookupDef ts defs
+    ed <- getEditable p vs
+    return (def, ts, ed, rtn)
 
 type RefTypeClaims = Mos (Tagged Definition TypeName) Referee
 type TypeClaimsByPath =
