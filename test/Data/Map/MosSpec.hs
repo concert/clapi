@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+
 module Data.Map.MosSpec where
 
 import Test.Hspec
@@ -7,12 +9,22 @@ import qualified Data.Set as Set
 
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 spec :: Spec
 spec = do
+  describe "Mos.Mos" $ do
     it "Doesn't leak" $ (Mos.delete 3 'a' $ Mos.insert 3 'a' mempty) `shouldBe` mempty
+    it "should stay correct under inversion" $ property $
+      \(input :: [(Char, Int)]) -> let mos = Mos.fromList input in
+        mos == Mos.invert (Mos.invert mos)
+    it "should roundtrip via set" $ property $
+      \(input :: [(Char, Int)]) -> let mos = Mos.fromList input in
+        mos == Mos.fromFoldable (Mos.toSet mos)
+    it "can be produced from a Map" $ property $
+      \(input :: Map Char Int) -> let mos = Mos.invertMap input in
+        fmap Set.singleton input == Mos.invert mos
+  describe "Mos.Dependencies" $ do
     it "Singularly works" $
       let
         ds0 = mempty
@@ -50,15 +62,6 @@ spec = do
         assertRevDeps 1  "b" ds2
         assertNoRevDeps 2 ds2
         ds3 `shouldBe` ds0
-    it "should stay correct under inversion" $ property $
-      \(input :: [(Char, Int)]) -> let mos = Mos.fromList input in
-        mos == Mos.invert (Mos.invert mos)
-    it "should roundtrip via set" $ property $
-      \(input :: [(Char, Int)]) -> let mos = Mos.fromList input in
-        mos == Mos.fromFoldable (Mos.toSet mos)
-    it "can be produced from a Map" $ property $
-      \(input :: Map Char Int) -> let mos = Mos.invertMap input in
-        fmap Set.singleton input == Mos.invert mos
     it "filterDeps" $ Mos.filterDeps
         (\k a -> k == 3 || a == "hi")
         (Mos.dependenciesFromList [(1, "hi"), (2, "ho"), (3, "silver")])

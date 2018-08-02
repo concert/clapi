@@ -1,3 +1,6 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
 

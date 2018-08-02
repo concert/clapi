@@ -1,3 +1,7 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
+
 module RelaySpec where
 
 import Test.Hspec
@@ -6,27 +10,23 @@ import Control.Monad.Trans (lift)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Word
-import Data.Maybe (fromJust)
 import Data.Tagged (Tagged(..))
 
 import Clapi.TH
 import Clapi.Protocol (waitThenRevOnly, sendFwd, runEffect, (<<->))
 import Clapi.Relay (relay)
 import Clapi.Tree (treeInsert, RoseTree(RtConstData, RtContainer))
-import Clapi.Types.AssocList (alEmpty, alSingleton, alFromList, alMapKeys)
+import Clapi.Types.AssocList (alEmpty, alSingleton)
 import Clapi.Types.Base (InterpolationLimit(..))
-import Clapi.Types.Definitions
-  (arrayDef, structDef, tupleDef, Editable(..))
+import Clapi.Types.Definitions (arrayDef, tupleDef, Editable(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
+import Clapi.Types.Messages (SubErrorIndex(..))
 import Clapi.Types.Path
-  (pattern Root, tTypeName, pattern (:/), pattern (:</), Namespace(..))
+  (pattern Root, tTypeName, pattern (:/), Namespace(..))
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
-import Clapi.Valuespace
-  ( baseValuespace, unsafeValidateVs, apiNs, Valuespace(..)
-  , vsLookupDef)
+import Clapi.Valuespace (baseValuespace, unsafeValidateVs, Valuespace(..))
 import Clapi.NamespaceTracker
   ( PostNstInboundDigest(..), ClientGetDigest(..), cgdEmpty)
 
@@ -136,4 +136,3 @@ spec = describe "the relay protocol" $ do
     fooP = Root :/ foo
     fooN = Namespace foo
     bob = Just "bob"
-    qualify ns = maybe (error "bad sneakers") id . alMapKeys (ns :</)

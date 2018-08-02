@@ -1,4 +1,7 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE
+    DeriveFunctor
+  , OverloadedStrings
+#-}
 
 module Clapi.PerClientProto where
 

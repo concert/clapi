@@ -1,6 +1,7 @@
 {-# LANGUAGE
     FlexibleContexts
   , LambdaCase
+  , OverloadedStrings
 #-}
 
 module Clapi.Valuespace
@@ -201,7 +202,7 @@ defForPath p vs =
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
   Root :/ _ -> return ReadOnly
-  s :</ Root -> return ReadOnly
+  _ns :</ Root -> return ReadOnly
   p :/ s -> defForPath p vs >>= defDispatch (flip childEditableFor s)
   _ -> return ReadOnly
 
@@ -611,11 +612,9 @@ processTrcUpdateDigest vs trcud =
     (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
       vsTree vs
     touched = opsTouched validSegCops pathValidDd
-    (tas', newPaths) = fillTyAssns
-      (vsTyDefs vs) (vsTyAssns vs) (Map.keys touched)
-    vs' = vs {vsTree = tree', vsTyAssns = tas'}
+    vs' = vs {vsTree = tree'}
     touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
-    roErrs = const [EditableErr "Touched readonly"]
+    roErrs = const [EditableErr "Touched a cannot"]
       <$> Map.filter (== Just ReadOnly) touchedEditabilities
     (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
@@ -623,8 +622,10 @@ processTrcUpdateDigest vs trcud =
     thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
       [ fmap (GenericErr . Text.unpack) <$> updateErrs
       , validationErrs, roErrs
+      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
+        $ nonExistantSets
       ]
-    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing]
+    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
     frpd = FrpDigest
       (trcudNamespace trcud)
       (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
@@ -632,35 +633,13 @@ processTrcUpdateDigest vs trcud =
       validCops
   in (errMap, frpd)
 
-fillTyAssns
-  :: DefMap Definition -> TypeAssignmentMap -> [Path]
-  -> (TypeAssignmentMap, Set Path)
-fillTyAssns defs = inner mempty
-  where
-    inner freshlyAssigned tam paths = case paths of
-        [] -> (tam, freshlyAssigned)
-        (p : ps) -> case Mos.getDependency p tam of
-            Just _ -> inner freshlyAssigned tam ps
-            Nothing -> let newAssns = infer p $ fst tam in
-                inner (freshlyAssigned <> Map.keysSet newAssns) (Mos.setDependencies newAssns tam) ps
-    infer p tm = case Path.splitTail p of
-        Nothing -> error "Attempted to infer root in fillTyAssns"
-        Just (pp, cSeg) ->
-          let
-            (mptn, tm') = case Map.lookup pp tm of
-                Just tn -> (Just tn, tm)
-                Nothing -> let ptm = infer pp tm in
-                    (Map.lookup pp ptm, tm <> ptm)
-          in case mptn >>= flip lookupDef defs >>= defDispatch (childTypeFor cSeg) of
-            Just tn -> Map.insert p tn tm'
-            Nothing -> tm'
-
 data ValidationErr
   = GenericErr String
   | ProgrammingErr String
   | BadNodeType {vebntExpected :: RoseTreeNodeType, vebntActual :: RoseTreeNodeType}
   | MissingChild Seg
   | ExtraChild Seg
+  | TouchedNonExistantPath
   | RefTargetNotFound Path
   | RefTargetTypeErr
     { veRttePath :: Path

@@ -1,3 +1,7 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
+
 module SerialisationProtocolSpec where
 import Test.Hspec
 
