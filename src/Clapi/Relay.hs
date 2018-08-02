@@ -173,10 +173,10 @@ mayContDiff ma kb = case ma of
         else Just $ contDiff ka kb
     _ -> Nothing
 
-someFunc
+handleTrcud
   :: Valuespace -> TrcUpdateDigest
   -> (OutboundClientUpdateDigest, OutboundProviderDigest)
-someFunc vs trcud@(TrcUpdateDigest ns dat creates cops) =
+handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
   let
     (errMap, opd) = processTrcUpdateDigest vs trcud
     ocud = (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
@@ -201,7 +201,7 @@ relay vs = waitThenFwdOnly fwd
             mapM_ (sendRev . (i,) . Ocid) ocids
             relay vs
         PnidTrcud trcud ->
-          let (ocud, opd) = someFunc vs trcud in do
+          let (ocud, opd) = handleTrcud vs trcud in do
             sendRev (i, Opd $ opd)
             sendRev (i, Ocud $ ocud)
             relay vs
