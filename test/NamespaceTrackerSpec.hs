@@ -21,9 +21,8 @@ import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
 import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Path
-  (Path, Seg, pattern Root, TypeName(..), tTypeName, Namespace(..), pattern (:/))
+  (Path, Seg, pattern Root, tTypeName, Namespace(..), pattern (:/))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
-import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.NamespaceTracker
   ( nstProtocol, Originator(..), PostNstInboundDigest(..), ClientGetDigest(..)

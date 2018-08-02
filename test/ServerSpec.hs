@@ -5,22 +5,20 @@
 
 module ServerSpec where
 
+import Prelude hiding (words)
+
 import Test.Hspec
 import Test.Hspec.Expectations (Selector)
 
-import Control.Monad (forever)
-import Data.Either (isRight)
-import Data.Maybe (isJust, fromJust)
+import Control.Monad (forever, void)
 import Data.Void
 import System.Timeout
-import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Async
   ( Async, async, withAsync, wait, poll, cancel, asyncThreadId, mapConcurrently
   , replicateConcurrently)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (forever)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)

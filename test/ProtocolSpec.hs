@@ -6,7 +6,6 @@ import Control.Concurrent.MVar
 import Control.Monad (forever, replicateM)
 import Control.Monad.State
 import Control.Monad.Trans (lift)
-import Control.Monad.Identity (runIdentity)
 import qualified Data.Set as Set
 
 import Clapi.Protocol
