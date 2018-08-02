@@ -100,25 +100,6 @@ removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
     updateTpMap (Just tpSet) = let tpSet' = Set.difference tpSet tpids in
       if null tpSet' then Nothing else Just $ Just tpSet'
 
-apiDef :: StructDefinition
-apiDef = StructDefinition "Information about CLAPI itself" $
-  alSingleton [segq|version|] (Tagged $ TypeName apiNs [segq|version|], ReadOnly)
-
-versionDef :: TupleDefinition
-versionDef = TupleDefinition "The version of CLAPI" (unsafeMkAssocList
-  [ ([segq|major|], TtWord32 unbounded)
-  , ([segq|minor|], TtWord32 unbounded)
-  , ([segq|revision|], TtInt32 unbounded)
-  ]) ILUninterpolated
-
-dnSeg :: Seg
-dnSeg = [segq|display_name|]
-
-displayNameDef :: TupleDefinition
-displayNameDef = TupleDefinition
-  "A human-readable name for a struct or array element"
-  (alSingleton [segq|name|] $ TtString "") ILUninterpolated
-
 -- | Fully revalidates the given Valuespace and throws an error if there are any
 --   validation issues.
 unsafeValidateVs :: Valuespace -> Valuespace
@@ -128,20 +109,20 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
       vsTree vs
 
 baseValuespace :: Valuespace
-baseValuespace = unsafeValidateVs $
-    Valuespace baseTree mempty baseDefs mempty mempty
-  where
-    vseg = [segq|version|]
-    version = RtConstData Nothing
-      [WireValue @Word32 0, WireValue @Word32 1, WireValue @Int32 (-1022)]
-    baseTree =
-      treeInsert Nothing (Root :/ unNamespace apiNs :/ vseg) version
-      Tree.RtEmpty
-    baseDefs = Map.singleton apiNs $ Map.fromList
-      [ (Tagged $ unNamespace apiNs, StructDef apiDef)
-      , (Tagged vseg, TupleDef versionDef)
-      , (Tagged dnSeg, TupleDef displayNameDef)
-      ]
+baseValuespace = undefined -- unsafeValidateVs $
+--     Valuespace baseTree mempty baseDefs mempty mempty
+--   where
+--     vseg = [segq|version|]
+--     version = RtConstData Nothing
+--       [WireValue @Word32 0, WireValue @Word32 1, WireValue @Int32 (-1022)]
+--     baseTree =
+--       treeInsert Nothing (Root :/ unNamespace apiNs :/ vseg) version
+--       Tree.RtEmpty
+--     baseDefs = Map.singleton apiNs $ Map.fromList
+--       [ (Tagged $ unNamespace apiNs, StructDef apiDef)
+--       , (Tagged vseg, TupleDef versionDef)
+--       , (Tagged dnSeg, TupleDef displayNameDef)
+--       ]
 
 lookupPostDef
   :: MonadFail m
@@ -152,7 +133,7 @@ lookupPostDef tn defs = let (ns, s) = unqualify tn in note "Missing post def" $
 vsLookupPostDef
   :: MonadFail m
   => Tagged PostDefinition Seg -> Valuespace -> m PostDefinition
-vsLookupPostDef s vs = lookupPostDef s $ vsPostDefs vs
+vsLookupPostDef s vs = undefined -- lookupPostDef s $ vsPostDefs vs
 
 postDefForPath :: MonadFail m => Path -> Valuespace -> m PostDefinition
 postDefForPath p vs = defForPath p vs >>=
@@ -164,11 +145,11 @@ postDefForPath p vs = defForPath p vs >>=
 
 lookupDef
   :: MonadFail m
-  => Tagged Definition TypeName -> DefMap Definition -> m Definition
-lookupDef tn defs = note "Missing def" $
-    (Map.lookup ns defs >>= Map.lookup s)
-  where
-    (ns, s) = unqualify tn
+  => Tagged Definition Seg -> DefMap Definition -> m Definition
+lookupDef s defs = undefined -- note "Missing def" $
+--     (Map.lookup ns defs >>= Map.lookup s)
+--   where
+--     (ns, s) = unqualify tn
 
 vsLookupDef
   :: MonadFail m => Tagged Definition Seg -> Valuespace -> m Definition
@@ -183,14 +164,15 @@ getNsOfSingletonPath p = case splitHead p of
 -- type path to the constructor
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition TypeName)
-lookupTypeName p tam = note "Type name not found" $ maybe
-    (Mos.getDependency p tam)
-    (\ns -> return $ Tagged $ TypeName ns $ unNamespace ns) $
-    getNsOfSingletonPath p
+lookupTypeName p tam = undefined -- note "Type name not found" $ maybe
+--     (Mos.getDependency p tam)
+--     (\ns -> return $ Tagged $ TypeName ns $ unNamespace ns) $
+--     getNsOfSingletonPath p
 
 defForPath :: MonadFail m => Path -> Valuespace -> m Definition
 defForPath p vs =
-  lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
+  undefined
+--   lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
@@ -202,15 +184,16 @@ getEditable path vs = case path of
 valuespaceGet
   :: MonadFail m => Path -> Valuespace
   -> m ( Definition
-       , Tagged Definition TypeName
+       , Tagged Definition Seg
        , Editable
        , RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _) = do
-    rtn <- note "Path not found" $ Tree.treeLookupNode p tree
-    tn <- lookupTypeName p tas
-    def <- lookupDef tn defs
-    ed <- getEditable p vs
-    return (def, tn, ed, rtn)
+    undefined
+--     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
+--     tn <- lookupTypeName p tas
+--     def <- lookupDef tn defs
+--     ed <- getEditable p vs
+--     return (def, tn, ed, rtn)
 
 type RefTypeClaims = Mos (Tagged Definition TypeName) Referee
 type TypeClaimsByPath =
@@ -244,127 +227,128 @@ partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
 xrefUnion :: Xrefs -> Xrefs -> Xrefs
 xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
-checkRefClaims
-  :: TypeAssignmentMap
-  -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims))
-  -> Either (Map DataErrorIndex [ValidationErr]) ()
-checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
-  where
-    errIf m = unless (null m) $ Left m
-    smashErrMap = errIf . Mol.unions . lefts . Map.elems
-    checkRefsAtPath
-      :: Path
-      -> Either RefTypeClaims (Map TpId RefTypeClaims)
-      -> Either (Map DataErrorIndex [ValidationErr]) ()
-    checkRefsAtPath path refClaims =
-      let
-        doCheck eidx = first (Map.singleton eidx . pure @[]) .
-          mapM_ (uncurry checkRef) . Mos.toList
-      in
-        either
-          (doCheck $ PathError path)
-          (smashErrMap .
-           Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
-          refClaims
-    checkRef :: Tagged Definition TypeName -> Path -> Either ValidationErr ()
-    checkRef requiredTn refP = case lookupTypeName refP tyAssns of
-        Nothing -> Left $ RefTargetNotFound refP
-        Just actualTn -> if actualTn == requiredTn
-            then Right ()
-            else Left $ RefTargetTypeErr refP actualTn requiredTn
+-- checkRefClaims
+--   :: TypeAssignmentMap
+--   -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims))
+--   -> Either (Map DataErrorIndex [ValidationErr]) ()
+-- checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
+--   where
+--     errIf m = unless (null m) $ Left m
+--     smashErrMap = errIf . Mol.unions . lefts . Map.elems
+--     checkRefsAtPath
+--       :: Path
+--       -> Either RefTypeClaims (Map TpId RefTypeClaims)
+--       -> Either (Map DataErrorIndex [ValidationErr]) ()
+--     checkRefsAtPath path refClaims =
+--       let
+--         doCheck eidx = first (Map.singleton eidx . pure @[]) .
+--           mapM_ (uncurry checkRef) . Mos.toList
+--       in
+--         either
+--           (doCheck $ PathError path)
+--           (smashErrMap .
+--            Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
+--           refClaims
+--     checkRef :: Tagged Definition TypeName -> Path -> Either ValidationErr ()
+--     checkRef requiredTn refP = case lookupTypeName refP tyAssns of
+--         Nothing -> Left $ RefTargetNotFound refP
+--         Just actualTn -> if actualTn == requiredTn
+--             then Right ()
+--             else Left $ RefTargetTypeErr refP actualTn requiredTn
 
 validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
   -> Either
        (Map DataErrorIndex [ValidationErr])
        (Map Path (Tagged Definition Seg), Valuespace)
-validateVs t v = do
-    (newTypeAssns, refClaims, vs) <- inner mempty mempty t v
-    checkRefClaims (vsTyAssns vs) refClaims
-    let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
-    let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
-    unless (null existingXrefErrs) $ Left existingXrefErrs
-    let vs' = vs {vsXrefs = xrefUnion preExistingXrefs newXrefs}
-    return (newTypeAssns, vs')
-  where
-    errP p = first (Map.singleton (PathError p) . pure . GenericErr)
-    tLook p = maybe (Left $ Map.singleton (PathError p) [ProgrammingErr "Missing RTN"]) Right .
-      Tree.treeLookup p
-    changed :: Eq a => a -> a -> Maybe a
-    changed a1 a2 | a1 == a2 = Nothing
-                  | otherwise = Just a2
-
-    -- FIXME: this currently bails earlier than it could in light of validation
-    -- errors. If we can't figure out the type of children in order to recurse,
-    -- then we should probably stop, but if we just encouter bad data, we should
-    -- probably just capture the error and continue.
-    inner
-      :: Map Path (Tagged Definition TypeName)
-      -> TypeClaimsByPath
-      -> Map Path (Maybe (Set TpId)) -> Valuespace
-      -> Either (Map DataErrorIndex [ValidationErr])
-           (Map Path (Tagged Definition TypeName), TypeClaimsByPath, Valuespace)
-    inner newTas newRefClaims tainted vs =
-      let tree = vsTree vs; oldTyAssns = vsTyAssns vs in
-      case Map.toAscList tainted of
-        [] -> return (newTas, newRefClaims, vs)
-        ((path, invalidatedTps):_) ->
-          case lookupTypeName path (vsTyAssns vs) of
-            -- When we don't have the type (and haven't bailed out) we know the
-            -- parent was implictly added by the rose tree and thus doesn't
-            -- appear in the taints, but because it was changed it should be
-            -- counted as such.
-            Nothing -> case path of
-              (parentPath :/ _) -> inner
-                newTas newRefClaims (Map.insert parentPath Nothing tainted)
-                vs
-              _ -> Left $ Map.singleton GlobalError
-                [GenericErr "Attempted to taint parent of root"]
-            Just tn -> do
-              def <- errP path $ vsLookupDef tn vs
-              rtn <- tLook path tree
-              case validateRoseTreeNode def rtn invalidatedTps of
-                Left validationErrs -> if null emptyArrays
-                    then Left $ Map.singleton (PathError path) validationErrs
-                    else inner newTas' newRefClaims tainted' vs'
-                  where
-                    emptyArrays = mapMaybe mHandlable validationErrs
-                    isEmptyContainer d = case d of
-                        ArrayDef _ -> True
-                        StructDef (StructDefinition _ defKids) -> defKids == alEmpty
-                        _ -> False
-                    mHandlable ve = case ve of
-                        MissingChild name -> do
-                          ctn <- defDispatch (childTypeFor name) def
-                          cdef <- vsLookupDef ctn vs
-                          if isEmptyContainer cdef
-                            then Just (name, ctn)
-                            else Nothing
-                        _ -> Nothing
-                    qEmptyArrays = first (path :/) <$> emptyArrays
-                    newTas' = newTas <> Map.fromList qEmptyArrays
-                    tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
-                    att = Nothing  -- FIXME: who is this attributed to?
-                    insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
-                    vs' = vs {vsTree = foldl (\acc (cp, _) -> insertEmpty cp acc) tree qEmptyArrays}
-                Right pathRefClaims -> inner
-                      (newTas <> changedChildPaths)
-                      (Map.insert path pathRefClaims newRefClaims)
-                      (Map.delete path $
-                         tainted <> fmap (const Nothing) changedChildPaths)
-                      (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
-                  where
-                    oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                      (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
-                      treeChildren rtn
-                    newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                      (\name _ -> defDispatch (childTypeFor name) def) $
-                      treeChildren rtn
-                    changedChildTypes = merge
-                      dropMissing preserveMissing
-                      (zipWithMaybeMatched $ const changed)
-                      oldChildTypes newChildTypes
-                    changedChildPaths = Map.mapKeys (path :/) changedChildTypes
+validateVs = undefined
+-- validateVs t v = do
+--     (newTypeAssns, refClaims, vs) <- inner mempty mempty t v
+--     checkRefClaims (vsTyAssns vs) refClaims
+--     let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
+--     let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
+--     unless (null existingXrefErrs) $ Left existingXrefErrs
+--     let vs' = vs {vsXrefs = xrefUnion preExistingXrefs newXrefs}
+--     return (newTypeAssns, vs')
+--   where
+--     errP p = first (Map.singleton (PathError p) . pure . GenericErr)
+--     tLook p = maybe (Left $ Map.singleton (PathError p) [ProgrammingErr "Missing RTN"]) Right .
+--       Tree.treeLookup p
+--     changed :: Eq a => a -> a -> Maybe a
+--     changed a1 a2 | a1 == a2 = Nothing
+--                   | otherwise = Just a2
+-- 
+--     -- FIXME: this currently bails earlier than it could in light of validation
+--     -- errors. If we can't figure out the type of children in order to recurse,
+--     -- then we should probably stop, but if we just encouter bad data, we should
+--     -- probably just capture the error and continue.
+--     inner
+--       :: Map Path (Tagged Definition TypeName)
+--       -> TypeClaimsByPath
+--       -> Map Path (Maybe (Set TpId)) -> Valuespace
+--       -> Either (Map DataErrorIndex [ValidationErr])
+--            (Map Path (Tagged Definition TypeName), TypeClaimsByPath, Valuespace)
+--     inner newTas newRefClaims tainted vs =
+--       let tree = vsTree vs; oldTyAssns = vsTyAssns vs in
+--       case Map.toAscList tainted of
+--         [] -> return (newTas, newRefClaims, vs)
+--         ((path, invalidatedTps):_) ->
+--           case lookupTypeName path (vsTyAssns vs) of
+--             -- When we don't have the type (and haven't bailed out) we know the
+--             -- parent was implictly added by the rose tree and thus doesn't
+--             -- appear in the taints, but because it was changed it should be
+--             -- counted as such.
+--             Nothing -> case path of
+--               (parentPath :/ _) -> inner
+--                 newTas newRefClaims (Map.insert parentPath Nothing tainted)
+--                 vs
+--               _ -> Left $ Map.singleton GlobalError
+--                 [GenericErr "Attempted to taint parent of root"]
+--             Just tn -> do
+--               def <- errP path $ vsLookupDef tn vs
+--               rtn <- tLook path tree
+--               case validateRoseTreeNode def rtn invalidatedTps of
+--                 Left validationErrs -> if null emptyArrays
+--                     then Left $ Map.singleton (PathError path) validationErrs
+--                     else inner newTas' newRefClaims tainted' vs'
+--                   where
+--                     emptyArrays = mapMaybe mHandlable validationErrs
+--                     isEmptyContainer d = case d of
+--                         ArrayDef _ -> True
+--                         StructDef (StructDefinition _ defKids) -> defKids == alEmpty
+--                         _ -> False
+--                     mHandlable ve = case ve of
+--                         MissingChild name -> do
+--                           ctn <- defDispatch (childTypeFor name) def
+--                           cdef <- vsLookupDef ctn vs
+--                           if isEmptyContainer cdef
+--                             then Just (name, ctn)
+--                             else Nothing
+--                         _ -> Nothing
+--                     qEmptyArrays = first (path :/) <$> emptyArrays
+--                     newTas' = newTas <> Map.fromList qEmptyArrays
+--                     tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
+--                     att = Nothing  -- FIXME: who is this attributed to?
+--                     insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
+--                     vs' = vs {vsTree = foldl (\acc (cp, _) -> insertEmpty cp acc) tree qEmptyArrays}
+--                 Right pathRefClaims -> inner
+--                       (newTas <> changedChildPaths)
+--                       (Map.insert path pathRefClaims newRefClaims)
+--                       (Map.delete path $
+--                          tainted <> fmap (const Nothing) changedChildPaths)
+--                       (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
+--                   where
+--                     oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+--                       (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
+--                       treeChildren rtn
+--                     newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
+--                       (\name _ -> defDispatch (childTypeFor name) def) $
+--                       treeChildren rtn
+--                     changedChildTypes = merge
+--                       dropMissing preserveMissing
+--                       (zipWithMaybeMatched $ const changed)
+--                       oldChildTypes newChildTypes
+--                     changedChildPaths = Map.mapKeys (path :/) changedChildTypes
 
 opsTouched :: ContOps Seg -> DataDigest -> Map Path (Maybe (Set TpId))
 opsTouched cops dd = fmap (const Nothing) cops <> fmap classifyDc (alToMap dd)
@@ -388,33 +372,33 @@ processToRelayProviderDigest
   -> Either
       (Map DataErrorIndex [Text])
       (Map Path (Tagged Definition Seg), Valuespace)
-processToRelayProviderDigest trpd vs =
-  let
-    ns = trpdNamespace trpd
-    tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
-    -- FIXME: The fudge here is for dealing with the namespaces being different
-    getPathsWithType s = if Namespace (untag s) == ns
-      then Set.singleton $ Root :/ (unNamespace ns)
-      else Mos.getDependants (qualify ns s) tas
-    redefdPaths = mconcat $
-      fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
-    qData = fromJust $ alMapKeys (unNamespace ns :</) $ trpdData trpd
-    qCops = Map.mapKeys (unNamespace ns :</) $ trpdContOps trpd
-    updatedPaths = opsTouched qCops qData
-    tpRemovals :: DataChange -> Set TpId
-    tpRemovals (ConstChange {})= mempty
-    tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
-    xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
-      fmap tpRemovals $ alToMap qData
-    defs' = Map.alter (updateNsDefs $ trpdDefinitions trpd) ns (vsTyDefs vs)
-    postDefs' = Map.alter (updateNsDefs $ trpdPostDefs trpd) ns (vsPostDefs vs)
-    (updateErrs, tree') = Tree.updateTreeWithDigest qCops qData (vsTree vs)
-  in do
-    unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
-    (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
-      (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' postDefs' defs' tas xrefs'
-    return (updatedTypes, vs')
+processToRelayProviderDigest trpd vs = undefined
+--   let
+--     ns = trpdNamespace trpd
+--     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
+--     -- FIXME: The fudge here is for dealing with the namespaces being different
+--     getPathsWithType s = if Namespace (untag s) == ns
+--       then Set.singleton $ Root :/ (unNamespace ns)
+--       else Mos.getDependants (qualify ns s) tas
+--     redefdPaths = mconcat $
+--       fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
+--     qData = fromJust $ alMapKeys (unNamespace ns :</) $ trpdData trpd
+--     qCops = Map.mapKeys (unNamespace ns :</) $ trpdContOps trpd
+--     updatedPaths = opsTouched qCops qData
+--     tpRemovals :: DataChange -> Set TpId
+--     tpRemovals (ConstChange {})= mempty
+--     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
+--     xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
+--       fmap tpRemovals $ alToMap qData
+--     defs' = Map.alter (updateNsDefs $ trpdDefinitions trpd) ns (vsTyDefs vs)
+--     postDefs' = Map.alter (updateNsDefs $ trpdPostDefs trpd) ns (vsPostDefs vs)
+--     (updateErrs, tree') = Tree.updateTreeWithDigest qCops qData (vsTree vs)
+--   in do
+--     unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
+--     (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
+--       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
+--       Valuespace tree' postDefs' defs' tas xrefs'
+--     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validatePath vs p mTpids = do
@@ -592,45 +576,46 @@ data ProtoFrpDigest = ProtoFrpDigest
 processTrcUpdateDigest
   :: Valuespace -> TrcUpdateDigest
   -> (Map DataErrorIndex [ValidationErr], ProtoFrpDigest)
-processTrcUpdateDigest vs trcud =
-  let
-    ns = unNamespace $ trcudNamespace trcud
-    (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
-      trcudCreates trcud
-    afterErrs = validateCreateAndCopAfters vs createsWithValidArgs $
-      trcudContOps trcud
-    (validCreates, validCops) =
-      filterByAfterErrs afterErrs createsWithValidArgs $ trcudContOps trcud
-    validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
-    -- adding to the front of the path will not break uniqueness
-    validPaths = Set.difference
-      (maybe mempty (Set.fromList . treePaths Root) $
-        Tree.treeLookup (Root :/ ns) $ vsTree vs) (removedPaths validCops)
-    (pathValidDd, nonExistantSets) = alPartitionWithKey
-      (\p _ -> Set.member p validPaths) $ trcudData trcud
-    (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
-      vsTree vs
-    touched = opsTouched validSegCops pathValidDd
-    vs' = vs {vsTree = tree'}
-    touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
-    roErrs = const [EditableErr "Touched a cannot"]
-      <$> Map.filter (== Just ReadOnly) touchedEditabilities
-    (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
-    refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
-
-    thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
-      [ fmap (GenericErr . Text.unpack) <$> updateErrs
-      , validationErrs, roErrs
-      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
-        $ nonExistantSets
-      ]
-    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
-    frpd = FrpDigest
-      (trcudNamespace trcud)
-      (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
-      validCreates
-      validCops
-  in (errMap, frpd)
+processTrcUpdateDigest = undefined
+--processTrcUpdateDigest vs trcud =
+--  let
+--    ns = unNamespace $ trcudNamespace trcud
+--    (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
+--      trcudCreates trcud
+--    afterErrs = validateCreateAndCopAfters vs createsWithValidArgs $
+--      trcudContOps trcud
+--    (validCreates, validCops) =
+--      filterByAfterErrs afterErrs createsWithValidArgs $ trcudContOps trcud
+--    validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
+--    -- adding to the front of the path will not break uniqueness
+--    validPaths = Set.difference
+--      (maybe mempty (Set.fromList . treePaths Root) $
+--        Tree.treeLookup (Root :/ ns) $ vsTree vs) (removedPaths validCops)
+--    (pathValidDd, nonExistantSets) = alPartitionWithKey
+--      (\p _ -> Set.member p validPaths) $ trcudData trcud
+--    (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $
+--      vsTree vs
+--    touched = opsTouched validSegCops pathValidDd
+--    vs' = vs {vsTree = tree'}
+--    touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
+--    roErrs = const [EditableErr "Touched a cannot"]
+--      <$> Map.filter (== Just ReadOnly) touchedEditabilities
+--    (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
+--    refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
+--
+--    thing = Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
+--      [ fmap (GenericErr . Text.unpack) <$> updateErrs
+--      , validationErrs, roErrs
+--      , Map.fromSet (const $ [TouchedNonExistantPath]) $ alKeysSet
+--        $ nonExistantSets
+--      ]
+--    errMap = Map.unionsWith (<>) [createErrs, afterErrs, thing, refErrs]
+--    frpd = FrpDigest
+--      (trcudNamespace trcud)
+--      (filterDdByDataErrIdx (Map.keys thing) pathValidDd)
+--      validCreates
+--      validCops
+--  in (errMap, frpd)
 
 data ValidationErr
   = GenericErr String
