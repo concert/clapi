@@ -56,8 +56,7 @@ import Clapi.Types.Digests
   , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates)
 import Clapi.Types.Messages (DataErrorIndex(..))
 import Clapi.Types.Path
-  ( Seg, Path, pattern (:/), pattern Root, pattern (:</)
-  , Placeholder, childPaths)
+  (Seg, Path, pattern (:/), pattern Root, Placeholder, childPaths)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Tree (TreeType(..))
@@ -147,10 +146,8 @@ defForPath p vs =
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
-  Root :/ _ -> return ReadOnly
-  _ns :</ Root -> return ReadOnly
   p :/ s -> defForPath p vs >>= defDispatch (flip childEditableFor s)
-  _ -> return ReadOnly
+  _ -> pure $ vsRootEditable vs  -- Root
 
 valuespaceGet
   :: MonadFail m => Path -> Valuespace
