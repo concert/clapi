@@ -11,7 +11,6 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (liftM2)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Functor.Identity
 import Data.Tagged (Tagged(..))
 
 import Data.Word
@@ -82,10 +81,6 @@ instance Encodable Text where
       onError :: String -> Maybe Word8 -> Maybe Char
       onError _ Nothing = Nothing  -- Unexpected end of Input
       onError _ _ = Just '?'  -- Undecodable
-
-instance Encodable a => Encodable (Identity a) where
-  builder = builder . runIdentity
-  parser = Identity <$> parser
 
 deriving instance Encodable a => Encodable (Tagged t a)
 
