@@ -1,3 +1,7 @@
+{-# LANGUAGE
+    OverloadedStrings
+#-}
+
 module NamespaceTrackerSpec where
 
 import Test.Hspec
@@ -17,9 +21,8 @@ import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
 import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Path
-  (Path, Seg, pattern Root, TypeName(..), tTypeName, Namespace(..), pattern (:/))
+  (Path, Seg, pattern Root, tTypeName, Namespace(..), pattern (:/))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
-import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.NamespaceTracker
   ( nstProtocol, Originator(..), PostNstInboundDigest(..), ClientGetDigest(..)
@@ -139,7 +142,7 @@ spec = do
               { frcudDefinitions = Map.singleton (Tagged helloS) helloDef1
               , frcudData = alSingleton Root $ textChange "w"
               })
-            waitThenFwdOnly $ const return ()
+            _ <- waitThenFwdOnly $ const return ()
             relayNoMore
       in runEffect $ forTest <<-> nstProtocol <<-> fauxRelay
     it "Unsubscribes on client disconnect" $
@@ -152,8 +155,8 @@ spec = do
               (frcudEmpty $ Namespace helloS)
               { frcudData = alSingleton Root $ textChange "f" }
         fauxRelay = do
-            waitThenFwdOnly $ const return ()
-            waitThenFwdOnly $ \(i, d) -> sendRev (i, Ocid $
+            _ <- waitThenFwdOnly $ const return ()
+            waitThenFwdOnly $ \(i, _d) -> sendRev (i, Ocid $
               (frcudEmpty $ Namespace helloS)
               { frcudData = alSingleton Root $ textChange "f" })
             relayNoMore
@@ -195,7 +198,7 @@ spec = do
                 sendRev (i, Ocid $
                   (frcudEmpty $ Namespace byeS)
                   { frcudData = alSingleton Root $ textChange "t" })
-            waitThenFwdOnly $ const return ()
+            _ <- waitThenFwdOnly $ const return ()
             waitThenFwdOnly $ \(i, d) -> do
               lift $ d `shouldBe` PnidTrprd (TrprDigest $ Namespace helloS)
               -- To verify the client is unsubscribed:
@@ -229,7 +232,7 @@ spec = do
               { frpdData = alSingleton Root $ textChange "x"
               }
         fauxRelay = do
-            waitThenFwdOnly $ \(i, d) -> sendRev (i, Opd $
+            waitThenFwdOnly $ \(i, _d) -> sendRev (i, Opd $
               (frpdEmpty $ Namespace helloS)
               { frpdData = alSingleton Root $ textChange "x"
               })
@@ -293,4 +296,3 @@ spec = do
     subHello addr = sendFwd $ ClientData addr $ Trcsd $ trcsdEmpty
       {trcsdDataSubs = Map.singleton helloP OpSubscribe}
     textChange s = ConstChange Nothing [WireValue (s :: T.Text)]
-    helloTn = TypeName (Namespace helloS) helloS

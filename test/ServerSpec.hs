@@ -1,24 +1,25 @@
+{-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# LANGUAGE
     LambdaCase
+  , OverloadedStrings
 #-}
+
 module ServerSpec where
+
+import Prelude hiding (words)
 
 import Test.Hspec
 import Test.Hspec.Expectations (Selector)
 
-import Control.Monad (forever)
-import Data.Either (isRight)
-import Data.Maybe (isJust, fromJust)
+import Control.Monad (forever, void)
 import Data.Void
 import System.Timeout
-import Control.Exception (AsyncException(ThreadKilled))
 import qualified Control.Exception as E
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Async
   ( Async, async, withAsync, wait, poll, cancel, asyncThreadId, mapConcurrently
   , replicateConcurrently)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (forever)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
 import Network.Simple.TCP (HostPreference(HostAny), connect)
@@ -47,7 +48,7 @@ throwAfterCheck threadAction excSelector = do
   a <- async $ throwAfter
     (E.toException $ TestException 0)
     (putMVar resp 'a' >> takeMVar trigger >> threadAction)
-  takeMVar resp
+  _ <- takeMVar resp
   assertAsyncRunning a
   putMVar trigger 'b'
   wait a `shouldThrow` excSelector
@@ -114,16 +115,16 @@ spec = do
             let kill = killThread (asyncThreadId a)
             port <- show . getPort <$> takeMVar addrV
             timeLimit 0.2 $ connect "127.0.0.1" port $ \(csock, _) -> do
-                let chat = send csock "hello" >> recv csock 4096
+                let chat = void $ send csock "hello" >> recv csock 4096
                 -- We have to do some initial chatting to ensure the connection has
                 -- been established before we kill the server, otherwise recv can get a
                 -- "connection reset by peer":
                 chat
                 kill
-                takeMVar addrV
+                _ <- takeMVar addrV
                 -- killing once should just have stopped us listening, but not chatting
                 connect "127.0.0.1" port undefined
-                    `E.catch` (\(e :: E.IOException) -> return ())
+                    `E.catch` (\(_e :: E.IOException) -> return ())
                 chat
                 kill
                 bs <- recv csock 4096
@@ -144,9 +145,9 @@ spec = do
       withListen' $ \(lsock, laddr) -> do
         v <- newEmptyMVar
         withServe lsock (\(hsock, _) -> handler v hsock) $ \a -> do
-          connect "127.0.0.1" (show . getPort $ laddr) $
+          _ <- connect "127.0.0.1" (show . getPort $ laddr) $
             \(csock, _) -> connector a csock
-          timeLimit 0.1 (takeMVar v)
+          _ <- timeLimit 0.1 (takeMVar v)
           runCheck a
     connector0 _ csock = recv csock 4096 >> send csock "bye"
     handler0 v hsock =
@@ -171,9 +172,19 @@ spec = do
 getPort :: NS.SockAddr -> NS.PortNumber
 getPort (NS.SockAddrInet port _) = port
 getPort (NS.SockAddrInet6 port _ _ _) = port
+getPort _ = error "Cannot get port for given addr"
 
+withListen' :: ((NS.Socket, NS.SockAddr) -> IO r) -> IO r
 withListen' = withListen (pure ()) (pure ()) HostAny "0"
+
+withServe
+  :: NS.Socket
+  -> ((NS.Socket, NS.SockAddr) -> IO r)
+  -> (Async () -> IO c)
+  -> IO c
 withServe lsock handler = E.bracket (async $ serve' lsock handler (return ())) cancel
+
+withServe' :: ((NS.Socket, NS.SockAddr) -> IO r) -> (String -> IO a) -> IO a
 withServe' handler io =
     withListen' $ \(lsock, laddr) ->
         withServe lsock handler $ \_ ->
@@ -193,4 +204,5 @@ echo = forever $ waitThen boing undefined
     boing (ClientData addr a) = sendRev (ServerData addr a)
     boing _ = return ()
 
+getCat :: Monad m => a -> (String, a, Protocol x x y y m ())
 getCat addr = ("For Test", addr, cat)
