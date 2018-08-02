@@ -6,30 +6,23 @@
 module Clapi.Relay where
 
 import Control.Monad (unless)
-import Data.Bifunctor (first, bimap)
-import Data.Either (isLeft, fromLeft, fromRight)
-import Data.Foldable (fold, foldMap)
+import Data.Bifunctor (first)
+import Data.Foldable (fold)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
 import qualified Data.Set as Set
-import Data.Maybe (isJust, fromJust, mapMaybe)
+import Data.Maybe (fromJust, mapMaybe)
 import Data.Monoid
-import Data.Set (Set)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
-import Data.Word (Word32)
-
-import Data.Map.Mos (Mos)
-import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.Base (Attributee)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
-  ( AssocList, alEmpty, alSingleton, alInsert, alFilterKey, unAssocList
-  , alFmapWithKey, alMapKeys, alFoldlWithKey, alPartitionWithKey)
+  ( AssocList, alSingleton, unAssocList , alFoldlWithKey)
 import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Digests
   ( TrpDigest(..), TrprDigest(..)
@@ -39,12 +32,10 @@ import Clapi.Types.Digests
   , TimeSeriesDataOp(..), DefOp(..)
   , OutboundDigest(..), OutboundClientUpdateDigest
   , OutboundClientSubErrsDigest, OutboundClientInitialisationDigest
-  , FrpDigest(..), frpdNull
-  , OutboundProviderDigest(..)
-  , DataDigest, ContOps, Creates, ocsedNull)
+  , OutboundProviderDigest
+  , DataDigest, ContOps, ocsedNull)
 import Clapi.Types.Path
-  ( Seg, Path, TypeName(..), qualify, unqualify, pattern (:</), pattern Root
-  , parentPath, Namespace(..))
+  ( Seg, Path, TypeName(..), unqualify, parentPath, Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Definitions (Liberty, Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
@@ -53,7 +44,7 @@ import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode, treeChildNames)
 import Clapi.Valuespace
   ( Valuespace(..), vsRelinquish, vsLookupPostDef, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
-  , getLiberty, ValidationErr)
+  , getLiberty)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
 import Clapi.Util (nestMapsByKey, mapPartitionEither, partitionDifference)
 
