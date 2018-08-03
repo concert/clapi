@@ -40,7 +40,6 @@ cast' a =
 
 class (Typeable a, Show a, Eq a, Ord a, Encodable a) => Wireable a
 instance Wireable Time
-instance Wireable Word8
 instance Wireable Word32
 instance Wireable Word64
 instance Wireable Int32
@@ -75,7 +74,7 @@ mf <|*|> wv = mf <*> castWireValue wv
 
 data WireType
   = WtTime
-  | WtWord8 | WtWord32 | WtWord64
+  | WtWord32 | WtWord64
   | WtInt32 | WtInt64
   | WtFloat | WtDouble
   | WtString
@@ -91,7 +90,6 @@ wireValueWireType (WireValue a) = go $ typeOf a
   where
     go :: TypeRep -> WireType
     go tr | tc == f @Time = WtTime
-          | tc == f @Word8 = WtWord8
           | tc == f @Word32 = WtWord32
           | tc == f @Word64 = WtWord64
           | tc == f @Int32 = WtInt32

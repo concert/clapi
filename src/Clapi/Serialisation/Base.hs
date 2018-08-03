@@ -11,7 +11,6 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (liftM2)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Functor.Identity
 import Data.Tagged (Tagged(..))
 
 import Data.Word
@@ -20,16 +19,17 @@ import Data.Text (Text)
 
 -- For building:
 import Blaze.ByteString.Builder
-  ( Builder, fromWord8, fromWord16be, fromWord64be, fromWord32be , fromInt32be
-  , fromInt64be)
+  ( Builder, fromWord8, fromInt32be, fromInt64be)
 import Blaze.ByteString.Builder.Char.Utf8 (fromText)
 import Data.ByteString.Builder (floatBE, doubleBE)
+import qualified Data.ByteString.Builder.VarWord as BVw
 import Data.Monoid
 
 -- For parsing:
 import qualified Data.Attoparsec.ByteString as DAB
+import qualified Data.Attoparsec.VarWord as AVw
 import Data.Attoparsec.ByteString (Parser, anyWord8, count)
-import Data.Attoparsec.Binary (anyWord16be, anyWord32be, anyWord64be)
+import Data.Attoparsec.Binary (anyWord32be, anyWord64be)
 import Data.Binary.IEEE754 (wordToFloat, wordToDouble)
 import Data.Text.Encoding (decodeUtf8With)
 
@@ -41,25 +41,22 @@ import Clapi.Types.Base
   , Interpolation(..), InterpolationType(..), interpolationType)
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
-import Clapi.Util (bound)
 
 class Encodable a where
   builder :: MonadFail m => a -> m Builder
   parser :: Parser a
 
 instance Encodable Time where
-  builder (Time w64 w32) = return $ fromWord64be w64 <> fromWord32be w32
-  parser = Time <$> anyWord64be <*> anyWord32be
+  builder (Time w64 w32) = return $
+    BVw.denseVarWordBe w64 <> BVw.denseVarWordBe w32
+  parser = Time <$> AVw.denseVarWordBe <*> AVw.denseVarWordBe
 
-instance Encodable Word8 where
-  builder = return . fromWord8
-  parser = anyWord8
 instance Encodable Word32 where
-  builder = return . fromWord32be
-  parser = anyWord32be
+  builder = return . BVw.denseVarWordBe
+  parser = AVw.denseVarWordBe
 instance Encodable Word64 where
-  builder = return . fromWord64be
-  parser = anyWord64be
+  builder = return . BVw.denseVarWordBe
+  parser = AVw.denseVarWordBe
 
 instance Encodable Int32 where
   builder = return . fromInt32be
@@ -83,10 +80,6 @@ instance Encodable Text where
       onError _ Nothing = Nothing  -- Unexpected end of Input
       onError _ _ = Just '?'  -- Undecodable
 
-instance Encodable a => Encodable (Identity a) where
-  builder = builder . runIdentity
-  parser = Identity <$> parser
-
 deriving instance Encodable a => Encodable (Tagged t a)
 
 instance Encodable a => Encodable [a] where
@@ -95,14 +88,13 @@ instance Encodable a => Encodable [a] where
 
 listBuilder :: MonadFail m => (a -> m Builder) -> [a] -> m Builder
 listBuilder enc as = do
-    len <- bound (length as)
     builders <- mapM enc as
-    return $ fromWord16be len <> mconcat builders
+    return $ BVw.denseVarWordBe (length as) <> mconcat builders
 
 listParser :: Parser a -> Parser [a]
 listParser dec = do
-    len <- anyWord16be
-    count (fromIntegral len) dec
+    len <- AVw.denseVarWordBe
+    count len dec
 
 instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
   builder = builder . unUniqList
@@ -180,7 +172,7 @@ interpolationTaggedData = taggedData itToTag interpolationType
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
-        (IBezier a b) -> fromWord32be a <> fromWord32be b
+        (IBezier a b) -> BVw.denseVarWordBe a <> BVw.denseVarWordBe b
         _ -> mempty
     parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
         ItConstant -> return IConstant

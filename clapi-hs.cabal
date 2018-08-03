@@ -67,9 +67,11 @@ library
                      , async
                      , attoparsec
                      , attoparsec-binary
+                     , attoparsec-varword
                      , bimap
                      , blaze-builder
                      , bytestring
+                     , bytestring-builder-varword
                      , clock
                      , containers >= 0.5.8.1
                      , data-binary-ieee754
