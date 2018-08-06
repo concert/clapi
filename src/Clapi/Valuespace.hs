@@ -123,29 +123,27 @@ class VsLookupDef def where
   vsLookupDef :: MonadFail m => Tagged def Seg -> Valuespace -> m def
   vsLookupDef s = lookupDef s . vsGetDefMap
 
+  defForPath :: MonadFail m => Path -> Valuespace -> m def
+
 instance VsLookupDef PostDefinition where
   ldErrStr _ = "post def"
   vsGetDefMap = vsPostDefs
+  defForPath p vs = defForPath @Definition p vs
+    >>= (\case
+      ArrayDef ad -> maybe (fail "array doe not define post type") return $
+        arrPostType ad
+      _ -> fail "Definition at path not for array")
+    >>= flip vsLookupDef vs
 
 instance VsLookupDef Definition where
   ldErrStr _ = "def"
   vsGetDefMap = vsTyDefs
-
-postDefForPath :: MonadFail m => Path -> Valuespace -> m PostDefinition
-postDefForPath p vs = defForPath p vs >>=
-  (\case
-    ArrayDef ad -> maybe (fail "array does not define post type") return $
-        arrPostType ad
-    _ -> fail "Definition at path not for array") >>=
-  flip vsLookupDef vs
+  defForPath p vs = lookupTypeName p (vsTyAssns vs)
+    >>= flip lookupDef (vsTyDefs vs)
 
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
 lookupTypeName p tam = note "Type name not found" $ Mos.getDependency p tam
-
-defForPath :: MonadFail m => Path -> Valuespace -> m Definition
-defForPath p vs =
-  lookupTypeName p (vsTyAssns vs) >>= flip lookupDef (vsTyDefs vs)
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
@@ -381,7 +379,7 @@ validateCreates vs creates = fmap mconcat $
       :: Path -> Placeholder -> [[WireValue]] -> [(Placeholder, String)]
     getArgValidator path ph =
       either (const . pure . (ph,)) (validatorFromPd ph) $
-      postDefForPath path vs
+      defForPath @PostDefinition path vs
 
     -- FIXME: finer-grained errors from value validation would be preferable
     validatorFromPd
