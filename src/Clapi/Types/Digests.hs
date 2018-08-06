@@ -4,6 +4,7 @@
 
 module Clapi.Types.Digests where
 
+import Data.Bifunctor (bimap)
 import Data.Either (partitionEithers)
 import Data.Foldable (foldl')
 import Data.Map (Map)
@@ -64,7 +65,7 @@ data CreateOp
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
 
-type RootContOps = Map Seg (SequenceOp Seg)
+type RootContOps = Map Namespace (SequenceOp Namespace)
 -- FIXME: might this be better as Map (Path, Seg) (blah)? We spend a lot of time
 -- coping with the nested map-ness:
 type ContOps after = Map Path (Map Seg (Maybe Attributee, SequenceOp after))
@@ -240,10 +241,13 @@ toTccum (targ, (att, so)) = case so of
   SoAbsent -> TccumAbsent targ att
 
 digestRootContOpMsgs :: [ToClientContainerUpdateMessage] -> RootContOps
-digestRootContOpMsgs = fmap snd . Map.fromList . fmap unwrapTccum
+digestRootContOpMsgs = Map.fromList
+  . fmap (bimap Namespace (fmap Namespace . snd) . unwrapTccum)
 
 produceRootContOpMsgs :: RootContOps -> [ToClientContainerUpdateMessage]
-produceRootContOpMsgs = fmap toTccum . Map.toList . fmap (Nothing,)
+produceRootContOpMsgs =
+    fmap (toTccum . bimap unNamespace ((Nothing,) . fmap unNamespace))
+  . Map.toList
 
 digestTccums :: [(Path, ToClientContainerUpdateMessage)] -> ContOps Seg
 digestTccums = splitMap . fmap (fmap unwrapTccum)
