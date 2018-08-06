@@ -42,7 +42,7 @@ import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode, treeChildNames)
 import Clapi.Valuespace
-  ( Valuespace(..), vsRelinquish, vsLookupPostDef, vsLookupDef
+  ( Valuespace(..), baseValuespace, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
   , getEditable)
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
@@ -99,7 +99,7 @@ genInitDigests
 genInitDigests (ClientGetDigest ptGets tGets dGets) vs =
   let
     (ptSubErrs, postDefs) = mapPartitionEither
-      $ Map.fromSet (flip vsLookupPostDef vs) ptGets
+      $ Map.fromSet (flip vsLookupDef vs) ptGets
     (tSubErrs, defs) = mapPartitionEither
       $ Map.fromSet (flip vsLookupDef vs) tGets
     (dSubErrs, treeData) = mapPartitionEither

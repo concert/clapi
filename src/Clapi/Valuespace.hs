@@ -7,7 +7,7 @@
 module Clapi.Valuespace
   ( Valuespace, vsTree, vsTyDefs, vsPostDefs
   , baseValuespace
-  , vsLookupPostDef, vsLookupDef, valuespaceGet, getEditable
+  , vsLookupDef, valuespaceGet, getEditable
   , processToRelayProviderDigest, processTrcUpdateDigest
   , validateVs, unsafeValidateVs
   , ValidationErr(..), ProtoFrpDigest(..)
@@ -24,6 +24,7 @@ import Data.Map.Strict.Merge
   (merge, preserveMissing, dropMissing, zipWithMatched, zipWithMaybeMatched)
 import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
+import Data.Proxy
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tagged (Tagged)
@@ -109,15 +110,26 @@ baseValuespace rootType rootEditable = unsafeValidateVs $ Valuespace
     mempty
     rootEditable
 
-lookupPostDef
-  :: MonadFail m
-  => Tagged PostDefinition Seg -> DefMap PostDefinition -> m PostDefinition
-lookupPostDef s defs = note "Missing post def" $ Map.lookup s defs
 
-vsLookupPostDef
-  :: MonadFail m
-  => Tagged PostDefinition Seg -> Valuespace -> m PostDefinition
-vsLookupPostDef s vs = lookupPostDef s $ vsPostDefs vs
+class VsLookupDef def where
+  ldErrStr :: Proxy def -> String
+
+  vsGetDefMap :: Valuespace -> DefMap def
+
+  lookupDef :: MonadFail m => Tagged def Seg -> DefMap def -> m def
+  lookupDef s defs = note ("Missing " ++ ldErrStr (Proxy @def)) $
+    Map.lookup s defs
+
+  vsLookupDef :: MonadFail m => Tagged def Seg -> Valuespace -> m def
+  vsLookupDef s = lookupDef s . vsGetDefMap
+
+instance VsLookupDef PostDefinition where
+  ldErrStr _ = "post def"
+  vsGetDefMap = vsPostDefs
+
+instance VsLookupDef Definition where
+  ldErrStr _ = "def"
+  vsGetDefMap = vsTyDefs
 
 postDefForPath :: MonadFail m => Path -> Valuespace -> m PostDefinition
 postDefForPath p vs = defForPath p vs >>=
@@ -125,16 +137,7 @@ postDefForPath p vs = defForPath p vs >>=
     ArrayDef ad -> maybe (fail "array does not define post type") return $
         arrPostType ad
     _ -> fail "Definition at path not for array") >>=
-  flip vsLookupPostDef vs
-
-lookupDef
-  :: MonadFail m
-  => Tagged Definition Seg -> DefMap Definition -> m Definition
-lookupDef s defs = note "Missing def" $ Map.lookup s defs
-
-vsLookupDef
-  :: MonadFail m => Tagged Definition Seg -> Valuespace -> m Definition
-vsLookupDef s vs = lookupDef s $ vsTyDefs vs
+  flip vsLookupDef vs
 
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
