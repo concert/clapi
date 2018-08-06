@@ -1,121 +1,157 @@
-module Data.Map.Mos where
+module Data.Map.Mos
+  ( Mos, unMos
+  , fromFoldable, fromList, invertMap
+  , invert
+  , toList, toSet
+  , insert, delete, remove, dropSet
+  , difference, union
+  , partition
 
+  , Dependencies, fwdDeps, revDeps
+  , dependenciesFromMap, dependenciesFromList
+  , getDependency, getDependants
+  , allDependencies, allDependants
+  , setDependency, setDependencies
+  , delDependency, delDependencies
+  , filterDependencies, filterDependents
+  ) where
+
+import Data.Bifunctor (bimap)
+import Data.Foldable (foldl')
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
     merge, preserveMissing, dropMissing, zipWithMaybeMatched)
+import Data.Monoid ((<>))
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tuple (swap)
 
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
-type Mos k a = Map.Map k (Set.Set a)
+newtype Mos k a = Mos { unMos :: Map k (Set a) } deriving (Show, Eq)
+
+instance (Ord k, Ord a) => Monoid (Mos k a) where
+  mempty = Mos mempty
+  (Mos m1) `mappend` (Mos m2) = Mos $ Map.unionWith (<>) m1 m2
 
 fromFoldable :: (Ord k, Ord a, Foldable f) => f (k, a) -> Mos k a
-fromFoldable = foldr (uncurry insert) mempty
+fromFoldable = foldl' (\mos (k, a) -> insert k a mos) mempty
 
 fromList :: (Ord k, Ord a) => [(k, a)] -> Mos k a
 fromList = fromFoldable
 
-toList :: Mos k a -> [(k, a)]
-toList = mconcat . Map.elems . Map.mapWithKey (\k as -> (k,) <$> Set.toList as)
-
-insert :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
-insert k a = Map.updateM (Set.insert a) k
-
-delete :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
-delete k a = Map.update f k
-  where
-    f = Maybe.fromFoldable . (Set.delete a)
-
-remove :: (Ord k, Ord a) => a -> Mos k a -> Mos k a
-remove a = Map.mapMaybe (Maybe.fromFoldable . (Set.delete a))
-
-invertMap :: (Ord k, Ord a) => Map.Map k a -> Mos a k
+invertMap :: (Ord k, Ord a) => Map k a -> Mos a k
 invertMap = Map.foldrWithKey (flip insert) mempty
 
 invert :: (Ord k, Ord a) => Mos k a -> Mos a k
 invert = fromFoldable . Set.map swap . toSet
 
-toSet :: (Ord k, Ord a) => Mos k a -> Set.Set (k, a)
-toSet mos = foldMap id $ Map.mapWithKey (\k as -> Set.map ((,) k) as) mos
+_toLos :: Mos k a -> [Set (k, a)]
+_toLos = Map.elems . Map.mapWithKey (\k as -> Set.mapMonotonic (k,) as) . unMos
+
+toList :: Mos k a -> [(k, a)]
+toList = foldMap Set.toList . _toLos
+
+toSet :: (Ord k, Ord a) => Mos k a -> Set (k, a)
+toSet = foldMap id . _toLos
+
+insert :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
+insert k a = Mos . Map.updateM (Set.insert a) k . unMos
+
+delete :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
+delete k a = Mos . Map.update f k . unMos
+  where
+    f = Maybe.fromFoldable . (Set.delete a)
+
+remove :: (Ord k, Ord a) => a -> Mos k a -> Mos k a
+remove a = Mos . Map.mapMaybe (Maybe.fromFoldable . (Set.delete a)) . unMos
+
+dropSet :: Ord a => Set a -> Mos k a -> Mos k a
+dropSet as = Mos . Map.filter (not . null) . fmap (`Set.difference` as) . unMos
 
 difference :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
-difference = merge preserveMissing dropMissing (zipWithMaybeMatched f)
+difference (Mos m1) (Mos m2) = Mos $
+    merge preserveMissing dropMissing (zipWithMaybeMatched f) m1 m2
   where
     f _k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
 
 union :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
-union = Map.unionM
-
-concat :: (Ord k, Ord a) => [Mos k a] -> Mos k a
-concat = foldr union mempty
+union (Mos m1) (Mos m2) = Mos $ Map.unionM m1 m2
 
 partition :: Ord k => (a -> Bool) -> Mos k a -> (Mos k a, Mos k a)
 partition f =
-    Map.foldlWithKey
-      (\(tmos, fmos) k (tset, fset) -> (ins k tset tmos, ins k fset fmos))
-      mempty
-    . fmap (Set.partition f)
+    bimap Mos Mos
+    . Map.foldlWithKey
+        (\(tmos, fmos) k (tset, fset) -> (ins k tset tmos, ins k fset fmos))
+        mempty
+    . fmap (Set.partition f) . unMos
   where
     ins k s mos = if null s then mos else Map.insert k s mos
 
 
-type Dependencies k a = (Map.Map k a, Mos a k)
+data Dependencies k a
+  = Dependencies { fwdDeps :: Map k a, revDeps :: Mos a k }
+  deriving (Show, Eq)
 
-dependenciesFromMap :: (Ord k, Ord a) => Map.Map k a -> Dependencies k a
-dependenciesFromMap m = (m, invertMap m)
+instance (Ord k, Ord a) => Monoid (Dependencies k a) where
+  mempty = Dependencies mempty mempty
+  (Dependencies f1 r1) `mappend` (Dependencies f2 r2) =
+    Dependencies (f1 <> f2) (r1 <> r2)
+
+dependenciesFromMap :: (Ord k, Ord a) => Map k a -> Dependencies k a
+dependenciesFromMap m = Dependencies m $ invertMap m
 
 dependenciesFromList :: (Ord k, Ord a) => [(k, a)] -> Dependencies k a
 dependenciesFromList = dependenciesFromMap . Map.fromList
 
 getDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
-getDependency k = Map.lookup k . fst
+getDependency k = Map.lookup k . fwdDeps
 
-getDependants :: (Ord k, Ord a) => a -> Dependencies k a -> Set.Set k
-getDependants a = maybe mempty id . Map.lookup a . snd
+getDependants :: (Ord k, Ord a) => a -> Dependencies k a -> Set k
+getDependants a = maybe mempty id . Map.lookup a . unMos . revDeps
 
-allDependencies :: Dependencies k a -> Set.Set a
-allDependencies = Map.keysSet . snd
+allDependencies :: Dependencies k a -> Set a
+allDependencies = Map.keysSet . unMos . revDeps
 
-allDependants :: Dependencies k a -> Set.Set k
-allDependants = Map.keysSet . fst
+allDependants :: Dependencies k a -> Set k
+allDependants = Map.keysSet . fwdDeps
 
 setDependency
   :: (Ord k, Ord a) => k -> a -> Dependencies k a -> Dependencies k a
-setDependency k a (deps, revDeps) = (deps', insert a k $ revDeps' mCurA)
+setDependency k a (Dependencies deps rDeps) =
+    Dependencies deps' (insert a k $ rDeps' mCurA)
   where
     f _ newA _curA = newA
     (mCurA, deps') = Map.insertLookupWithKey f k a deps
-    revDeps' (Just curA) = delete curA k revDeps
-    revDeps' Nothing = revDeps
+    rDeps' (Just curA) = delete curA k rDeps
+    rDeps' Nothing = rDeps
 
 setDependencies ::
-    (Ord k, Ord a) => Map.Map k a -> Dependencies k a -> Dependencies k a
+    (Ord k, Ord a) => Map k a -> Dependencies k a -> Dependencies k a
 setDependencies newDs ds = foldr (uncurry setDependency) ds $ Map.toList newDs
 
 delDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Dependencies k a
-delDependency k (deps, revDeps) = (deps', revDeps' ma)
+delDependency k (Dependencies deps rDeps) = Dependencies deps' (rDeps' ma)
   where
     f _ _ = Nothing
     (ma, deps') = Map.updateLookupWithKey f k deps
-    revDeps' (Just a) = delete a k revDeps
-    revDeps' Nothing = revDeps
+    rDeps' (Just a) = delete a k rDeps
+    rDeps' Nothing = rDeps
 
 delDependencies ::
     (Ord k, Ord a, Foldable f) => f k -> Dependencies k a -> Dependencies k a
 delDependencies ks ds = foldr delDependency ds ks
 
-nonNull :: Foldable f => f a -> Maybe (f a)
-nonNull s = if null s then Nothing else Just s
-
 filterDeps
   :: (Ord k, Ord a) => (k -> a -> Bool) -> Dependencies k a -> Dependencies k a
-filterDeps f (deps, revDeps) =
+filterDeps f (Dependencies deps rDeps) =
   let
-    (toKeep, toDrop) = Map.partitionWithKey f deps
+    (toKeepFwd, toDropFwd) = Map.partitionWithKey f deps
+    toKeepRev = dropSet (Map.keysSet toDropFwd) rDeps
   in
-    (toKeep, Map.mapMaybe (nonNull . flip Set.difference (Map.keysSet toDrop)) revDeps)
+    Dependencies toKeepFwd toKeepRev
 
 filterDependencies
   :: (Ord k, Ord a) => (k -> Bool) -> Dependencies k a -> Dependencies k a
