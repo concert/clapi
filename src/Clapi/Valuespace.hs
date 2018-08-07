@@ -33,7 +33,7 @@ import qualified Data.Text as Text
 import Data.Word
 
 import qualified Data.Map.Mol as Mol
-import Data.Map.Mos (Mos)
+import Data.Map.Mos (Mos, unMos)
 import qualified Data.Map.Mos as Mos
 
 import Data.Maybe.Clapi (note)
@@ -170,16 +170,14 @@ type TypeClaimsByPath =
 partitionXrefs :: Xrefs -> TypeClaimsByPath -> (Xrefs, Xrefs)
 partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
   where
-    mosValues :: (Ord k, Ord v) => Mos k v -> Set v
-    mosValues = foldl Set.union mempty . Map.elems
     newXrefs = Map.foldlWithKey asXref mempty claims
     asXref acc referer claimEither = case claimEither of
-      Left rtcs -> foldl (addReferer referer) acc $ mosValues rtcs
+      Left rtcs -> foldl (addReferer referer) acc $ Mos.valueSet rtcs
       Right rtcm -> Map.foldlWithKey (addRefererWithTpid referer) acc rtcm
     addReferer referer acc referee = Map.alter
       (Just . Map.insert referer Nothing . maybe mempty id) referee acc
     addRefererWithTpid referer acc tpid rtcs =
-      foldl (addRefererWithTpid' referer tpid) acc $ mosValues rtcs
+      foldl (addRefererWithTpid' referer tpid) acc $ Mos.valueSet rtcs
     addRefererWithTpid' referer tpid acc referee = Map.alter
       (Just . Map.alter
         (Just . Just . maybe (Set.singleton tpid) (Set.insert tpid) .
@@ -514,7 +512,8 @@ filterDdByDataErrIdx errIdxs =
     (constErrs, tpErrs) = bimap Map.keysSet (Map.mapMaybe id) $
       Map.partition (== Nothing) errIdxMap
     errIdxMap :: Map Path (Maybe (Set Word32))
-    errIdxMap = fmap flipSet $ Mos.fromList $ mapMaybe procErrIdx $ errIdxs
+    errIdxMap = fmap flipSet $ unMos $ Mos.fromList $ mapMaybe procErrIdx
+      $ errIdxs
     flipSet :: Eq a => Set (Maybe a) -> Maybe (Set a)
     flipSet = fmap Set.fromAscList . sequence . Set.toAscList
     procErrIdx :: DataErrorIndex -> Maybe (Path, Maybe Word32)
