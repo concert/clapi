@@ -29,7 +29,7 @@ import Language.Haskell.TH.Lift (Lift)
 newtype Seg = Seg {unSeg :: Text} deriving (Eq, Ord, Lift)
 
 instance Show Seg where
-    show = show . unSeg
+    show = Text.unpack . unSeg
 
 isValidSegChar :: Char -> Bool
 isValidSegChar c = isLetter c || isDigit c || c == '_'
