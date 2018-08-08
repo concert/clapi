@@ -1,13 +1,18 @@
+{-# LANGUAGE
+    DeriveFoldable
+#-}
+
 module Data.Map.Mos
   ( Mos, unMos
   , singleton, singletonSet
   , fromFoldable, fromList, invertMap
   , invert
   , toList, toSet, valueSet
-  , insert, insertSet, delete, deleteSet, remove, removeSet
+  , insert, insertSet, replaceSet, delete, deleteSet, remove, removeSet
   , lookup
-  , difference, union
-  , partition, partitionWithKey
+  , difference, intersection, union
+  , partition, partitionWithKey, partitionKey
+  , map, mapWithKey
 
   , Dependencies, fwdDeps, revDeps
   , dependenciesFromMap, dependenciesFromList
@@ -15,11 +20,12 @@ module Data.Map.Mos
   , allDependencies, allDependants
   , setDependency, setDependencies
   , delDependency, delDependencies
-  , filterDependencies, filterDependents
+  , filterDependencies, filterDependents, filterDeps
   ) where
 
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, map)
 
+import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -33,11 +39,12 @@ import Data.Tuple (swap)
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
-newtype Mos k a = Mos { unMos :: Map k (Set a) } deriving (Show, Eq)
+newtype Mos k a = Mos { unMos :: Map k (Set a) } deriving (Show, Eq, Foldable)
 
 instance (Ord k, Ord a) => Monoid (Mos k a) where
   mempty = Mos mempty
   (Mos m1) `mappend` (Mos m2) = Mos $ Map.unionWith (<>) m1 m2
+
 
 singleton :: k -> a -> Mos k a
 singleton k a = Mos $ Map.singleton k $ Set.singleton a
@@ -75,6 +82,9 @@ insert k a = Mos . Map.updateM (Set.insert a) k . unMos
 insertSet :: (Ord k, Ord a) => k -> Set a -> Mos k a -> Mos k a
 insertSet k sa = Mos . Map.updateM (Set.union sa) k . unMos
 
+replaceSet :: Ord k => k -> Set a -> Mos k a -> Mos k a
+replaceSet k sa = Mos . Map.insert k sa . unMos
+
 delete :: (Ord k, Ord a) => k -> a -> Mos k a -> Mos k a
 delete k a = Mos . Map.update f k . unMos
   where
@@ -98,6 +108,12 @@ difference (Mos m1) (Mos m2) = Mos $
   where
     f _k sa1 sa2 = Maybe.fromFoldable $ Set.difference sa1 sa2
 
+intersection :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
+intersection (Mos m1) (Mos m2) = Mos $
+    merge dropMissing dropMissing (zipWithMaybeMatched f) m1 m2
+  where
+    f _k sa1 sa2 = Maybe.fromFoldable $ Set.intersection sa1 sa2
+
 union :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 union (Mos m1) (Mos m2) = Mos $ Map.unionM m1 m2
 
@@ -105,10 +121,20 @@ partitionWithKey :: Ord k => (k -> a -> Bool) -> Mos k a -> (Mos k a, Mos k a)
 partitionWithKey f =
     split . Map.mapWithKey (\k sa -> Set.partition (f k) sa) . unMos
   where
-    split m = (Mos $ fst <$> m, Mos $ snd <$> m)
+    mkMos = Mos . Map.filter (not . null)
+    split m = (mkMos $ fst <$> m, mkMos $ snd <$> m)
 
 partition :: Ord k => (a -> Bool) -> Mos k a -> (Mos k a, Mos k a)
 partition f = partitionWithKey (\_ a -> f a)
+
+partitionKey :: Ord k => (k -> Bool) -> Mos k a -> (Mos k a, Mos k a)
+partitionKey f = bimap Mos Mos . Map.partitionWithKey (\k _ -> f k) . unMos
+
+mapWithKey :: Ord b => (k -> a -> b) -> Mos k a -> Mos k b
+mapWithKey f = Mos . Map.mapWithKey (\k -> Set.map $ \a -> f k a) . unMos
+
+map :: Ord b => (a -> b) -> Mos k a -> Mos k b
+map f = mapWithKey (\_ a -> f a)
 
 
 data Dependencies k a
