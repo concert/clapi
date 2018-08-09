@@ -251,7 +251,7 @@ spec = do
             subHello alice
             expectRev $ Right $ ServerData alice $ Frcsd $
               frcsdEmpty
-              { frcsdErrors = Map.singleton (helloNs, PathSubError helloP) ["pants"] }
+              { frcsdErrors = Map.singleton (PathSubError helloNs helloP) ["pants"] }
             subHello bob
             expectRev $ Right $ ServerData bob $ Frcud $
               (frcudEmpty helloNs)
@@ -262,7 +262,7 @@ spec = do
         fauxRelay = do
             waitThenFwdOnly $ \(i, _) ->
                 sendRev (i,
-                  Ocsed $ Map.singleton (helloNs, PathSubError helloP) ["pants"])
+                  Ocsed $ Map.singleton (PathSubError helloNs helloP) ["pants"])
             waitThenFwdOnly $ \(i, _) -> do
                 sendRev (i, Ocid $
                   (frcudEmpty helloNs)

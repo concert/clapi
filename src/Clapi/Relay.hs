@@ -9,8 +9,7 @@
 module Clapi.Relay where
 
 import Control.Monad (unless)
-import Control.Monad.Fail (MonadFail)
-import Data.Bifunctor (first, bimap)
+import Data.Bifunctor (first, second, bimap)
 import Data.Either (partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -23,7 +22,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
 
-import Data.Maybe.Clapi (note)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -45,7 +43,6 @@ import Clapi.Types.Digests
   , OutboundProviderDigest
   , DataDigest, ContOps, ocsedNull)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..))
-import qualified Clapi.Types.Path as Path
 import Clapi.Types.Definitions (Editable(..), Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -100,38 +97,45 @@ toFrcud :: Namespace -> ProtoFrcUpdateDigest -> FrcUpdateDigest
 toFrcud ns (ProtoFrcUpdateDigest defs pdefs tas dat cops errs) =
   FrcUpdateDigest ns defs pdefs tas dat cops errs
 
+vsmLookupVs
+  :: Namespace -> Map Namespace Valuespace
+  -> Either (SubErrorIndex, String) Valuespace
+vsmLookupVs ns vsm = maybe
+  (Left $ (NamespaceSubError ns, "Namespace not found")) return $
+  Map.lookup ns vsm
 
 rLookupDef
-  :: (VsLookupDef def, MonadFail m)
-  => Map Namespace Valuespace -> Namespace -> Tagged def Seg -> m def
+  :: (VsLookupDef def, MkSubErrIdx (Tagged def Seg))
+  => Map Namespace Valuespace -> Namespace -> Tagged def Seg
+  -> Either (SubErrorIndex, String) def
 rLookupDef vsm ns s =
-  note "Namespace not found" (Map.lookup ns vsm) >>= vsLookupDef s
+    vsmLookupVs ns vsm >>= first (mkSubErrIdx ns s,) . vsLookupDef s
 
 rGet
-  :: MonadFail m
-  => Map Namespace Valuespace -> Namespace -> Path
-  -> m (Definition, Tagged Definition Seg, Editable, RoseTreeNode [WireValue])
+  :: Map Namespace Valuespace -> Namespace -> Path
+  -> Either
+       (SubErrorIndex, String)
+       (Definition, Tagged Definition Seg, Editable, RoseTreeNode [WireValue])
 rGet vsm ns p =
-  note "Namespace not found" (Map.lookup ns vsm) >>= valuespaceGet p
+    vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 
 genInitDigests
   :: ClientGetDigest -> Map Namespace Valuespace
   -> (OutboundClientSubErrsDigest, [OutboundClientInitialisationDigest])
 genInitDigests (ClientRegs ptGets tGets dGets) vsm =
   let
-    g :: (a -> b -> Either c d) -> (a, b) -> Either ((a, b), c) ((a, b), d)
-    g f x@(a, b) = bimap (x,) (x,) $ f a b
+    g :: (a -> b -> Either c d) -> (a, b) -> Either c ((a, b), d)
+    g f x@(a, b) = second (x,) $ f a b
 
     h
-      :: (Ord a, Ord b, MkSubErrIdx b)
-      => (a -> b -> Either c d) -> Mos a b
-      -> (Map (a, SubErrorIndex) c, Map (a, b) d)
-    h f m = bimap
-        (Map.fromList . fmap (first $ fmap mkSubErrIdx))
-        Map.fromList
-      $ partitionEithers $ fmap (g f) $ Mos.toList m
+      :: (Ord b, MkSubErrIdx b)
+      => (Namespace -> b -> Either (SubErrorIndex, String) d)
+      -> Mos Namespace b
+      -> (Map SubErrorIndex String, Map (Namespace, b) d)
+    h f m = bimap Map.fromList Map.fromList
+      $ partitionEithers $ g f <$> Mos.toList m
 
-    ptSubErrs, tSubErrs, dSubErrs :: Map (Namespace, SubErrorIndex) String
+    ptSubErrs, tSubErrs, dSubErrs :: Map SubErrorIndex String
     postDefs :: Map (Namespace, Tagged PostDefinition Seg) PostDefinition
     defs :: Map (Namespace, Tagged Definition Seg) Definition
     treeData :: Map (Namespace, Path) _

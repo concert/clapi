@@ -144,7 +144,7 @@ newtype FrcRootDigest = FrcRootDigest
   } deriving (Show, Eq)
 
 data FrcSubDigest = FrcSubDigest
-  { frcsdErrors :: Map (Namespace, SubErrorIndex) [Text]
+  { frcsdErrors :: Map SubErrorIndex [Text]
   , frcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
   , frcsdTypeUnsubs :: Mos Namespace (Tagged Definition Seg)
   , frcsdDataUnsubs :: Mos Namespace Path
@@ -350,14 +350,14 @@ produceDataErrMsgs :: Map DataErrorIndex [Text] -> [DataErrorMessage]
 produceDataErrMsgs =
   mconcat . Map.elems . Map.mapWithKey (\ei errs -> MsgDataError ei <$> errs)
 
-digestSubErrMsgs :: [SubErrorMessage] -> Map (Namespace, SubErrorIndex) [Text]
+digestSubErrMsgs :: [SubErrorMessage] -> Map SubErrorIndex [Text]
 digestSubErrMsgs = foldl (Map.unionWith (<>)) mempty . fmap procMsg
   where
-    procMsg (MsgSubError ns ei t) = Map.singleton (ns, ei) [t]
+    procMsg (MsgSubError ei t) = Map.singleton ei [t]
 
-produceSubErrMsgs :: Map (Namespace, SubErrorIndex) [Text] -> [SubErrorMessage]
+produceSubErrMsgs :: Map SubErrorIndex [Text] -> [SubErrorMessage]
 produceSubErrMsgs = mconcat . Map.elems
-  . Map.mapWithKey (\(ns, ei) errs -> MsgSubError ns ei <$> errs)
+  . Map.mapWithKey (\ei errs -> MsgSubError ei <$> errs)
 
 digestToRelayBundle :: ToRelayBundle -> TrDigest
 digestToRelayBundle trb = case trb of
@@ -503,7 +503,7 @@ produceFromRelayBundle frd = case frd of
 
 type OutboundClientUpdateDigest = FrcUpdateDigest
 type OutboundClientInitialisationDigest = OutboundClientUpdateDigest
-type OutboundClientSubErrsDigest = Map (Namespace, SubErrorIndex) [Text]
+type OutboundClientSubErrsDigest = Map SubErrorIndex [Text]
 type OutboundProviderDigest = FrpDigest
 
 ocsedNull :: OutboundClientSubErrsDigest -> Bool

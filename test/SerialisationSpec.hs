@@ -119,16 +119,17 @@ instance Arbitrary DataErrorIndex where
 
 instance Arbitrary SubErrorIndex where
   arbitrary = oneof
-    [ PathSubError <$> arbitrary
-    , TypeSubError <$> arbitrary
-    , PostTypeSubError <$> arbitrary
+    [ NamespaceSubError <$> arbitrary
+    , PathSubError <$> arbitrary <*> arbitrary
+    , TypeSubError <$> arbitrary <*> arbitrary
+    , PostTypeSubError <$> arbitrary <*> arbitrary
     ]
 
 instance Arbitrary DataErrorMessage where
   arbitrary = MsgDataError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary SubErrorMessage where
-  arbitrary = MsgSubError <$> arbitrary <*> arbitrary <*> arbitraryTextNoNull
+  arbitrary = MsgSubError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary ToRelayProviderBundle where
   arbitrary = ToRelayProviderBundle

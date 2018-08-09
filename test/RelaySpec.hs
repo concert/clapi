@@ -61,7 +61,7 @@ spec = describe "the relay protocol" $ do
           }
         expectedOutDig1 = Ocrd $ FrcRootDigest $ Map.singleton fooN SoAbsent
         expectedOutDig2 = Ocsed $
-          Map.singleton (fooN, PathSubError Root) ["Namespace not found"]
+          Map.singleton (NamespaceSubError fooN) ["Namespace not found"]
         test = do
           sendFwd ((), PnidTrprd $ TrprDigest fooN)
           sendFwd ((), PnidClientGet $ mempty {crDataRegs = Mos.singleton fooN Root})
@@ -69,10 +69,12 @@ spec = describe "the relay protocol" $ do
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig2) . snd
       in runEffect $ test <<-> relay (Map.singleton fooN vsWithStuff)
     it "should reject subscriptions to non-existant paths" $
+      -- FIXME: is currently testing namespaces! Add a case for an existing
+      -- namespace but missing path
       let
         p = [pathq|/madeup|]
         expectedOutDig = Ocsed $
-          Map.singleton (fooN, PathSubError p) ["Path not found"]
+          Map.singleton (NamespaceSubError fooN) ["Namespace not found"]
         test = do
           sendFwd ((), PnidClientGet
             (mempty {crDataRegs = Mos.singleton fooN p}))

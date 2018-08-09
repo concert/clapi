@@ -1,5 +1,7 @@
 {-# LANGUAGE
     FlexibleInstances
+  , TypeFamilies
+  , TypeFamilyDependencies
   , TypeSynonymInstances
 #-}
 
@@ -37,13 +39,14 @@ data DefMessage ident def
   deriving (Show, Eq)
 
 data SubErrorIndex
-  = PostTypeSubError (Tagged PostDefinition Seg)
-  | TypeSubError (Tagged Definition Seg)
-  | PathSubError Path
+  = NamespaceSubError Namespace
+  | PostTypeSubError Namespace (Tagged PostDefinition Seg)
+  | TypeSubError Namespace (Tagged Definition Seg)
+  | PathSubError Namespace Path
   deriving (Show, Eq, Ord)
 
 class MkSubErrIdx a where
-  mkSubErrIdx :: a -> SubErrorIndex
+  mkSubErrIdx :: Namespace -> a -> SubErrorIndex
 
 instance MkSubErrIdx (Tagged PostDefinition Seg) where
   mkSubErrIdx = PostTypeSubError
@@ -54,8 +57,7 @@ instance MkSubErrIdx Path where
 
 data SubErrorMessage
   = MsgSubError
-  { subErrNs :: Namespace
-  , subErrIndex :: SubErrorIndex
+  { subErrIndex :: SubErrorIndex
   , subErrTxt :: Text
   } deriving (Eq, Show)
 

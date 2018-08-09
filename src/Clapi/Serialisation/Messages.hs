@@ -56,7 +56,8 @@ instance Encodable DataErrorMessage where
     parser = MsgDataError <$> parser <*> parser
 
 data SubErrIdxType
-  = SeitPostTypeName
+  = SeitNamespace
+  | SeitPostTypeName
   | SeitTypeName
   | SeitPath
   deriving (Enum, Bounded)
@@ -65,28 +66,31 @@ subErrIndexTaggedData :: TaggedData SubErrIdxType SubErrorIndex
 subErrIndexTaggedData = taggedData typeToTag eiToType
   where
     typeToTag ty = case ty of
+      SeitNamespace -> [btq|n|]
       SeitPostTypeName -> [btq|c|] -- "create"
       SeitTypeName -> [btq|t|]
       SeitPath -> [btq|p|]
     eiToType ei = case ei of
-      PostTypeSubError _ -> SeitPostTypeName
-      TypeSubError _ -> SeitTypeName
-      PathSubError _ -> SeitPath
+      NamespaceSubError _ -> SeitNamespace
+      PostTypeSubError _ _ -> SeitPostTypeName
+      TypeSubError _ _ -> SeitTypeName
+      PathSubError _ _ -> SeitPath
 
 instance Encodable SubErrorIndex where
   builder = tdTaggedBuilder subErrIndexTaggedData $ \ei -> case ei of
-    PostTypeSubError ttn -> builder ttn
-    TypeSubError ttn -> builder ttn
-    PathSubError p -> builder p
+    NamespaceSubError ns -> builder ns
+    PostTypeSubError ns ttn -> builder ns <<>> builder ttn
+    TypeSubError ns ttn -> builder ns <<>> builder ttn
+    PathSubError ns p -> builder ns <<>> builder p
   parser = tdTaggedParser subErrIndexTaggedData $ \eit -> case eit of
-    SeitPostTypeName -> PostTypeSubError <$> parser
-    SeitTypeName -> TypeSubError <$> parser
-    SeitPath -> PathSubError <$> parser
+    SeitNamespace -> NamespaceSubError <$> parser
+    SeitPostTypeName -> PostTypeSubError <$> parser <*> parser
+    SeitTypeName -> TypeSubError <$> parser <*> parser
+    SeitPath -> PathSubError <$> parser <*> parser
 
 instance Encodable SubErrorMessage where
-    builder (MsgSubError ns idx txt) =
-      builder ns <<>> builder idx <<>> builder txt
-    parser = MsgSubError <$> parser <*> parser <*> parser
+    builder (MsgSubError idx txt) = builder idx <<>> builder txt
+    parser = MsgSubError <$> parser <*> parser
 
 data DefMsgType = DefMsgTDef | DefMsgTUndef deriving (Enum, Bounded)
 
