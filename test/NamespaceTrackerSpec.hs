@@ -23,7 +23,7 @@ import Clapi.Types (InterpolationLimit(..), WireValue(..))
 import Clapi.Types.Definitions (tupleDef)
 import Clapi.Types.Digests
 import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
-import Clapi.Types.Path (Path, Seg, pattern Root, Namespace(..), pattern (:/))
+import Clapi.Types.Path (Path, Seg, pattern Root, Namespace(..))
 import Clapi.Types.AssocList (alSingleton, alEmpty, alFromList)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.NamespaceTracker
