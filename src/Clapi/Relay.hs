@@ -4,10 +4,12 @@
   , LambdaCase
   , OverloadedStrings
   , PartialTypeSignatures
+  , TemplateHaskell
 #-}
 
 module Clapi.Relay where
 
+import Control.Lens (makeLenses, view, over)
 import Control.Monad (unless, forever)
 import Control.Monad.State (StateT(..), evalStateT, get, modify)
 import Control.Monad.Trans (lift)
@@ -215,8 +217,10 @@ handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
 
 data RelayState
   = RelayState
-  { rsProvCache :: Map Namespace Valuespace
+  { _rsProvCache :: Map Namespace Valuespace
   } deriving (Show)
+
+makeLenses ''RelayState
 
 instance Monoid RelayState where
   mempty = RelayState mempty
@@ -239,15 +243,15 @@ relay_ = forever $
     sendRev' i d = lift $ sendRev (i, d)
     fwd (i, dig) = case dig of
       PnidRootGet -> do
-        vsm <- rsProvCache <$> get
+        vsm <- view rsProvCache <$> get
         sendRev' i $ Ocrid $ FrcRootDigest $
           Map.fromSet (const $ SoAfter Nothing) $ Map.keysSet vsm
       PnidClientGet cgd -> do
-        (ocsed, ocids) <- genInitDigests cgd . rsProvCache <$> get
+        (ocsed, ocids) <- genInitDigests cgd . view rsProvCache <$> get
         unless (ocsedNull ocsed) $ sendRev' i $ Ocsed ocsed
         mapM_ (sendRev' i . Ocid) ocids
       PnidTrcud trcud -> let ns = trcudNamespace trcud in
-        (Map.lookup ns . rsProvCache <$> get) >>= maybe
+        (Map.lookup ns . view rsProvCache <$> get) >>= maybe
         ( sendRev' i $ Ocud $ (frcudEmpty ns)
             -- FIXME: Not a global error. NamespaceError?
             { frcudErrors =
@@ -261,13 +265,13 @@ relay_ = forever $
       PnidTrpd trpd -> let ns = trpdNamespace trpd in do
         vs <- Map.findWithDefault
             (baseValuespace (Tagged $ unNamespace ns) Editable) ns
-            . rsProvCache
+            . view rsProvCache
             <$> get
         either
           (sendRev' i . Ope . FrpErrorDigest) (handleOwnerSuccess i trpd vs) $
           processToRelayProviderDigest trpd vs
       PnidTrprd (TrprDigest ns) -> do
-        modify $ RelayState . Map.delete ns . rsProvCache
+        modify $ over rsProvCache $ Map.delete ns
         sendRev' i $ Ocrd $ FrcRootDigest $ Map.singleton ns SoAbsent
     handleOwnerSuccess
         i (TrpDigest ns postDefs defs dd contOps errs)
@@ -285,7 +289,7 @@ relay_ = forever $
         contOps'' = extraCops <> contOps'
         frcrd = FrcRootDigest $ Map.singleton ns $ SoAfter Nothing
       in do
-        vsm <- rsProvCache <$> get
+        vsm <- view rsProvCache <$> get
         sendRev' i $
           Ocud $ FrcUpdateDigest ns
             -- FIXME: these functions should probably operate on just a
@@ -296,7 +300,7 @@ relay_ = forever $
             mungedTas dd' contOps'' errs
         unless (null $ frcrdContOps frcrd) $
             sendRev' i $ Ocrd frcrd
-        modify $ RelayState . Map.insert ns vs' . rsProvCache
+        modify $ over rsProvCache $ Map.insert ns vs'
 
 -- FIXME: Worst case implementation
 -- FIXME: should probably just operate on one Valuespace

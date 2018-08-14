@@ -78,6 +78,7 @@ library
                      , either
                      , errors
                      , free
+                     , lens
                      , network
                      , network-simple
                      , mtl
