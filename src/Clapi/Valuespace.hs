@@ -121,7 +121,7 @@ instance VsLookupDef PostDefinition where
   vsGetDefMap = vsPostDefs
   defForPath p vs = defForPath @Definition p vs
     >>= (\case
-      ArrayDef ad -> maybe (fail "array doe not define post type") return $
+      ArrayDef ad -> maybe (fail "array does not define post type") return $
         arrPostType ad
       _ -> fail "Definition at path not for array")
     >>= flip vsLookupDef vs
