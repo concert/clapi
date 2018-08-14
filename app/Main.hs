@@ -22,7 +22,6 @@ import Clapi.Serialisation ()
 import Clapi.NamespaceTracker (nstProtocol)
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
-import Clapi.Valuespace (baseValuespace)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Types.Path (mkSeg)
@@ -59,4 +58,4 @@ main =
       <<-> relayApiProto internalAddr
       <<-> shower "nt"
       <<-> nstProtocol
-      <<-> relay baseValuespace
+      <<-> relay mempty
