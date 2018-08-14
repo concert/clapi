@@ -206,7 +206,7 @@ handleTrcud
   -> (OutboundClientUpdateDigest, OutboundProviderDigest)
 handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
   let
-    (errMap, ProtoFrpDigest dat cr cont ) = processTrcUpdateDigest vs trcud
+    (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs trcud
     ocud = (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
   in
     (ocud, FrpDigest ns dat cr cont)
@@ -268,7 +268,7 @@ relay vsm = waitThenFwdOnly fwd
             extraCops = Map.fromAscList $ mapMaybe (\p -> parentPath p >>= getContOps) $
               Set.toAscList $ Map.keysSet updatedTyAssns
             contOps'' = extraCops <> contOps'
-            frcrd = FrcRootDigest $ Map.singleton ns (SoAfter Nothing)
+            frcrd = FrcRootDigest $ Map.singleton ns $ SoAfter Nothing
           in do
             sendRev (i,
               Ocud $ FrcUpdateDigest ns
