@@ -18,7 +18,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.Types.Path (Seg, mkSeg, TypeName)
+import Clapi.Types.Path (Seg, mkSeg)
 import Clapi.Util (uncamel)
 
 
@@ -55,7 +55,7 @@ data TreeType
   | TtString Text
   -- FIXME: kinda want this to be TtRef (Tagged Definition TypeName) but that
   -- creates an import loop:
-  | TtRef TypeName
+  | TtRef Seg
   | TtList TreeType
   | TtSet TreeType
   | TtOrdSet TreeType

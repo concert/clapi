@@ -22,7 +22,3 @@ instance Encodable Path.Path where
   parser = parser >>= Path.fromText Path.segP
 
 deriving instance Encodable Path.Namespace
-
-instance Encodable Path.TypeName where
-  builder = builder . Path.typeNameToText
-  parser = parser >>= Path.typeNameFromText

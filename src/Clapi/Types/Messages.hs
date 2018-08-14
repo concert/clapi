@@ -1,3 +1,10 @@
+{-# LANGUAGE
+    FlexibleInstances
+  , TypeFamilies
+  , TypeFamilyDependencies
+  , TypeSynonymInstances
+#-}
+
 module Clapi.Types.Messages where
 
 import Data.Tagged (Tagged(..))
@@ -6,8 +13,7 @@ import Data.Word (Word32)
 
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Editable, PostDefinition)
-import Clapi.Types.Path
-  (Seg, Path, TypeName(..), Namespace(..), Placeholder(..))
+import Clapi.Types.Path (Seg, Path, Namespace(..), Placeholder(..))
 import Clapi.Types.Wire (WireValue)
 
 -- FIXME: redefinition
@@ -33,29 +39,42 @@ data DefMessage ident def
   deriving (Show, Eq)
 
 data SubErrorIndex
-  = PostTypeSubError (Tagged PostDefinition TypeName)
-  | TypeSubError (Tagged Definition TypeName)
-  | PathSubError Path
+  = NamespaceSubError Namespace
+  | PostTypeSubError Namespace (Tagged PostDefinition Seg)
+  | TypeSubError Namespace (Tagged Definition Seg)
+  | PathSubError Namespace Path
   deriving (Show, Eq, Ord)
 
+class MkSubErrIdx a where
+  mkSubErrIdx :: Namespace -> a -> SubErrorIndex
+
+instance MkSubErrIdx (Tagged PostDefinition Seg) where
+  mkSubErrIdx = PostTypeSubError
+instance MkSubErrIdx (Tagged Definition Seg) where
+  mkSubErrIdx = TypeSubError
+instance MkSubErrIdx Path where
+  mkSubErrIdx = PathSubError
+
 data SubErrorMessage
-  = MsgSubError {subErrIndex :: SubErrorIndex, subErrTxt :: Text}
-  deriving (Eq, Show)
+  = MsgSubError
+  { subErrIndex :: SubErrorIndex
+  , subErrTxt :: Text
+  } deriving (Eq, Show)
 
 -- FIXME: might be nicer to break this up into sub and unsub values typed by
 -- what they are subscriptions for:
 data SubMessage
   = MsgSubscribe {subMsgPath :: Path}
-  | MsgPostTypeSubscribe {subMsgPostTypeName :: Tagged PostDefinition TypeName}
-  | MsgTypeSubscribe {subMsgTypeName :: Tagged Definition TypeName}
+  | MsgPostTypeSubscribe {subMsgPostTypeName :: Tagged PostDefinition Seg}
+  | MsgTypeSubscribe {subMsgTypeName :: Tagged Definition Seg}
   | MsgUnsubscribe {subMsgPath :: Path}
   | MsgPostTypeUnsubscribe
-    {subMsgPostTypeName :: Tagged PostDefinition TypeName}
-  | MsgTypeUnsubscribe {subMsgTypeName :: Tagged Definition TypeName}
+    {subMsgPostTypeName :: Tagged PostDefinition Seg}
+  | MsgTypeUnsubscribe {subMsgTypeName :: Tagged Definition Seg}
   deriving (Eq, Show)
 
 data TypeMessage
-  = MsgAssignType Path (Tagged Definition TypeName) Editable
+  = MsgAssignType Path (Tagged Definition Seg) Editable
   deriving (Show, Eq)
 
 data DataUpdateMessage
@@ -134,9 +153,7 @@ newtype FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
   } deriving (Eq, Show)
 
 newtype ToRelayClientSubBundle = ToRelayClientSubBundle
-  -- FIXME: want to break this down so that we can no longer subscribe to root
-  -- (i.e. all subs are (Namespace, Path or Seg))
-  { trcsbSubs :: [SubMessage]
+  { trcsbSubs :: [(Namespace, SubMessage)]
   } deriving (Eq, Show)
 
 data ToRelayClientUpdateBundle = ToRelayClientUpdateBundle
@@ -151,9 +168,9 @@ newtype FromRelayClientRootBundle = FromRelayClientRootBundle
 
 data FromRelayClientSubBundle = FromRelayClientSubBundle
   { frcsbSubErrs :: [SubErrorMessage]
-  , frcsbPostTypeUnsubs :: [Tagged PostDefinition TypeName]
-  , frcsbTypeUnsubs :: [Tagged Definition TypeName]
-  , frcsbDataUnsubs :: [Path]
+  , frcsbPostTypeUnsubs :: [(Namespace, Tagged PostDefinition Seg)]
+  , frcsbTypeUnsubs :: [(Namespace, Tagged Definition Seg)]
+  , frcsbDataUnsubs :: [(Namespace, Path)]
   } deriving (Eq, Show)
 
 data FromRelayClientUpdateBundle = FromRelayClientUpdateBundle

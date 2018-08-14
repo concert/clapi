@@ -5,17 +5,18 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (forever, when, unless, void)
 import Control.Monad.State (StateT(..), evalStateT, get, put, modify)
 import Control.Monad.Trans (MonadTrans, lift)
-import Data.Foldable (foldl')
+import Data.Bifunctor (bimap)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (merge, zipWithMatched, mapMissing)
-import Data.Maybe (mapMaybe)
 import Data.Monoid
-import Data.Set (Set, (\\))
+import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged, untag)
+import Data.Tagged (Tagged)
 import qualified Data.Text as Text
 
+import Data.Map.Mos (Mos)
+import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList
   (AssocList, alEmpty,  alFilterKey, alInsert, alFoldlWithKey, alKeysSet)
@@ -25,15 +26,12 @@ import Clapi.Types.Digests
   , TrpDigest(..), TrprDigest(..)
   , FrDigest(..), FrcSubDigest(..), FrcUpdateDigest(..)
   , FrpDigest(..), FrpErrorDigest(..)
-  , DefOp(..), isUndef, isSub, frcudNull, frcsdNull, frcsdEmpty
+  , DefOp(..), isUndef, frcudNull, frcsdNull, frcsdEmpty
   , OutboundDigest(..)
   , OutboundClientInitialisationDigest, OutboundClientUpdateDigest)
 -- Also `Either String a` MonadFail instance:
 import Clapi.Types (Definition, PostDefinition)
-import Clapi.Types.Path
-  ( Path, TypeName(..), pattern (:/), pattern (:</), pattern Root
-  , Namespace(..), Seg, unqualify, qualify)
-import qualified Clapi.Types.Path as Path
+import Clapi.Types.Path (Path, pattern (:/), pattern Root, Namespace(..), Seg)
 import Clapi.Types.SequenceOps (isSoAbsent)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
@@ -41,22 +39,15 @@ import Clapi.Util (flattenNestedMaps)
 
 newtype Originator i = Originator i deriving (Eq, Show)
 
-data ClientGetDigest = ClientGetDigest
-  { cgdPostTypeGets :: Set (Tagged PostDefinition TypeName)
-  , cgdTypeGets :: Set (Tagged Definition TypeName)
-  , cgdDataGets :: Set Path
-  } deriving (Show, Eq)
-
-cgdEmpty :: ClientGetDigest
-cgdEmpty = ClientGetDigest mempty mempty mempty
+type ClientGetDigest = ClientRegs
 
 data PostNstInboundDigest
   = PnidRootGet
-  | PnidCgd ClientGetDigest
+  | PnidClientGet ClientGetDigest
   | PnidTrcud TrcUpdateDigest
   | PnidTrpd TrpDigest
   | PnidTrprd TrprDigest
-  deriving (Show, Eq)
+  deriving (Show)
 
 type NstProtocol m i = Protocol
     (ClientEvent i TrDigest)
@@ -67,15 +58,18 @@ type NstProtocol m i = Protocol
 
 data ClientRegs
   = ClientRegs
-  { crPostTypeRegs :: Set (Tagged PostDefinition TypeName)
-  , crTypeRegs :: Set (Tagged Definition TypeName)
-  , crDataRegs :: Set Path
+  { crPostTypeRegs :: Mos Namespace (Tagged PostDefinition Seg)
+  , crTypeRegs :: Mos Namespace (Tagged Definition Seg)
+  , crDataRegs :: Mos Namespace Path
   } deriving (Show)
 
 instance Monoid ClientRegs where
   mempty = ClientRegs mempty mempty mempty
   (ClientRegs pt1 t1 d1) `mappend` (ClientRegs pt2 t2 d2) =
     ClientRegs (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
+
+crNull :: ClientRegs -> Bool
+crNull (ClientRegs p t d) = null p && null t && null d
 
 data NstState i
   = NstState
@@ -114,7 +108,8 @@ nstProtocol_ = forever $ liftedWaitThen fwd rev
               (cgd, frcsd) <- handleSubDigest i d
               unless (frcsdNull frcsd) $
                 lift $ sendRev $ Right $ ServerData i $ Frcsd frcsd
-              sendFwd' i $ PnidCgd cgd
+              unless (crNull cgd) $
+                sendFwd' i $ PnidClientGet cgd
           )
         Trcud d -> guardNsClientUpdateDigest i d
           (throwOutProvider i $ Set.singleton $ trcudNamespace d)
@@ -224,30 +219,22 @@ unsubscribeFromRelinquishedNs
   :: Monad m => Set Namespace -> StateT (NstState i) m (Map i FrcSubDigest)
 unsubscribeFromRelinquishedNs nss = do
     nsts <- get
-    let partdRegs = partitionClientRegs <$> nstRegs nsts
+    let partdRegs = partitionRegs <$> nstRegs nsts
     put $ nsts {nstRegs = snd <$> partdRegs}
-    pure $
-      Map.filter (not . frcsdNull) $ convertToFrcSubDigest . fst <$> partdRegs
+    pure $ mkFrcsd . fst <$> partdRegs
   where
-    shouldRelinquishPath :: Path -> Bool
-    shouldRelinquishPath p = case Path.splitHead p of
-      Just (ns, _) -> Namespace ns `Set.member` nss
-      Nothing -> False
+    mkFrcsd (ClientRegs goneP goneT goneD) =
+      FrcSubDigest mempty goneP goneT goneD
 
-    shouldRelinquishTn :: Tagged a TypeName -> Bool
-    shouldRelinquishTn = (`Set.member` nss) . tnNamespace . untag
-
-    partitionClientRegs :: ClientRegs -> (ClientRegs, ClientRegs)
-    partitionClientRegs (ClientRegs pt t d) =
+    partitionRegs :: ClientRegs -> (ClientRegs, ClientRegs)
+    partitionRegs (ClientRegs p t d) =
       let
-        (pt1, pt2) = Set.partition shouldRelinquishTn pt
-        (t1, t2) = Set.partition shouldRelinquishTn t
-        (d1, d2) = Set.partition shouldRelinquishPath d
+        part = Mos.partitionKey (`Set.member` nss)
+        (goneP, keepP) = part p
+        (goneT, keepT) = part t
+        (goneD, keepD) = part d
       in
-        (ClientRegs pt1 t1 d1, ClientRegs pt2 t2 d2)
-
-    convertToFrcSubDigest :: ClientRegs -> FrcSubDigest
-    convertToFrcSubDigest (ClientRegs pt t d) = FrcSubDigest mempty pt t d
+        (ClientRegs goneP goneT goneD, ClientRegs keepP keepT keepD)
 
 
 guardNsClientSubDigest
@@ -288,29 +275,29 @@ guardNsClientUpdateDigest i d failureAction successAction = either
 handleSubDigest
   :: (Monad m, Ord i)
   => i -> TrcSubDigest -> StateT (NstState i) m (ClientGetDigest, FrcSubDigest)
-handleSubDigest i trcsd =
+handleSubDigest i (TrcSubDigest ptSubs ptUnsubs tSubs tUnsubs dSubs dUnsubs) =
   let
-    (ptSubs, ptUnsubs) = partSubs $ trcsdPostTypeSubs trcsd
-    (tSubs, tUnsubs) = partSubs $ trcsdTypeSubs trcsd
-    (dSubs, dUnsubs) = partSubs $ trcsdDataSubs trcsd
-    removeUnsubs = Just . maybe mempty (\(ClientRegs pt t d) -> ClientRegs
-        (pt \\ ptUnsubs) (t \\ tUnsubs) (d \\ dUnsubs))
+    removeUnsubs (ClientRegs p t d) =
+      let
+        newRegs = ClientRegs
+          (Mos.difference p ptUnsubs)
+          (Mos.difference t tUnsubs)
+          (Mos.difference d dUnsubs)
+      in
+        if crNull newRegs then Nothing else Just newRegs
   in do
     nsts <- get
     let current = Map.findWithDefault mempty i $ nstRegs nsts
-    let cdg = ClientGetDigest
-          (Set.difference ptSubs $ crPostTypeRegs current)
-          (Set.difference tSubs $ crTypeRegs current)
-          (Set.difference dSubs $ crDataRegs current)
+    let cgd = ClientRegs
+          (Mos.difference ptSubs $ crPostTypeRegs current)
+          (Mos.difference tSubs $ crTypeRegs current)
+          (Mos.difference dSubs $ crDataRegs current)
     let frcsd = FrcSubDigest mempty
-          (Set.intersection ptUnsubs $ crPostTypeRegs current)
-          (Set.intersection tUnsubs $ crTypeRegs current)
-          (Set.intersection dUnsubs $ crDataRegs current)
-    put $ nsts {nstRegs = Map.alter removeUnsubs i $ nstRegs nsts}
-    return (cdg, frcsd)
-  where
-    mapPair f (a1, a2) = (f a1, f a2)
-    partSubs = mapPair Map.keysSet . Map.partition isSub
+          (Mos.intersection ptUnsubs $ crPostTypeRegs current)
+          (Mos.intersection tUnsubs $ crTypeRegs current)
+          (Mos.intersection dUnsubs $ crDataRegs current)
+    put $ nsts {nstRegs = Map.update removeUnsubs i $ nstRegs nsts}
+    return (cgd, frcsd)
 
 handleDisconnect
   :: (Ord i, Monad m) => i -> StateT (NstState i) (NstProtocol m i) ()
@@ -332,40 +319,39 @@ registerSubs i (FrcUpdateDigest ns postDefs defs _tas dd cops _errs) =
     modify go
   where
     newClientRegs = ClientRegs
-      (Set.map (qualify ns) $ Map.keysSet postDefs)
-      (Set.map (qualify ns) $ Map.keysSet defs)
-      (Set.map (unNamespace ns :</) $
-       Set.union (Map.keysSet cops) (alKeysSet dd))
+      (Mos.singletonSet ns $ Map.keysSet postDefs)
+      (Mos.singletonSet ns $ Map.keysSet defs)
+      (Mos.singletonSet ns $ Map.keysSet cops <> alKeysSet dd)
     go nsts = nsts {
       nstRegs = Map.insertWith (<>) i newClientRegs $ nstRegs nsts}
 
 unsubDeleted
   :: (Monad m, Ord i)
   => OutboundClientUpdateDigest -> StateT (NstState i) m (Map i FrcSubDigest)
-unsubDeleted d = do
+unsubDeleted ocud = do
     nsts <- get
     let results = fmap updateClientReg $ nstRegs nsts
     put nsts{ nstRegs = fmap fst results }
     return $ Map.filter (not . frcsdNull) $ snd <$> results
   where
-    ns = frcudNamespace d
-    allUndefPTys = qualifiedUndefs $ frcudPostDefs d
-    allUndefTys = qualifiedUndefs $ frcudDefinitions d
-    qualifiedUndefs :: Map (Tagged a Seg) (DefOp a) -> Set (Tagged a TypeName)
-    qualifiedUndefs = Set.map (qualify ns) . Map.keysSet . Map.filter isUndef
-    allDeletePaths = Set.map (unNamespace ns :</) $ Map.keysSet $
+    ns = frcudNamespace ocud
+    allUndefPTys = undefs $ frcudPostDefs ocud
+    allUndefTys = undefs $ frcudDefinitions ocud
+    undefs :: Map (Tagged a Seg) (DefOp a) -> Set (Tagged a Seg)
+    undefs = Map.keysSet . Map.filter isUndef
+    allDeletePaths = Map.keysSet $
       flattenNestedMaps (:/) $
-      Map.filter isSoAbsent . fmap snd <$> frcudContOps d
+      Map.filter isSoAbsent . fmap snd <$> frcudContOps ocud
     updateClientReg :: ClientRegs -> (ClientRegs, FrcSubDigest)
-    updateClientReg (ClientRegs ptSubs tSubs dSubs) =
+    updateClientReg (ClientRegs p t d) =
       let
-        (ptUnsubs, ptSubs') = Set.partition (`Set.member` allUndefPTys) ptSubs
-        (tUnsubs, tSubs') = Set.partition (`Set.member` allUndefTys) tSubs
-        (dUnsubs, dSubs') = Set.partition (`Set.member` allDeletePaths) dSubs
+        f s mos = bimap (Mos.singletonSet ns) (\s' -> Mos.replaceSet ns s' mos)
+          $ Set.partition (`Set.member` s) $ Mos.lookup ns mos
+        (nsPUnsubs, p') = f allUndefPTys p
+        (nsTUnsubs, t') = f allUndefTys t
+        (nsDUnsubs, d') = f allDeletePaths d
       in
-        ( ClientRegs ptSubs' tSubs' dSubs'
-        , FrcSubDigest mempty ptUnsubs tUnsubs dUnsubs
-        )
+        (ClientRegs p' t' d', FrcSubDigest mempty nsPUnsubs nsTUnsubs nsDUnsubs)
 
 multicastRev :: Monad m => Map i FrDigest -> NstProtocol m i ()
 multicastRev = void . sequence . Map.mapWithKey sendRevWithI
@@ -378,35 +364,27 @@ broadcastRev d = get >>= lift . multicastRev . Map.fromSet (const d) . nstAllCli
 generateClientDigests
   :: Monad m
   => OutboundClientUpdateDigest -> StateT (NstState i) m (Map i FrcUpdateDigest)
-generateClientDigests (FrcUpdateDigest ns ptds tds tas d cops errs) =
+generateClientDigests (FrcUpdateDigest ns ptds tds tas dat cops errs) =
     Map.filter (not . frcudNull) . fmap filterFrcud . nstRegs <$> get
   where
-    ttnOfInterest :: Tagged a TypeName -> Bool
-    ttnOfInterest = (== ns) . tnNamespace . untag
-    unqualTySubs :: Set (Tagged a TypeName) -> Set (Tagged a Seg)
-    unqualTySubs = foldl' (\acc ttn ->
-      if ttnOfInterest ttn
-        then Set.insert (snd $ unqualify ttn) acc
-        else acc
-      ) mempty
     filterFrcud :: ClientRegs -> FrcUpdateDigest
-    filterFrcud (ClientRegs ptSubs tSubs dSubs) =
+    filterFrcud (ClientRegs pt t d) =
       let
-        unqualdDatSubs = Set.fromAscList $ mapMaybe (fmap snd . Path.splitHead)
-          $ filter (`Path.isChildOf` (Root :/ unNamespace ns))
-          $ Set.toAscList dSubs
+        nsPs = Mos.lookup ns pt
+        nsTs = Mos.lookup ns t
+        nsDs = Mos.lookup ns d
       in
-      FrcUpdateDigest ns
-      (Map.restrictKeys ptds $ unqualTySubs ptSubs)
-      (Map.restrictKeys tds $ unqualTySubs tSubs)
-      (Map.restrictKeys tas unqualdDatSubs)
-      (alFilterKey (`Set.member` unqualdDatSubs) d)
-      (Map.restrictKeys cops unqualdDatSubs)
-      (Map.filterWithKey  (\dem _ -> case dem of
-        GlobalError -> True
-        PathError p -> p `Set.member` unqualdDatSubs
-        TimePointError p _ -> p `Set.member` unqualdDatSubs)
-        errs)
+        FrcUpdateDigest ns
+          (Map.restrictKeys ptds nsPs)
+          (Map.restrictKeys tds nsTs)
+          (Map.restrictKeys tas nsDs)
+          (alFilterKey (`Set.member` nsDs) dat)
+          (Map.restrictKeys cops nsDs)
+          (Map.filterWithKey (\dei _ -> case dei of
+            GlobalError -> True
+            PathError p -> p `Set.member` nsDs
+            TimePointError p _ -> p `Set.member` nsDs)
+            errs)
 
 liftedWaitThen ::
   (Monad m, MonadTrans t, Monad (t (Protocol a a' b' b m))) =>

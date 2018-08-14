@@ -4,18 +4,18 @@
 
 module Clapi.Types.Digests where
 
+import Data.Bifunctor (bimap)
 import Data.Either (partitionEithers)
-import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
 import Data.Monoid
 import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
 
+import Data.Map.Mos (Mos, unMos)
+import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Mol as Mol
 
 import Clapi.Types.AssocList
@@ -24,17 +24,9 @@ import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Editable, PostDefinition)
 import Clapi.Types.Messages
 import Clapi.Types.Path
-  ( Seg, Path, TypeName(..), pattern (:</), pattern (:/), Namespace(..)
-  , Placeholder(..))
-import qualified Clapi.Types.Path as Path
+  (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (WireValue)
-
-data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq)
-
-isSub :: SubOp -> Bool
-isSub OpSubscribe = True
-isSub OpUnsubscribe = False
 
 data DefOp def = OpDefine {odDef :: def} | OpUndefine deriving (Show, Eq)
 
@@ -64,7 +56,7 @@ data CreateOp
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
 
-type RootContOps = Map Seg (SequenceOp Seg)
+type RootContOps = Map Namespace (SequenceOp Namespace)
 -- FIXME: might this be better as Map (Path, Seg) (blah)? We spend a lot of time
 -- coping with the nested map-ness:
 type ContOps after = Map Path (Map Seg (Maybe Attributee, SequenceOp after))
@@ -86,7 +78,6 @@ trpdEmpty ns = TrpDigest ns mempty mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
-    ((unNamespace $ trpdNamespace trpd) :</) <$>
     Map.foldlWithKey f [] (trpdContOps trpd)
   where
     f acc p segMap = acc ++
@@ -114,25 +105,29 @@ newtype FrpErrorDigest = FrpErrorDigest
   } deriving (Show, Eq)
 
 data TrcSubDigest = TrcSubDigest
-  { trcsdPostTypeSubs :: Map (Tagged PostDefinition TypeName) SubOp
-  , trcsdTypeSubs :: Map (Tagged Definition TypeName) SubOp
-  , trcsdDataSubs :: Map Path SubOp
+  { trcsdPostTypeSubs :: Mos Namespace (Tagged PostDefinition Seg)
+  , trcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
+  , trcsdTypeSubs :: Mos Namespace (Tagged Definition Seg)
+  , trcsdTypeUnsubs :: Mos Namespace (Tagged Definition Seg)
+  , trcsdDataSubs :: Mos Namespace Path
+  , trcsdDataUnsubs :: Mos Namespace Path
   } deriving (Show, Eq)
 
 trcsdEmpty :: TrcSubDigest
-trcsdEmpty = TrcSubDigest mempty mempty mempty
+trcsdEmpty = mempty
+
+instance Monoid TrcSubDigest where
+  mempty = TrcSubDigest mempty mempty mempty mempty mempty mempty
+  (TrcSubDigest ps1 pu1 ts1 tu1 ds1 du1) `mappend`
+    (TrcSubDigest ps2 pu2 ts2 tu2 ds2 du2) = TrcSubDigest
+      (ps1 <> ps2) (pu1 <> pu2)
+      (ts1 <> ts2) (tu1 <> tu2)
+      (ds1 <> ds2) (du1 <> du2)
 
 trcsdNamespaces :: TrcSubDigest -> Set Namespace
-trcsdNamespaces (TrcSubDigest ptSubs tSubs dSubs) =
-       -- Assumes TypeName ordered by Namespace first ;-)
-       Set.mapMonotonic (tnNamespace . unTagged) (Map.keysSet ptSubs)
-    <> Set.mapMonotonic (tnNamespace . unTagged) (Map.keysSet tSubs)
-       -- Assumes Path ordered in segment order
-    <> (Set.fromAscList
-        $ fmap (Namespace . fst)
-        $ mapMaybe Path.splitHead
-        $ Set.toAscList
-        $ Map.keysSet dSubs)
+trcsdNamespaces (TrcSubDigest ptSubs ptUnsubs tSubs tUnsubs dSubs dUnsubs) =
+  let f = Map.keysSet . unMos in mconcat
+    [f ptSubs, f ptUnsubs, f tSubs, f tUnsubs, f dSubs, f dUnsubs]
 
 data TrcUpdateDigest = TrcUpdateDigest
   { trcudNamespace :: Namespace
@@ -150,23 +145,28 @@ newtype FrcRootDigest = FrcRootDigest
 
 data FrcSubDigest = FrcSubDigest
   { frcsdErrors :: Map SubErrorIndex [Text]
-  , frcsdPostTypeUnsubs :: Set (Tagged PostDefinition TypeName)
-  , frcsdTypeUnsubs :: Set (Tagged Definition TypeName)
-  , frcsdDataUnsubs :: Set Path
+  , frcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
+  , frcsdTypeUnsubs :: Mos Namespace (Tagged Definition Seg)
+  , frcsdDataUnsubs :: Mos Namespace Path
   } deriving (Show, Eq)
 
 frcsdNull :: FrcSubDigest -> Bool
 frcsdNull (FrcSubDigest errs ptUnsubs tUnsubs dUnsubs) =
   null errs && null ptUnsubs && null tUnsubs && null dUnsubs
 
+instance Monoid FrcSubDigest where
+  mempty = FrcSubDigest mempty mempty mempty mempty
+  (FrcSubDigest e1 pt1 t1 d1) `mappend` (FrcSubDigest e2 pt2 t2 d2) =
+    FrcSubDigest (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
+
 frcsdEmpty :: FrcSubDigest
-frcsdEmpty = FrcSubDigest mempty mempty mempty mempty
+frcsdEmpty = mempty
 
 data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
   , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , frcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , frcudTypeAssignments :: Map Path (Tagged Definition TypeName, Editable)
+  , frcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Map DataErrorIndex [Text]
@@ -240,10 +240,13 @@ toTccum (targ, (att, so)) = case so of
   SoAbsent -> TccumAbsent targ att
 
 digestRootContOpMsgs :: [ToClientContainerUpdateMessage] -> RootContOps
-digestRootContOpMsgs = fmap snd . Map.fromList . fmap unwrapTccum
+digestRootContOpMsgs = Map.fromList
+  . fmap (bimap Namespace (fmap Namespace . snd) . unwrapTccum)
 
 produceRootContOpMsgs :: RootContOps -> [ToClientContainerUpdateMessage]
-produceRootContOpMsgs = fmap toTccum . Map.toList . fmap (Nothing,)
+produceRootContOpMsgs =
+    fmap (toTccum . bimap unNamespace ((Nothing,) . fmap unNamespace))
+  . Map.toList
 
 digestTccums :: [(Path, ToClientContainerUpdateMessage)] -> ContOps Seg
 digestTccums = splitMap . fmap (fmap unwrapTccum)
@@ -290,11 +293,6 @@ produceTpcums creates cops = createMsgs <> copMsgs
       SoAbsent -> TpcumAbsent targ att
     copMsgs = unmash procCop cops
 
-qualifyDefMessage :: Namespace -> DefMessage Seg def -> DefMessage TypeName def
-qualifyDefMessage ns dm = case dm of
-  MsgDefine s d -> MsgDefine (TypeName ns s) d
-  MsgUndefine s -> MsgUndefine $ TypeName ns s
-
 digestDefMessages
   :: Ord a => [DefMessage (Tagged def a) def] -> Map (Tagged def a) (DefOp def)
 digestDefMessages = Map.fromList . fmap procMsg
@@ -310,49 +308,38 @@ produceDefMessages = Map.elems . Map.mapWithKey
      OpDefine def -> MsgDefine a def
      OpUndefine -> MsgUndefine a)
 
-digestSubMessages
-  :: [SubMessage]
-  -> ( Map (Tagged PostDefinition TypeName) SubOp
-     , Map (Tagged Definition TypeName) SubOp
-     , Map Path SubOp)
-digestSubMessages msgs = foldl' procMsg mempty msgs
+digestSubMessages :: [(Namespace, SubMessage)] -> TrcSubDigest
+digestSubMessages msgs = foldMap procMsg msgs
   where
-    procMsg (post, ty, dat) msg = case msg of
-      MsgSubscribe p -> (post, ty, Map.insert p OpSubscribe dat)
-      MsgPostTypeSubscribe tn -> (Map.insert tn OpSubscribe post, ty, dat)
-      MsgTypeSubscribe tn -> (post, Map.insert tn OpSubscribe ty, dat)
-      MsgUnsubscribe p -> (post, ty, Map.insert p OpUnsubscribe dat)
-      MsgPostTypeUnsubscribe tn -> (Map.insert tn OpUnsubscribe post, ty, dat)
-      MsgTypeUnsubscribe tn -> (post, Map.insert tn OpUnsubscribe ty, dat)
+     s = Mos.singleton
+     procMsg (ns, msg) = case msg of
+       MsgSubscribe p -> mempty {trcsdDataSubs = s ns p}
+       MsgUnsubscribe p -> mempty {trcsdDataUnsubs = s ns p}
+       MsgPostTypeSubscribe tn -> mempty {trcsdPostTypeSubs = s ns tn}
+       MsgPostTypeUnsubscribe tn -> mempty {trcsdPostTypeUnsubs = s ns tn}
+       MsgTypeSubscribe tn -> mempty {trcsdTypeSubs = s ns tn}
+       MsgTypeUnsubscribe tn -> mempty {trcsdTypeUnsubs = s ns tn}
 
-produceSubMessages
-  :: Map (Tagged PostDefinition TypeName) SubOp
-  -> Map (Tagged Definition TypeName) SubOp
-  -> Map Path SubOp -> [SubMessage]
-produceSubMessages pTySubs tySubs datSubs =
-    pTySubMsgs ++ tySubMsgs ++ datSubMsgs
-  where
-    pTySubMsgs = Map.elems $ Map.mapWithKey (\tn op -> case op of
-      OpSubscribe -> MsgPostTypeSubscribe tn
-      OpUnsubscribe -> MsgPostTypeUnsubscribe tn) pTySubs
-    tySubMsgs = Map.elems $ Map.mapWithKey (\tn op -> case op of
-      OpSubscribe -> MsgTypeSubscribe tn
-      OpUnsubscribe -> MsgTypeUnsubscribe tn) tySubs
-    datSubMsgs = Map.elems $ Map.mapWithKey (\p op -> case op of
-      OpSubscribe -> MsgSubscribe p
-      OpUnsubscribe -> MsgUnsubscribe p) datSubs
+produceSubMessages :: TrcSubDigest -> [(Namespace, SubMessage)]
+produceSubMessages (TrcSubDigest ps pu ts tu ds du) =
+       (fmap MsgPostTypeSubscribe <$> Mos.toList ps)
+    ++ (fmap MsgPostTypeUnsubscribe <$> Mos.toList pu)
+    ++ (fmap MsgTypeSubscribe <$> Mos.toList ts)
+    ++ (fmap MsgTypeUnsubscribe <$> Mos.toList tu)
+    ++ (fmap MsgSubscribe <$> Mos.toList ds)
+    ++ (fmap MsgUnsubscribe <$> Mos.toList du)
 
 
 digestTypeMessages
-  :: [TypeMessage] -> Map Path (Tagged Definition TypeName, Editable)
+  :: [TypeMessage] -> Map Path (Tagged Definition Seg, Editable)
 digestTypeMessages = Map.fromList . fmap procMsg
   where
-    procMsg (MsgAssignType p tn ed) = (p, (tn, ed))
+    procMsg (MsgAssignType p s ed) = (p, (s, ed))
 
 produceTypeMessages
-  :: Map Path (Tagged Definition TypeName, Editable) -> [TypeMessage]
+  :: Map Path (Tagged Definition Seg, Editable) -> [TypeMessage]
 produceTypeMessages = Map.elems . Map.mapWithKey
-  (\p (tn, l) -> MsgAssignType p tn l)
+  (\p (s, l) -> MsgAssignType p s l)
 
 digestDataErrMsgs :: [DataErrorMessage] -> Map DataErrorIndex [Text]
 digestDataErrMsgs = foldl (Map.unionWith (<>)) mempty . fmap procMsg
@@ -369,8 +356,8 @@ digestSubErrMsgs = foldl (Map.unionWith (<>)) mempty . fmap procMsg
     procMsg (MsgSubError ei t) = Map.singleton ei [t]
 
 produceSubErrMsgs :: Map SubErrorIndex [Text] -> [SubErrorMessage]
-produceSubErrMsgs =
-  mconcat . Map.elems . Map.mapWithKey (\ei errs -> MsgSubError ei <$> errs)
+produceSubErrMsgs = mconcat . Map.elems
+  . Map.mapWithKey (\ei errs -> MsgSubError ei <$> errs)
 
 digestToRelayBundle :: ToRelayBundle -> TrDigest
 digestToRelayBundle trb = case trb of
@@ -395,10 +382,7 @@ digestToRelayBundle trb = case trb of
 
     digestToRelayClientSubBundle :: ToRelayClientSubBundle -> TrcSubDigest
     digestToRelayClientSubBundle (ToRelayClientSubBundle subs) =
-      let
-        (postTySubs, tySubs, datSubs) = digestSubMessages subs
-      in
-        TrcSubDigest postTySubs tySubs datSubs
+      digestSubMessages subs
 
     digestToRelayClientUpdateBundle
       :: ToRelayClientUpdateBundle -> TrcUpdateDigest
@@ -426,8 +410,8 @@ produceToRelayBundle trd = case trd of
     produceToRelayProviderRelinquish (TrprDigest ns) =
       ToRelayProviderRelinquish ns
 
-    produceToRelayClientSubBundle (TrcSubDigest pTySubs tySubs datSubs) =
-      ToRelayClientSubBundle $ produceSubMessages pTySubs tySubs datSubs
+    produceToRelayClientSubBundle trcsd =
+      ToRelayClientSubBundle $ produceSubMessages trcsd
 
     produceToRelayClientUpdateBundle (TrcUpdateDigest ns dd creates co) =
       let
@@ -460,9 +444,9 @@ digestFromRelayBundle frb = case frb of
         (FromRelayClientSubBundle subErrs ptSubs tSubs dSubs) =
       FrcSubDigest
         (digestSubErrMsgs subErrs)
-        (Set.fromList ptSubs)
-        (Set.fromList tSubs)
-        (Set.fromList dSubs)
+        (Mos.fromList ptSubs)
+        (Mos.fromList tSubs)
+        (Mos.fromList dSubs)
 
     digestFromRelayClientUpdateBundle
         (FromRelayClientUpdateBundle ns errs postDefs defs tas dums coms) =
@@ -500,9 +484,9 @@ produceFromRelayBundle frd = case frd of
         (FrcSubDigest subErrs postTyUns tyUns datUns) =
       FromRelayClientSubBundle
         (produceSubErrMsgs subErrs)
-        (Set.toList postTyUns)
-        (Set.toList tyUns)
-        (Set.toList datUns)
+        (Mos.toList postTyUns)
+        (Mos.toList tyUns)
+        (Mos.toList datUns)
 
     produceFromRelayClientUpdateBundle
       :: FrcUpdateDigest -> FromRelayClientUpdateBundle

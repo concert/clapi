@@ -90,7 +90,7 @@ ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtFloat b -> boundsToText b
       TtDouble b -> boundsToText b
       TtString r -> r
-      TtRef tn -> Path.typeNameToText tn
+      TtRef ts -> Path.unSeg ts
       TtList tt' -> ttToText tt'
       TtSet tt' -> ttToText tt'
       TtOrdSet tt' -> ttToText tt'
@@ -123,7 +123,7 @@ ttParser' = ttNameParser >>= argsParser
       TtnFloat -> TtFloat <$> bbp (toRealFloat <$> Dat.scientific)
       TtnDouble -> TtDouble <$> bbp (toRealFloat <$> Dat.scientific)
       TtnString -> TtString <$> optionalBracket "" regex
-      TtnRef -> TtRef <$> bracketed Path.typeNameP
+      TtnRef -> TtRef <$> bracketed Path.segP
       TtnList -> bracketed $ TtList <$> ttParser'
       TtnSet -> bracketed $ TtSet <$> ttParser'
       TtnOrdSet -> bracketed $ TtOrdSet <$> ttParser'

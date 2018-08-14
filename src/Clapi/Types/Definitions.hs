@@ -11,7 +11,7 @@ import Data.Maybe.Clapi (note)
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
 import Clapi.Types.Base (InterpolationLimit(..))
-import Clapi.Types.Path (Seg, TypeName)
+import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (TreeType(..))
 
 data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
@@ -20,7 +20,7 @@ data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
 class OfMetaType metaType where
   metaType :: metaType -> MetaType
-  childTypeFor :: Seg -> metaType -> Maybe (Tagged Definition TypeName)
+  childTypeFor :: Seg -> metaType -> Maybe (Tagged Definition Seg)
   childEditableFor :: MonadFail m => metaType -> Seg -> m Editable
 
 data PostDefinition = PostDefinition
@@ -45,7 +45,7 @@ instance OfMetaType TupleDefinition where
 
 data StructDefinition = StructDefinition
   { strDefDoc :: Text
-  , strDefTypes :: AssocList Seg (Tagged Definition TypeName, Editable)
+  , strDefTypes :: AssocList Seg (Tagged Definition Seg, Editable)
   } deriving (Show, Eq)
 
 instance OfMetaType StructDefinition where
@@ -57,8 +57,8 @@ instance OfMetaType StructDefinition where
 
 data ArrayDefinition = ArrayDefinition
   { arrDefDoc :: Text
-  , arrPostType :: Maybe (Tagged PostDefinition TypeName)
-  , arrDefChildType :: Tagged Definition TypeName
+  , arrPostType :: Maybe (Tagged PostDefinition Seg)
+  , arrDefChildType :: Tagged Definition Seg
   , arrDefChildEditable :: Editable
   } deriving (Show, Eq)
 
@@ -78,11 +78,11 @@ tupleDef :: Text -> AssocList Seg TreeType -> InterpolationLimit -> Definition
 tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
 
 structDef
-  :: Text -> AssocList Seg (Tagged Definition TypeName, Editable) -> Definition
+  :: Text -> AssocList Seg (Tagged Definition Seg, Editable) -> Definition
 structDef doc types = StructDef $ StructDefinition doc types
 
 arrayDef :: Text
-  -> Maybe (Tagged PostDefinition TypeName) -> Tagged Definition TypeName
+  -> Maybe (Tagged PostDefinition Seg) -> Tagged Definition Seg
   -> Editable -> Definition
 arrayDef doc ptn tn ed = ArrayDef $ ArrayDefinition doc ptn tn ed
 

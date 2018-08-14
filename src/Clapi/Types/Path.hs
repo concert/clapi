@@ -3,15 +3,13 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveLift #-}
 
-module Clapi.Types.Path (
-    Path'(..), Path, Seg, mkSeg, unSeg, Placeholder(..),
-    pathP, segP, toText, fromText,
-    splitHead, splitTail, parentPath,
-    pattern Root, pattern (:</), pattern (:/),
-    isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths,
-    Namespace(..),
-    TypeName(..), tTypeName, tTnNamespace, tTnName, qualify, unqualify,
-    typeNameP, typeNameToText, typeNameFromText) where
+module Clapi.Types.Path
+  ( Seg, mkSeg, unSeg, segP, Placeholder(..), Namespace(..)
+  , Path'(..), Path, pathP, toText, fromText
+  , pattern Root, pattern (:</), pattern (:/)
+  , splitHead, splitTail, parentPath
+  , isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths
+  ) where
 
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
@@ -19,7 +17,6 @@ import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
 import Data.Semigroup
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)
@@ -29,7 +26,7 @@ import Language.Haskell.TH.Lift (Lift)
 newtype Seg = Seg {unSeg :: Text} deriving (Eq, Ord, Lift)
 
 instance Show Seg where
-    show = show . unSeg
+    show = Text.unpack . unSeg
 
 isValidSegChar :: Char -> Bool
 isValidSegChar c = isLetter c || isDigit c || c == '_'
@@ -43,6 +40,7 @@ mkSeg = either fail return . DAT.parseOnly (segP <* DAT.endOfInput)
 instance Semigroup Seg where
   (Seg t1) <> (Seg t2) = Seg (t1 <> Text.singleton '_' <> t2)
 
+newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
 newtype Placeholder
   = Placeholder { unPlaceholder :: Seg } deriving (Eq, Ord, Show)
 
@@ -107,42 +105,6 @@ isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
 
 childPaths :: Functor f => Path' a -> f a -> f (Path' a)
 childPaths (Path' as1) as2 = Path' . (as1 ++) . pure <$> as2
-
-newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
-data TypeName
-  = TypeName {tnNamespace :: Namespace, tnName :: Seg} deriving (Eq, Ord)
-
-qualify :: Namespace -> Tagged a Seg -> Tagged a TypeName
-qualify ns taggedSeg = fmap (TypeName ns) taggedSeg
-
-unqualify :: Tagged a TypeName -> (Namespace, Tagged a Seg)
-unqualify (Tagged (TypeName ns s)) = (ns, Tagged s)
-
-tTypeName :: Namespace -> Seg -> Tagged a TypeName
-tTypeName ns s = Tagged $ TypeName ns s
-
-tTnNamespace :: Tagged a TypeName -> Namespace
-tTnNamespace = tnNamespace . unTagged
-
-tTnName :: Tagged a TypeName -> Tagged a Seg
-tTnName = fmap tnName
-
-qualSepChar :: Char
-qualSepChar = ':'
-
-typeNameToText :: TypeName -> Text
-typeNameToText (TypeName ns s) =
-  unSeg (unNamespace ns) <> Text.singleton qualSepChar <> unSeg s
-
-instance Show TypeName where
-  show = Text.unpack . typeNameToText
-
-typeNameP :: Parser TypeName
-typeNameP = TypeName <$> (Namespace <$> segP) <*> (DAT.char qualSepChar >> segP)
-
-typeNameFromText :: MonadFail m => Text -> m TypeName
-typeNameFromText =
-  either fail return . DAT.parseOnly (typeNameP <* DAT.endOfInput)
 
 parentPath :: Path' a -> Maybe (Path' a)
 parentPath p = case p of

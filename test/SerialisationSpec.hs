@@ -119,9 +119,10 @@ instance Arbitrary DataErrorIndex where
 
 instance Arbitrary SubErrorIndex where
   arbitrary = oneof
-    [ PathSubError <$> arbitrary
-    , TypeSubError <$> arbitrary
-    , PostTypeSubError <$> arbitrary
+    [ NamespaceSubError <$> arbitrary
+    , PathSubError <$> arbitrary <*> arbitrary
+    , TypeSubError <$> arbitrary <*> arbitrary
+    , PostTypeSubError <$> arbitrary <*> arbitrary
     ]
 
 instance Arbitrary DataErrorMessage where

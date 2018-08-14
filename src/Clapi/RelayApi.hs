@@ -23,19 +23,19 @@ import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   (DefOp(OpDefine), DataChange(..), FrcUpdateDigest(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path
-  ( Seg, TypeName(..), tTypeName, pattern Root, pattern (:/), pattern (:</)
-  , Namespace(..))
+import Clapi.Types.Path (Seg, pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (castWireValue)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
-import Clapi.Valuespace (apiNs, dnSeg)
 
 class PathSegable a where
     pathNameFor :: a -> Seg
+
+dn :: Seg
+dn = [segq|display_name|]
 
 relayApiProto ::
     forall i. (Ord i, PathSegable i) =>
@@ -60,39 +60,40 @@ relayApiProto selfAddr =
              "The difference between two clocks, in seconds"
              (alSingleton [segq|seconds|] $ TtFloat unbounded)
              ILUninterpolated)
+        , (dn, tupleDef
+             "A human-readable name for a struct or array element"
+             (alSingleton [segq|name|] $ TtString "")
+             ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
-             [ (dnSeg, (tTypeName apiNs dnSeg, Editable))
-             , (clock_diff, (tTypeName rns clock_diff, ReadOnly))
+             [ (dn, (Tagged dn, Editable))
+             , (clock_diff, (Tagged clock_diff, ReadOnly))
              ])
         , ([segq|clients|], arrayDef "Info about the connected clients"
-             Nothing
-             (tTypeName rns [segq|client_info|]) ReadOnly)
+             Nothing (Tagged [segq|client_info|]) ReadOnly)
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
-               -- FIXME: want to make Ref's TypeName tagged...
-               $ TtRef $ TypeName rns [segq|client_info|])
+               -- FIXME: want to make Ref's Seg tagged...
+               $ TtRef [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
-             Nothing
-             (tTypeName rns [segq|owner_info|]) ReadOnly)
+             Nothing (Tagged [segq|owner_info|]) ReadOnly)
         , ([segq|self|], tupleDef "Which client you are"
-             (alSingleton [segq|info|]
-               $ TtRef $ TypeName rns [segq|client_info|])
+             (alSingleton [segq|info|] $ TtRef [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
-          [ ([segq|build|], (tTypeName rns [segq|build|], ReadOnly))
-          , ([segq|clients|], (tTypeName rns [segq|clients|], ReadOnly))
-          , ([segq|owners|], (tTypeName rns [segq|owners|], ReadOnly))
-          , ([segq|self|], (tTypeName rns [segq|self|], ReadOnly))])
+          [ ([segq|build|], (Tagged [segq|build|], ReadOnly))
+          , ([segq|clients|], (Tagged [segq|clients|], ReadOnly))
+          , ([segq|owners|], (Tagged [segq|owners|], ReadOnly))
+          , ([segq|self|], (Tagged [segq|self|], ReadOnly))])
         ])
       (alFromList
         [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             WireValue $ Path.toText Path.unSeg $ selfSeg :</ selfClientPath])
+             WireValue $ Path.toText Path.unSeg selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [WireValue @Float 0.0])
-        , ( selfClientPath :/ dnSeg
+        , ( selfClientPath :/ dn
           , ConstChange Nothing [WireValue @Text "Relay"])
         ])
       mempty
@@ -121,7 +122,7 @@ relayApiProto selfAddr =
               pubUpdate (alFromList
                 [ ( [pathq|/clients|] :/ cSeg :/ clock_diff
                   , ConstChange Nothing [WireValue $ unTimeDelta tdZero])
-                , ( [pathq|/clients|] :/ cSeg :/ dnSeg
+                , ( [pathq|/clients|] :/ cSeg :/ dn
                   , ConstChange Nothing [WireValue $ Text.pack displayName])
                 ])
                 mempty
@@ -186,7 +187,7 @@ relayApiProto selfAddr =
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
           WireValue $ Path.toText Path.unSeg $
-          Root :/ selfSeg :/ [segq|clients|] :/ ns]
+          Root :/ [segq|clients|] :/ ns]
         viewAs i dd =
           let
             theirSeg = pathNameFor i
