@@ -42,6 +42,14 @@ import Clapi.Tree (RoseTreeNodeType(..))
 deriving instance Eq RoseTreeNodeType
 deriving instance Eq ValidationErr
 
+-- | Fully revalidates the given Valuespace and throws an error if there are any
+--   validation issues.
+unsafeValidateVs :: Valuespace -> Valuespace
+unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
+  where
+    allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $ vsTree vs
+
+
 vsProviderErrorsOn :: Valuespace -> TrpDigest -> [Path] -> Expectation
 vsProviderErrorsOn vs d ps = case (processToRelayProviderDigest d vs) of
     Left errMap -> errMap `shouldSatisfy`

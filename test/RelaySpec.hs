@@ -26,9 +26,11 @@ import Clapi.Types.Messages (SubErrorIndex(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..))
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
-import Clapi.Valuespace (baseValuespace, unsafeValidateVs, Valuespace(..))
+import Clapi.Valuespace (baseValuespace, Valuespace(..))
 import Clapi.NamespaceTracker
   ( PostNstInboundDigest(..), ClientRegs(..))
+
+import ValuespaceSpec (unsafeValidateVs)
 
 spec :: Spec
 spec = describe "the relay protocol" $ do

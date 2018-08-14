@@ -9,7 +9,7 @@ module Clapi.Valuespace
   , baseValuespace
   , VsLookupDef(..), valuespaceGet, getEditable
   , processToRelayProviderDigest, processTrcUpdateDigest
-  , validateVs, unsafeValidateVs
+  , validateVs
   , ValidationErr(..), ProtoFrpDigest(..)
   ) where
 
@@ -92,14 +92,6 @@ removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
     updateTpMap Nothing = Just Nothing
     updateTpMap (Just tpSet) = let tpSet' = Set.difference tpSet tpids in
       if null tpSet' then Nothing else Just $ Just tpSet'
-
--- | Fully revalidates the given Valuespace and throws an error if there are any
---   validation issues.
-unsafeValidateVs :: Valuespace -> Valuespace
-unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
-  where
-    allTainted = Map.delete Root $ Map.fromList $ fmap (,Nothing) $ Tree.treePaths Root $
-      vsTree vs
 
 baseValuespace :: Tagged Definition Seg -> Editable -> Valuespace
 baseValuespace rootType rootEditable = Valuespace
