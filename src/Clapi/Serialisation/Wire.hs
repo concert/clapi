@@ -23,7 +23,7 @@ import Clapi.TH (btq)
 --   wire, so that we can define functions that we can verify are total.
 data WireTypeName
   = WtnTime
-  | WtnWord8 | WtnWord32 | WtnWord64
+  | WtnWord32 | WtnWord64
   | WtnInt32 | WtnInt64
   | WtnFloat | WtnDouble
   | WtnString
@@ -35,7 +35,6 @@ data WireTypeName
 wtName :: WireType -> WireTypeName
 wtName wt = case wt of
   WtTime -> WtnTime
-  WtWord8 -> WtnWord8
   WtWord32 -> WtnWord32
   WtWord64 -> WtnWord64
   WtInt32 -> WtnInt32
@@ -50,7 +49,6 @@ wtName wt = case wt of
 wtnTag :: WireTypeName -> Tag
 wtnTag wt = case wt of
   WtnTime -> [btq|t|]
-  WtnWord8 -> [btq|b|]
   WtnWord32 -> [btq|w|]
   WtnWord64 -> [btq|W|]
   WtnInt32 -> [btq|i|]
@@ -89,7 +87,6 @@ instance Encodable WireType where
       go :: WireTypeName -> Parser WireType
       go wtn = case wtn of
         WtnTime -> return WtTime
-        WtnWord8 -> return WtWord8
         WtnWord32 -> return WtWord32
         WtnWord64 -> return WtWord64
         WtnInt32 -> return WtInt32

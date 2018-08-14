@@ -38,7 +38,6 @@ mkWithWtProxy newFnName preds =
             [VarP wt, VarP f]
             (NormalB $ CaseE (VarE wt)
               [ simpleCase "Time"
-              , simpleCase "Word8"
               , simpleCase "Word32"
               , simpleCase "Word64"
               , simpleCase "Int32"

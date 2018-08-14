@@ -26,8 +26,8 @@ spec = describe "validation" $ do
     successCase (WireValue $ Time 2 3)
     failureCase (WireValue @Int32 3)
   describeTreeType (ttEnum $ Proxy @TestEnum) $ do
-    successCase (WireValue @Word8 2)
-    failureCase (WireValue @Word8 3)
+    successCase (WireValue @Word32 2)
+    failureCase (WireValue @Word32 3)
   describe "example bounded numbers" $ do
     bs0 <- either fail return $ bounds Nothing (Just 12)
     describeTreeType (TtInt32 bs0) $ do

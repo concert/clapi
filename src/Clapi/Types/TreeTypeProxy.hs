@@ -20,7 +20,7 @@ import Clapi.Types.Tree (TreeType(..))
 withTtProxy :: TreeType -> (forall a. Wireable a => Proxy a -> r) -> r
 withTtProxy tt f = case tt of
     TtTime -> f $ Proxy @Time
-    TtEnum _ -> f $ Proxy @Word8
+    TtEnum _ -> f $ Proxy @Word32
     TtWord32 _ -> f $ Proxy @Word32
     TtWord64 _ -> f $ Proxy @Word64
     TtInt32 _ -> f $ Proxy @Int32

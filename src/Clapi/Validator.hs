@@ -6,7 +6,7 @@ import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (void)
 import Data.Bifunctor (first)
-import Data.Word (Word8)
+import Data.Word (Word32)
 import Data.Monoid ((<>))
 import Data.Proxy
 import Data.Tagged (Tagged(..))
@@ -145,7 +145,7 @@ checkString r t = maybe
   (const $ return t)
   (Text.unpack t =~~ Text.unpack r :: Maybe ())
 
-checkEnum :: MonadFail m => [Seg] -> Word8 -> m Word8
+checkEnum :: MonadFail m => [Seg] -> Word32 -> m Word32
 checkEnum ns w = let theMax = fromIntegral $ length ns in
   if w >= theMax
     then fail $ printf "Enum value %v out of range" w
