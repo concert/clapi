@@ -213,15 +213,24 @@ handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
   in
     (ocud, FrpDigest ns dat cr cont)
 
+data RelayState
+  = RelayState
+  { rsProvCache :: Map Namespace Valuespace
+  } deriving (Show)
+
+instance Monoid RelayState where
+  mempty = RelayState mempty
+  (RelayState pc1) `mappend` (RelayState pc2) = RelayState $ pc1 <> pc2
+
 relay
-  :: Monad m => Map Namespace Valuespace
+  :: Monad m => RelayState
   -> Protocol (i, PostNstInboundDigest) Void (i, OutboundDigest) Void m ()
 relay = evalStateT relay_
 
 relay_
   :: Monad m
   => StateT
-        (Map Namespace Valuespace)
+        RelayState
         (Protocol (i, PostNstInboundDigest) Void (i, OutboundDigest) Void m)
         ()
 relay_ = forever $
@@ -230,15 +239,15 @@ relay_ = forever $
     sendRev' i d = lift $ sendRev (i, d)
     fwd (i, dig) = case dig of
       PnidRootGet -> do
-        vsm <- get
+        vsm <- rsProvCache <$> get
         sendRev' i $ Ocrid $ FrcRootDigest $
           Map.fromSet (const $ SoAfter Nothing) $ Map.keysSet vsm
       PnidClientGet cgd -> do
-        (ocsed, ocids) <- genInitDigests cgd <$> get
+        (ocsed, ocids) <- genInitDigests cgd . rsProvCache <$> get
         unless (ocsedNull ocsed) $ sendRev' i $ Ocsed ocsed
         mapM_ (sendRev' i . Ocid) ocids
       PnidTrcud trcud -> let ns = trcudNamespace trcud in
-        (Map.lookup ns <$> get) >>= maybe
+        (Map.lookup ns . rsProvCache <$> get) >>= maybe
         ( sendRev' i $ Ocud $ (frcudEmpty ns)
             -- FIXME: Not a global error. NamespaceError?
             { frcudErrors =
@@ -252,12 +261,13 @@ relay_ = forever $
       PnidTrpd trpd -> let ns = trpdNamespace trpd in do
         vs <- Map.findWithDefault
             (baseValuespace (Tagged $ unNamespace ns) Editable) ns
+            . rsProvCache
             <$> get
         either
           (sendRev' i . Ope . FrpErrorDigest) (handleOwnerSuccess i trpd vs) $
           processToRelayProviderDigest trpd vs
       PnidTrprd (TrprDigest ns) -> do
-        modify $ Map.delete ns
+        modify $ RelayState . Map.delete ns . rsProvCache
         sendRev' i $ Ocrd $ FrcRootDigest $ Map.singleton ns SoAbsent
     handleOwnerSuccess
         i (TrpDigest ns postDefs defs dd contOps errs)
@@ -275,7 +285,7 @@ relay_ = forever $
         contOps'' = extraCops <> contOps'
         frcrd = FrcRootDigest $ Map.singleton ns $ SoAfter Nothing
       in do
-        vsm <- get
+        vsm <- rsProvCache <$> get
         sendRev' i $
           Ocud $ FrcUpdateDigest ns
             -- FIXME: these functions should probably operate on just a
@@ -286,7 +296,7 @@ relay_ = forever $
             mungedTas dd' contOps'' errs
         unless (null $ frcrdContOps frcrd) $
             sendRev' i $ Ocrd frcrd
-        modify $ Map.insert ns vs'
+        modify $ RelayState . Map.insert ns vs' . rsProvCache
 
 -- FIXME: Worst case implementation
 -- FIXME: should probably just operate on one Valuespace
