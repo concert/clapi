@@ -7,7 +7,7 @@
 module Clapi.Valuespace
   ( Valuespace, vsTree, vsTyDefs, vsPostDefs
   , baseValuespace
-  , vsLookupDef, valuespaceGet, getEditable
+  , VsLookupDef(..), valuespaceGet, getEditable
   , processToRelayProviderDigest, processTrcUpdateDigest
   , validateVs, unsafeValidateVs
   , ValidationErr(..), ProtoFrpDigest(..)
@@ -102,7 +102,7 @@ unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
       vsTree vs
 
 baseValuespace :: Tagged Definition Seg -> Editable -> Valuespace
-baseValuespace rootType rootEditable = unsafeValidateVs $ Valuespace
+baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
     mempty

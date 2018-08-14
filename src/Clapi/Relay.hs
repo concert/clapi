@@ -1,13 +1,17 @@
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# LANGUAGE
     FlexibleContexts
   , LambdaCase
+  , OverloadedStrings
+  , PartialTypeSignatures
 #-}
 
 module Clapi.Relay where
 
 import Control.Monad (unless)
-import Data.Bifunctor (first)
-import Data.Foldable (fold)
+import Control.Monad.Fail (MonadFail)
+import Data.Bifunctor (first, bimap)
+import Data.Either (partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
@@ -19,14 +23,20 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
 
+import Data.Maybe.Clapi (note)
+import Data.Map.Mos (Mos)
+import qualified Data.Map.Mos as Mos
+
 import Clapi.Types.Base (Attributee)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, unAssocList , alFoldlWithKey)
-import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
+import Clapi.Types.Messages
+  ( DataErrorIndex(..), SubErrorIndex(..), MkSubErrIdx(..))
 import Clapi.Types.Digests
   ( TrpDigest(..), TrprDigest(..)
   , FrpErrorDigest(..), FrcUpdateDigest(..), frcudEmpty, FrcRootDigest(..)
+  , FrpDigest(..)
   , DataChange(..)
   , TrcUpdateDigest(..)
   , TimeSeriesDataOp(..), DefOp(..)
@@ -34,23 +44,23 @@ import Clapi.Types.Digests
   , OutboundClientSubErrsDigest, OutboundClientInitialisationDigest
   , OutboundProviderDigest
   , DataDigest, ContOps, ocsedNull)
-import Clapi.Types.Path
-  ( Seg, Path, TypeName(..), unqualify, parentPath, Namespace(..))
+import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Definitions (Editable, Definition, PostDefinition)
+import Clapi.Types.Definitions (Editable(..), Definition, PostDefinition)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode, treeChildNames)
+import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
 import Clapi.Valuespace
   ( Valuespace(..), baseValuespace, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
-  , getEditable)
+  , getEditable, ProtoFrpDigest(..), VsLookupDef(..))
 import Clapi.Protocol (Protocol, waitThenFwdOnly, sendRev)
-import Clapi.Util (nestMapsByKey, mapPartitionEither, partitionDifference)
+import Clapi.Util (nestMapsByKey, partitionDifference)
 
 -- FIXME: Don't like this dependency, even though at some point NST and Relay
 -- need to share this type...
-import Clapi.NamespaceTracker (PostNstInboundDigest(..), ClientGetDigest(..))
+import Clapi.NamespaceTracker (
+  PostNstInboundDigest(..), ClientGetDigest, ClientRegs(..))
 
 oppifyTimeSeries :: TimeSeries [WireValue] -> DataChange
 oppifyTimeSeries ts = TimeChange $
@@ -64,9 +74,6 @@ oppifySequence al =
       (\k afterK v -> (k, (v, SoAfter afterK)))
       alKs (Nothing : (Just <$> alKs)) alVs
 
-splitNs :: Path -> Maybe (Namespace, Path)
-splitNs = fmap (first Namespace) . Path.splitHead
-
 
 -- | A datatype for collecting together all the parts to make up a full
 --   _namespaced_ FrcUpdateDigest, but without the actual namespace so that we
@@ -75,7 +82,7 @@ splitNs = fmap (first Namespace) . Path.splitHead
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
   { pfrcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , pfrcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , pfrcudTypeAssignments :: Map Path (Tagged Definition TypeName, Editable)
+  , pfrcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
   , pfrcudErrors :: Map DataErrorIndex [Text]
@@ -93,44 +100,67 @@ toFrcud :: Namespace -> ProtoFrcUpdateDigest -> FrcUpdateDigest
 toFrcud ns (ProtoFrcUpdateDigest defs pdefs tas dat cops errs) =
   FrcUpdateDigest ns defs pdefs tas dat cops errs
 
+
+rLookupDef
+  :: (VsLookupDef def, MonadFail m)
+  => Map Namespace Valuespace -> Namespace -> Tagged def Seg -> m def
+rLookupDef vsm ns s =
+  note "Namespace not found" (Map.lookup ns vsm) >>= vsLookupDef s
+
+rGet
+  :: MonadFail m
+  => Map Namespace Valuespace -> Namespace -> Path
+  -> m (Definition, Tagged Definition Seg, Editable, RoseTreeNode [WireValue])
+rGet vsm ns p =
+  note "Namespace not found" (Map.lookup ns vsm) >>= valuespaceGet p
+
 genInitDigests
-  :: ClientGetDigest -> Valuespace
+  :: ClientGetDigest -> Map Namespace Valuespace
   -> (OutboundClientSubErrsDigest, [OutboundClientInitialisationDigest])
-genInitDigests (ClientGetDigest ptGets tGets dGets) vs =
+genInitDigests (ClientRegs ptGets tGets dGets) vsm =
   let
-    (ptSubErrs, postDefs) = mapPartitionEither
-      $ Map.fromSet (flip vsLookupDef vs) ptGets
-    (tSubErrs, defs) = mapPartitionEither
-      $ Map.fromSet (flip vsLookupDef vs) tGets
-    (dSubErrs, treeData) = mapPartitionEither
-      $ Map.fromSet (flip valuespaceGet vs) dGets
+    g :: (a -> b -> Either c d) -> (a, b) -> Either ((a, b), c) ((a, b), d)
+    g f x@(a, b) = bimap (x,) (x,) $ f a b
+
+    h
+      :: (Ord a, Ord b, MkSubErrIdx b)
+      => (a -> b -> Either c d) -> Mos a b
+      -> (Map (a, SubErrorIndex) c, Map (a, b) d)
+    h f m = bimap
+        (Map.fromList . fmap (first $ fmap mkSubErrIdx))
+        Map.fromList
+      $ partitionEithers $ fmap (g f) $ Mos.toList m
+
+    ptSubErrs, tSubErrs, dSubErrs :: Map (Namespace, SubErrorIndex) String
+    postDefs :: Map (Namespace, Tagged PostDefinition Seg) PostDefinition
+    defs :: Map (Namespace, Tagged Definition Seg) Definition
+    treeData :: Map (Namespace, Path) _
+    (ptSubErrs, postDefs) = h (rLookupDef vsm) ptGets
+    (tSubErrs, defs) = h (rLookupDef vsm) tGets
+    (dSubErrs, treeData) = h (rGet vsm) dGets
 
     -- FIXME: can we only ever have a single error per SubErrIdx now(?)
     -- therefore could ditch the `pure`?
-    ocsed = fmap (pure . Text.pack)
-        $ Map.mapKeys PostTypeSubError ptSubErrs
-       <> Map.mapKeys TypeSubError tSubErrs
-       <> Map.mapKeys PathSubError dSubErrs
+    ocsed = fmap (pure . Text.pack) $ ptSubErrs <> tSubErrs <> dSubErrs
 
     ocids = Map.elems $ Map.mapWithKey toFrcud $ Map.unionsWith (<>)
-      [ translateDefData setPostDefs postDefs
-      , translateDefData setDefs defs
-      , translateTreeData treeData
+      [ i (toDefPfrcud setPostDefs) postDefs
+      , i (toDefPfrcud setDefs) defs
+      , i toDatPfrcud treeData
       ]
   in
     (ocsed, ocids)
   where
-    translateTreeData =
-        fmap fold
-      . snd
-      . nestMapsByKey splitNs
-      . Map.mapMaybeWithKey (\path x -> (mkPfrcud x) . snd <$> splitNs path)
-    mkPfrcud (def, ttn, ed, treeNode) path =
-      -- We could assert here that the namespace of the (Tagged TypeName) == ns
+    i
+      :: (Ord k1, Ord k2, Monoid b)
+      => (k2 -> a -> b) -> Map (k1, k2) a -> Map k1 b
+    i f = fmap (Map.foldMapWithKey f) . snd . nestMapsByKey Just
+
+    toDatPfrcud path (def, tn, ed, treeNode) =
       let
         pfrcud = mempty
-          { pfrcudDefinitions = Map.singleton (tnName <$> ttn) (OpDefine def)
-          , pfrcudTypeAssignments = Map.singleton path (ttn, ed)
+          { pfrcudDefinitions = Map.singleton tn (OpDefine def)
+          , pfrcudTypeAssignments = Map.singleton path (tn, ed)
           }
       in
         case treeNode of
@@ -142,13 +172,7 @@ genInitDigests (ClientGetDigest ptGets tGets dGets) vs =
           RtnDataSeries ts -> pfrcud
             { pfrcudData = alSingleton path (oppifyTimeSeries ts) }
 
-    translateDefData setter =
-        fmap fold
-      . snd
-      . nestMapsByKey (Just . unqualify)
-      . Map.mapWithKey (mkDefPfrcud setter)
-    mkDefPfrcud setter ttn def = setter
-      (Map.singleton (tnName <$> ttn) (OpDefine def))
+    toDefPfrcud setter tn def = setter $ Map.singleton tn $ OpDefine def
     setPostDefs x = mempty { pfrcudPostDefs = x }
     setDefs x = mempty { pfrcudDefinitions = x }
 
@@ -178,10 +202,10 @@ handleTrcud
   -> (OutboundClientUpdateDigest, OutboundProviderDigest)
 handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
   let
-    (errMap, opd) = processTrcUpdateDigest vs trcud
+    (errMap, ProtoFrpDigest dat cr cont ) = processTrcUpdateDigest vs trcud
     ocud = (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
   in
-    (ocud, opd)
+    (ocud, FrpDigest ns dat cr cont)
 
 relay
   :: Monad m => Map Namespace Valuespace
@@ -193,42 +217,43 @@ relay vsm = waitThenFwdOnly fwd
             sendRev
               ( i
               , Ocrid $ FrcRootDigest $ Map.fromSet (const $ SoAfter Nothing) $
-                Map.keys vsm)
+                Map.keysSet vsm)
             relay vsm
-        PnidCgd cgd ->
+        PnidClientGet cgd ->
           let (ocsed, ocids) = genInitDigests cgd vsm in do
             unless (ocsedNull ocsed) $ sendRev (i, Ocsed ocsed)
             mapM_ (sendRev . (i,) . Ocid) ocids
             relay vsm
-        PnidTrcud trcud -> let ns = trcudNamespace trcud) in maybe
+        PnidTrcud trcud -> let ns = trcudNamespace trcud in maybe
           (do
-            sendRev (i, Ocud $ ocudEmpty
-              { ocudNamespace = ns
+            sendRev (i, Ocud $ (frcudEmpty ns)
               -- FIXME: Not a global error, NamespaceError?
-              , ocudErrors = Map.singleton GlobalError ["fixthis: Bad namespace"]
+              { frcudErrors = Map.singleton GlobalError
+                ["fixthis: Bad namespace"]
               })
-            relay vsm
+            relay vsm)
           (\vs -> let (ocud, opd) = handleTrcud vs trcud in do
             sendRev (i, Opd $ opd)
             sendRev (i, Ocud $ ocud)
             relay vsm
           )
           (Map.lookup ns vsm)
-        PnidTrpd trpd -> maybe
-          ()
-          (\vs -> either
-            terminalErrors
-            (handleOwnerSuccess trpd) $ processToRelayProviderDigest trpd vs)
-          (Map.lookup ns vsm)
-        PnidTrprd (TrprDigest ns) ->
-          let vs' = vsRelinquish ns vs in do
-            sendRev (i, Ocrd $ generateRootUpdates vs vs')
-            relay vs'
+        PnidTrpd trpd ->
+          let
+            ns = trpdNamespace trpd
+            vs = Map.findWithDefault
+                (baseValuespace (Tagged $ unNamespace ns) Editable) ns vsm
+          in
+            either terminalErrors (handleOwnerSuccess trpd vs) $
+              processToRelayProviderDigest trpd vs
+        PnidTrprd (TrprDigest ns) -> do
+          sendRev (i, Ocrd $ FrcRootDigest $ Map.singleton ns SoAbsent)
+          relay $ Map.delete ns vsm
       where
         handleOwnerSuccess
-            (TrpDigest ns postDefs defs dd contOps errs) (qUpdatedTyAssns, vs') =
+            (TrpDigest ns postDefs defs dd contOps errs)
+            vs (updatedTyAssns, vs') =
           let
-            updatedTyAssns = Map.mapKeys (maybe (error "Fix vs mess") snd . Path.splitHead) qUpdatedTyAssns
             dd' = vsMinimiseDataDigest dd vs
             contOps' = vsMinimiseContOps contOps vs
             mungedTas = Map.mapWithKey
@@ -239,13 +264,15 @@ relay vsm = waitThenFwdOnly fwd
             extraCops = Map.fromAscList $ mapMaybe (\p -> parentPath p >>= getContOps) $
               Set.toAscList $ Map.keysSet updatedTyAssns
             contOps'' = extraCops <> contOps'
-            frcrd = generateRootUpdates vs vs'
+            frcrd = FrcRootDigest $ Map.singleton ns (SoAfter Nothing)
           in do
             sendRev (i,
               Ocud $ FrcUpdateDigest ns
-                (vsMinimiseDefinitions postDefs ns vs)
+                -- FIXME: these functions should probably operate on just a
+                -- single vs:
+                (vsMinimiseDefinitions postDefs ns vsm)
                 -- FIXME: we need to provide defs for type assignments too.
-                (vsMinimiseDefinitions defs ns vs)
+                (vsMinimiseDefinitions defs ns vsm)
                 mungedTas dd' contOps'' errs)
             unless (null $ frcrdContOps frcrd) $
                 sendRev (i, Ocrd frcrd)
@@ -255,8 +282,9 @@ relay vsm = waitThenFwdOnly fwd
           relay vsm
 
 -- FIXME: Worst case implementation
+-- FIXME: should probably just operate on one Valuespace
 vsMinimiseDefinitions
-  :: Map (Tagged def Seg) (DefOp def) -> Namespace -> Valuespace
+  :: Map (Tagged def Seg) (DefOp def) -> Namespace -> Map Namespace Valuespace
   -> Map (Tagged def Seg) (DefOp def)
 vsMinimiseDefinitions defs _ _ = defs
 
@@ -268,12 +296,12 @@ vsMinimiseDataDigest dd _ = dd
 vsMinimiseContOps :: ContOps k -> Valuespace -> ContOps k
 vsMinimiseContOps contOps _ = contOps
 
-generateRootUpdates :: Valuespace -> Valuespace -> FrcRootDigest
-generateRootUpdates vs vs' =
+generateRootUpdates
+  :: Map Namespace Valuespace -> Map Namespace Valuespace -> FrcRootDigest
+generateRootUpdates vsm vsm' =
   let
     (addedRootNames, removedRootNames) = partitionDifference
-      (Set.fromList $ treeChildNames $ vsTree vs')
-      (Set.fromList $ treeChildNames $ vsTree vs)
+      (Map.keysSet vsm') (Map.keysSet vsm)
     addedRcos = Map.fromSet (const $ SoAfter Nothing) addedRootNames
     removedRcos = Map.fromSet (const SoAbsent) removedRootNames
   in
