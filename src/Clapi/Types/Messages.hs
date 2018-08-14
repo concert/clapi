@@ -1,3 +1,8 @@
+{-# LANGUAGE
+    FlexibleInstances
+  , TypeSynonymInstances
+#-}
+
 module Clapi.Types.Messages where
 
 import Data.Tagged (Tagged(..))
@@ -36,6 +41,16 @@ data SubErrorIndex
   | TypeSubError (Tagged Definition Seg)
   | PathSubError Path
   deriving (Show, Eq, Ord)
+
+class MkSubErrIdx a where
+  mkSubErrIdx :: a -> SubErrorIndex
+
+instance MkSubErrIdx (Tagged PostDefinition Seg) where
+  mkSubErrIdx = PostTypeSubError
+instance MkSubErrIdx (Tagged Definition Seg) where
+  mkSubErrIdx = TypeSubError
+instance MkSubErrIdx Path where
+  mkSubErrIdx = PathSubError
 
 data SubErrorMessage
   = MsgSubError
