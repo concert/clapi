@@ -18,7 +18,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.Types.Path (Seg, mkSeg, TypeName)
+import Clapi.Types.Path (Seg, mkSeg)
 import Clapi.Util (uncamel)
 
 

@@ -36,7 +36,7 @@ import Clapi.Util (proxyF, proxyF3)
 
 import Clapi.Types.Tree (TreeType(..), Bounds, bounds, ttEnum)
 import Clapi.Types.Path
-  (Seg, Path'(..), mkSeg, TypeName(..), Namespace(..), Placeholder(..))
+  (Seg, Path'(..), mkSeg, Namespace(..), Placeholder(..))
 import Clapi.Types.WireTH (mkWithWtProxy)
 
 smallListOf :: Gen a -> Gen [a]
@@ -61,9 +61,6 @@ instance Arbitrary Seg where
 instance Arbitrary a => Arbitrary (Path' a) where
   arbitrary = Path' <$> smallListOf arbitrary
   shrink (Path' names) = fmap Path' . drop 1 . reverse . inits $ names
-
-instance Arbitrary TypeName where
-  arbitrary = TypeName <$> arbitrary <*> arbitrary
 
 instance Arbitrary Editable where
     arbitrary = arbitraryBoundedEnum
