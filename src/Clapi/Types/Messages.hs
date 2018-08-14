@@ -151,8 +151,6 @@ newtype FromRelayProviderErrorBundle = FromRelayProviderErrorBundle
   } deriving (Eq, Show)
 
 newtype ToRelayClientSubBundle = ToRelayClientSubBundle
-  -- FIXME: want to break this down so that we can no longer subscribe to root
-  -- (i.e. all subs are (Namespace, Path or Seg))
   { trcsbSubs :: [(Namespace, SubMessage)]
   } deriving (Eq, Show)
 

@@ -64,7 +64,6 @@ import Clapi.Types.Tree (TreeType(..))
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
--- FIXME: this should probably be `Map (Tagged def Seg) def`
 type DefMap def = Map (Tagged def Seg) def
 type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition Seg)
 type Referer = Path
@@ -332,7 +331,6 @@ processToRelayProviderDigest
 processToRelayProviderDigest trpd vs =
   let
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
-    -- FIXME: The fudge here is for dealing with the namespaces being different
     getPathsWithType s = Mos.getDependants s tas
     redefdPaths = mconcat $
       fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
