@@ -128,7 +128,7 @@ instance Arbitrary DataErrorMessage where
   arbitrary = MsgDataError <$> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary SubErrorMessage where
-  arbitrary = MsgSubError <$> arbitrary <*> arbitraryTextNoNull
+  arbitrary = MsgSubError <$> arbitrary <*> arbitrary <*> arbitraryTextNoNull
 
 instance Arbitrary ToRelayProviderBundle where
   arbitrary = ToRelayProviderBundle

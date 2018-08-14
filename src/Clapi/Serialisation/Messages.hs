@@ -84,8 +84,9 @@ instance Encodable SubErrorIndex where
     SeitPath -> PathSubError <$> parser
 
 instance Encodable SubErrorMessage where
-    builder (MsgSubError idx txt) = builder idx <<>> builder txt
-    parser = MsgSubError <$> parser <*> parser
+    builder (MsgSubError ns idx txt) =
+      builder ns <<>> builder idx <<>> builder txt
+    parser = MsgSubError <$> parser <*> parser <*> parser
 
 data DefMsgType = DefMsgTDef | DefMsgTUndef deriving (Enum, Bounded)
 
