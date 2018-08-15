@@ -35,6 +35,8 @@ import Data.Word
 import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos, unMos)
 import qualified Data.Map.Mos as Mos
+import Data.Map.Dependencies (Dependencies)
+import qualified Data.Map.Dependencies as Dependencies
 
 import Data.Maybe.Clapi (note)
 
@@ -65,7 +67,7 @@ import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
 type DefMap def = Map (Tagged def Seg) def
-type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition Seg)
+type TypeAssignmentMap = Dependencies Path (Tagged Definition Seg)
 type Referer = Path
 type Referee = Path
 type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
@@ -80,7 +82,7 @@ data Valuespace = Valuespace
   } deriving (Eq, Show)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
-removeTamSubtree tam p = Mos.filterDependencies (not . flip Path.isChildOf p) tam
+removeTamSubtree tam p = Dependencies.filterDependencies (not . flip Path.isChildOf p) tam
 
 removeXrefs :: Referer -> Xrefs -> Xrefs
 removeXrefs referer = fmap (Map.delete referer)
@@ -97,7 +99,7 @@ baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
     mempty
-    (Mos.setDependency Root rootType mempty)
+    (Dependencies.setDependency Root rootType mempty)
     mempty
     rootEditable
 
@@ -134,7 +136,7 @@ instance VsLookupDef Definition where
 
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
-lookupTypeName p tam = note "Type name not found" $ Mos.getDependency p tam
+lookupTypeName p tam = note "Type name not found" $ Dependencies.getDependency p tam
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
@@ -292,10 +294,10 @@ validateVs t v = do
                       (Map.insert path pathRefClaims newRefClaims)
                       (Map.delete path $
                          tainted <> fmap (const Nothing) changedChildPaths)
-                      (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
+                      (vs {vsTyAssns = Dependencies.setDependencies changedChildPaths oldTyAssns})
                   where
                     oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                      (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
+                      (\name _ -> Dependencies.getDependency (path :/ name) oldTyAssns) $
                       treeChildren rtn
                     newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                       (\name _ -> defDispatch (childTypeFor name) def) $
@@ -331,7 +333,7 @@ processToRelayProviderDigest
 processToRelayProviderDigest trpd vs =
   let
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
-    getPathsWithType s = Mos.getDependants s tas
+    getPathsWithType s = Dependencies.getDependants s tas
     redefdPaths = mconcat $
       fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
     updatedPaths = opsTouched (trpdContOps trpd) $ trpdData trpd

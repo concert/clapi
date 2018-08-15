@@ -26,6 +26,7 @@ library
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
+                     , Data.Map.Dependencies
                      , Clapi.Attributor
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
@@ -146,6 +147,7 @@ test-suite clapi-hs-test
                      , transformers
                      , unagi-chan
   other-modules:       Helpers
+                     , Data.Map.DependenciesSpec
                      , Data.Map.MosSpec
                      , SerialisationProtocolSpec
                      , PathSpec
