@@ -29,6 +29,9 @@ instance (Ord k, Ord a) => Monoid (Dependencies k a) where
   (Dependencies f1 r1) `mappend` (Dependencies f2 r2) =
     Dependencies (f1 <> f2) (r1 <> r2)
 
+instance Foldable (Dependencies k) where
+  foldr f acc = foldr f acc . fwdDeps
+
 fromMap :: (Ord k, Ord a) => Map k a -> Dependencies k a
 fromMap m = Dependencies m $ Mos.invertMap m
 
