@@ -6,6 +6,7 @@ module Data.Map.Dependencies
   , setDependency, setDependencies
   , delDependency, delDependencies
   , filterWithKey, filterKey, filter
+  , partitionWithKey, partitionKey, partition
   ) where
 
 import Prelude hiding (lookup, filter)
@@ -86,3 +87,25 @@ filterKey f = filterWithKey (\k _ -> f k)
 
 filter :: (Ord k, Ord a) => (a -> Bool) -> Dependencies k a -> Dependencies k a
 filter f = filterWithKey (const f)
+
+partitionWithKey
+  :: Ord a
+  => (k -> a -> Bool) -> Dependencies k a
+  -> (Dependencies k a, Dependencies k a)
+partitionWithKey f (Dependencies deps rDeps) =
+  let
+    (tDeps, fDeps) = Map.partitionWithKey f deps
+    (tRDeps, fRDeps) = Mos.partitionWithKey (flip f) rDeps
+  in
+    ( Dependencies fDeps fRDeps
+    , Dependencies tDeps tRDeps)
+
+partitionKey
+  :: Ord a
+  => (k -> Bool) -> Dependencies k a -> (Dependencies k a, Dependencies k a)
+partitionKey f = partitionWithKey (\k _ -> f k)
+
+partition
+  :: Ord a
+  => (a -> Bool) -> Dependencies k a -> (Dependencies k a, Dependencies k a)
+partition f = partitionWithKey (\_ a -> f a)
