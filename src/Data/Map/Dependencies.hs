@@ -1,12 +1,14 @@
 module Data.Map.Dependencies
   ( Dependencies, fwdDeps, revDeps
-  , dependenciesFromMap, dependenciesFromList
-  , getDependency, getDependants
+  , fromMap, fromList
+  , lookup, lookupRev
   , allDependencies, allDependants
   , setDependency, setDependencies
   , delDependency, delDependencies
-  , filterDependencies, filterDependents, filterDeps
+  , filterWithKey, filterKey, filter
   ) where
+
+import Prelude hiding (lookup, filter)
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -25,17 +27,17 @@ instance (Ord k, Ord a) => Monoid (Dependencies k a) where
   (Dependencies f1 r1) `mappend` (Dependencies f2 r2) =
     Dependencies (f1 <> f2) (r1 <> r2)
 
-dependenciesFromMap :: (Ord k, Ord a) => Map k a -> Dependencies k a
-dependenciesFromMap m = Dependencies m $ Mos.invertMap m
+fromMap :: (Ord k, Ord a) => Map k a -> Dependencies k a
+fromMap m = Dependencies m $ Mos.invertMap m
 
-dependenciesFromList :: (Ord k, Ord a) => [(k, a)] -> Dependencies k a
-dependenciesFromList = dependenciesFromMap . Map.fromList
+fromList :: (Ord k, Ord a) => [(k, a)] -> Dependencies k a
+fromList = fromMap . Map.fromList
 
-getDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
-getDependency k = Map.lookup k . fwdDeps
+lookup :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
+lookup k = Map.lookup k . fwdDeps
 
-getDependants :: (Ord k, Ord a) => a -> Dependencies k a -> Set k
-getDependants a = maybe mempty id . Map.lookup a . unMos . revDeps
+lookupRev :: (Ord k, Ord a) => a -> Dependencies k a -> Set k
+lookupRev a = maybe mempty id . Map.lookup a . unMos . revDeps
 
 allDependencies :: Dependencies k a -> Set a
 allDependencies = Map.keysSet . unMos . revDeps
@@ -69,19 +71,18 @@ delDependencies ::
     (Ord k, Ord a, Foldable f) => f k -> Dependencies k a -> Dependencies k a
 delDependencies ks ds = foldr delDependency ds ks
 
-filterDeps
+filterWithKey
   :: (Ord k, Ord a) => (k -> a -> Bool) -> Dependencies k a -> Dependencies k a
-filterDeps f (Dependencies deps rDeps) =
+filterWithKey f (Dependencies deps rDeps) =
   let
     (toKeepFwd, toDropFwd) = Map.partitionWithKey f deps
     toKeepRev = Mos.removeSet (Map.keysSet toDropFwd) rDeps
   in
     Dependencies toKeepFwd toKeepRev
 
-filterDependencies
+filterKey
   :: (Ord k, Ord a) => (k -> Bool) -> Dependencies k a -> Dependencies k a
-filterDependencies f = filterDeps (\k _ -> f k)
+filterKey f = filterWithKey (\k _ -> f k)
 
-filterDependents
-  :: (Ord k, Ord a) => (a -> Bool) -> Dependencies k a -> Dependencies k a
-filterDependents f = filterDeps (const f)
+filter :: (Ord k, Ord a) => (a -> Bool) -> Dependencies k a -> Dependencies k a
+filter f = filterWithKey (const f)

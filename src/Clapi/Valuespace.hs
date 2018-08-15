@@ -82,7 +82,7 @@ data Valuespace = Valuespace
   } deriving (Eq, Show)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
-removeTamSubtree tam p = Dependencies.filterDependencies (not . flip Path.isChildOf p) tam
+removeTamSubtree tam p = Dependencies.filterKey (not . flip Path.isChildOf p) tam
 
 removeXrefs :: Referer -> Xrefs -> Xrefs
 removeXrefs referer = fmap (Map.delete referer)
@@ -136,7 +136,7 @@ instance VsLookupDef Definition where
 
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
-lookupTypeName p tam = note "Type name not found" $ Dependencies.getDependency p tam
+lookupTypeName p tam = note "Type name not found" $ Dependencies.lookup p tam
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
@@ -297,7 +297,7 @@ validateVs t v = do
                       (vs {vsTyAssns = Dependencies.setDependencies changedChildPaths oldTyAssns})
                   where
                     oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                      (\name _ -> Dependencies.getDependency (path :/ name) oldTyAssns) $
+                      (\name _ -> Dependencies.lookup (path :/ name) oldTyAssns) $
                       treeChildren rtn
                     newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                       (\name _ -> defDispatch (childTypeFor name) def) $
@@ -333,7 +333,7 @@ processToRelayProviderDigest
 processToRelayProviderDigest trpd vs =
   let
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
-    getPathsWithType s = Dependencies.getDependants s tas
+    getPathsWithType s = Dependencies.lookupRev s tas
     redefdPaths = mconcat $
       fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
     updatedPaths = opsTouched (trpdContOps trpd) $ trpdData trpd

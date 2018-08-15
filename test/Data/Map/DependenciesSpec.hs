@@ -50,20 +50,20 @@ spec =
         assertRevDeps 1  "b" ds2
         assertNoRevDeps 2 ds2
         ds3 `shouldBe` ds0
-    it "filterDeps" $ Dependencies.filterDeps
+    it "filterWithKey" $ Dependencies.filterWithKey
         (\k a -> k == 3 || a == "hi")
-        (Dependencies.dependenciesFromList [(1, "hi"), (2, "ho"), (3, "silver")])
-        `shouldBe` Dependencies.dependenciesFromList [(1, "hi"), (3, "silver")]
+        (Dependencies.fromList [(1, "hi"), (2, "ho"), (3, "silver")])
+        `shouldBe` Dependencies.fromList [(1, "hi"), (3, "silver")]
 
 assertDep :: Char -> Int -> Dependencies Char Int -> Expectation
-assertDep k a ds = Dependencies.getDependency k ds `shouldBe` Just a
+assertDep k a ds = Dependencies.lookup k ds `shouldBe` Just a
 
 assertNoDep :: Char -> Dependencies Char Int -> Expectation
-assertNoDep k ds = Dependencies.getDependency k ds `shouldBe` Nothing
+assertNoDep k ds = Dependencies.lookup k ds `shouldBe` Nothing
 
 assertRevDeps :: Int -> [Char] -> Dependencies Char Int -> Expectation
 assertRevDeps a ks ds =
-    Dependencies.getDependants a ds `shouldBe` Set.fromList ks
+    Dependencies.lookupRev a ds `shouldBe` Set.fromList ks
 
 assertNoRevDeps :: Int -> Dependencies Char Int -> Expectation
-assertNoRevDeps a ds = Dependencies.getDependants a ds `shouldBe` mempty
+assertNoRevDeps a ds = Dependencies.lookupRev a ds `shouldBe` mempty
