@@ -37,7 +37,7 @@ import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, Directed(..), wait, sendFwd, sendRev)
 import Clapi.Util (flattenNestedMaps)
 
-newtype Originator i = Originator i deriving (Eq, Show)
+newtype Originator i = Originator i deriving (Eq, Ord, Show)
 
 type ClientGetDigest = ClientRegs
 

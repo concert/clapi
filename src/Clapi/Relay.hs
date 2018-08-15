@@ -21,6 +21,7 @@ import Data.Map.Strict.Merge (merge, preserveMissing, mapMissing, zipWithMaybeMa
 import qualified Data.Set as Set
 import Data.Maybe (fromJust, mapMaybe)
 import Data.Monoid
+import Data.Set (Set)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -215,26 +216,29 @@ handleTrcud vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
   in
     (ocud, FrpDigest ns dat cr cont)
 
-data RelayState
+data RelayState i
   = RelayState
-  { _rsProvCache :: Map Namespace Valuespace
+  { _rsProvCache :: Map Namespace (i, Valuespace)
+  , _rsRegs :: Map i ClientRegs
+  , _rsAllClients :: Set i
   } deriving (Show)
 
 makeLenses ''RelayState
 
-instance Monoid RelayState where
-  mempty = RelayState mempty
-  (RelayState pc1) `mappend` (RelayState pc2) = RelayState $ pc1 <> pc2
+instance Ord i => Monoid (RelayState i) where
+  mempty = RelayState mempty mempty mempty
+  (RelayState pc1 r1 c1) `mappend` (RelayState pc2 r2 c2) =
+    RelayState (pc1 <> pc2) (r1 <> r2) (c1 <> c2)
 
 relay
-  :: Monad m => RelayState
+  :: Monad m => RelayState i
   -> Protocol (i, PostNstInboundDigest) Void (i, OutboundDigest) Void m ()
 relay = evalStateT relay_
 
 relay_
   :: Monad m
   => StateT
-        RelayState
+        (RelayState i)
         (Protocol (i, PostNstInboundDigest) Void (i, OutboundDigest) Void m)
         ()
 relay_ = forever $
@@ -243,20 +247,19 @@ relay_ = forever $
     sendRev' i d = lift $ sendRev (i, d)
     fwd (i, dig) = case dig of
       PnidRootGet -> do
-        vsm <- view rsProvCache <$> get
+        vsm <- fmap snd . view rsProvCache <$> get
         sendRev' i $ Ocrid $ FrcRootDigest $
           Map.fromSet (const $ SoAfter Nothing) $ Map.keysSet vsm
       PnidClientGet cgd -> do
-        (ocsed, ocids) <- genInitDigests cgd . view rsProvCache <$> get
+        (ocsed, ocids) <- genInitDigests cgd . fmap snd . view rsProvCache <$> get
         unless (ocsedNull ocsed) $ sendRev' i $ Ocsed ocsed
         mapM_ (sendRev' i . Ocid) ocids
       PnidTrcud trcud -> let ns = trcudNamespace trcud in
-        (Map.lookup ns . view rsProvCache <$> get) >>= maybe
+        (Map.lookup ns . fmap snd . view rsProvCache <$> get) >>= maybe
         ( sendRev' i $ Ocud $ (frcudEmpty ns)
             -- FIXME: Not a global error. NamespaceError?
             { frcudErrors =
               Map.singleton GlobalError ["fixthis: Bad namespace"]}
-
         )
         (\vs -> let (ocud, opd) = handleTrcud vs trcud in do
             sendRev' i $ Opd opd
@@ -265,7 +268,7 @@ relay_ = forever $
       PnidTrpd trpd -> let ns = trpdNamespace trpd in do
         vs <- Map.findWithDefault
             (baseValuespace (Tagged $ unNamespace ns) Editable) ns
-            . view rsProvCache
+            . fmap snd . view rsProvCache
             <$> get
         either
           (sendRev' i . Ope . FrpErrorDigest) (handleOwnerSuccess i trpd vs) $
@@ -289,7 +292,7 @@ relay_ = forever $
         contOps'' = extraCops <> contOps'
         frcrd = FrcRootDigest $ Map.singleton ns $ SoAfter Nothing
       in do
-        vsm <- view rsProvCache <$> get
+        vsm <- fmap snd . view rsProvCache <$> get
         sendRev' i $
           Ocud $ FrcUpdateDigest ns
             -- FIXME: these functions should probably operate on just a
@@ -300,7 +303,8 @@ relay_ = forever $
             mungedTas dd' contOps'' errs
         unless (null $ frcrdContOps frcrd) $
             sendRev' i $ Ocrd frcrd
-        modify $ over rsProvCache $ Map.insert ns vs'
+        -- FIXME: not sure about this i...
+        modify $ over rsProvCache $ Map.insert ns (i, vs')
 
 -- FIXME: Worst case implementation
 -- FIXME: should probably just operate on one Valuespace

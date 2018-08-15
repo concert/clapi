@@ -7,6 +7,7 @@ module RelaySpec where
 import Test.Hspec
 
 import Control.Monad.Trans (lift)
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Word
 import Data.Tagged (Tagged(..))
@@ -31,6 +32,9 @@ import Clapi.NamespaceTracker
   ( PostNstInboundDigest(..), ClientRegs(..))
 
 import ValuespaceSpec (unsafeValidateVs)
+
+rs :: Map Namespace Valuespace -> RelayState ()
+rs pc = mempty { _rsProvCache = ((),) <$> pc }
 
 spec :: Spec
 spec = describe "the relay protocol" $ do
@@ -67,7 +71,7 @@ spec = describe "the relay protocol" $ do
           sendFwd ((), PnidClientGet $ mempty {crDataRegs = Mos.singleton fooN Root})
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig1) . snd
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig2) . snd
-      in runEffect $ test <<-> relay (RelayState $ Map.singleton fooN vsWithStuff)
+      in runEffect $ test <<-> relay (rs $ Map.singleton fooN vsWithStuff)
     it "should reject subscriptions to non-existant paths" $
       -- FIXME: is currently testing namespaces! Add a case for an existing
       -- namespace but missing path
@@ -105,7 +109,7 @@ spec = describe "the relay protocol" $ do
         test = do
           sendFwd ((), inDig)
           waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
-      in runEffect $ test <<-> relay (RelayState $ Map.singleton fooN vsWithStuff)
+      in runEffect $ test <<-> relay (rs $ Map.singleton fooN vsWithStuff)
     it "should respond sensibly to data changes" $
       let
         vsWithInt = unsafeValidateVs $ (baseValuespace (Tagged foo) ReadOnly)
@@ -120,7 +124,7 @@ spec = describe "the relay protocol" $ do
             waitThenRevOnly $
               lift . (`shouldBe` (Ocud $ (frcudEmpty fooN) {frcudData = dd})) .
               snd
-      in runEffect $ test <<-> relay (RelayState $ Map.singleton fooN vsWithInt)
+      in runEffect $ test <<-> relay (rs $ Map.singleton fooN vsWithInt)
     it "should not send empty digests to valid client requests" $
       let
         test = do
