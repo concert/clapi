@@ -1,6 +1,7 @@
 module Data.Map.Dependencies
   ( Dependencies, fwdDeps, revDeps
   , fromMap, fromList
+  , keysSet, keysSetR
   , lookup, lookupRev
   , allDependencies, allDependants
   , setDependency, setDependencies
@@ -33,6 +34,12 @@ fromMap m = Dependencies m $ Mos.invertMap m
 
 fromList :: (Ord k, Ord a) => [(k, a)] -> Dependencies k a
 fromList = fromMap . Map.fromList
+
+keysSet :: Dependencies k a -> Set k
+keysSet = Map.keysSet . fwdDeps
+
+keysSetR :: Dependencies k a -> Set a
+keysSetR = Mos.keysSet . revDeps
 
 lookup :: (Ord k, Ord a) => k -> Dependencies k a -> Maybe a
 lookup k = Map.lookup k . fwdDeps

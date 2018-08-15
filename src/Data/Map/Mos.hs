@@ -6,6 +6,7 @@ module Data.Map.Mos
   ( Mos, unMos
   , singleton, singletonSet
   , fromFoldable, fromList, invertMap
+  , keysSet
   , invert
   , toList, toSet, valueSet
   , insert, insertSet, replaceSet, delete, deleteSet, remove, removeSet
@@ -52,6 +53,9 @@ fromList = fromFoldable
 
 invertMap :: (Ord k, Ord a) => Map k a -> Mos a k
 invertMap = Map.foldrWithKey (flip insert) mempty
+
+keysSet :: Mos k a -> Set k
+keysSet = Map.keysSet . unMos
 
 invert :: (Ord k, Ord a) => Mos k a -> Mos a k
 invert = fromFoldable . Set.map swap . toSet
