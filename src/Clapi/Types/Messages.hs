@@ -21,6 +21,7 @@ type TpId = Word32
 
 data DataErrorIndex
   = GlobalError
+  | NamespaceError Namespace
   | PathError Path
   | TimePointError Path TpId
   -- Placeholder errors need to go somewhere, but potentially not in the data

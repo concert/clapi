@@ -99,7 +99,7 @@ baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
     mempty
-    (Dependencies.setDependency Root rootType mempty)
+    (Dependencies.singleton Root rootType)
     mempty
     rootEditable
 

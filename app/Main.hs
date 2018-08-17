@@ -19,7 +19,6 @@ import System.IO (hPutStrLn, stderr)
 import Clapi.Server (protocolServer, withListen)
 import Clapi.SerialisationProtocol (serialiser, digester)
 import Clapi.Serialisation ()
-import Clapi.NamespaceTracker (nstProtocol)
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
@@ -57,5 +56,4 @@ main =
     totalProto = shower "total"
       <<-> relayApiProto internalAddr
       <<-> shower "nt"
-      <<-> nstProtocol
       <<-> relay mempty

@@ -1,10 +1,11 @@
 module Data.Map.Dependencies
   ( Dependencies, fwdDeps, revDeps
+  , singleton
   , fromMap, fromList
   , keysSet, keysSetR
   , lookup, lookupRev
   , allDependencies, allDependants
-  , setDependency, setDependencies
+  , insert, insertLookupWithKey, setDependencies
   , delDependency, delDependencies
   , filterWithKey, filterKey, filter
   , partitionWithKey, partitionKey, partition
@@ -32,6 +33,9 @@ instance (Ord k, Ord a) => Monoid (Dependencies k a) where
 instance Foldable (Dependencies k) where
   foldr f acc = foldr f acc . fwdDeps
 
+singleton :: (Ord k, Ord a) => k -> a -> Dependencies k a
+singleton k a = fromMap $ Map.singleton k a
+
 fromMap :: (Ord k, Ord a) => Map k a -> Dependencies k a
 fromMap m = Dependencies m $ Mos.invertMap m
 
@@ -56,19 +60,22 @@ allDependencies = Map.keysSet . unMos . revDeps
 allDependants :: Dependencies k a -> Set k
 allDependants = Map.keysSet . fwdDeps
 
-setDependency
-  :: (Ord k, Ord a) => k -> a -> Dependencies k a -> Dependencies k a
-setDependency k a (Dependencies deps rDeps) =
-    Dependencies deps' (Mos.insert a k $ rDeps' mCurA)
+insertLookupWithKey
+  :: (Ord k, Ord a) => k -> a -> Dependencies k a -> (Maybe a, Dependencies k a)
+insertLookupWithKey k a (Dependencies deps rDeps) =
+    (mCurA, Dependencies deps' $ Mos.insert a k rDeps')
   where
     f _ newA _curA = newA
     (mCurA, deps') = Map.insertLookupWithKey f k a deps
-    rDeps' (Just curA) = Mos.delete curA k rDeps
-    rDeps' Nothing = rDeps
+    rDeps' = maybe rDeps (\curA -> Mos.delete curA k rDeps) mCurA
+
+insert
+  :: (Ord k, Ord a) => k -> a -> Dependencies k a -> Dependencies k a
+insert k a = snd . insertLookupWithKey k a
 
 setDependencies ::
     (Ord k, Ord a) => Map k a -> Dependencies k a -> Dependencies k a
-setDependencies newDs ds = foldr (uncurry setDependency) ds $ Map.toList newDs
+setDependencies newDs ds = foldr (uncurry insert) ds $ Map.toList newDs
 
 delDependency :: (Ord k, Ord a) => k -> Dependencies k a -> Dependencies k a
 delDependency k (Dependencies deps rDeps) = Dependencies deps' (rDeps' ma)
