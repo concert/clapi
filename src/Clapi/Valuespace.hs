@@ -35,7 +35,6 @@ import Data.Word
 import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos, unMos)
 import qualified Data.Map.Mos as Mos
-import Data.Map.Dependencies (Dependencies)
 import qualified Data.Map.Dependencies as Dependencies
 
 import Data.Maybe.Clapi (note)
@@ -66,20 +65,8 @@ import Clapi.Types.Tree (TreeType(..))
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
-type DefMap def = Map (Tagged def Seg) def
-type TypeAssignmentMap = Dependencies Path (Tagged Definition Seg)
-type Referer = Path
-type Referee = Path
-type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
-
-data Valuespace = Valuespace
-  { vsTree :: RoseTree [WireValue]
-  , vsPostDefs :: DefMap PostDefinition
-  , vsTyDefs :: DefMap Definition
-  , vsTyAssns :: TypeAssignmentMap
-  , vsXrefs :: Xrefs
-  , vsRootEditable :: Editable
-  } deriving (Eq, Show)
+import Clapi.Internal.Valuespace
+  (Valuespace(..), DefMap, TypeAssignmentMap, Referer, Referee, Xrefs)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
 removeTamSubtree tam p = Dependencies.filterKey (not . flip Path.isChildOf p) tam

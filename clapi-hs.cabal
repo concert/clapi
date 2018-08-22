@@ -28,6 +28,7 @@ library
                      , Data.Map.Clapi
                      , Data.Map.Dependencies
                      , Clapi.Attributor
+                     , Clapi.Internal.Valuespace
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.NamespaceTracker
