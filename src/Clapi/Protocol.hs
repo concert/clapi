@@ -1,8 +1,14 @@
 {-# LANGUAGE DeriveFunctor #-}
 
-module Clapi.Protocol where -- (
---  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<<->)
--- ) where
+module Clapi.Protocol
+  ( Directed(..), fromDirected
+  , Protocol, ProtocolF(..)
+  , wait, send, sendFwd, sendRev
+  , waitThen, waitThenFwdOnly, waitThenRevOnly
+  , (<<->), idProtocol, mapProtocol
+  , runProtocolIO, runEffect
+  , pattern EmptySeq, pattern (:>), pattern (:<)
+  ) where
 
 import Control.Concurrent.Async (async, cancel, concurrently_)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
@@ -24,11 +30,10 @@ data ProtocolF a a' b' b next =
   | SendRev b' next
   deriving (Functor)
 
--- instance (Show a', Show b') => Show (ProtocolF a a' b' b next) where
 instance Show (ProtocolF a a' b' b next) where
   show (Wait _) = "wait"
-  show (SendFwd _a' _) = "-> "-- ++ show a'
-  show (SendRev _b' _) = "<- "-- ++ show b'
+  show (SendFwd _a' _) = "-> "
+  show (SendRev _b' _) = "<- "
 
 type Protocol a a' b' b m = FreeT (ProtocolF a a' b' b) m
 
@@ -83,8 +88,8 @@ composeRevBiased protocol1 protocol2 = comp protocol1 mempty mempty protocol2
           Rev b1 -> comp (wait >>= f1) a2q b2q (f2 (Rev b1))
 
     -- Right sends to waiting left:
-    go (Free (Wait f1)) _a2q _b2q (Free (SendRev b2 next)) =
-        runFreeT $ composeRevBiased (f1 (Rev b2)) next
+    go (Free (Wait f1)) a2q b2q (Free (SendRev b2 next)) =
+        runFreeT $ comp (f1 (Rev b2)) a2q b2q next
 
     -- Left sends to waiting right:
     go (Free (SendFwd a2 next)) a2q b2q (Free (Wait f2)) =
@@ -108,8 +113,11 @@ composeRevBiased protocol1 protocol2 = comp protocol1 mempty mempty protocol2
     go _ _a2q _b2q (Pure _) = return $ Pure ()
 
 
-(<<->) :: (Monad m) =>
-    Protocol a1 a2 b3 b2 m () -> Protocol a2 a3 b2 b1 m () -> Protocol a1 a3 b3 b1 m ()
+(<<->)
+  :: (Monad m)
+  => Protocol a1 a2 b3 b2 m ()
+  -> Protocol a2 a3 b2 b1 m ()
+  -> Protocol a1 a3 b3 b1 m ()
 (<<->) = composeRevBiased
 
 
@@ -132,13 +140,13 @@ waitThenFwdOnly
   :: Monad m
   => (a -> Protocol a a' b' Void m r)
   -> Protocol a a' b' Void m r
-waitThenFwdOnly f = waitThen f (const $ error "Message from the void right")
+waitThenFwdOnly f = waitThen f absurd
 
 waitThenRevOnly
   :: Monad m
   => (b -> Protocol Void a' b' b m r)
   -> Protocol Void a' b' b m r
-waitThenRevOnly f = waitThen (const $ error "Message from the void left") f
+waitThenRevOnly f = waitThen absurd f
 
 mapProtocol :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
 mapProtocol f g = forever $ waitThen (sendFwd . f) (sendRev . g)
