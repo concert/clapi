@@ -83,8 +83,8 @@ composeRevBiased protocol1 protocol2 = comp protocol1 mempty mempty protocol2
           Rev b1 -> comp (wait >>= f1) a2q b2q (f2 (Rev b1))
 
     -- Right sends to waiting left:
-    go (Free (Wait f1)) _a2q _b2q (Free (SendRev b2 next)) =
-        runFreeT $ composeRevBiased (f1 (Rev b2)) next
+    go (Free (Wait f1)) a2q b2q (Free (SendRev b2 next)) =
+        runFreeT $ comp (f1 (Rev b2)) a2q b2q next
 
     -- Left sends to waiting right:
     go (Free (SendFwd a2 next)) a2q b2q (Free (Wait f2)) =

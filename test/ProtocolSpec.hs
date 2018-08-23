@@ -6,7 +6,8 @@ import Control.Concurrent.MVar
 import Control.Monad (forever, replicateM)
 import Control.Monad.State
 import Control.Monad.Trans (lift)
-import qualified Data.Set as Set
+import qualified Data.MultiSet as MS
+import Data.Void (absurd)
 
 import Clapi.Protocol
 
@@ -14,7 +15,8 @@ spec :: Spec
 spec = do
     it "Returns result" $ basicResult `shouldBe` ((), "cba")
     it "runProtocolIO" $ rpioResult `shouldReturn` ('a', 'b', "done!")
-    it "Smashed together" $ smashed `shouldBe` (Set.fromList [lyricFwd, lyricRev])
+    it "Smashed together" $
+      smashed `shouldBe` (MS.fromList [lyricFwd, lyricRev, lyricRev])
   where
     basicResult = runState (runEffect $ source <<-> cat <<-> sink) []
     source = (mapM_ sendFwd $ fmap Just ("abc" :: String)) >> sendFwd Nothing
@@ -38,7 +40,9 @@ spec = do
     lyricRev = "we can't find reverse"
     fireFwd = do
       sendFwd lyricFwd
-      waitThen undefined (\x -> lift . modify $ Set.insert x)
+      waitThen absurd (\x -> lift . modify $ MS.insert x)
+      waitThen absurd (\x -> lift . modify $ MS.insert x)
     fireRev = do
       sendRev lyricRev
-      waitThen (\x -> lift . modify $ Set.insert x) undefined
+      sendRev lyricRev
+      waitThen (\x -> lift . modify $ MS.insert x) absurd

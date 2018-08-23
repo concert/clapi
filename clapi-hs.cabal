@@ -135,6 +135,7 @@ test-suite clapi-hs-test
                      , hspec
                      , hspec-expectations
                      , mtl
+                     , multiset
                      , network
                      , network-simple
                      , QuickCheck
