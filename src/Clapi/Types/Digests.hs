@@ -17,6 +17,7 @@ import Data.Word (Word32)
 
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
+import Data.Map.Mol (Mol(..))
 import qualified Data.Map.Mol as Mol
 
 import Clapi.Types.AssocList
@@ -325,7 +326,7 @@ digestTpcums msgs =
     f :: (a, Either b c) -> Either (a, b) (a, c)
     f (a, e) = either (Left . (a,)) (Right . (a,)) e
     mash :: (Ord k1, Ord k2) => [(k1, (k2, v))] -> Map k1 (Map k2 v)
-    mash = fmap Map.fromList . Mol.fromList
+    mash = fmap Map.fromList . unMol . Mol.fromList
     procTpcum
       :: ToProviderContainerUpdateMessage
       -> Either
@@ -342,7 +343,7 @@ produceTpcums
   -> [(Path, ToProviderContainerUpdateMessage)]
 produceTpcums creates cops = createMsgs <> copMsgs
   where
-    unmash f = Mol.toList . fmap (Map.elems . Map.mapWithKey f)
+    unmash f = Mol.toList . Mol . fmap (Map.elems . Map.mapWithKey f)
     procCreate ph (att, OpCreate args ref) = TpcumCreateAfter args ph ref att
     createMsgs = unmash procCreate creates
     procCop targ (att, op) = case op of

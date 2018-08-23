@@ -32,8 +32,9 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
+import Data.Map.Mol (Mol(..))
 import qualified Data.Map.Mol as Mol
-import Data.Map.Mos (Mos, unMos)
+import Data.Map.Mos (Mos(..))
 import qualified Data.Map.Mos as Mos
 import qualified Data.Map.Dependencies as Dependencies
 
@@ -180,7 +181,7 @@ checkRefClaims
 checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
   where
     errIf m = unless (null m) $ Left m
-    smashErrMap = errIf . Mol.unions . lefts . Map.elems
+    smashErrMap = errIf . unMol . Mol.unions . fmap Mol . lefts . Map.elems
     checkRefsAtPath
       :: Path
       -> Either RefTypeClaims (Map TpId RefTypeClaims)
