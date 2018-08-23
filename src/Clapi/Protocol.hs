@@ -108,8 +108,11 @@ composeRevBiased protocol1 protocol2 = comp protocol1 mempty mempty protocol2
     go _ _a2q _b2q (Pure _) = return $ Pure ()
 
 
-(<<->) :: (Monad m) =>
-    Protocol a1 a2 b3 b2 m () -> Protocol a2 a3 b2 b1 m () -> Protocol a1 a3 b3 b1 m ()
+(<<->)
+  :: (Monad m)
+  => Protocol a1 a2 b3 b2 m ()
+  -> Protocol a2 a3 b2 b1 m ()
+  -> Protocol a1 a3 b3 b1 m ()
 (<<->) = composeRevBiased
 
 
@@ -132,13 +135,13 @@ waitThenFwdOnly
   :: Monad m
   => (a -> Protocol a a' b' Void m r)
   -> Protocol a a' b' Void m r
-waitThenFwdOnly f = waitThen f (const $ error "Message from the void right")
+waitThenFwdOnly f = waitThen f absurd
 
 waitThenRevOnly
   :: Monad m
   => (b -> Protocol Void a' b' b m r)
   -> Protocol Void a' b' b m r
-waitThenRevOnly f = waitThen (const $ error "Message from the void left") f
+waitThenRevOnly f = waitThen absurd f
 
 mapProtocol :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
 mapProtocol f g = forever $ waitThen (sendFwd . f) (sendRev . g)
