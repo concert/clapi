@@ -1,8 +1,14 @@
 {-# LANGUAGE DeriveFunctor #-}
 
-module Clapi.Protocol where -- (
---  Directed(..), Protocol, wait, sendFwd, sendRev, terminate, blimp, (<<->)
--- ) where
+module Clapi.Protocol
+  ( Directed(..), fromDirected
+  , Protocol, ProtocolF(..)
+  , wait, send, sendFwd, sendRev
+  , waitThen, waitThenFwdOnly, waitThenRevOnly
+  , (<<->), idProtocol, mapProtocol
+  , runProtocolIO, runEffect
+  , pattern EmptySeq, pattern (:>), pattern (:<)
+  ) where
 
 import Control.Concurrent.Async (async, cancel, concurrently_)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
@@ -24,11 +30,10 @@ data ProtocolF a a' b' b next =
   | SendRev b' next
   deriving (Functor)
 
--- instance (Show a', Show b') => Show (ProtocolF a a' b' b next) where
 instance Show (ProtocolF a a' b' b next) where
   show (Wait _) = "wait"
-  show (SendFwd _a' _) = "-> "-- ++ show a'
-  show (SendRev _b' _) = "<- "-- ++ show b'
+  show (SendFwd _a' _) = "-> "
+  show (SendRev _b' _) = "<- "
 
 type Protocol a a' b' b m = FreeT (ProtocolF a a' b' b) m
 
