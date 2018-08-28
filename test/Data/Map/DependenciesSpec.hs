@@ -16,9 +16,9 @@ spec =
     it "Singularly works" $
       let
         ds0 = mempty
-        ds1 = Dependencies.setDependency 'a' 1 ds0
-        ds2 = Dependencies.setDependency 'b' 1 ds1
-        ds3 = Dependencies.setDependency 'a' 2 ds2
+        ds1 = Dependencies.insert 'a' 1 ds0
+        ds2 = Dependencies.insert 'b' 1 ds1
+        ds3 = Dependencies.insert 'a' 2 ds2
         ds4 = Dependencies.delDependency 'b' ds3
         ds5 = Dependencies.delDependency 'a' ds4
       in do
