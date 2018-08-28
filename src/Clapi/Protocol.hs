@@ -188,8 +188,8 @@ runEffect proto = runFreeT proto >>= f
   where
     f (Pure r) = return r
     f (Free (Wait _)) = error "Waiting for a Void value!"
-    f (Free (SendFwd _ _)) = error "SendFwd a Void value - how?!"
-    f (Free (SendRev _ _)) = error "SendRev a Void value - how?!"
+    f (Free (SendFwd v _)) = absurd v
+    f (Free (SendRev v _)) = absurd v
 
 runProtocolIO :: (MonadIO m) =>
     IO a -> (a' -> m ()) ->
