@@ -21,7 +21,7 @@ import qualified Data.Map as Map
 import Data.Map.Strict.Merge (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
 import qualified Data.Set as Set
 import Data.Maybe (fromJust, mapMaybe, fromMaybe)
-import Data.Monoid
+import Data.Semigroup
 import Data.Set (Set)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -92,13 +92,15 @@ data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
   , pfrcudErrors :: Map DataErrorIndex [Text]
   }
 
-instance Monoid ProtoFrcUpdateDigest where
-  mempty = ProtoFrcUpdateDigest mempty mempty mempty mempty mempty mempty
-  (ProtoFrcUpdateDigest pd1 defs1 ta1 d1 co1 err1)
-      `mappend` (ProtoFrcUpdateDigest pd2 defs2 ta2 d2 co2 err2) =
+instance Semigroup ProtoFrcUpdateDigest where
+  ProtoFrcUpdateDigest pd1 defs1 ta1 d1 co1 err1
+      <> ProtoFrcUpdateDigest pd2 defs2 ta2 d2 co2 err2 =
     ProtoFrcUpdateDigest
       (pd1 <> pd2) (defs1 <> defs2) (ta1 <> ta2) (d1 <> d2) (co1 <> co2)
       (Map.unionWith (<>) err1 err2)
+instance Monoid ProtoFrcUpdateDigest where
+  mempty = ProtoFrcUpdateDigest mempty mempty mempty mempty mempty mempty
+  mappend = (<>)
 
 toFrcud :: Namespace -> ProtoFrcUpdateDigest -> FrcUpdateDigest
 toFrcud ns (ProtoFrcUpdateDigest defs pdefs tas dat cops errs) =

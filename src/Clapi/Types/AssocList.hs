@@ -23,6 +23,7 @@ import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
+import Data.Semigroup
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -42,10 +43,11 @@ mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocLis
 unsafeMkAssocList :: [(a, b)] -> AssocList a b
 unsafeMkAssocList = AssocList
 
+instance Eq a => Semigroup (AssocList a b) where
+  al1 <> AssocList l2 = Foldable.foldl' (\acc (a, b) -> alInsert a b acc) al1 l2
 instance Eq a => Monoid (AssocList a b) where
   mempty = AssocList []
-  al1 `mappend` (AssocList l2) =
-    Foldable.foldl' (\acc (a, b) -> alInsert a b acc) al1 l2
+  mappend = (<>)
 
 -- FIXME: remove at some point now we have defined a monoid instance?
 alEmpty :: AssocList a b

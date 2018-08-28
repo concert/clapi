@@ -25,7 +25,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Strict.Merge (
     merge, preserveMissing, dropMissing, zipWithMaybeMatched)
-import Data.Monoid ((<>))
+import Data.Semigroup
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tuple (swap)
@@ -38,9 +38,11 @@ newtype Mos k a
   { unMos :: Map k (Set a)
   } deriving (Show, Eq, Ord, Foldable)
 
+instance (Ord k, Ord a) => Semigroup (Mos k a) where
+  Mos m1 <> Mos m2 = Mos $ Map.unionWith (<>) m1 m2
 instance (Ord k, Ord a) => Monoid (Mos k a) where
   mempty = Mos mempty
-  (Mos m1) `mappend` (Mos m2) = Mos $ Map.unionWith (<>) m1 m2
+  mappend = (<>)
 
 
 singleton :: k -> a -> Mos k a
