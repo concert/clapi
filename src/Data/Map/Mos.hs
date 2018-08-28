@@ -6,17 +6,18 @@ module Data.Map.Mos
   ( Mos, unMos
   , singleton, singletonSet
   , fromFoldable, fromList, invertMap
-  , keysSet, hasKey
+  , keysSet, hasKey, member, contains
   , invert
   , toList, toSet, valueSet
   , insert, insertSet, replaceSet, delete, deleteSet, remove, removeSet
   , lookup
   , difference, intersection, union
+  , filter, filterWithKey, filterKey
   , partition, partitionWithKey, partitionKey
   , map, mapWithKey
   ) where
 
-import Prelude hiding (lookup, map)
+import Prelude hiding (lookup, map, filter)
 
 import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
@@ -58,7 +59,13 @@ keysSet :: Mos k a -> Set k
 keysSet = Map.keysSet . unMos
 
 hasKey :: Ord k => Mos k a -> k -> Bool
-hasKey mos k = k `Set.member` keysSet mos
+hasKey (Mos m) k = k `Map.member` m
+
+member :: Ord a => a -> Mos k a -> Bool
+member a = any (a `Set.member`) . unMos
+
+contains :: (Ord k, Ord a) => k -> a -> Mos k a -> Bool
+contains k a = maybe False (a `Set.member`) . Map.lookup k . unMos
 
 invert :: (Ord k, Ord a) => Mos k a -> Mos a k
 invert = fromFoldable . Set.map swap . toSet
@@ -115,6 +122,17 @@ intersection (Mos m1) (Mos m2) = Mos $
 
 union :: (Ord k, Ord a) => Mos k a -> Mos k a -> Mos k a
 union (Mos m1) (Mos m2) = Mos $ Map.unionM m1 m2
+
+filterWithKey :: (k -> a -> Bool) -> Mos k a -> Mos k a
+filterWithKey f = Mos
+  . Map.mapMaybeWithKey (\k sa -> Maybe.fromFoldable $ Set.filter (f k) sa)
+  . unMos
+
+filter :: (a -> Bool) -> Mos k a -> Mos k a
+filter f = filterWithKey $ const f
+
+filterKey :: (k -> Bool) -> Mos k a -> Mos k a
+filterKey f = Mos . Map.filterWithKey (\k _a -> f k) . unMos
 
 partitionWithKey :: Ord k => (k -> a -> Bool) -> Mos k a -> (Mos k a, Mos k a)
 partitionWithKey f =
