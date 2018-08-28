@@ -31,7 +31,7 @@ import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
 
 newtype AssocList a b
   = AssocList {unAssocList :: [(a, b)]}
-  deriving (Show, Eq, Functor, Foldable, Traversable)
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
 alNull :: AssocList a b -> Bool
 alNull (AssocList l) = null l

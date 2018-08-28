@@ -33,7 +33,10 @@ import Data.Tuple (swap)
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
-newtype Mos k a = Mos { unMos :: Map k (Set a) } deriving (Show, Eq, Foldable)
+newtype Mos k a
+  = Mos
+  { unMos :: Map k (Set a)
+  } deriving (Show, Eq, Ord, Foldable)
 
 instance (Ord k, Ord a) => Monoid (Mos k a) where
   mempty = Mos mempty
