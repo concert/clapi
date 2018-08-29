@@ -15,7 +15,7 @@ import Test.Hspec
 import Prelude hiding (pred)
 import Control.Monad (unless, forM_, (>=>), forever)
 import Control.Monad.Trans (lift)
-import Data.Either (rights, isRight)
+import Data.Either (isRight)
 import Data.Int (Int32)
 import Data.List (intercalate)
 import Data.Map (Map)
@@ -23,11 +23,9 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.MultiSet as MS
 import Data.Proxy
-import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Word
 import Data.Void (Void)
 import Text.Printf
 
@@ -38,9 +36,8 @@ import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Relay (relay, RelayState(..))
-import Clapi.Tree (RoseTree(RtConstData, RtContainer))
 import Clapi.Types.AssocList
-  ( alEmpty, alSingleton, unsafeMkAssocList, alInsert, alLookup)
+  ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
   ( ArrayDefinition(..), StructDefinition(..), TupleDefinition(..)
@@ -52,14 +49,9 @@ import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))
-import Clapi.Valuespace (baseValuespace)
 
-import Clapi.Internal.Valuespace (Valuespace(..), DefMap)
-
-import ValuespaceSpec (unsafeValidateVs)
+import Clapi.Internal.Valuespace (DefMap)
 import Instances ()
-
-import Debug.Trace
 
 
 spec :: Spec
@@ -420,13 +412,6 @@ spec = do
     err client i msg = errs client [(i, [msg])]
     errs client = ServerData client . Frped . FrpErrorDigest . Map.fromList
 
-    isFrcrd (Frcrd _) = True
-    isFrcrd _ = False
-
-    serverData expId pred = \case
-      ServerData actId d -> actId == expId && pred d
-      _ -> False
-
     verifySub
       :: Subscribe entity
       => String -> String -> Namespace -> EntityId entity -> Mutator entity
@@ -751,106 +736,5 @@ tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il
 postDef' :: Text -> [(Seg, TreeType)] -> PostDefinition
 postDef' doc tys = PostDefinition doc (unsafeMkAssocList $ fmap pure <$> tys)
 
-
 defMap :: [(Seg, def)] -> DefMap def
 defMap = Map.mapKeysMonotonic Tagged . Map.fromList
-
-  --   it "handles claims" $
-  --     let
-  --       fooDef = tupleDef "Some Word32"
-  --         (alSingleton [segq|value|] (TtWord32 unbounded)) ILUninterpolated
-  --       dd = alSingleton Root $ ConstChange bob [WireValue (42 :: Word32)]
-  --       inDefs = Map.singleton (Tagged foo) $ OpDefine fooDef
-  --       inDig = PnidTrpd $ (trpdEmpty fooN)
-  --         { trpdDefinitions = inDefs
-  --         , trpdData = dd
-  --         }
-  --       expectedUpDig = Ocud $ (frcudEmpty fooN)
-  --         { frcudDefinitions = inDefs
-  --         , frcudData = dd
-  --         }
-  --       test = do
-  --         sendFwd ((), inDig)
-  --         waitThenRevOnly $ lift . (`shouldBe` expectedUpDig) . snd
-  --     in runEffect $ test <<-> relay mempty
-  --   it "should handle revoke" $
-  --     let
-  --       vsWithStuff = unsafeValidateVs $ (baseValuespace (Tagged foo) ReadOnly)
-  --         { vsTree = RtConstData bob []
-  --         , vsTyDefs = Map.singleton (Tagged foo)
-  --           (tupleDef "Thing" alEmpty ILUninterpolated)
-  --         }
-  --       expectedOutDig1 = Ocrd $ FrcRootDigest $ Map.singleton fooN SoAbsent
-  --       expectedOutDig2 = Ocsed $
-  --         Map.singleton (NamespaceSubError fooN) ["Namespace not found"]
-  --       test = do
-  --         sendFwd ((), PnidTrprd $ TrprDigest fooN)
-  --         sendFwd ((), PnidClientGet $ mempty {crDataRegs = Mos.singleton fooN Root})
-  --         waitThenRevOnly $ lift . (`shouldBe` expectedOutDig1) . snd
-  --         waitThenRevOnly $ lift . (`shouldBe` expectedOutDig2) . snd
-  --     in runEffect $ test <<-> relay (rs $ Map.singleton fooN vsWithStuff)
-  --   it "should reject subscriptions to non-existant paths" $
-  --     -- FIXME: is currently testing namespaces! Add a case for an existing
-  --     -- namespace but missing path
-  --     let
-  --       p = [pathq|/madeup|]
-  --       expectedOutDig = Ocsed $
-  --         Map.singleton (NamespaceSubError fooN) ["Namespace not found"]
-  --       test = do
-  --         sendFwd ((), PnidClientGet
-  --           (mempty {crDataRegs = Mos.singleton fooN p}))
-  --         waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
-  --     in runEffect $ test <<-> relay mempty
-  --   it "should have container ops for implicitly created children" $
-  --     let
-  --       kid = [segq|kid|]
-  --       vsWithStuff = unsafeValidateVs $ (baseValuespace (Tagged foo) ReadOnly)
-  --         { vsTree = RtContainer alEmpty
-  --         , vsTyDefs = Map.fromList
-  --             [ ( Tagged foo
-  --               , arrayDef "arr" Nothing (Tagged kid) ReadOnly)
-  --             , (Tagged kid, tupleDef "kid" alEmpty ILUninterpolated)
-  --             ]
-  --         }
-  --       dd = alSingleton (Root :/ kid) $ ConstChange Nothing []
-  --       inDig = PnidTrpd $ (trpdEmpty fooN)
-  --         { trpdData = dd
-  --         }
-  --       expectedOutDig = Ocud $ (frcudEmpty fooN)
-  --         { frcudData = dd
-  --         , frcudTypeAssignments =
-  --             Map.singleton (Root :/ kid) (Tagged kid, ReadOnly)
-  --         , frcudContOps = Map.singleton Root $
-  --             Map.singleton kid (Nothing, SoAfter Nothing)
-  --         }
-  --       test = do
-  --         sendFwd ((), inDig)
-  --         waitThenRevOnly $ lift . (`shouldBe` expectedOutDig) . snd
-  --     in runEffect $ test <<-> relay (rs $ Map.singleton fooN vsWithStuff)
-  --   it "should respond sensibly to data changes" $
-  --     let
-  --       vsWithInt = unsafeValidateVs $ (baseValuespace (Tagged foo) ReadOnly)
-  --         { vsTree = RtConstData bob [WireValue (3 :: Word32)]
-  --         , vsTyDefs = Map.singleton (Tagged foo)
-  --             (tupleDef "Thing" (alSingleton foo $ TtWord32 unbounded)
-  --              ILUninterpolated)
-  --         }
-  --       dd = alSingleton Root $ ConstChange bob [WireValue (4 :: Word32)]
-  --       test = do
-  --           sendFwd ((), PnidTrpd $ (trpdEmpty fooN) {trpdData = dd})
-  --           waitThenRevOnly $
-  --             lift . (`shouldBe` (Ocud $ (frcudEmpty fooN) {frcudData = dd})) .
-  --             snd
-  --     in runEffect $ test <<-> relay (rs $ Map.singleton fooN vsWithInt)
-  --   it "should not send empty digests to valid client requests" $
-  --     let
-  --       test = do
-  --           sendFwd (1, PnidClientGet mempty)
-  --           sendFwd (2, PnidClientGet $
-  --             mempty {crDataRegs = Mos.singleton fooN [pathq|/whatevz|]})
-  --           waitThenRevOnly $ lift . (`shouldSatisfy` (== (2 :: Int)) . fst)
-  --     in runEffect $ test <<-> relay mempty
-  -- where
-  --   foo = [segq|foo|]
-  --   fooN = Namespace foo
-  --   bob = Just "bob"

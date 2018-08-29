@@ -4,7 +4,7 @@ module Clapi.Protocol
   ( Directed(..), fromDirected
   , Protocol, ProtocolF(..)
   , wait, send, sendFwd, sendRev
-  , waitThen, waitThenFwdOnly, waitThenRevOnly
+  , waitThen, waitThenFwdOnly, waitThenRevOnly, liftedWaitThen
   , (<<->), idProtocol, mapProtocol
   , runProtocolIO, runEffect
   , pattern EmptySeq, pattern (:>), pattern (:<)
@@ -13,7 +13,7 @@ module Clapi.Protocol
 import Control.Concurrent.Async (async, cancel, concurrently_)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forever)
-import Control.Monad.Trans (MonadIO(..))
+import Control.Monad.Trans (MonadIO(..), MonadTrans, lift)
 import Control.Monad.Trans.Free
 import qualified Data.Sequence as S
 import Data.Void
@@ -147,6 +147,17 @@ waitThenRevOnly
   => (b -> Protocol Void a' b' b m r)
   -> Protocol Void a' b' b m r
 waitThenRevOnly f = waitThen absurd f
+
+liftedWaitThen ::
+  (Monad m, MonadTrans t, Monad (t (Protocol a a' b' b m))) =>
+  (a -> t (Protocol a a' b' b m) ()) ->
+  (b -> t (Protocol a a' b' b m) ()) ->
+  t (Protocol a a' b' b m) ()
+liftedWaitThen onFwd onRev = do
+  d <- lift wait
+  case d of
+    Fwd a -> onFwd a
+    Rev b -> onRev b
 
 mapProtocol :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
 mapProtocol f g = forever $ waitThen (sendFwd . f) (sendRev . g)

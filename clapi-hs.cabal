@@ -31,7 +31,6 @@ library
                      , Clapi.Internal.Valuespace
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
-                     , Clapi.NamespaceTracker
                      , Clapi.PerClientProto
                      , Clapi.Relay
                      , Clapi.RelayApi
@@ -154,7 +153,6 @@ test-suite clapi-hs-test
                      , SerialisationProtocolSpec
                      , PathSpec
                      , ProtocolSpec
-                     , NamespaceTrackerSpec
                      , RelaySpec
                      , ServerSpec
                      , SerialisationSpec

@@ -49,8 +49,6 @@ import Clapi.Types.Digests
   , frcsdEmpty, frcudEmpty, frcsdNull, frcudNull, frpdNull
   , DataChange(..)
   , TimeSeriesDataOp(..), DefOp(..)
-  , OutboundClientUpdateDigest
-  , OutboundProviderDigest
   , DataDigest, ContOps
   , FrDigest(..), TrDigest(..), isUndef
   , ClientRegs(..), crNull, crDifference, crIntersection
@@ -64,11 +62,9 @@ import Clapi.Valuespace
   ( Valuespace(..), baseValuespace, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
   , getEditable, ProtoFrpDigest(..), VsLookupDef(..))
-import Clapi.Protocol (Protocol, sendRev)
+import Clapi.Protocol (Protocol, sendRev, liftedWaitThen)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Util (partitionDifference, flattenNestedMaps)
-
-import Clapi.NamespaceTracker (liftedWaitThen)
 
 oppifyTimeSeries :: TimeSeries [WireValue] -> DataChange
 oppifyTimeSeries ts = TimeChange $
