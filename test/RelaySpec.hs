@@ -26,6 +26,7 @@ import Data.Proxy
 import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Word
 import Data.Void (Void)
 import Text.Printf
@@ -43,7 +44,7 @@ import Clapi.Types.AssocList
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
   ( ArrayDefinition(..), StructDefinition(..), TupleDefinition(..)
-  , arrayDef, tupleDef
+  , arrayDef, structDef, tupleDef
   , Editable(..), Definition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -86,9 +87,7 @@ spec = do
       sendFwd $ ClientConnect "Owner" "owner"
       expect [emptyRootDig "owner"]
       sendFwd $ ClientData "owner" $ Trpd $ trpdEmpty fooNs
-      expect [ err "owner" (NamespaceError fooNs) "Empty namespace claim"
-             , ServerDisconnect "owner"
-             ]
+      expectFrped "owner" [(NamespaceError fooNs, "Empty namespace claim")]
 
     it "does not reject empty owner updates" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
@@ -96,7 +95,7 @@ spec = do
       expect [emptyRootDig "owner", nsExists fooNs "owner"]
       sendFwd $ ClientData "owner" $ Trpd $ trpdEmpty fooNs
 
-    it "rejects ownership claims on pre-owned namespace" $ testRelay mempty $ do
+    it "rejects ownership claims on owned namespace" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
       sendFwd $ ClientData "owner" $ Trpd $ simpleClaim foo
       expect [emptyRootDig "owner", nsExists fooNs "owner"]
@@ -104,10 +103,21 @@ spec = do
       sendFwd $ ClientConnect "Usurper" "userper"
       expect [nsExists fooNs "userper"]
       sendFwd $ ClientData "userper" $ Trpd $ simpleClaim foo
-      expect [ err "userper" (NamespaceError fooNs)
-               "Already owned by another provider"
-             , ServerDisconnect "userper"
-             ]
+      expectFrped "userper" [(NamespaceError fooNs, "Already owned")]
+
+    it "allows a new owner to claim a relinquished namespace" $
+      testRelay mempty $ do
+        sendFwd $ ClientConnect "Owner1" "owner1"
+        sendFwd $ ClientConnect "Owner2" "owner2"
+        expect $ emptyRootDig <$> ["owner1", "owner2"]
+
+        sendFwd $ ClientData "owner1" $ Trpd $ simpleClaim foo
+        expectSet $ nsExists fooNs <$> ["owner1", "owner2"]
+        sendFwd $ ClientData "owner1" $ Trprd $ TrprDigest fooNs
+        expectSet $ nsCease fooNs <$> ["owner1", "owner2"]
+
+        sendFwd $ ClientData "owner2" $ Trpd $ simpleClaim foo
+        expectSet $ nsExists fooNs <$> ["owner1", "owner2"]
 
     it "rejects owner (un)subscriptions" $
       let
@@ -153,8 +163,6 @@ spec = do
             mempty {frcsdErrors = Map.singleton ei [msg]}]
         pd = postDef' "fooy" [(x, TtInt64 unbounded)]
         bar1 = [segq|bar1|]
-        bazPdn = Tagged @PostDefinition baz
-        bazTn = Tagged @Definition baz
       in do
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect [emptyRootDig "sub"]
@@ -185,7 +193,7 @@ spec = do
         -- And again check that once the owner does define these, we haven't got
         -- registered subscriptions already:
         sendFwd $ ClientData "owner" $ Trpd $
-          set (Root :/ bar1) [WireValue @Int32 1] $
+          ownerSet (Root :/ bar1) [WireValue @Int32 1] $
           define baz strDef $
           postDefine baz pd $
           trpdEmpty fooNs
@@ -205,7 +213,6 @@ spec = do
       expect [nsExists fooNs "sub"]
 
       -- Subscribe to some data and check data and type subscriptions:
-      let fooTn = Tagged @Definition foo
       withSubscription fooNs root "sub" $ do
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
           { frcudDefinitions = Map.singleton fooTn $ OpDefine intDef
@@ -233,7 +240,6 @@ spec = do
       verifyNoTySub "owner" "sub" fooNs fooTn
 
       -- Test sub/unsub cycle for PostDefinitions too
-      let fooPdn = Tagged @PostDefinition foo
       let pd = postDef' "fooy" [(x, TtInt64 unbounded)]
       sendFwd $ ClientData "owner" $ Trpd $ postDefine foo pd $ trpdEmpty fooNs
       withSubscription fooNs fooPdn "sub" $ do
@@ -262,8 +268,6 @@ spec = do
           :: Subscribe entity => EntityId entity -> TestProtocol ()
         checkAlreadyUnsub id_ =
           _sendSub OpUnsubscribe fooNs id_ "sub" >> nothingWaiting
-        fooTn = Tagged @Definition foo
-        fooPdn = Tagged @PostDefinition foo
       in do
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect [emptyRootDig "sub"]
@@ -311,28 +315,102 @@ spec = do
         verifyNoDataSub "owner" "sub" fooNs root [WireValue @Int32 15]
 
 
-    it "unsubscribes clients on client disconnect" $ pending
-      -- testRelay mempty $ do
-      -- -- i.e. after client disconnects, the relay never tries to send another
-      -- -- message to that client.
-      -- return ()
+    let sub_owner_preamble = do
+          sendFwd $ ClientConnect "Owner" "owner"
+          sendFwd $ ClientConnect "Subscriber" "sub"
+          expect $ emptyRootDig <$> ["owner", "sub"]
 
-    it "unsubscribes clients on relay disconnect" $ pending
-      -- testRelay mempty $ do
-      -- -- i.e. after the relay disconnects a client, the relay never tries to
-      -- -- send another message to that client.
-      -- return ()
+          sendFwd $ ClientData "owner" $ Trpd $ structClaim foo
+          expectSet $ nsExists fooNs <$> ["owner", "sub"]
 
-    it "unsubscribes clients on owner disconnect and disowns" $ pending
-      -- testRelay mempty $ do
-      -- -- Also that the client gets notified of the deletion of the owner's data.
-      --   return ()
+    it "unsubscribes clients on client disconnect" $ testRelay mempty $ do
+      -- i.e. after client disconnects, the relay never tries to send another
+      -- message to that client.
+      sub_owner_preamble
+      subscribe fooNs fooTn "sub"
+      expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
+        { frcudDefinitions = Map.singleton fooTn $ OpDefine $
+          structDef' "test" [(foo, [segq|texty|]), (bar, [segq|inty|])]
+        }]
 
-    it "validates client mutations" $ pending -- testRelay mempty $ do return ()
+      sendFwd $ ClientDisconnect "sub"
+      verifyNoTySub "owner" "sub" fooNs fooTn
+      sendFwd $ ClientDisconnect "owner"
 
-    it "forwards client mutations to owner" $ pending -- testRelay mempty $ do return ()
+    it "unsubscribes clients on relay disconnect" $ testRelay mempty $ do
+      -- i.e. after the relay disconnects a client, the relay never tries to
+      -- send another message to that client.
+      sub_owner_preamble
+      subscribe fooNs fooTn "sub"
+      expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
+        { frcudDefinitions = Map.singleton fooTn $ OpDefine $
+          structDef' "test" [(foo, [segq|texty|]), (bar, [segq|inty|])]
+        }]
 
-    it "validates owner mutations" $ pending --  testRelay mempty $ do return ()
+      -- We have to trigger a client disconnect by being a bad provider:
+      sendFwd $ ClientData "sub" $ Trpd $ simpleClaim foo
+      expectFrped "sub" [(NamespaceError fooNs, "Already owned")]
+
+      verifyNoTySub "owner" "sub" fooNs fooTn
+
+    it "unsubscribes clients on owner disconnect and disowns" $
+      -- Also that the client gets notified of the deletion of the owner's data.
+      testRelay mempty $ let textyTn = Tagged @Definition [segq|texty|] in do
+        sub_owner_preamble
+        subscribe fooNs textyTn "sub"
+        expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
+          { frcudDefinitions = Map.singleton textyTn $ OpDefine strDef }]
+
+        sendFwd $ ClientDisconnect "owner"
+        expectSet
+          [ ServerData "sub" $ Frcsd $
+            frcsdEmpty {frcsdTypeUnsubs = Mos.singleton fooNs textyTn}
+          , nsCease fooNs "sub"
+          ]
+
+    it "doesn't forward empty subscriber bundles to owner" $
+      testRelay mempty $ do
+        sub_owner_preamble
+        sendFwd $ ClientData "sub" $ Trcud $ trcudEmpty fooNs
+
+    it "validates subscriber mutations and forwards valid" $
+      testRelay mempty $ do
+        sub_owner_preamble
+        sendFwd $ ClientData "sub" $ Trcud $
+          subSet (Root :/ foo) [WireValue @Text "hello"] $
+          subSet (Root :/ bar) [WireValue @Int32 3, WireValue @Int32 4] $
+          trcudEmpty fooNs
+        expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
+        expect [ServerData "owner" $ Frpd $ (frpdEmpty fooNs)
+          { frpdData = alSingleton (Root :/ foo) $
+            ConstChange Nothing [WireValue @Text "hello"]
+          }]
+
+    it "validates owner claims" $ testRelay mempty $ do
+      sendFwd $ ClientConnect "Owner" "owner"
+      expect [emptyRootDig "owner"]
+
+      sendFwd $ ClientData "owner" $ Trpd $
+        ownerSet root [WireValue @Text "Not an int"] $
+        define foo intDef $
+        trpdEmpty fooNs
+      expectFrped "owner" [(PathError Root, "Type mismatch")]
+
+    it "validates owner mutations" $ testRelay mempty $ do
+      sendFwd $ ClientConnect "Owner" "owner"
+      sendFwd $ ClientData "owner" $ Trpd $ simpleClaim foo
+      expect [emptyRootDig "owner", nsExists fooNs "owner"]
+
+      sendFwd $ ClientData "owner" $ Trpd $
+        ownerSet root [WireValue @Text "Not an int"] $ trpdEmpty fooNs
+      expectFrped "owner" [(PathError Root, "Type mismatch")]
+
+    it "rejects orphan data" $ testRelay mempty $ do
+      sendFwd $ ClientConnect "Owner" "owner"
+      expect [emptyRootDig "owner"]
+      sendFwd $ ClientData "owner" $ Trpd $
+        ownerSet (Root :/ baz) [WireValue @Text "Orphan"] $ structClaim foo
+      expectFrped "owner" [(PathError Root, "ExtraChild baz")]
 
   where
     rootDig client = ServerData client . Frcrd . FrcRootDigest
@@ -365,6 +443,8 @@ spec = do
     verifyTySub o s n i = verifySub @Definition o s n i "changed doc"
     verifyPdSub o s n i = verifySub @PostDefinition o s n i "changed doc"
 
+    -- FIXME: this will only work if there are _no subscribers at all_ to the
+    -- entity
     verifyNoSub
       :: Subscribe entity
       => String -> String -> Namespace -> EntityId entity -> Mutator entity
@@ -386,8 +466,19 @@ spec = do
     strDef = tupleDef' "Any string" [(x, TtString "")] ILUninterpolated
 
     simpleClaim name =
-      set Root [WireValue @Int32 12] $
+      ownerSet Root [WireValue @Int32 12] $
       define name intDef $
+      trpdEmpty $ Namespace name
+
+    structClaim name =
+      ownerSet (Root :/ bar) [WireValue @Int32 2] $
+      ownerSet (Root :/ foo) [WireValue @Text "one"] $
+      define name (structDef' "test"
+        [ (foo, [segq|texty|])
+        , (bar, [segq|inty|])
+        ]) $
+      define [segq|inty|] intDef $
+      define [segq|texty|] strDef $
       trpdEmpty $ Namespace name
 
 all' :: [a -> Bool] -> a -> Bool
@@ -445,6 +536,39 @@ expectSet = expectSet_ isRight . fmap Right
 expect :: _ => [a] -> Protocol Void x1 x2 (Either x3 a) IO ()
 expect = mapM_ nextShouldBe
 
+expectFrped
+  :: _ => String -> [(DataErrorIndex, String)]
+  -> Protocol Void x1 x2 (Either x3 (ServerEvent String FrDigest)) IO ()
+expectFrped clientId expected = do
+    onNext isRight handleFrped
+    expect [ServerDisconnect clientId]
+  where
+    handleFrped (Right (ServerData i (Frped frped))) = do
+      i `shouldBe` clientId
+      forM_ expected $ \(ei, expMsg) ->
+        case Map.lookup ei $ frpedErrors frped of
+          Nothing -> expectationFailure $
+            printf "%s not in errors:\n%s" (show ei) (show $ frpedErrors frped)
+          Just msgs -> mapM_ (`shouldContain` expMsg) $ Text.unpack <$> msgs
+    handleFrped _ = expectationFailure "Not an error digest"
+
+-- FIXME: might this be better is we had explicit error digests for the client,
+-- rather than intermingling them in the data updates?
+-- | Expect a subscriber to have been given an error
+expectSubErr
+  :: String -> DataErrorIndex -> String
+  -> Protocol Void v1 v2 (Either x3 (ServerEvent String FrDigest)) IO ()
+expectSubErr clientId ei expMsg = onNext isRight handleFrcud
+  where
+    handleFrcud (Right (ServerData i (Frcud frcud))) = do
+      i `shouldBe` clientId
+      case Map.lookup ei $ frcudErrors frcud of
+        Nothing -> expectationFailure $
+          printf "%s not in errors:\n%s" (show ei) (show $ frcudErrors frcud)
+        Just msgs -> mapM_ (`shouldContain` expMsg) $ Text.unpack <$> msgs
+    handleFrcud _ = expectationFailure "Not a client data update"
+
+
 onNext :: Monad m => (a -> Bool) -> (a -> m r) -> Protocol Void x1 x2 a m r
 onNext counts action = waitUntil counts >>= lift . action
 
@@ -452,9 +576,9 @@ nextShouldBe :: _ => a -> Protocol Void x1 x2 (Either x3 a) IO ()
 nextShouldBe expected = onNext isRight (`shouldBe` Right expected)
 
 nextShouldSatisfy
-  :: Show a => (a -> Bool) -> Protocol Void x1 x2 (Either x3 a) IO ()
+  :: Show a => (a -> Bool) -> Protocol Void x1 x2 (Either x3 a) IO a
 nextShouldSatisfy pred = onNext isRight $
-  either (error "impossible Left") (`shouldSatisfy` pred)
+  either (error "impossible Left") (\a -> (a `shouldSatisfy` pred) >> return a)
 
 -- | Connect a named witness client and perform the given protocol action with
 --   them connected. NB: we check that we have no outstanding messages before
@@ -590,22 +714,36 @@ postDefine name def trpd = trpd
   { trpdPostDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdPostDefs trpd }
 
-set :: Path -> [WireValue] -> TrpDigest -> TrpDigest
-set path values trpd = trpd
+ownerSet :: Path -> [WireValue] -> TrpDigest -> TrpDigest
+ownerSet path values trpd = trpd
   { trpdData = alInsert path (ConstChange Nothing values) $ trpdData trpd }
+
+subSet :: Path -> [WireValue] -> TrcUpdateDigest -> TrcUpdateDigest
+subSet path values trcud = trcud
+  { trcudData = alInsert path (ConstChange Nothing values) $ trcudData trcud }
 
 foo, bar, baz, x:: Seg
 foo = [segq|foo|]; bar = [segq|bar|]; baz = [segq|baz|]; x = [segq|x|]
+
+fooNs, barNs, bazNs :: Namespace
+fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
+
+fooTn, barTn, bazTn :: Tagged Definition Seg
+fooTn = Tagged foo; barTn = Tagged bar; bazTn = Tagged baz
+
+fooPdn, barPdn, bazPdn :: Tagged PostDefinition Seg
+fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 
 -- | A non-polymorphic root path
 root :: Path
 root = Root
 
-fooNs, barNs, bazNs :: Namespace
-fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
-
 arrayDef' :: Text -> Seg -> Editable -> Definition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
+
+structDef' :: Text -> [(Seg, Seg)] -> Definition
+structDef' doc tys = structDef doc $ unsafeMkAssocList $
+  fmap ((,Editable) . Tagged) <$> tys
 
 tupleDef' :: Text -> [(Seg, TreeType)] -> InterpolationLimit -> Definition
 tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il

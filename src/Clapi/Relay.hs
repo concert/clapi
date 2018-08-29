@@ -46,7 +46,7 @@ import Clapi.Types.Digests
   , trcsdNamespaces
   , FrpErrorDigest(..), FrcSubDigest(..), FrcUpdateDigest(..)
   , FrcRootDigest(..), FrpDigest(..)
-  , frcsdEmpty, frcudEmpty, frcsdNull, frcudNull
+  , frcsdEmpty, frcudEmpty, frcsdNull, frcudNull, frpdNull
   , DataChange(..)
   , TimeSeriesDataOp(..), DefOp(..)
   , OutboundClientUpdateDigest
@@ -318,7 +318,7 @@ handleTrcud
   => i -> TrcUpdateDigest -> StateT (RelayState i) (RelayProtocol i m) ()
 handleTrcud i d = runExceptT go >>= either
     (throwOutProvider i $ Set.singleton ns)
-    undefined
+    return
   where
     ns = trcudNamespace d
     go = do
@@ -332,12 +332,13 @@ handleTrcud i d = runExceptT go >>= either
         Just vs ->
           let
             (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs d
+            frpd = FrpDigest ns dat cr cont
           in do
-            lift $ sendData' i $ Frcud $
+            unless (null errMap) $ lift $ sendData' i $ Frcud $
               (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
             case owner of
               Nothing -> error "Namespace doesn't have owner, apparently"
-              Just oi -> lift $ sendData' oi $ Frpd $ FrpDigest ns dat cr cont
+              Just oi -> unless (frpdNull frpd) $ lift $ sendData' oi $ Frpd frpd
 
 handleDisconnect
   :: (Ord i, Monad m) => i -> StateT (RelayState i) (RelayProtocol i m) ()
