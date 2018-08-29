@@ -138,16 +138,6 @@ mayContDiff ma kb = case ma of
         else Just $ contDiff ka kb
     _ -> Nothing
 
-handleTrcudOrig
-  :: Valuespace -> TrcUpdateDigest
-  -> (OutboundClientUpdateDigest, OutboundProviderDigest)
-handleTrcudOrig vs trcud@(TrcUpdateDigest {trcudNamespace = ns}) =
-  let
-    (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs trcud
-    ocud = (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
-  in
-    (ocud, FrpDigest ns dat cr cont)
-
 data RelayState i
   = RelayState
   { _rsVsMap :: Map Namespace Valuespace
