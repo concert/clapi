@@ -72,6 +72,9 @@ data TrpDigest = TrpDigest
   , trpdDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
   , trpdData :: DataDigest
   , trpdContOps :: ContOps Seg
+  -- FIXME: should errors come in a different digest to data updates? At the
+  -- moment we just check a TrpDigest isn't null when processing namespace
+  -- claims...
   , trpdErrors :: Map DataErrorIndex [Text]
   } deriving (Show, Eq)
 
@@ -191,6 +194,7 @@ frcrdNull :: FrcRootDigest -> Bool
 frcrdNull = null . frcrdContOps
 
 data FrcSubDigest = FrcSubDigest
+  -- FIXME: really this is a Mol:
   { frcsdErrors :: Map SubErrorIndex [Text]
   , frcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
   , frcsdTypeUnsubs :: Mos Namespace (Tagged Definition Seg)
