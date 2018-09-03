@@ -179,6 +179,10 @@ handleConnect i = do
   sendData' i $ Frcrd $ FrcRootDigest $ Map.fromSet
     (const $ SoAfter Nothing) $ Map.keysSet vsm
 
+definesNothing :: TrpDigest -> Bool
+definesNothing trpd = Map.notMember
+    (Tagged $ unNamespace $ trpdNamespace trpd) $ trpdDefinitions trpd
+
 handleTrpd
   :: (Ord i, Monad m)
   => i -> TrpDigest -> StateT (RelayState i) (RelayProtocol i m) ()
@@ -189,7 +193,7 @@ handleTrpd i d = do
       Nothing -> do
         -- NB: as long as we make sure the initial claim has data in it anywhere
         -- we can never subequently have an empty valuespace:
-        when (null $ trpdData d) $ throwError $
+        when (definesNothing d) $ throwError $
           Map.singleton (NamespaceError ns) ["Empty namespace claim"]
         frcud <- tryVsUpdate
         lift $ updateOwners newOwners
