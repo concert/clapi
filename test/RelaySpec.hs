@@ -159,7 +159,7 @@ spec = do
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect [emptyRootDig "sub"]
 
-        -- Ivalid NS:
+        -- Invalid NS:
         badSub root (NamespaceSubError fooNs) "Namespace not found"
 
         sendFwd $ ClientConnect "Owner" "owner"
@@ -172,27 +172,28 @@ spec = do
           trpdEmpty fooNs
         expectSet $ nsExists fooNs <$> ["owner", "sub"]
 
+        badSub (root :/ bar1) (PathSubError fooNs $ root :/ bar1) "Path not found"
+
+        sendFwd $ ClientData "owner" $ Trpd $
+          ownerSet (root :/ bar1) [WireValue @Int32 1] $
+          trpdEmpty fooNs
+
         -- We check that now the thing we just failed to subscribe to _is_
         -- defined we don't suddenly start getting data:
-        verifyNoDataSub "owner" "sub" fooNs root [WireValue @Int32 16]
+        verifyNoDataSub "owner" "sub" fooNs (root :/ bar1) [WireValue @Int32 16]
 
-        -- Invalid PostDefintion, Definition and Data IDs:
+        -- Invalid PostDefinition and Definition IDs:
         badSub bazPdn (PostTypeSubError fooNs bazPdn) "Missing post def"
         badSub bazTn (TypeSubError fooNs bazTn) "Missing def"
-        badSub (Root :/ bar1) (PathSubError fooNs $ Root :/ bar1)
-          "Path not found"
 
         -- And again check that once the owner does define these, we haven't got
         -- registered subscriptions already:
         sendFwd $ ClientData "owner" $ Trpd $
-          ownerSet (Root :/ bar1) [WireValue @Int32 1] $
           define baz strDef $
           postDefine baz pd $
           trpdEmpty fooNs
         verifyNoPdSub "owner" "sub" fooNs bazPdn
         verifyNoTySub "owner" "sub" fooNs bazTn
-        verifyNoDataSub "owner" "sub" fooNs (Root :/ bar1)
-          [WireValue @Int32 42]
 
     it "handles legitimate subscriptions" $ testRelay mempty $ do
       -- Make an API with an owner:
