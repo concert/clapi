@@ -268,15 +268,18 @@ validateVs t v = do
                           cts <- defDispatch (childTypeFor name) def
                           cdef <- vsLookupDef cts vs
                           if isEmptyContainer cdef
-                            then Just (name, cts)
+                            then Just (path :/ name, cts)
                             else Nothing
+                        BadNodeType _ treeType ->
+                          case (treeType, path, isEmptyContainer def) of
+                            (RtntEmpty, Root, True) -> Just (Root, ts)
+                            _ -> Nothing
                         _ -> Nothing
-                    qEmptyArrays = first (path :/) <$> emptyArrays
-                    newTas' = newTas <> Map.fromList qEmptyArrays
-                    tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
+                    newTas' = newTas <> Map.fromList emptyArrays
+                    tainted' = Map.fromList (fmap (const Nothing) <$> emptyArrays) <> tainted
                     att = Nothing  -- FIXME: who is this attributed to?
-                    insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
-                    vs' = vs {vsTree = foldl (\acc (cp, _) -> insertEmpty cp acc) tree qEmptyArrays}
+                    insertEmpty p = treeInsert att p (RtContainer alEmpty)
+                    vs' = vs {vsTree = foldl (\acc (p, _) -> insertEmpty p acc) tree emptyArrays}
                 Right pathRefClaims -> inner
                       (newTas <> changedChildPaths)
                       (Map.insert path pathRefClaims newRefClaims)
