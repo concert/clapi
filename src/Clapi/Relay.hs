@@ -191,14 +191,14 @@ handleTrpd i d = do
       Map.insertLookupWithKey (\_ v _ -> v) ns i . view rsOwners <$> get
     result <- runExceptT $ case existingOwner of
       Nothing -> do
-        -- NB: as long as we make sure the initial claim has data in it anywhere
-        -- we can never subequently have an empty valuespace:
+        -- NB: as long as we make sure the initial claim defines something we
+        -- can never subsequently have an empty valuespace:
         when (definesNothing d) $ throwError $
           Map.singleton (NamespaceError ns) ["Empty namespace claim"]
         frcud <- tryVsUpdate
         lift $ updateOwners newOwners
         -- FIXME: would be nice if we didn't have to track ourselves that we'd
-        -- added a new Namespace to the Valuepace Map...
+        -- added a new Namespace to the Valuespace Map...
         lift $ broadcast $ Frcrd $ FrcRootDigest $ Map.singleton ns $
           SoAfter Nothing
         return frcud
@@ -226,7 +226,7 @@ handleTrpd i d = do
     tryVsUpdate =
       let
         -- NB: Type signature required to avoid monomorphism of f when trying to
-        -- use his lens in two different contexts:
+        -- use this lens in two different contexts:
         l :: Functor f => (Valuespace -> f Valuespace) -> RelayState i
           -> f (RelayState i)
         l = rsVsMap . at ns . non bvs
