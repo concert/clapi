@@ -26,10 +26,11 @@ library
   exposed-modules:     Data.Map.Mos
                      , Data.Map.Mol
                      , Data.Map.Clapi
+                     , Data.Map.Dependencies
                      , Clapi.Attributor
+                     , Clapi.Internal.Valuespace
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
-                     , Clapi.NamespaceTracker
                      , Clapi.PerClientProto
                      , Clapi.Relay
                      , Clapi.RelayApi
@@ -78,6 +79,7 @@ library
                      , either
                      , errors
                      , free
+                     , lens
                      , network
                      , network-simple
                      , mtl
@@ -145,11 +147,12 @@ test-suite clapi-hs-test
                      , transformers
                      , unagi-chan
   other-modules:       Helpers
+                     , Data.Map.DependenciesSpec
                      , Data.Map.MosSpec
+                     , Instances
                      , SerialisationProtocolSpec
                      , PathSpec
                      , ProtocolSpec
-                     , NamespaceTrackerSpec
                      , RelaySpec
                      , ServerSpec
                      , SerialisationSpec

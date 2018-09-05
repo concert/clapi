@@ -1,4 +1,8 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
+{-# LANGUAGE
+    DeriveFoldable
+  , DeriveFunctor
+#-}
 module Data.Map.Mol where
 
 import Data.Monoid ((<>))
@@ -6,28 +10,33 @@ import qualified Data.Map as Map
 
 import Data.Map.Clapi as Map
 
-type Mol k a = Map.Map k [a]
+newtype Mol k a
+  = Mol {unMol :: Map.Map k [a]} deriving (Show, Eq, Ord, Functor, Foldable)
+
+instance Ord k => Monoid (Mol k a) where
+  mempty = Mol mempty
+  mappend = union
 
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
 
 toList :: (Ord k) => Mol k a -> [(k, a)]
-toList mol = mconcat $ sequence <$> Map.toList mol
+toList (Mol m) = mconcat $ sequence <$> Map.toList m
 
 cons :: (Ord k) => k -> a -> Mol k a -> Mol k a
-cons k a = Map.updateM (a :) k
+cons k a = Mol . Map.updateM (a :) k . unMol
 
 append :: (Ord k) => k -> a -> Mol k a -> Mol k a
 append k a = extend k [a]
 
 extend :: (Ord k) => k -> [a] -> Mol k a -> Mol k a
-extend k as = Map.updateM (++ as) k
+extend k as = Mol . Map.updateM (++ as) k . unMol
 
 prepend :: (Ord k) => k -> [a] -> Mol k a -> Mol k a
-prepend k as = Map.updateM (as ++) k
+prepend k as = Mol . Map.updateM (as ++) k . unMol
 
 union :: (Ord k) => Mol k a -> Mol k a -> Mol k a
-union = Map.unionWith (<>)
+union (Mol m1) (Mol m2) = Mol $ Map.unionWith (<>) m1 m2
 
 unions :: (Ord k) => [Mol k a] -> Mol k a
-unions = Map.unionsWith (<>)
+unions = Mol . Map.unionsWith (<>) . fmap unMol

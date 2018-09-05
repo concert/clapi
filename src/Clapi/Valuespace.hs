@@ -32,9 +32,11 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
+import Data.Map.Mol (Mol(..))
 import qualified Data.Map.Mol as Mol
-import Data.Map.Mos (Mos, unMos)
+import Data.Map.Mos (Mos(..))
 import qualified Data.Map.Mos as Mos
+import qualified Data.Map.Dependencies as Dependencies
 
 import Data.Maybe.Clapi (note)
 
@@ -64,23 +66,11 @@ import Clapi.Types.Tree (TreeType(..))
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
-type DefMap def = Map (Tagged def Seg) def
-type TypeAssignmentMap = Mos.Dependencies Path (Tagged Definition Seg)
-type Referer = Path
-type Referee = Path
-type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
-
-data Valuespace = Valuespace
-  { vsTree :: RoseTree [WireValue]
-  , vsPostDefs :: DefMap PostDefinition
-  , vsTyDefs :: DefMap Definition
-  , vsTyAssns :: TypeAssignmentMap
-  , vsXrefs :: Xrefs
-  , vsRootEditable :: Editable
-  } deriving (Eq, Show)
+import Clapi.Internal.Valuespace
+  (Valuespace(..), DefMap, TypeAssignmentMap, Referer, Referee, Xrefs)
 
 removeTamSubtree :: TypeAssignmentMap -> Path -> TypeAssignmentMap
-removeTamSubtree tam p = Mos.filterDependencies (not . flip Path.isChildOf p) tam
+removeTamSubtree tam p = Dependencies.filterKey (not . flip Path.isChildOf p) tam
 
 removeXrefs :: Referer -> Xrefs -> Xrefs
 removeXrefs referer = fmap (Map.delete referer)
@@ -97,7 +87,7 @@ baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
     mempty
-    (Mos.setDependency Root rootType mempty)
+    (Dependencies.singleton Root rootType)
     mempty
     rootEditable
 
@@ -134,7 +124,7 @@ instance VsLookupDef Definition where
 
 lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
-lookupTypeName p tam = note "Type name not found" $ Mos.getDependency p tam
+lookupTypeName p tam = note "Type name not found" $ Dependencies.lookup p tam
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
@@ -191,7 +181,7 @@ checkRefClaims
 checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
   where
     errIf m = unless (null m) $ Left m
-    smashErrMap = errIf . Mol.unions . lefts . Map.elems
+    smashErrMap = errIf . unMol . Mol.unions . fmap Mol . lefts . Map.elems
     checkRefsAtPath
       :: Path
       -> Either RefTypeClaims (Map TpId RefTypeClaims)
@@ -278,24 +268,27 @@ validateVs t v = do
                           cts <- defDispatch (childTypeFor name) def
                           cdef <- vsLookupDef cts vs
                           if isEmptyContainer cdef
-                            then Just (name, cts)
+                            then Just (path :/ name, cts)
                             else Nothing
+                        BadNodeType _ treeType ->
+                          case (treeType, path, isEmptyContainer def) of
+                            (RtntEmpty, Root, True) -> Just (Root, ts)
+                            _ -> Nothing
                         _ -> Nothing
-                    qEmptyArrays = first (path :/) <$> emptyArrays
-                    newTas' = newTas <> Map.fromList qEmptyArrays
-                    tainted' = Map.fromList (fmap (const Nothing) <$> qEmptyArrays) <> tainted
+                    newTas' = newTas <> Map.fromList emptyArrays
+                    tainted' = Map.fromList (fmap (const Nothing) <$> emptyArrays) <> tainted
                     att = Nothing  -- FIXME: who is this attributed to?
-                    insertEmpty childPath = treeInsert att childPath (RtContainer alEmpty)
-                    vs' = vs {vsTree = foldl (\acc (cp, _) -> insertEmpty cp acc) tree qEmptyArrays}
+                    insertEmpty p = treeInsert att p (RtContainer alEmpty)
+                    vs' = vs {vsTree = foldl (\acc (p, _) -> insertEmpty p acc) tree emptyArrays}
                 Right pathRefClaims -> inner
                       (newTas <> changedChildPaths)
                       (Map.insert path pathRefClaims newRefClaims)
                       (Map.delete path $
                          tainted <> fmap (const Nothing) changedChildPaths)
-                      (vs {vsTyAssns = Mos.setDependencies changedChildPaths oldTyAssns})
+                      (vs {vsTyAssns = Dependencies.setDependencies changedChildPaths oldTyAssns})
                   where
                     oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                      (\name _ -> Mos.getDependency (path :/ name) oldTyAssns) $
+                      (\name _ -> Dependencies.lookup (path :/ name) oldTyAssns) $
                       treeChildren rtn
                     newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                       (\name _ -> defDispatch (childTypeFor name) def) $
@@ -331,7 +324,7 @@ processToRelayProviderDigest
 processToRelayProviderDigest trpd vs =
   let
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
-    getPathsWithType s = Mos.getDependants s tas
+    getPathsWithType s = Dependencies.lookupRev s tas
     redefdPaths = mconcat $
       fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
     updatedPaths = opsTouched (trpdContOps trpd) $ trpdData trpd

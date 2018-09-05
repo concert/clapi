@@ -25,6 +25,7 @@ import Clapi.Serialisation.Wire ()
 
 data DataErrIdxType
   = DeitGlobal
+  | DeitNamespace
   | DeitPath
   | DeitTimePoint
   deriving (Enum, Bounded)
@@ -34,20 +35,24 @@ dataErrIndexTaggedData = taggedData typeToTag eiToType
   where
     typeToTag ty = case ty of
       DeitGlobal -> [btq|g|]
+      DeitNamespace -> [btq|n|]
       DeitPath -> [btq|p|]
       DeitTimePoint -> [btq|t|]
     eiToType ei = case ei of
       GlobalError -> DeitGlobal
+      NamespaceError _ -> DeitNamespace
       PathError _ -> DeitPath
       TimePointError _ _ -> DeitTimePoint
 
 instance Encodable DataErrorIndex where
   builder = tdTaggedBuilder dataErrIndexTaggedData $ \ei -> case ei of
     GlobalError -> return mempty
+    NamespaceError ns -> builder ns
     PathError p -> builder p
     TimePointError p tpid -> builder p <<>> builder tpid
   parser = tdTaggedParser dataErrIndexTaggedData $ \eit -> case eit of
     DeitGlobal -> return GlobalError
+    DeitNamespace -> NamespaceError <$> parser
     DeitPath -> PathError <$> parser
     DeitTimePoint -> TimePointError <$> parser <*> parser
 
