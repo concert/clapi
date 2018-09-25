@@ -17,7 +17,6 @@ import qualified Data.Map as Map
 import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Word
 
 import Clapi.Types
   (Time, Interpolation(..), Attributee, WireValue)
@@ -29,10 +28,8 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
-  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
+  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..), TpId)
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
-
-type TpId = Word32
 
 type TimePoint a = (Interpolation, a)
 type Attributed a = (Maybe Attributee, a)

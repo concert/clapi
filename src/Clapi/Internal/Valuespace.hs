@@ -9,8 +9,9 @@ import Data.Tagged (Tagged)
 
 import Data.Map.Dependencies (Dependencies)
 
-import Clapi.Tree (RoseTree, TpId)
+import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions (Definition, PostDefinition, Editable)
+import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Wire (WireValue)
 

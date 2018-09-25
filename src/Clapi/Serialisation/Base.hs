@@ -11,11 +11,16 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (liftM2)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 
 import Data.Word
 import Data.Int
 import Data.Text (Text)
+
+import Data.Map.Mos (Mos)
+import qualified Data.Map.Mos as Mos
 
 -- For building:
 import Blaze.ByteString.Builder
@@ -103,6 +108,15 @@ instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
 instance (Ord k, Encodable k, Encodable v) => Encodable (Map k v) where
   builder = builder . Map.toList
   parser = Map.fromList <$> parser
+
+
+instance (Ord a, Encodable a) => Encodable (Set a) where
+  builder = builder . Set.toList
+  parser = Set.fromList <$> parser
+
+instance (Ord k, Ord v, Encodable k, Encodable v) => Encodable (Mos k v) where
+  builder = builder . Mos.toList
+  parser = Mos.fromList <$> parser
 
 (<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
 (<<>>) = liftM2 (<>)

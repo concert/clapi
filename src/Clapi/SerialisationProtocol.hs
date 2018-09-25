@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 
-module Clapi.SerialisationProtocol (serialiser, mapProtocol, digester) where
+module Clapi.SerialisationProtocol (serialiser, mapProtocol) where
 
 import Data.Attoparsec.ByteString (parse, IResult(..))
 import Data.ByteString (ByteString)
@@ -8,9 +8,7 @@ import Data.ByteString.UTF8 (fromString)
 
 import Blaze.ByteString.Builder (toByteString)
 
-import Clapi.Types
-  ( ToRelayBundle(..), FromRelayBundle(..), TrDigest(..), FrDigest(..)
-  , digestToRelayBundle, produceFromRelayBundle)
+import Clapi.Types (TrDigest(..), FrDigest(..))
 import Clapi.Serialisation.Base (Encodable(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev, mapProtocol)
 
@@ -46,11 +44,3 @@ serialiser = serialiser' $ parse parser
         (\s -> error $ "builder failed: " ++ s)
         (\bs -> sendRev bs >> serialiser' p)
         (toByteString <$> builder b)
-
-digester
-  :: (Monad m, Functor f)
-  => Protocol
-      (f ToRelayBundle) (f TrDigest)
-      FromRelayBundle FrDigest
-      m ()
-digester = mapProtocol (fmap digestToRelayBundle) produceFromRelayBundle

@@ -16,7 +16,6 @@ import Clapi.Types.Digests as X
 import Clapi.Types.Path as X
 import Clapi.Types.UniqList as X
 import Clapi.Types.Wire as X
-import Clapi.Types.Messages as X
 import Clapi.Types.Tree as X
 
 type CanFail a = Either String a

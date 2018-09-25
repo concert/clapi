@@ -39,10 +39,9 @@ import Clapi.Types.Base (Attributee)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, unAssocList , alFoldlWithKey, alFilterKey)
-import Clapi.Types.Messages
-  ( DataErrorIndex(..), SubErrorIndex(..), MkSubErrIdx(..))
 import Clapi.Types.Digests
-  ( TrpDigest(..), TrprDigest(..), TrcUpdateDigest(..), TrcSubDigest(..)
+  ( DataErrorIndex(..), SubErrorIndex(..), MkSubErrIdx(..)
+  , TrpDigest(..), TrprDigest(..), TrcUpdateDigest(..), TrcSubDigest(..)
   , trcsdNamespaces
   , FrpErrorDigest(..), FrcSubDigest(..), FrcUpdateDigest(..)
   , FrcRootDigest(..), FrpDigest(..)
