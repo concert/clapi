@@ -8,7 +8,7 @@ import Data.ByteString.UTF8 (fromString)
 
 import Blaze.ByteString.Builder (toByteString)
 
-import Clapi.Types (TrDigest(..), FrDigest(..))
+import Clapi.Types ()
 import Clapi.Serialisation.Base (Encodable(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 

@@ -7,7 +7,6 @@
 module Clapi.Types.Digests where
 
 import Data.Bifunctor (bimap)
-import Data.Either (partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Semigroup
@@ -19,11 +18,8 @@ import Data.Word (Word32)
 
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
-import Data.Map.Mol (Mol(..))
-import qualified Data.Map.Mol as Mol
 
-import Clapi.Types.AssocList
-  (AssocList, alNull, alEmpty, alFromList, alFmapWithKey, alValues)
+import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions (Definition, Editable, PostDefinition)
 import Clapi.Types.Path
