@@ -42,8 +42,9 @@ import Clapi.TaggedData
   (TaggedData, taggedData, tdInstanceToTag, tdAllTags, tdTagToEnum)
 import Clapi.Types.AssocList (AssocList, mkAssocList, unAssocList)
 import Clapi.Types.Base
-  ( Time(..), TimeStamped(..), Tag(..), mkTag, InterpolationLimit(..)
-  , Interpolation(..), InterpolationType(..), interpolationType)
+  ( Attributee(..), Time(..), TimeStamped(..), Tag(..), mkTag
+  , InterpolationLimit(..), Interpolation(..), InterpolationType(..)
+  , interpolationType)
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
 
@@ -147,6 +148,9 @@ instance (Ord k, Show k, Encodable k, Encodable v)
   => Encodable (AssocList k v) where
     builder = builder . unAssocList
     parser = parser >>= mkAssocList
+
+
+deriving instance Encodable Attributee
 
 
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a

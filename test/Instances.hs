@@ -1,17 +1,22 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    StandaloneDeriving
+    GeneralizedNewtypeDeriving
+  , StandaloneDeriving
 #-}
 
 module Instances where
 
+import Data.String (IsString(..))
+
 import Clapi.PerClientProto (ServerEvent(..))
-import Clapi.Types.Definitions
-import Clapi.Types.Digests
+import Clapi.Types
 import Clapi.Types.SequenceOps (SequenceOp(..))
 
 
 deriving instance (Ord ident, Ord a) => Ord (ServerEvent ident a)
+
+deriving instance Ord Attributee
+deriving instance IsString Attributee
 
 deriving instance Ord PostDefinition
 deriving instance Ord Definition

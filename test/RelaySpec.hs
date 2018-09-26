@@ -45,7 +45,6 @@ import Clapi.Types.Definitions
   , Editable(..), Definition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Messages (DataErrorIndex(..), SubErrorIndex(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
 import Clapi.Types.Tree (TreeType(..), unbounded)
 import Clapi.Types.Wire (WireValue(..))

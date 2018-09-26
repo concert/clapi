@@ -117,7 +117,7 @@ test-suite clapi-hs-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  ghc-options:         -Wall
+  ghc-options:         -Wall -Werror=missing-methods
   default-extensions:
                        PatternSynonyms
                      , QuasiQuotes
@@ -148,6 +148,7 @@ test-suite clapi-hs-test
   other-modules:       Helpers
                      , Data.Map.DependenciesSpec
                      , Data.Map.MosSpec
+                     , Arbitrary
                      , Instances
                      , SerialisationProtocolSpec
                      , PathSpec

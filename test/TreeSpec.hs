@@ -14,6 +14,8 @@ import Clapi.Tree
   ( RoseTree(..), RoseTreeNode(..), treePaths, treeLookup, treeInsert
   , treeDelete, treeLookupNode)
 
+import Instances ()
+
 s0, s1, s2, s3, s4 :: Seg
 s0 = [segq|t0|]
 s1 = [segq|t1|]
