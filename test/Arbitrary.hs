@@ -14,6 +14,8 @@ import Test.QuickCheck
 import Control.Monad (replicateM)
 import Data.Int
 import Data.List (inits)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.Proxy
 import Data.Tagged (Tagged(..))
@@ -45,18 +47,28 @@ smallListOf = boundedListOf 0 5
 smallListOf1 :: Gen a -> Gen [a]
 smallListOf1 = boundedListOf 1 5
 
+smallMapOf :: Ord k => Gen k -> Gen v -> Gen (Map k v)
+smallMapOf gk gv = Map.fromList <$> smallListOf ((,) <$> gk <*> gv)
+
+smallMap :: (Ord k, Arbitrary k, Arbitrary v) => Gen (Map k v)
+smallMap = smallMapOf arbitrary arbitrary
 
 instance (Ord k, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (Mos k v) where
   arbitrary = Mos.fromList . mconcat <$> smallListOf (do
     mkPair <- (,) <$> arbitrary
     fmap mkPair <$> smallListOf arbitrary)
 
+
+assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
+assocListOf gk gv = alFromMap <$> smallMapOf gk gv
+
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
-  arbitrary = alFromMap <$> arbitrary
+  arbitrary = assocListOf arbitrary arbitrary
 
 
 arbitraryTextNoNull :: Gen Text
-arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$> arbitrary
+arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$>
+  boundedListOf 0 30 arbitrary
 
 instance Arbitrary Text where
   arbitrary = arbitraryTextNoNull
@@ -184,7 +196,8 @@ instance Arbitrary WireValue where
 
 
 instance Arbitrary PostDefinition where
-  arbitrary = PostDefinition <$> arbitrary <*> arbitrary
+  arbitrary = PostDefinition <$> arbitrary <*>
+    assocListOf arbitrary (smallListOf arbitrary)
 
 instance Arbitrary Definition where
   arbitrary = oneof
@@ -199,19 +212,20 @@ instance Arbitrary Definition where
 
 
 instance Arbitrary CreateOp where
-  arbitrary = OpCreate <$> arbitrary <*> arbitrary
+  arbitrary = OpCreate <$> smallListOf (smallListOf arbitrary) <*> arbitrary
 
 instance Arbitrary d => Arbitrary (DefOp d) where
   arbitrary = oneof [OpDefine <$> arbitrary, return OpUndefine]
 
 instance Arbitrary TimeSeriesDataOp where
   arbitrary = oneof
-    [OpSet <$> arbitrary <*> arbitrary <*> arbitrary, return OpRemove]
+    [ OpSet <$> arbitrary <*> smallListOf arbitrary <*> arbitrary
+    , return OpRemove]
 
 instance Arbitrary DataChange where
   arbitrary = oneof
     [ ConstChange <$> arbitrary <*> arbitrary
-    , TimeChange <$> arbitrary
+    , TimeChange <$> smallMap
     ]
 
 instance Arbitrary i => Arbitrary (SequenceOp i) where
@@ -236,33 +250,44 @@ instance Arbitrary SubErrorIndex where
     ]
 
 
+creates :: Gen Creates
+creates = smallMapOf arbitrary smallMap
+
+contOps :: Arbitrary a => Gen (ContOps a)
+contOps = smallMapOf arbitrary smallMap
+
+
 instance Arbitrary TrpDigest where
-  arbitrary = TrpDigest <$> arbitrary <*> arbitrary <*> arbitrary
-    <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = TrpDigest <$> arbitrary <*> smallMap <*> smallMap
+    <*> arbitrary <*> contOps <*> smallMapOf arbitrary (smallListOf arbitrary)
 
 deriving instance Arbitrary TrprDigest
 
 instance Arbitrary TrcSubDigest where
-  arbitrary = TrcSubDigest <$> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = TrcSubDigest <$> smallMap <*> smallMap <*> smallMap
 
 instance Arbitrary TrcUpdateDigest where
-  arbitrary = TrcUpdateDigest <$> arbitrary <*> arbitrary <*> arbitrary
-    <*> arbitrary
+  arbitrary = TrcUpdateDigest <$> arbitrary <*> arbitrary <*> creates
+    <*> contOps
 
 
 instance Arbitrary FrpDigest where
-  arbitrary = FrpDigest <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = FrpDigest <$> arbitrary <*> arbitrary <*> creates <*> contOps
 
-deriving instance Arbitrary FrpErrorDigest
-deriving instance Arbitrary FrcRootDigest
+instance Arbitrary FrpErrorDigest where
+  arbitrary = FrpErrorDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
+
+instance Arbitrary FrcRootDigest where
+  arbitrary = FrcRootDigest <$> smallMap
 
 instance Arbitrary FrcSubDigest where
-  arbitrary = FrcSubDigest <$> arbitrary <*> arbitrary <*> arbitrary
-    <*> arbitrary
+  arbitrary = FrcSubDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
+    <*> arbitrary <*> arbitrary <*> arbitrary
 
 instance Arbitrary FrcUpdateDigest where
-  arbitrary = FrcUpdateDigest <$> arbitrary <*> arbitrary <*> arbitrary
-    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = FrcUpdateDigest <$> arbitrary <*> smallMap <*> smallMap
+    <*> smallMap <*> arbitrary <*> contOps
+    <*> smallMapOf arbitrary (smallListOf arbitrary)
 
 
 instance Arbitrary TrDigest where
