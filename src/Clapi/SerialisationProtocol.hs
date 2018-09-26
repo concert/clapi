@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 
-module Clapi.SerialisationProtocol (serialiser, mapProtocol) where
+module Clapi.SerialisationProtocol (serialiser) where
 
 import Data.Attoparsec.ByteString (parse, IResult(..))
 import Data.ByteString (ByteString)
@@ -10,25 +10,7 @@ import Blaze.ByteString.Builder (toByteString)
 
 import Clapi.Types (TrDigest(..), FrDigest(..))
 import Clapi.Serialisation.Base (Encodable(..))
-import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev, mapProtocol)
-
--- mapProtocol ::
---     Monad m
---     => (c -> a)
---     -> (a' -> c')
---     -> (b' -> d')
---     -> (d -> b)
---     -> Protocol a a' b' b m ()
---     -> Protocol c c' d' d m ()
--- mapProtocol toA fromA fromB toB p = FreeT $ go <$> runFreeT p
---   where
---     go (Free (Wait f)) = Free (Wait $ wn . f . mapDirected)
---     go (Free (SendFwd a next)) = Free (SendFwd (fromA a) (wn next))
---     go (Free (SendRev b next)) = Free (SendRev (fromB b) (wn next))
---     go (Pure ()) = Pure ()
---     mapDirected (Fwd a) = Fwd $ toA a
---     mapDirected (Rev b) = Rev $ toB b
---     wn next = mapProtocol toA fromA fromB toB next
+import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 
 serialiser
   :: (Encodable a, Encodable b, Monad m)
