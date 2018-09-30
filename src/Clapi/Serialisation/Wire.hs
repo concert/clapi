@@ -9,8 +9,6 @@ import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Typeable
 
-import Data.Monoid
-
 import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))

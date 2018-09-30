@@ -20,7 +20,7 @@ import Data.Bifunctor (first, bimap)
 import Data.Either (lefts, partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge
+import Data.Map.Merge.Strict
   (merge, preserveMissing, dropMissing, zipWithMatched, zipWithMaybeMatched)
 import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))

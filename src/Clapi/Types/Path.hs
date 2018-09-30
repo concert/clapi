@@ -16,7 +16,6 @@ import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
-import Data.Semigroup
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)

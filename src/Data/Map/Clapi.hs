@@ -2,7 +2,7 @@
 module Data.Map.Clapi where
 
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge (merge, preserveMissing, zipWithMatched)
+import Data.Map.Merge.Strict (merge, preserveMissing, zipWithMatched)
 import Data.Monoid ((<>))
 
 import qualified Data.Maybe.Clapi as Maybe

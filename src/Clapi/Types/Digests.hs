@@ -9,7 +9,6 @@ module Clapi.Types.Digests where
 import Data.Bifunctor (bimap)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Semigroup
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
@@ -155,10 +154,12 @@ data TrcSubDigest = TrcSubDigest
 trcsdEmpty :: TrcSubDigest
 trcsdEmpty = mempty
 
+instance Semigroup TrcSubDigest where
+  TrcSubDigest p1 t1 d1 <> TrcSubDigest p2 t2 d2 = TrcSubDigest
+      (p2 <> p1) (t2 <> t1) (d2 <> d1)
+
 instance Monoid TrcSubDigest where
   mempty = TrcSubDigest mempty mempty mempty
-  TrcSubDigest p1 t1 d1 `mappend` TrcSubDigest p2 t2 d2 = TrcSubDigest
-      (p2 <> p1) (t2 <> t1) (d2 <> d1)
 
 trcsdNamespaces :: TrcSubDigest -> Set Namespace
 trcsdNamespaces (TrcSubDigest p t d) =
@@ -171,10 +172,12 @@ data ClientRegs
   , crDataRegs :: Mos Namespace Path
   } deriving (Show)
 
+instance Semigroup ClientRegs where
+  (ClientRegs pt1 t1 d1) <> (ClientRegs pt2 t2 d2) =
+    ClientRegs (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
+
 instance Monoid ClientRegs where
   mempty = ClientRegs mempty mempty mempty
-  (ClientRegs pt1 t1 d1) `mappend` (ClientRegs pt2 t2 d2) =
-    ClientRegs (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
 
 crNull :: ClientRegs -> Bool
 crNull (ClientRegs p t d) = null p && null t && null d
@@ -233,10 +236,12 @@ frcsdNull :: FrcSubDigest -> Bool
 frcsdNull (FrcSubDigest errs ptUnsubs tUnsubs dUnsubs) =
   null errs && null ptUnsubs && null tUnsubs && null dUnsubs
 
+instance Semigroup FrcSubDigest where
+  (FrcSubDigest e1 pt1 t1 d1) <> (FrcSubDigest e2 pt2 t2 d2) =
+    FrcSubDigest (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
+
 instance Monoid FrcSubDigest where
   mempty = FrcSubDigest mempty mempty mempty mempty
-  (FrcSubDigest e1 pt1 t1 d1) `mappend` (FrcSubDigest e2 pt2 t2 d2) =
-    FrcSubDigest (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
 
 frcsdEmpty :: FrcSubDigest
 frcsdEmpty = mempty

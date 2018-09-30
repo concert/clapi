@@ -23,9 +23,8 @@ import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge (
+import Data.Map.Merge.Strict (
     merge, preserveMissing, dropMissing, zipWithMaybeMatched)
-import Data.Semigroup
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tuple (swap)

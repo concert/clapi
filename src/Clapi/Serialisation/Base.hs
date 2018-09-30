@@ -28,7 +28,6 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char.Utf8 (fromText)
 import Data.ByteString.Builder (floatBE, doubleBE)
 import qualified Data.ByteString.Builder.VarWord as BVw
-import Data.Monoid
 
 -- For parsing:
 import qualified Data.Attoparsec.ByteString as DAB

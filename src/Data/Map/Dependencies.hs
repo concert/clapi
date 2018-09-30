@@ -15,7 +15,6 @@ import Prelude hiding (lookup, filter)
 
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Monoid
 import Data.Set (Set)
 
 import Data.Map.Mos (Mos, unMos)
@@ -25,10 +24,12 @@ data Dependencies k a
   = Dependencies { fwdDeps :: Map k a, revDeps :: Mos a k }
   deriving (Show, Eq)
 
+instance (Ord k, Ord a) => Semigroup (Dependencies k a) where
+  (Dependencies f1 r1) <> (Dependencies f2 r2) =
+    Dependencies (f1 <> f2) (r1 <> r2)
+
 instance (Ord k, Ord a) => Monoid (Dependencies k a) where
   mempty = Dependencies mempty mempty
-  (Dependencies f1 r1) `mappend` (Dependencies f2 r2) =
-    Dependencies (f1 <> f2) (r1 <> r2)
 
 instance Foldable (Dependencies k) where
   foldr f acc = foldr f acc . fwdDeps
