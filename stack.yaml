@@ -43,7 +43,7 @@ extra-deps:
   - attoparsec-binary-0.2
   - attoparsec-varword-0.1.0.0
   - bytestring-builder-varword-0.1.0.0
-  - containers-0.5.8.1
+  - containers-0.5.11.0
   - unagi-chan-0.4.0.0
 
 # Override default flag values for local packages and extra-deps

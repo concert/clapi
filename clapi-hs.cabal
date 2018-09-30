@@ -73,7 +73,7 @@ library
                      , bytestring
                      , bytestring-builder-varword
                      , clock
-                     , containers >= 0.5.8.1
+                     , containers
                      , data-binary-ieee754
                      , either
                      , errors
