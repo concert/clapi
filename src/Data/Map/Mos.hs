@@ -32,7 +32,7 @@ import Data.Tuple (swap)
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
--- We don't export this constuctor so that we can guarantee that if the final
+-- We don't export this constructor so that we can guarantee that if the final
 -- element is removed from a set, we remove the set from the map:
 newtype Mos k a
   = Mos
