@@ -18,7 +18,7 @@ import qualified Control.Exception as E
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Async
   ( Async, async, withAsync, wait, poll, cancel, asyncThreadId, mapConcurrently
-  , replicateConcurrently)
+  , replicateConcurrently, AsyncCancelled(..))
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (send, recv)
@@ -155,7 +155,7 @@ spec = do
     connector1 a csock = recv csock 4096 >> killThread (asyncThreadId a)
     handler1 v hsock = E.catch
         (send hsock "hello" >> threadDelay (seconds 1))
-        (\E.ThreadKilled -> putMVar v ())
+        (\AsyncCancelled -> putMVar v ())
     socketCloseTest handler = withServe' handler $ \port-> do
         mbs <- timeout (seconds 2) $
             connect "127.0.0.1" port
