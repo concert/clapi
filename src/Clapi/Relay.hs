@@ -20,10 +20,9 @@ import Data.Bifunctor (first, second, bimap)
 import Data.Either (partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
+import Data.Map.Merge.Strict (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
 import qualified Data.Set as Set
 import Data.Maybe (fromJust, mapMaybe, fromMaybe)
-import Data.Semigroup
 import Data.Set (Set)
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -39,10 +38,9 @@ import Clapi.Types.Base (Attributee)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, unAssocList , alFoldlWithKey, alFilterKey)
-import Clapi.Types.Messages
-  ( DataErrorIndex(..), SubErrorIndex(..), MkSubErrIdx(..))
 import Clapi.Types.Digests
-  ( TrpDigest(..), TrprDigest(..), TrcUpdateDigest(..), TrcSubDigest(..)
+  ( DataErrorIndex(..), SubErrorIndex(..), MkSubErrIdx(..)
+  , TrpDigest(..), TrprDigest(..), TrcUpdateDigest(..), TrcSubDigest(..)
   , trcsdNamespaces
   , FrpErrorDigest(..), FrcSubDigest(..), FrcUpdateDigest(..)
   , FrcRootDigest(..), FrpDigest(..)
@@ -144,10 +142,12 @@ data RelayState i
 
 makeLenses ''RelayState
 
+instance Ord i => Semigroup (RelayState i) where
+  (RelayState vsm1 o1 r1 c1) <> (RelayState vsm2 o2 r2 c2) =
+    RelayState (vsm1 <> vsm2) (o1 <> o2) (r1 <> r2) (c1 <> c2)
+
 instance Ord i => Monoid (RelayState i) where
   mempty = RelayState mempty mempty mempty mempty
-  (RelayState vsm1 o1 r1 c1) `mappend` (RelayState vsm2 o2 r2 c2) =
-    RelayState (vsm1 <> vsm2) (o1 <> o2) (r1 <> r2) (c1 <> c2)
 
 type RelayProtocol i m = Protocol
     (ClientEvent i TrDigest) Void

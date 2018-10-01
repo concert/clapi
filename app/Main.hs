@@ -17,12 +17,13 @@ import qualified Data.ByteString.Base16 as B16
 import System.IO (hPutStrLn, stderr)
 
 import Clapi.Server (protocolServer, withListen)
-import Clapi.SerialisationProtocol (serialiser, digester)
+import Clapi.SerialisationProtocol (serialiser)
 import Clapi.Serialisation ()
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
 import Clapi.RelayApi (relayApiProto, PathSegable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
+import Clapi.Types (Attributee(..))
 import Clapi.Types.Path (mkSeg)
 import Clapi.TH (segq)
 
@@ -52,7 +53,7 @@ main =
       "Stopped accepting new connections, waiting for existing clients to disconnect..."
     onTerminated = hPutStrLn stderr "Forcibly quit"
     perClientProto addr =
-      ("SomeOne", addr, serialiser <<-> digester <<-> attributor "someone")
+      ("SomeOne", addr, serialiser <<-> attributor (Attributee "someone"))
     totalProto = shower "total"
       <<-> relayApiProto internalAddr
       <<-> shower "nt"

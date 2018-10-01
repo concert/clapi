@@ -23,9 +23,8 @@ import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge (
+import Data.Map.Merge.Strict (
     merge, preserveMissing, dropMissing, zipWithMaybeMatched)
-import Data.Semigroup
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tuple (swap)
@@ -33,6 +32,8 @@ import Data.Tuple (swap)
 import qualified Data.Maybe.Clapi as Maybe
 import qualified Data.Map.Clapi as Map
 
+-- We don't export this constructor so that we can guarantee that if the final
+-- element is removed from a set, we remove the set from the map:
 newtype Mos k a
   = Mos
   { unMos :: Map k (Set a)

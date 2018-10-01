@@ -8,8 +8,9 @@ import Test.Hspec
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import qualified Data.ByteString as B
+import qualified Data.Map as Map
 
-import Clapi.Types (DataErrorMessage(..), DataErrorIndex(..))
+import Clapi.Types (FrDigest(..), FrpErrorDigest(..), DataErrorIndex(..))
 import Clapi.Protocol
   ((<<->), sendRev, sendFwd, waitThenFwdOnly, waitThenRevOnly, runEffect)
 import Clapi.Serialisation ()
@@ -19,8 +20,8 @@ spec :: Spec
 spec = it "Packetised round trip" $
     runEffect $ chunkyEcho <<-> serialiser <<-> test
   where
-    msg :: DataErrorMessage
-    msg = MsgDataError GlobalError "part of test"
+    msg :: FrDigest
+    msg = Frped $ FrpErrorDigest $ Map.singleton GlobalError ["part of test"]
     chunkyEcho = forever $ waitThenRevOnly $ \c ->
       let (c0, c1) = B.splitAt (B.length c `div` 2) c in
         sendFwd c0 >> sendFwd c1

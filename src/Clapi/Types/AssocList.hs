@@ -23,7 +23,6 @@ import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
-import Data.Semigroup
 import Data.Set (Set)
 import qualified Data.Set as Set
 

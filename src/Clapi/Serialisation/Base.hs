@@ -11,11 +11,16 @@ import Control.Monad.Fail (MonadFail(..))
 import Control.Monad (liftM2)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 
 import Data.Word
 import Data.Int
 import Data.Text (Text)
+
+import Data.Map.Mos (Mos)
+import qualified Data.Map.Mos as Mos
 
 -- For building:
 import Blaze.ByteString.Builder
@@ -23,7 +28,6 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char.Utf8 (fromText)
 import Data.ByteString.Builder (floatBE, doubleBE)
 import qualified Data.ByteString.Builder.VarWord as BVw
-import Data.Monoid
 
 -- For parsing:
 import qualified Data.Attoparsec.ByteString as DAB
@@ -37,8 +41,9 @@ import Clapi.TaggedData
   (TaggedData, taggedData, tdInstanceToTag, tdAllTags, tdTagToEnum)
 import Clapi.Types.AssocList (AssocList, mkAssocList, unAssocList)
 import Clapi.Types.Base
-  ( Time(..), TimeStamped(..), Tag(..), mkTag, InterpolationLimit(..)
-  , Interpolation(..), InterpolationType(..), interpolationType)
+  ( Attributee(..), Time(..), TimeStamped(..), Tag(..), mkTag
+  , InterpolationLimit(..), Interpolation(..), InterpolationType(..)
+  , interpolationType)
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
 
@@ -104,6 +109,15 @@ instance (Ord k, Encodable k, Encodable v) => Encodable (Map k v) where
   builder = builder . Map.toList
   parser = Map.fromList <$> parser
 
+
+instance (Ord a, Encodable a) => Encodable (Set a) where
+  builder = builder . Set.toList
+  parser = Set.fromList <$> parser
+
+instance (Ord k, Ord v, Encodable k, Encodable v) => Encodable (Mos k v) where
+  builder = builder . Mos.toList
+  parser = Mos.fromList <$> parser
+
 (<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
 (<<>>) = liftM2 (<>)
 
@@ -133,6 +147,9 @@ instance (Ord k, Show k, Encodable k, Encodable v)
   => Encodable (AssocList k v) where
     builder = builder . unAssocList
     parser = parser >>= mkAssocList
+
+
+deriving instance Encodable Attributee
 
 
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a

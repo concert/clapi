@@ -5,7 +5,6 @@
 #-}
 module Data.Map.Mol where
 
-import Data.Monoid ((<>))
 import qualified Data.Map as Map
 
 import Data.Map.Clapi as Map
@@ -13,9 +12,11 @@ import Data.Map.Clapi as Map
 newtype Mol k a
   = Mol {unMol :: Map.Map k [a]} deriving (Show, Eq, Ord, Functor, Foldable)
 
+instance Ord k => Semigroup (Mol k a) where
+  (<>) = union
+
 instance Ord k => Monoid (Mol k a) where
   mempty = Mol mempty
-  mappend = union
 
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty

@@ -5,7 +5,7 @@ module Clapi.Protocol
   , Protocol, ProtocolF(..)
   , wait, send, sendFwd, sendRev
   , waitThen, waitThenFwdOnly, waitThenRevOnly, liftedWaitThen
-  , (<<->), idProtocol, mapProtocol
+  , (<<->), idProtocol
   , runProtocolIO, runEffect
   , pattern EmptySeq, pattern (:>), pattern (:<)
   ) where
@@ -158,9 +158,6 @@ liftedWaitThen onFwd onRev = do
   case d of
     Fwd a -> onFwd a
     Rev b -> onRev b
-
-mapProtocol :: (Monad m) => (a -> a') -> (b -> b') -> Protocol a a' b' b m ()
-mapProtocol f g = forever $ waitThen (sendFwd . f) (sendRev . g)
 
 idProtocol :: Monad m => Protocol a a b b m ()
 idProtocol = forever $ waitThen sendFwd sendRev

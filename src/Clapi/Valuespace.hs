@@ -20,7 +20,7 @@ import Data.Bifunctor (first, bimap)
 import Data.Either (lefts, partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Strict.Merge
+import Data.Map.Merge.Strict
   (merge, preserveMissing, dropMissing, zipWithMatched, zipWithMaybeMatched)
 import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
@@ -42,7 +42,7 @@ import Data.Maybe.Clapi (note)
 
 import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
 import Clapi.Tree
-  ( RoseTree(..), RoseTreeNode(..), treeInsert, treeChildren, TpId
+  ( RoseTree(..), RoseTreeNode(..), treeInsert, treeChildren
   , RoseTreeNodeType(..), treePaths)
 import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
@@ -55,9 +55,9 @@ import Clapi.Types.Definitions
   , StructDefinition(..), ArrayDefinition(..), PostDefinition(..), defDispatch
   , childEditableFor, childTypeFor)
 import Clapi.Types.Digests
-  ( DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
-  , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates)
-import Clapi.Types.Messages (DataErrorIndex(..))
+  ( TpId, DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
+  , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates
+  , DataErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, Placeholder, childPaths)
 import qualified Clapi.Types.Path as Path
