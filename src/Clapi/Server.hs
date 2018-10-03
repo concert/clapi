@@ -87,8 +87,10 @@ _handlePerClient displayName i proto toMainChan sock = do
         (NSB.sendAll sock) (Q.readChan clientChanOut)
         (liftToPerClientEvent displayName i proto)
 
+-- https://ghc.haskell.org/trac/ghc/ticket/15158 means you can't use maxbound
+-- until GHC 8.6.1
 neverDoAnything :: IO a
-neverDoAnything = forever $ threadDelay maxBound
+neverDoAnything = forever $ threadDelay 1000000000000
 
 protocolServer
   :: (Ord i)
