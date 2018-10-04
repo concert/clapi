@@ -18,6 +18,9 @@ instance Ord k => Semigroup (Mol k a) where
 instance Ord k => Monoid (Mol k a) where
   mempty = Mol mempty
 
+singleton :: k -> a -> Mol k a
+singleton k a = Mol $ Map.singleton k [a]
+
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
 
