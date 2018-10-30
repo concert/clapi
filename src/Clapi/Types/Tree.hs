@@ -1,12 +1,17 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE
+    FunctionalDependencies
+  , GADTs
+  , MultiParamTypeClasses
+  , ScopedTypeVariables
+#-}
 
 module Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
   , TypeEnumOf(..)
   , TreeType(..), TreeTypeName(..), ttEnum
+
+  , NewTreeType(..), SomeTreeType(..), EnumWord32(..)
   ) where
 
 import Prelude hiding (fail)
@@ -18,7 +23,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
-import Clapi.Types.Path (Seg, mkSeg)
+import Clapi.Types.Base (Time)
+import Clapi.Types.Path (Path, Seg, mkSeg)
 import Clapi.Util (uncamel)
 
 
@@ -38,6 +44,26 @@ bounds m0 m1 = return $ Bounds m0 m1
 
 unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing
+
+-- | A Word32 that's being used to represent the constructor of the phantom Enum
+--   type `a`
+newtype EnumWord32 a where
+  EnumWord32 :: Word32 -> EnumWord32 a
+
+type SimpleTreeType a = NewTreeType a a
+
+data NewTreeType a b where
+  NttTime :: SimpleTreeType Time
+  NttEnum :: (Bounded b, Enum b) => NewTreeType Word32 b
+  NttWord32 :: Bounds Word32 -> SimpleTreeType Word32
+  NttString :: Text -> SimpleTreeType Text
+  NttRef :: Seg -> NewTreeType Text Path
+  NttList :: NewTreeType a b -> NewTreeType [a] [b]
+  NttPair
+    :: NewTreeType x1 x2 -> NewTreeType y1 y2 -> NewTreeType (x1, y1) (x2, y2)
+
+data SomeTreeType where
+  SomeTreeType :: NewTreeType a b -> SomeTreeType
 
 
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where

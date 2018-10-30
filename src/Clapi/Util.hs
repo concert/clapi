@@ -112,7 +112,7 @@ bound i =
       else fail "out of bounds"
 
 -- http://stackoverflow.com/questions/2743858/safe-and-polymorphic-toenum
-safeToEnum :: (MonadFail m, Enum a, Bounded a) => Int -> m a
+safeToEnum :: (Enum a, Bounded a, MonadFail m) => Int -> m a
 safeToEnum i =
   let
     r = toEnum i

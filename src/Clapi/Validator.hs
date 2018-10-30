@@ -1,4 +1,10 @@
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE
+    LambdaCase
+  , FlexibleInstances
+  , GADTs
+  , MultiParamTypeClasses
+  , Rank2Types
+#-}
 
 module Clapi.Validator where
 
@@ -15,11 +21,16 @@ import qualified Data.Text as Text
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
-import Clapi.Util (ensureUnique)
-import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue, Definition)
+import Clapi.Util (ensureUnique, safeToEnum)
+import Clapi.Types
+  ( WireValue, Time, Wireable, cast', castWireValue, Definition
+  , NewWireValue(..), SomeNewWireValue(..),  unwrapNwv
+  , EnumWord32(..), SomeTreeType(..)
+  )
 import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (Bounds, boundsMin, boundsMax, TreeType(..))
+import Clapi.Types.Tree
+  ( Bounds, boundsMin, boundsMax, TreeType(..), NewTreeType(..))
 import Clapi.Types.TreeTypeProxy (withTtProxy)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
@@ -150,3 +161,38 @@ checkEnum ns w = let theMax = fromIntegral $ length ns in
   if w >= theMax
     then fail $ printf "Enum value %v out of range" w
     else return w
+
+class ClassyValidate a1 a2 where
+  classyValidate :: MonadFail m => NewTreeType a1 b -> NewWireValue a2 -> m ()
+
+instance ClassyValidate a a where
+  classyValidate tt = void . nwvValidate tt
+
+instance ClassyValidate a1 a2 where
+  classyValidate _ _ = fail "Parp"
+
+awesomeValidate :: MonadFail m => SomeTreeType -> SomeNewWireValue -> m ()
+awesomeValidate (SomeTreeType tt) (SomeNewWireValue wv) = classyValidate tt wv
+
+
+nwvValidate :: MonadFail m => NewTreeType a b -> NewWireValue a -> m b
+nwvValidate tt = myValidate tt . unwrapNwv
+
+myValidate :: forall a b m. MonadFail m => NewTreeType a b -> a -> m b
+myValidate = \case
+    NttTime -> return
+    NttEnum -> safeToEnum . fromIntegral
+    NttWord32 b -> inBounds b
+    NttString pat -> checkString pat
+    NttRef _ -> Path.fromText Path.segP
+    NttList tt -> mapM $ myValidate tt
+    NttPair tt1 tt2 -> \(x, y) -> (,) <$> myValidate tt1 x <*> myValidate tt2 y
+
+newExtractTypeAssertions :: NewTreeType a b -> b -> [(Seg, Path)]
+newExtractTypeAssertions = \case
+  NttRef s -> \path -> [(s, path)]
+  NttList tt -> foldMap (newExtractTypeAssertions tt)
+  NttPair tt1 tt2 -> \(x, y) ->
+    newExtractTypeAssertions tt1 x <>
+    newExtractTypeAssertions tt2 y
+  _ -> const []
