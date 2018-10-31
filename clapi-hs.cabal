@@ -73,6 +73,7 @@ library
                      , bytestring
                      , bytestring-builder-varword
                      , clock
+                     , constraints
                      , containers
                      , data-binary-ieee754
                      , either
