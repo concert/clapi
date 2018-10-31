@@ -37,6 +37,10 @@ fromMap = Mol . Map.filter (not . null)
 
 fromSet :: (k -> a) -> Set k -> Mol k a
 fromSet f = Mol . Map.fromSet (pure . f)
+
+keys :: Mol k a -> [k]
+keys = Map.keys . unMol
+
 cons :: (Ord k) => k -> a -> Mol k a -> Mol k a
 cons k a = Mol . Map.updateM (a :) k . unMol
 
@@ -54,3 +58,12 @@ union (Mol m1) (Mol m2) = Mol $ Map.unionWith (<>) m1 m2
 
 unions :: (Ord k) => [Mol k a] -> Mol k a
 unions = Mol . Map.unionsWith (<>) . fmap unMol
+
+mapKeys :: Ord k2 => (k1 -> k2) -> Mol k1 a -> Mol k2 a
+mapKeys f = Mol . Map.mapKeys f . unMol
+
+mapKeysMonotonic :: (k1 -> k2) -> Mol k1 a -> Mol k2 a
+mapKeysMonotonic f = Mol . Map.mapKeysMonotonic f . unMol
+
+filterWithKey :: (k -> a -> Bool) -> Mol k a -> Mol k a
+filterWithKey p = fromMap . Map.mapWithKey (\k as -> filter (p k) as) . unMol
