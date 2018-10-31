@@ -5,7 +5,9 @@
 #-}
 module Data.Map.Mol where
 
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
 
 import Data.Map.Clapi as Map
 
@@ -19,7 +21,10 @@ instance Ord k => Monoid (Mol k a) where
   mempty = Mol mempty
 
 singleton :: k -> a -> Mol k a
-singleton k a = Mol $ Map.singleton k [a]
+singleton k a = singletonList k [a]
+
+singletonList :: k -> [a] -> Mol k a
+singletonList k as = Mol $ Map.singleton k as
 
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
@@ -27,6 +32,11 @@ fromList = foldr (uncurry cons) mempty
 toList :: (Ord k) => Mol k a -> [(k, a)]
 toList (Mol m) = mconcat $ sequence <$> Map.toList m
 
+fromMap :: Map k [a] -> Mol k a
+fromMap = Mol . Map.filter (not . null)
+
+fromSet :: (k -> a) -> Set k -> Mol k a
+fromSet f = Mol . Map.fromSet (pure . f)
 cons :: (Ord k) => k -> a -> Mol k a -> Mol k a
 cons k a = Mol . Map.updateM (a :) k . unMol
 
