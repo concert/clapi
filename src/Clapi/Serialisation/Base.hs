@@ -163,7 +163,7 @@ tdTaggedParser td p = let at = tdAllTags td in do
       else fail $ "Invalid tag " ++ show t ++ " valid tags are " ++ show at
 
 tdTaggedBuilder
-  :: MonadFail m =>TaggedData e a -> (a -> m Builder) -> a -> m Builder
+  :: MonadFail m => TaggedData e a -> (a -> m Builder) -> a -> m Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 
