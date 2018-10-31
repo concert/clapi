@@ -19,6 +19,7 @@ import Data.Word
 import Data.Int
 import Data.Text (Text)
 
+import Data.Map.Mol (Mol(..))
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -108,6 +109,8 @@ instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
 instance (Ord k, Encodable k, Encodable v) => Encodable (Map k v) where
   builder = builder . Map.toList
   parser = Map.fromList <$> parser
+
+deriving instance (Ord k, Encodable k, Encodable v) => Encodable (Mol k v)
 
 
 instance (Ord a, Encodable a) => Encodable (Set a) where
