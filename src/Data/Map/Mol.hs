@@ -43,6 +43,12 @@ fromSet f = Mol . Map.fromSet (pure . f)
 keys :: Mol k a -> [k]
 keys = Map.keys . unMol
 
+keysSet :: Mol k a -> Set k
+keysSet = Map.keysSet . unMol
+
+lookup :: (Ord k) => k -> Mol k a -> [a]
+lookup k = maybe [] id . Map.lookup k . unMol
+
 cons :: (Ord k) => k -> a -> Mol k a -> Mol k a
 cons k a = Mol . Map.updateM (a :) k . unMol
 
