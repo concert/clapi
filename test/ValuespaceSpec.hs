@@ -18,6 +18,8 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Control.Monad.Fail (MonadFail)
 
+import qualified Data.Map.Mol as Mol
+
 import Clapi.TH
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, alEmpty, alInsert, alFromList)
@@ -73,14 +75,14 @@ testValuespace = unsafeValidateVs $ (baseValuespace (Tagged testS) Editable)
 
 vsProviderErrorsOn :: Valuespace -> TrpDigest -> [Path] -> Expectation
 vsProviderErrorsOn vs d ps = case (processToRelayProviderDigest d vs) of
-    Left errMap -> Map.keysSet errMap `shouldBe` Set.fromList (PathError <$> ps)
+    Left errMap -> Mol.keysSet errMap `shouldBe` Set.fromList (PathError <$> ps)
     Right _ -> fail "Did not get expected errors"
 
 vsClientErrorsOn :: Valuespace -> TrcUpdateDigest -> [Path] -> Expectation
 vsClientErrorsOn vs d ps = let (errMap, _) = processTrcUpdateDigest vs d in
   if (null errMap)
     then fail "Did not get expected errors"
-    else Map.keysSet errMap `shouldBe` Set.fromList (PathError <$> ps)
+    else Mol.keysSet errMap `shouldBe` Set.fromList (PathError <$> ps)
 
 validVersionTypeChange :: Valuespace -> TrpDigest
 validVersionTypeChange vs =

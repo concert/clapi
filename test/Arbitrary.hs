@@ -24,6 +24,8 @@ import qualified Data.Text as Text
 import Data.Word
 import System.Random (Random)
 
+import Data.Map.Mol (Mol)
+import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -53,10 +55,19 @@ smallMapOf gk gv = Map.fromList <$> smallListOf ((,) <$> gk <*> gv)
 smallMap :: (Ord k, Arbitrary k, Arbitrary v) => Gen (Map k v)
 smallMap = smallMapOf arbitrary arbitrary
 
-instance (Ord k, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (Mos k v) where
-  arbitrary = Mos.fromList . mconcat <$> smallListOf (do
+commonKeyPairs :: (Arbitrary k, Arbitrary v) => Gen [(k, v)]
+commonKeyPairs = do
     mkPair <- (,) <$> arbitrary
-    fmap mkPair <$> smallListOf arbitrary)
+    fmap mkPair <$> smallListOf arbitrary
+
+severalCkps :: (Arbitrary k, Arbitrary v) => Gen [(k, v)]
+severalCkps = mconcat <$> smallListOf commonKeyPairs
+
+instance (Ord k, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (Mos k v) where
+  arbitrary = Mos.fromList <$> severalCkps
+
+instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
+  arbitrary = Mol.fromList <$> severalCkps
 
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
@@ -259,7 +270,7 @@ contOps = smallMapOf arbitrary smallMap
 
 instance Arbitrary TrpDigest where
   arbitrary = TrpDigest <$> arbitrary <*> smallMap <*> smallMap
-    <*> arbitrary <*> contOps <*> smallMapOf arbitrary (smallListOf arbitrary)
+    <*> arbitrary <*> contOps <*> arbitrary
 
 deriving instance Arbitrary TrprDigest
 
@@ -275,7 +286,7 @@ instance Arbitrary FrpDigest where
   arbitrary = FrpDigest <$> arbitrary <*> arbitrary <*> creates <*> contOps
 
 instance Arbitrary FrpErrorDigest where
-  arbitrary = FrpErrorDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
+  arbitrary = FrpErrorDigest <$> arbitrary
 
 instance Arbitrary FrcRootDigest where
   arbitrary = FrcRootDigest <$> smallMap
@@ -287,7 +298,7 @@ instance Arbitrary FrcSubDigest where
 instance Arbitrary FrcUpdateDigest where
   arbitrary = FrcUpdateDigest <$> arbitrary <*> smallMap <*> smallMap
     <*> smallMap <*> arbitrary <*> contOps
-    <*> smallMapOf arbitrary (smallListOf arbitrary)
+    <*> arbitrary
 
 
 instance Arbitrary TrDigest where
