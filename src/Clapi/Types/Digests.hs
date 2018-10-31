@@ -15,6 +15,7 @@ import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
 
+import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -102,7 +103,7 @@ data TrpDigest = TrpDigest
   -- FIXME: should errors come in a different digest to data updates? At the
   -- moment we just check a TrpDigest isn't null when processing namespace
   -- claims...
-  , trpdErrors :: Map DataErrorIndex [Text]
+  , trpdErrors :: Mol DataErrorIndex Text
   } deriving (Show, Eq)
 
 trpdEmpty :: Namespace -> TrpDigest
@@ -133,7 +134,7 @@ frpdNull :: FrpDigest -> Bool
 frpdNull (FrpDigest _ dd creates cops) = null dd && null creates && null cops
 
 newtype FrpErrorDigest = FrpErrorDigest
-  { frpedErrors :: Map DataErrorIndex [Text]
+  { frpedErrors :: Mol DataErrorIndex Text
   } deriving (Show, Eq)
 
 frpedNull :: FrpErrorDigest -> Bool
@@ -256,7 +257,7 @@ data FrcUpdateDigest = FrcUpdateDigest
   , frcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
-  , frcudErrors :: Map DataErrorIndex [Text]
+  , frcudErrors :: Mol DataErrorIndex Text
   } deriving (Show, Eq)
 
 frcudEmpty :: Namespace -> FrcUpdateDigest

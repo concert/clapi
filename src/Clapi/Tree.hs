@@ -17,6 +17,9 @@ import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 
+import Data.Map.Mol (Mol)
+import qualified Data.Map.Mol as Mol
+
 import Clapi.Types
   (Time, Interpolation(..), Attributee, WireValue)
 import Clapi.Types.AssocList
@@ -146,10 +149,10 @@ treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
       fmap ((att,) . RtContainer . alSingleton s) <$> inner p Nothing
 
 updateTreeStructure
-  :: ContOps Seg -> RoseTree a -> (Map Path [Text], RoseTree a)
+  :: ContOps Seg -> RoseTree a -> (Mol Path Text, RoseTree a)
 updateTreeStructure contOps = runState $ do
     errs <- sequence $ Map.mapWithKey applyContOp contOps
-    return $ Map.filter (not . null) errs
+    return $ Mol.fromMap errs
   where
     applyContOp
       :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg)
@@ -160,10 +163,10 @@ updateTreeStructure contOps = runState $ do
 
 updateTreeData
   :: DataDigest -> RoseTree [WireValue]
-  -> (Map Path [Text], RoseTree [WireValue])
+  -> (Mol Path Text, RoseTree [WireValue])
 updateTreeData dd = runState $ do
     errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
-    return $ Map.filter (not . null) errs
+    return $ Mol.fromMap errs
   where
     applyDd
       :: Path -> DataChange
@@ -189,11 +192,11 @@ updateTreeData dd = runState $ do
 -- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
   :: ContOps Seg -> DataDigest -> RoseTree [WireValue]
-  -> (Map Path [Text], RoseTree [WireValue])
+  -> (Mol Path Text, RoseTree [WireValue])
 updateTreeWithDigest contOps dd = runState $ do
     errs <- state (updateTreeData dd)
     errs' <- state (updateTreeStructure contOps)
-    return $ Map.unionWith (<>) errs errs'
+    return $ errs <> errs'
 
 data RoseTreeNode a
   = RtnEmpty
