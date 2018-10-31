@@ -21,10 +21,12 @@ instance Ord k => Monoid (Mol k a) where
   mempty = Mol mempty
 
 singleton :: k -> a -> Mol k a
-singleton k a = singletonList k [a]
+singleton k a = Mol $ Map.singleton k [a]
 
 singletonList :: k -> [a] -> Mol k a
-singletonList k as = Mol $ Map.singleton k as
+singletonList k as = Mol $ if null as
+  then Map.empty
+  else Map.singleton k as
 
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
