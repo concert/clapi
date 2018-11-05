@@ -87,7 +87,7 @@ data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
   , pfrcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
-  , pfrcudErrors :: Map DataErrorIndex [Text]
+  , pfrcudErrors :: Mol DataErrorIndex Text
   }
 
 instance Semigroup ProtoFrcUpdateDigest where
@@ -95,7 +95,7 @@ instance Semigroup ProtoFrcUpdateDigest where
       <> ProtoFrcUpdateDigest pd2 defs2 ta2 d2 co2 err2 =
     ProtoFrcUpdateDigest
       (pd1 <> pd2) (defs1 <> defs2) (ta1 <> ta2) (d1 <> d2) (co1 <> co2)
-      (Map.unionWith (<>) err1 err2)
+      (err1 <> err2)
 instance Monoid ProtoFrcUpdateDigest where
   mempty = ProtoFrcUpdateDigest mempty mempty mempty mempty mempty mempty
   mappend = (<>)
@@ -194,7 +194,7 @@ handleTrpd i d = do
         -- NB: as long as we make sure the initial claim defines something we
         -- can never subsequently have an empty valuespace:
         when (definesNothing d) $ throwError $
-          Map.singleton (NamespaceError ns) ["Empty namespace claim"]
+          Mol.singleton (NamespaceError ns) "Empty namespace claim"
         frcud <- tryVsUpdate
         lift $ updateOwners newOwners
         -- FIXME: would be nice if we didn't have to track ourselves that we'd
@@ -204,8 +204,8 @@ handleTrpd i d = do
         return frcud
       (Just i') -> if (i' == i)
         then tryVsUpdate -- no owner map change
-        else throwError $ Map.singleton (NamespaceError ns)
-          ["Already owned by another provider"]
+        else throwError $ Mol.singleton (NamespaceError ns)
+          "Already owned by another provider"
     either
       (\errMap -> do
         sendData' i $ Frped $ FrpErrorDigest errMap
@@ -318,14 +318,14 @@ handleTrcud i d = runExceptT go >>= either
       when (owner == Just i) $ throwError "Acted as client on own namespace"
       use (rsVsMap . at ns) >>= \case
         Nothing -> lift $ sendData' i $ Frcud $ (frcudEmpty ns) {frcudErrors =
-          Map.singleton (NamespaceError ns) ["Namespace does not exist"]}
+          Mol.singleton (NamespaceError ns) "Namespace does not exist"}
         Just vs ->
           let
             (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs d
             frpd = FrpDigest ns dat cr cont
           in do
             unless (null errMap) $ lift $ sendData' i $ Frcud $
-              (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
+              (frcudEmpty ns) {frcudErrors = Text.pack . show <$> errMap}
             case owner of
               Nothing -> error "Namespace doesn't have owner, apparently"
               Just oi -> unless (frpdNull frpd) $ lift $ sendData' oi $ Frpd frpd
@@ -424,7 +424,7 @@ generateClientDigests (FrcUpdateDigest ns ptds tds tas dat cops errs) =
           (Map.restrictKeys tas nsDs)
           (alFilterKey (`Set.member` nsDs) dat)
           (Map.restrictKeys cops nsDs)
-          (Map.filterWithKey (\dei _ -> case dei of
+          (Mol.filterWithKey (\dei _ -> case dei of
             GlobalError -> True
             NamespaceError errNs ->
                  (pt `Mos.hasKey` errNs)
@@ -441,7 +441,7 @@ throwOutProvider
 throwOutProvider i nss msg = do
   -- FIXME: I'm quite sure that we should be taking namespaces...
   lift $ sendRev $ Right $ ServerData i $ Frped $ FrpErrorDigest $
-    Map.fromSet (const [Text.pack msg]) $ Set.map NamespaceError nss
+    Mol.fromSet (const $ Text.pack msg) $ Set.map NamespaceError nss
   lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
 

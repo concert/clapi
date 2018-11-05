@@ -174,21 +174,23 @@ partitionXrefs oldXrefs claims = (preExistingXrefs, newXrefs)
 xrefUnion :: Xrefs -> Xrefs -> Xrefs
 xrefUnion = Map.unionWith $ Map.unionWith $ liftM2 Set.union
 
+errorOn :: Foldable f => f a -> Either (f a) ()
+errorOn f = unless (null f) $ Left f
+
 checkRefClaims
   :: TypeAssignmentMap
   -> Map Path (Either RefTypeClaims (Map TpId RefTypeClaims))
-  -> Either (Map DataErrorIndex [ValidationErr]) ()
+  -> Either (Mol DataErrorIndex ValidationErr) ()
 checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
   where
-    errIf m = unless (null m) $ Left m
-    smashErrMap = errIf . unMol . Mol.unions . fmap Mol . lefts . Map.elems
+    smashErrMap = errorOn . Mol.unions . lefts . Map.elems
     checkRefsAtPath
       :: Path
       -> Either RefTypeClaims (Map TpId RefTypeClaims)
-      -> Either (Map DataErrorIndex [ValidationErr]) ()
+      -> Either (Mol DataErrorIndex ValidationErr) ()
     checkRefsAtPath path refClaims =
       let
-        doCheck eidx = first (Map.singleton eidx . pure @[]) .
+        doCheck eidx = first (Mol.singleton eidx) .
           mapM_ (uncurry checkRef) . Mos.toList
       in
         either
@@ -206,19 +208,19 @@ checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
 validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
   -> Either
-       (Map DataErrorIndex [ValidationErr])
+       (Mol DataErrorIndex ValidationErr)
        (Map Path (Tagged Definition Seg), Valuespace)
 validateVs t v = do
     (newTypeAssns, refClaims, vs) <- inner mempty mempty t v
     checkRefClaims (vsTyAssns vs) refClaims
     let (preExistingXrefs, newXrefs) = partitionXrefs (vsXrefs vs) refClaims
     let existingXrefErrs = validateExistingXrefs preExistingXrefs newTypeAssns
-    unless (null existingXrefErrs) $ Left existingXrefErrs
+    errorOn existingXrefErrs
     let vs' = vs {vsXrefs = xrefUnion preExistingXrefs newXrefs}
     return (newTypeAssns, vs')
   where
-    errP p = first (Map.singleton (PathError p) . pure . GenericErr)
-    tLook p = maybe (Left $ Map.singleton (PathError p) [ProgrammingErr "Missing RTN"]) Right .
+    errP p = first (Mol.singleton (PathError p) . GenericErr)
+    tLook p = maybe (Left $ Mol.singleton (PathError p) $ ProgrammingErr "Missing RTN") Right .
       Tree.treeLookup p
     changed :: Eq a => a -> a -> Maybe a
     changed a1 a2 | a1 == a2 = Nothing
@@ -232,7 +234,7 @@ validateVs t v = do
       :: Map Path (Tagged Definition Seg)
       -> TypeClaimsByPath
       -> Map Path (Maybe (Set TpId)) -> Valuespace
-      -> Either (Map DataErrorIndex [ValidationErr])
+      -> Either (Mol DataErrorIndex ValidationErr)
            (Map Path (Tagged Definition Seg), TypeClaimsByPath, Valuespace)
     inner newTas newRefClaims tainted vs =
       let tree = vsTree vs; oldTyAssns = vsTyAssns vs in
@@ -248,14 +250,15 @@ validateVs t v = do
               (parentPath :/ _) -> inner
                 newTas newRefClaims (Map.insert parentPath Nothing tainted)
                 vs
-              _ -> Left $ Map.singleton GlobalError
-                [GenericErr "Attempted to taint parent of root"]
+              _ -> Left $ Mol.singleton GlobalError $
+                GenericErr "Attempted to taint parent of root"
             Just ts -> do
               def <- errP path $ vsLookupDef ts vs
               rtn <- tLook path tree
               case validateRoseTreeNode def rtn invalidatedTps of
                 Left validationErrs -> if null emptyArrays
-                    then Left $ Map.singleton (PathError path) validationErrs
+                    then Left $
+                      Mol.singletonList (PathError path) validationErrs
                     else inner newTas' newRefClaims tainted' vs'
                   where
                     emptyArrays = mapMaybe mHandlable validationErrs
@@ -319,7 +322,7 @@ updateNsDefs defOps existingDefs =
 processToRelayProviderDigest
   :: TrpDigest -> Valuespace
   -> Either
-      (Map DataErrorIndex [Text])
+      (Mol DataErrorIndex Text)
       (Map Path (Tagged Definition Seg), Valuespace)
 processToRelayProviderDigest trpd vs =
   let
@@ -338,8 +341,8 @@ processToRelayProviderDigest trpd vs =
     (updateErrs, tree') = Tree.updateTreeWithDigest
         (trpdContOps trpd) (trpdData trpd) (vsTree vs)
   in do
-    unless (null updateErrs) $ Left $ Map.mapKeys PathError updateErrs
-    (updatedTypes, vs') <- first (fmap $ fmap $ Text.pack . show) $ validateVs
+    unless (null updateErrs) $ Left $ Mol.mapKeys PathError updateErrs
+    (updatedTypes, vs') <- first (fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
       Valuespace tree' postDefs' defs' tas xrefs' (vsRootEditable vs)
     return (updatedTypes, vs')
@@ -351,8 +354,8 @@ validatePath vs p mTpids = do
     validateRoseTreeNode def t mTpids
 
 -- | Returns an intermediary error structure
-validateCreates :: Valuespace -> Creates -> Map Path [(Placeholder, String)]
-validateCreates vs creates = fmap mconcat $
+validateCreates :: Valuespace -> Creates -> Mol Path (Placeholder, String)
+validateCreates vs creates = Mol.fromMap $ fmap mconcat $
     Map.mapWithKey (\pth -> Map.elems . Map.mapWithKey (getArgValidator pth)) $
     fmap (ocArgs . snd) <$> creates
   where
@@ -372,11 +375,11 @@ validateCreates vs creates = fmap mconcat $
       . strictZipWith validateWireValues (alValues $ postDefArgs pd)
 
 validateAndFilterCreates
-  :: Valuespace -> Creates -> (Map DataErrorIndex [ValidationErr], Creates)
+  :: Valuespace -> Creates -> (Mol DataErrorIndex ValidationErr, Creates)
 validateAndFilterCreates vs creates =
   let errMap = validateCreates vs creates in
-    ( Map.mapKeysMonotonic PathError $ fmap (uncurry CreateError) <$> errMap
-    , filterSubMap (Set.fromList . fmap fst <$> errMap) creates)
+    ( Mol.mapKeysMonotonic PathError $ uncurry CreateError <$> errMap
+    , filterSubMap (fmap Set.fromList $ Mol.unMol $ fmap fst $ errMap) creates)
 
 -- FIXME: handling all these nested maps turns out to be pain!
 partitionEitherNestedMaps
@@ -388,9 +391,9 @@ partitionEitherNestedMaps mm =
 
 validateCreateAndCopAfters
   :: Valuespace -> Creates -> ContOps (Either Placeholder Seg)
-  -> Map DataErrorIndex [ValidationErr]
+  -> Mol DataErrorIndex ValidationErr
 validateCreateAndCopAfters vs creates cops =
-    Map.unionsWith (<>) [copRefAbsPhs, copRefAbsSegs, crRefAbsPhs, crRefAbsSegs]
+    mconcat [copRefAbsPhs, copRefAbsSegs, crRefAbsPhs, crRefAbsSegs]
   where
     soAfter (SoAfter mi) = mi
     soAfter SoAbsent = Nothing
@@ -433,8 +436,9 @@ validateCreateAndCopAfters vs creates cops =
     validateNameRefs
       :: Ord i
       => (k -> i -> ValidationErr) -> (Path -> Set i) -> Map Path (Map k i)
-      -> Map DataErrorIndex [ValidationErr]
-    validateNameRefs mkErr getDefinedNames = Map.mapKeysMonotonic PathError
+      -> Mol DataErrorIndex ValidationErr
+    validateNameRefs mkErr getDefinedNames = Mol.Mol
+      . Map.mapKeysMonotonic PathError
       . Map.mapWithKey (\p m -> validatePathNameRefs mkErr (getDefinedNames p) m)
 
     copRefAbsPhs = validateNameRefs
@@ -460,15 +464,15 @@ filterSubMap = merge
 
 -- FIXME: this filtering is fiddly
 filterByAfterErrs
-  :: Map DataErrorIndex [ValidationErr]
+  :: Mol DataErrorIndex ValidationErr
   -> Creates -> ContOps (Either Placeholder Seg)
   -> (Creates, ContOps (Either Placeholder Seg))
 filterByAfterErrs errMap creates cops =
     ( filterSubMap badPhs creates
     , filterSubMap badSegs cops)
   where
-    badKeys = Map.fromList $
-      bimap errPath (partitionEithers . fmap key) <$> Map.toList errMap
+    badKeys = Map.fromList $ bimap errPath (partitionEithers . fmap key)
+      <$> Map.toList (Mol.unMol errMap)
     badPhs = Set.fromList . fst <$> badKeys
     badSegs = Set.fromList . snd <$> badKeys
     -- !!! FIXME: Deliberate partials whilst nothing better to hand
@@ -520,7 +524,7 @@ data ProtoFrpDigest = ProtoFrpDigest
 
 processTrcUpdateDigest
   :: Valuespace -> TrcUpdateDigest
-  -> (Map DataErrorIndex [ValidationErr], ProtoFrpDigest)
+  -> (Mol DataErrorIndex ValidationErr, ProtoFrpDigest)
 processTrcUpdateDigest vs trcud =
   let
     (createErrs, createsWithValidArgs) = validateAndFilterCreates vs $
@@ -541,23 +545,24 @@ processTrcUpdateDigest vs trcud =
     touched = opsTouched validSegCops pathValidDd
     vs' = vs {vsTree = tree'}
     touchedEditabilities = Map.mapWithKey (\k _ -> getEditable k vs') touched
-    roErrs = const [EditableErr "Touched read only"]
-      <$> Map.filter (== Just ReadOnly) touchedEditabilities
-    (validationErrs, refClaims) = Map.mapEitherWithKey (validatePath vs') touched
+    roErrs = Mol.fromMap $ fmap (const [EditableErr "Touched read only"])
+      $ (Map.filter (== Just ReadOnly) touchedEditabilities)
+    (validationErrs, refClaims) = first Mol.fromMap $
+      Map.mapEitherWithKey (validatePath vs') touched
     refErrs = either id (const mempty) $ checkRefClaims (vsTyAssns vs') refClaims
 
-    dataErrs = mappend refErrs $ Map.unionsWith (<>) $ fmap (Map.mapKeys PathError)
-      [ fmap (GenericErr . Text.unpack) <$> updateErrs
+    dataErrs = mappend refErrs $ Mol.mapKeysMonotonic PathError $ mconcat
+      [ GenericErr . Text.unpack <$> updateErrs
       , validationErrs, roErrs
-      , Map.fromSet (const $ [TouchedNonExistantPath]) $
+      , Mol.fromSet (const TouchedNonExistantPath) $
           alKeysSet nonExistantSets
       ]
-    errMap = Map.unionsWith (<>) [createErrs, copErrs, dataErrs]
+    errs = mconcat [createErrs, copErrs, dataErrs]
     pfrpd = ProtoFrpDigest
-      (filterDdByDataErrIdx (Map.keys dataErrs) pathValidDd)
+      (filterDdByDataErrIdx (Mol.keys dataErrs) pathValidDd)
       validCreates
       validCops
-  in (errMap, pfrpd)
+  in (errs, pfrpd)
 
 data ValidationErr
   = GenericErr String
@@ -632,7 +637,7 @@ validateWireValues tts wvs =
 
 validateExistingXrefs
   :: Xrefs -> Map Path (Tagged Definition Seg)
-  -> Map DataErrorIndex [ValidationErr]
+  -> Mol DataErrorIndex ValidationErr
 validateExistingXrefs xrs newTas =
   let
     retypedPaths = Map.keysSet newTas
@@ -649,4 +654,4 @@ validateExistingXrefs xrs newTas =
     refereeErrs acc referee refererMap =
       Map.foldlWithKey (refererErrors referee) acc refererMap
   in
-    Map.foldlWithKey refereeErrs mempty invalidated
+    Mol.fromMap $ Map.foldlWithKey refereeErrs mempty invalidated

@@ -19,6 +19,7 @@ import Data.Word
 import Data.Int
 import Data.Text (Text)
 
+import Data.Map.Mol (Mol(..))
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -109,6 +110,8 @@ instance (Ord k, Encodable k, Encodable v) => Encodable (Map k v) where
   builder = builder . Map.toList
   parser = Map.fromList <$> parser
 
+deriving instance (Ord k, Encodable k, Encodable v) => Encodable (Mol k v)
+
 
 instance (Ord a, Encodable a) => Encodable (Set a) where
   builder = builder . Set.toList
@@ -160,7 +163,7 @@ tdTaggedParser td p = let at = tdAllTags td in do
       else fail $ "Invalid tag " ++ show t ++ " valid tags are " ++ show at
 
 tdTaggedBuilder
-  :: MonadFail m =>TaggedData e a -> (a -> m Builder) -> a -> m Builder
+  :: MonadFail m => TaggedData e a -> (a -> m Builder) -> a -> m Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
 
