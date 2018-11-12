@@ -53,6 +53,7 @@ library
                      , Clapi.Types.Dkmap
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
+                     , Clapi.Types.PNat
                      , Clapi.Types.Tree
                      , Clapi.Types.Wire
                      , Clapi.Types.WireTH
