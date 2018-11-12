@@ -103,7 +103,7 @@ data TrpDigest = TrpDigest
   -- moment we just check a TrpDigest isn't null when processing namespace
   -- claims...
   , trpdErrors :: Map DataErrorIndex [Text]
-  } deriving (Show, Eq)
+  } deriving (Show)
 
 trpdEmpty :: Namespace -> TrpDigest
 trpdEmpty ns = TrpDigest ns mempty mempty alEmpty mempty mempty
@@ -257,7 +257,7 @@ data FrcUpdateDigest = FrcUpdateDigest
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Map DataErrorIndex [Text]
-  } deriving (Show, Eq)
+  } deriving (Show)
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
 frcudEmpty ns = FrcUpdateDigest ns mempty mempty mempty alEmpty mempty mempty
@@ -275,7 +275,7 @@ data TrDigest
   | Trprd TrprDigest
   | Trcsd TrcSubDigest
   | Trcud TrcUpdateDigest
-  deriving (Show, Eq)
+  deriving (Show)
 
 data FrDigest
   = Frpd FrpDigest
@@ -283,7 +283,7 @@ data FrDigest
   | Frcrd FrcRootDigest
   | Frcsd FrcSubDigest
   | Frcud FrcUpdateDigest
-  deriving (Show, Eq)
+  deriving (Show)
 
 frNull :: FrDigest -> Bool
 frNull = \case
@@ -319,4 +319,4 @@ data OutboundDigest
   | Ocud OutboundClientUpdateDigest
   | Opd OutboundProviderDigest
   | Ope FrpErrorDigest
-  deriving (Show, Eq)
+  deriving (Show)

@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    OverloadedStrings
+    GADTs
+  , OverloadedStrings
 #-}
 
 module Clapi.TextSerialisation where
@@ -77,12 +78,12 @@ bracketNotNull t = case t of
   "" -> ""
   _ -> bracketText t
 
-ttToText :: TreeType -> Text
+ttToText :: TreeType a b -> Text
 ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
   where
     bracketContent = case tt of
       TtTime -> ""
-      TtEnum ns -> Text.intercalate (Text.singleton listSep) (fmap unSeg ns)
+      -- TtEnum -> Text.intercalate (Text.singleton listSep) (Text.pack . show <$> [minBound ..])
       TtWord32 b -> boundsToText b
       TtWord64 b -> boundsToText b
       TtInt32 b -> boundsToText b
@@ -97,7 +98,7 @@ ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtMaybe tt' -> ttToText tt'
       TtPair tt1 tt2 -> ttToText tt1 <> Text.singleton listSep <> ttToText tt2
 
-ttParser' :: Parser TreeType
+ttParser' :: Parser SomeTreeType
 ttParser' = ttNameParser >>= argsParser
   where
     bbp :: Ord a => Parser a -> Parser (Bounds a)
@@ -114,27 +115,29 @@ ttParser' = ttNameParser >>= argsParser
       in
         Dat.scan (False, 1 :: Int) f
     argsParser ttn = case ttn of
-      TtnTime -> return TtTime
-      TtnEnum -> TtEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
-      TtnWord32 -> TtWord32 <$> bbp Dat.decimal
-      TtnWord64 -> TtWord64 <$> bbp Dat.decimal
-      TtnInt32 -> TtInt32 <$> bbp (Dat.signed Dat.decimal)
-      TtnInt64 -> TtInt64 <$> bbp (Dat.signed Dat.decimal)
-      TtnFloat -> TtFloat <$> bbp (toRealFloat <$> Dat.scientific)
-      TtnDouble -> TtDouble <$> bbp (toRealFloat <$> Dat.scientific)
-      TtnString -> TtString <$> optionalBracket "" regex
-      TtnRef -> TtRef <$> bracketed Path.segP
-      TtnList -> bracketed $ TtList <$> ttParser'
-      TtnSet -> bracketed $ TtSet <$> ttParser'
-      TtnOrdSet -> bracketed $ TtOrdSet <$> ttParser'
-      TtnMaybe -> bracketed $ TtMaybe <$> ttParser'
-      TtnPair -> bracketed $ do
-        tt1 <- ttParser'
-        sep'd listSep
-        tt2 <- ttParser'
-        return $ TtPair tt1 tt2
+      TtnTime -> return $ SomeTreeType TtTime
+      -- TtnEnum -> SomeTreeType . TtEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
+      TtnWord32 -> SomeTreeType . TtWord32 <$> bbp Dat.decimal
+      TtnWord64 -> SomeTreeType . TtWord64 <$> bbp Dat.decimal
+      TtnInt32 -> SomeTreeType . TtInt32 <$> bbp (Dat.signed Dat.decimal)
+      TtnInt64 -> SomeTreeType . TtInt64 <$> bbp (Dat.signed Dat.decimal)
+      TtnFloat -> SomeTreeType . TtFloat <$> bbp (toRealFloat <$> Dat.scientific)
+      TtnDouble -> SomeTreeType . TtDouble <$> bbp (toRealFloat <$> Dat.scientific)
+      TtnString -> SomeTreeType . TtString <$> optionalBracket "" regex
+      TtnRef -> SomeTreeType . TtRef <$> bracketed Path.segP
+      TtnList -> bracketed $ do
+        (SomeTreeType tt) <- ttParser'
+        return $ SomeTreeType $ TtList tt
+      -- TtnSet -> bracketed $ TtSet <$> ttParser'
+      -- TtnOrdSet -> bracketed $ TtOrdSet <$> ttParser'
+      -- TtnMaybe -> bracketed $ TtMaybe <$> ttParser'
+      -- TtnPair -> bracketed $ do
+      --   tt1 <- ttParser'
+      --   sep'd listSep
+      --   tt2 <- ttParser'
+      --   return $ TtPair tt1 tt2
 
-ttFromText :: MonadFail m => Text -> m TreeType
+ttFromText :: MonadFail m => Text -> m SomeTreeType
 ttFromText = either fail return . Dat.parseOnly (ttParser' <* Dat.endOfInput)
 
 ttNameToText :: TreeTypeName -> Text

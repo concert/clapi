@@ -62,7 +62,7 @@ import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, Placeholder, childPaths)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Types.Tree (TreeType(..))
+import Clapi.Types.Tree (TreeType(..), SomeTreeType(..))
 import Clapi.Validator (validate, extractTypeAssertions)
 import qualified Clapi.Types.Dkmap as Dkmap
 
@@ -623,12 +623,13 @@ validateRoseTreeNode def t invalidatedTps = case t of
 
 -- FIXME: this would be better if it would return more semantic errors
 validateWireValues
-  :: MonadFail m => [TreeType] -> [WireValue] -> m RefTypeClaims
+  :: MonadFail m => [SomeTreeType] -> [WireValue] -> m RefTypeClaims
 validateWireValues tts wvs =
     (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs)
     >>= sequence >>= return . Mos.fromList . mconcat
   where
-    vr tt wv = validate tt wv >> extractTypeAssertions tt wv
+    vr (SomeTreeType tt) wv@(WireValue wt _) =
+      extractTypeAssertions tt <$> validate tt wv
 
 validateExistingXrefs
   :: Xrefs -> Map Path (Tagged Definition Seg)

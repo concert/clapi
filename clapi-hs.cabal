@@ -54,7 +54,6 @@ library
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
                      , Clapi.Types.Tree
-                     , Clapi.Types.TreeTypeProxy
                      , Clapi.Types.Wire
                      , Clapi.Types.WireTH
                      , Clapi.Types.UniqList
@@ -78,6 +77,7 @@ library
                      , data-binary-ieee754
                      , either
                      , errors
+                     , finite-typelits
                      , free
                      , lens
                      , network
@@ -85,6 +85,7 @@ library
                      , mtl
                      , regex-pcre
                      , scientific
+                     , singletons
                      , split
                      , stm
                      , tagged

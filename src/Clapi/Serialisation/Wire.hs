@@ -1,20 +1,25 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    ScopedTypeVariables
+    FlexibleInstances
+  , GADTs
+  , LambdaCase
+  , MultiParamTypeClasses
+  , ScopedTypeVariables
+  , TypeOperators
 #-}
 
 module Clapi.Serialisation.Wire where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
+import Data.Constraint (Dict(..), mapDict, (:=>)(..), (:-)(..))
 import Data.Typeable
 
 import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
 import Clapi.Types.Base (Tag)
-import Clapi.Types.Wire
-  (WireValue(..), Wireable, WireType(..), wireValueWireType, withWtProxy)
+import Clapi.Types.Wire (WireValue(..), WireType(..), SomeWireType(..))
 import Clapi.TH (btq)
 
 -- | We define a type for tags that we want to use to denote our types on the
@@ -30,7 +35,7 @@ data WireTypeName
   | WtnPair
   deriving (Show, Eq, Ord, Enum, Bounded)
 
-wtName :: WireType -> WireTypeName
+wtName :: (WireType a) -> WireTypeName
 wtName wt = case wt of
   WtTime -> WtnTime
   WtWord32 -> WtnWord32
@@ -73,33 +78,55 @@ instance Encodable WireTypeName where
   builder = builder . wtnTag
   parser = parser >>= tagWtn
 
-instance Encodable WireType where
-  builder wt =
+instance Encodable SomeWireType where
+  builder (SomeWireType wt) =
     builder (wtnTag $ wtName wt) <<>> case wt of
-      WtList wt' -> builder wt'
-      WtMaybe wt' -> builder wt'
-      WtPair wt1 wt2 -> builder wt1 <<>> builder wt2
+      WtList wt' -> builder (SomeWireType wt')
+      WtMaybe wt' -> builder (SomeWireType wt')
+      WtPair wt1 wt2 ->
+        builder (SomeWireType wt1) <<>> builder (SomeWireType wt2)
       _ -> return mempty
   parser = parser >>= go
     where
-      go :: WireTypeName -> Parser WireType
+      go :: WireTypeName -> Parser SomeWireType
       go wtn = case wtn of
-        WtnTime -> return WtTime
-        WtnWord32 -> return WtWord32
-        WtnWord64 -> return WtWord64
-        WtnInt32 -> return WtInt32
-        WtnInt64 -> return WtInt64
-        WtnFloat -> return WtFloat
-        WtnDouble -> return WtDouble
-        WtnString -> return WtString
-        WtnList -> WtList <$> parser
-        WtnMaybe -> WtMaybe <$> parser
-        WtnPair -> WtPair <$> parser <*> parser
+        WtnTime -> rtn WtTime
+        WtnWord32 -> rtn WtWord32
+        WtnWord64 -> rtn WtWord64
+        WtnInt32 -> rtn WtInt32
+        WtnInt64 -> rtn WtInt64
+        WtnFloat -> rtn WtFloat
+        WtnDouble -> rtn WtDouble
+        WtnString -> rtn WtString
+        WtnList -> do
+          SomeWireType wt <- parser
+          rtn $ WtList wt
+        WtnMaybe -> do
+          SomeWireType wt <- parser
+          rtn $ WtMaybe wt
+        WtnPair -> do
+          SomeWireType wt1 <- parser
+          SomeWireType wt2 <- parser
+          rtn $ WtPair wt1 wt2
+      rtn :: WireType a -> Parser SomeWireType
+      rtn = return . SomeWireType
+
+getEncodable :: WireType a -> Dict (Encodable a)
+getEncodable = \case
+  WtTime -> Dict
+  WtWord32 -> Dict
+  WtList wt -> mapDict ins $ getEncodable wt
+  WtPair wt1 wt2 -> pairDict (getEncodable wt1) (getEncodable wt2)
+
+pairDict :: Dict (Encodable a) -> Dict (Encodable b) -> Dict (Encodable (a, b))
+pairDict Dict Dict = Dict
+
+instance Encodable x :=> Encodable [x] where
+  ins = Sub Dict
 
 instance Encodable WireValue where
-  builder wv@(WireValue a) =
-    (<>) <$> builder (wireValueWireType wv) <*> builder a
-  parser = parser >>= \wt -> withWtProxy wt go
-    where
-      go :: forall a. Wireable a => Proxy a -> Parser WireValue
-      go _ = WireValue <$> parser @a
+  builder (WireValue wt a) =
+    (<>) <$> builder (SomeWireType wt) <*> case getEncodable wt of
+      Dict -> builder a
+  parser = parser >>= \(SomeWireType wt) -> case getEncodable wt of
+    Dict -> parser

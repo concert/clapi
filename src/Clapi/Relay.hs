@@ -10,7 +10,7 @@
 module Clapi.Relay where
 
 import Control.Lens
-  (makeLenses, view, over, set, at, non, assign, modifying, use, _2)
+  (makeLenses, view, over, set, at, assign, modifying, use, _2)
 import Control.Monad (unless, when, forever, void)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Writer (Writer, runWriter, tell)
@@ -223,20 +223,13 @@ handleTrpd i d = do
     ns = trpdNamespace d
     bvs = baseValuespace (Tagged $ unNamespace ns) Editable
     tryVsUpdate :: (Ord i, Monad m) => ExceptT _ (StateT (RelayState i) m) _
-    tryVsUpdate =
-      let
-        -- NB: Type signature required to avoid monomorphism of f when trying to
-        -- use this lens in two different contexts:
-        l :: Functor f => (Valuespace -> f Valuespace) -> RelayState i
-          -> f (RelayState i)
-        l = rsVsMap . at ns . non bvs
-      in do
-        vs <- view l <$> get
+    tryVsUpdate = do
+        vs <- maybe bvs id . view (rsVsMap . at ns) <$> get
         let result = processToRelayProviderDigest d vs
         case result of
           Left errMap -> throwError errMap
           Right (updatedTyAssns, vs') -> do
-            modify (set l vs')
+            modify (set (rsVsMap . at ns) (Just vs'))
             return $ produceFrcud vs vs' updatedTyAssns
     produceFrcud vs vs' updatedTyAssns =
       let

@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    OverloadedStrings
+    GADTs
+  , OverloadedStrings
 #-}
 
 module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
@@ -25,8 +26,8 @@ import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (TreeType(..), unbounded)
-import Clapi.Types.Wire (castWireValue)
+import Clapi.Types.Tree (TreeType(..), unbounded, ttString, ttFloat, ttRef)
+import Clapi.Types.Wire (WireType(..), wireValue)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
@@ -54,15 +55,15 @@ relayApiProto selfAddr =
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
-             (alSingleton [segq|commit_hash|] $ TtString "banana")
+             (alSingleton [segq|commit_hash|] $ ttString "banana")
              ILUninterpolated)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (alSingleton [segq|seconds|] $ TtFloat unbounded)
+             (alSingleton [segq|seconds|] $ ttFloat unbounded)
              ILUninterpolated)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
-             (alSingleton [segq|name|] $ TtString "")
+             (alSingleton [segq|name|] $ ttString "")
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
@@ -74,12 +75,12 @@ relayApiProto selfAddr =
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
                -- FIXME: want to make Ref's Seg tagged...
-               $ TtRef [segq|client_info|])
+               $ ttRef [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
              Nothing (Tagged [segq|owner_info|]) ReadOnly)
         , ([segq|self|], tupleDef "Which client you are"
-             (alSingleton [segq|info|] $ TtRef [segq|client_info|])
+             (alSingleton [segq|info|] $ ttRef [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
           [ ([segq|build|], (Tagged [segq|build|], ReadOnly))
@@ -88,13 +89,13 @@ relayApiProto selfAddr =
           , ([segq|self|], (Tagged [segq|self|], ReadOnly))])
         ])
       (alFromList
-        [ ([pathq|/build|], ConstChange Nothing [WireValue @Text "banana"])
+        [ ([pathq|/build|], ConstChange Nothing [WireValue WtString "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             WireValue $ Path.toText Path.unSeg selfClientPath])
+             WireValue WtString $ Path.toText Path.unSeg selfClientPath])
         , ( selfClientPath :/ clock_diff
-          , ConstChange Nothing [WireValue @Float 0.0])
+          , ConstChange Nothing [WireValue WtFloat 0.0])
         , ( selfClientPath :/ dn
-          , ConstChange Nothing [WireValue @Text "Relay"])
+          , ConstChange Nothing [WireValue WtString "Relay"])
         ])
       mempty
       mempty
@@ -121,9 +122,9 @@ relayApiProto selfAddr =
               sendFwd (ClientConnect displayName cAddr)
               pubUpdate (alFromList
                 [ ( [pathq|/clients|] :/ cSeg :/ clock_diff
-                  , ConstChange Nothing [WireValue $ unTimeDelta tdZero])
+                  , ConstChange Nothing [wireValue $ unTimeDelta tdZero])
                 , ( [pathq|/clients|] :/ cSeg :/ dn
-                  , ConstChange Nothing [WireValue $ Text.pack displayName])
+                  , ConstChange Nothing [wireValue $ Text.pack displayName])
                 ])
                 mempty
               steadyState timingMap' ownerMap
@@ -134,7 +135,7 @@ relayApiProto selfAddr =
             delta <- lift $ getDelta theirTime
             let timingMap' = Map.insert cAddr delta timingMap
             pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
-              $ ConstChange Nothing [WireValue $ unTimeDelta delta])
+              $ ConstChange Nothing [wireValue $ unTimeDelta delta])
               mempty
             sendFwd $ ClientData cAddr d
             steadyState timingMap' ownerMap
@@ -186,7 +187,7 @@ relayApiProto selfAddr =
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
-          WireValue $ Path.toText Path.unSeg $
+          wireValue $ Path.toText Path.unSeg $
           Root :/ [segq|clients|] :/ ns]
         viewAs i dd =
           let
@@ -194,9 +195,8 @@ relayApiProto selfAddr =
             theirTime = unTimeDelta $ Map.findWithDefault
               (error "Can't rewrite message for unconnected client") i
               timingMap
-            alterTime (ConstChange att [wv]) = ConstChange att $ pure
-              $ WireValue $ subtract theirTime $ either error id
-              $ castWireValue wv
+            alterTime (ConstChange att [WireValue WtFloat t]) =
+              ConstChange att $ pure $ wireValue $ subtract theirTime t
             alterTime _ = error "Weird data back out of VS"
             fiddleDataChanges p dc
               | p `Path.isChildOf` [pathq|/relay/clients|] = alterTime dc

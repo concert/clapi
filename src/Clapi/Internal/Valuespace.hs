@@ -28,4 +28,4 @@ data Valuespace = Valuespace
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
   , vsRootEditable :: Editable
-  } deriving (Eq, Show)
+  } deriving (Show)
