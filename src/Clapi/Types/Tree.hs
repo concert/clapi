@@ -45,6 +45,7 @@ import Data.Word
 import GHC.TypeLits
 
 import Clapi.Types.Base (Time)
+import Clapi.Types.EnumVal (EnumVal)
 import Clapi.Types.Path (Path, Seg, mkSeg, unSeg)
 import Clapi.Types.PNat (SPNat, SomePNat(..), (:<), (%<))
 import qualified Clapi.Types.PNat as PNat
@@ -72,19 +73,10 @@ bounds m0 m1 = return $ Bounds m0 m1
 unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing
 
-data EnumVal (sl :: [Symbol]) where
-  EnumVal :: (n :< (Length sl) ~ 'True) => SPNat n -> EnumVal sl
-
-enumVal :: MonadFail m => SymbolList sl -> Word32 -> m (EnumVal sl)
-enumVal sl w = let pnSl = SL.length sl in case PNat.fromWord32 w of
-  SomePNat pnW -> case pnW %< pnSl of
-    Nothing -> fail "darf"
-    Just Refl -> return $ EnumVal pnW
-
 -- | A value-level witness for any type that can be held in the CLAPI tree
 data SingTreeType a where
   SttTime :: SingTreeType Time
-  SttEnum :: SymbolList sl -> SingTreeType (EnumVal sl)
+  SttEnum :: SymbolList ss -> SingTreeType (EnumVal ss)
   SttWord32 :: SingTreeType Word32
   SttRef :: SingTreeType Path
   SttList :: SingTreeType a -> SingTreeType [a]

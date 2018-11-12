@@ -7,16 +7,17 @@
   , RankNTypes
   , StandaloneDeriving
   , TypeFamilies
+  , TypeOperators
 #-}
 module Clapi.Types.SymbolList where
 
-import Prelude hiding (length)
+import Prelude hiding (length, (!!))
 import Data.Proxy
 
 import GHC.TypeLits
   (Symbol, KnownSymbol, SomeSymbol(..), someSymbolVal, symbolVal)
 
-import Clapi.Types.PNat (PNat(..), SPNat(..))
+import Clapi.Types.PNat (PNat(..), SPNat(..), (:<))
 
 withKnownSymbol :: (forall s. KnownSymbol s => Proxy s -> r) -> String -> r
 withKnownSymbol f s = case someSymbolVal s of
@@ -58,6 +59,11 @@ length :: SymbolList ss -> SPNat (Length ss)
 length = \case
   SlEmpty -> SPZero
   SlCons _ sl -> SPSucc $ length sl
+
+(!!) :: n :< Length ss ~ 'True => SymbolList ss -> SPNat n -> SomeSymbol
+(!!) (SlCons p sl) = \case
+  SPZero -> SomeSymbol p
+  SPSucc sPNat -> sl !! sPNat
 
 withSymbolList :: forall r. (forall ss. SymbolList ss -> r) -> [String] -> r
 withSymbolList f = go SlEmpty

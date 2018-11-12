@@ -51,6 +51,7 @@ library
                      , Clapi.Types.Definitions
                      , Clapi.Types.Digests
                      , Clapi.Types.Dkmap
+                     , Clapi.Types.EnumVal
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
                      , Clapi.Types.PNat
