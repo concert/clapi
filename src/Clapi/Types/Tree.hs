@@ -46,6 +46,10 @@ import GHC.TypeLits
 
 import Clapi.Types.Base (Time)
 import Clapi.Types.Path (Path, Seg, mkSeg, unSeg)
+import Clapi.Types.PNat (SPNat, SomePNat(..), (:<), (%<))
+import qualified Clapi.Types.PNat as PNat
+import Clapi.Types.SymbolList (Length, SymbolList, SomeSymbolList(..))
+import qualified Clapi.Types.SymbolList as SL
 import Clapi.Types.UniqList (UniqList)
 import Clapi.Types.Wire (WireType(..), SomeWireType(..))
 import Clapi.Util (uncamel)
@@ -68,116 +72,12 @@ bounds m0 m1 = return $ Bounds m0 m1
 unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing
 
-data PNat = Zero | Succ PNat deriving (Show)
-
-data SPNat (a :: PNat) where
-  SPZero :: SPNat 'Zero
-  SPSucc :: SPNat a -> SPNat ('Succ a)
-
-instance Show (SPNat a) where
-  show = show . unPNat
-
-data SomePNat where
-  SomePNat :: SPNat (a :: PNat) -> SomePNat
-deriving instance Show (SomePNat)
-
-type family Natty (n :: Nat) :: PNat where
-  Natty 0 = 'Zero
-  Natty n = 'Succ (Natty (n - 1))
-
-type family UnNatty (n :: PNat) :: Nat where
-  UnNatty 'Zero = 0
-  UnNatty ('Succ n) = 1 + UnNatty n
-
-pNat' :: forall r. (forall x. SPNat x -> r) -> Word32 -> r
-pNat' f = go SPZero
-  where
-    go :: SPNat x -> Word32 -> r
-    go pn 0 = f pn
-    go pn n = go (SPSucc pn) (n - 1)
-
-pNat :: Word32 -> SomePNat
-pNat = pNat' SomePNat
-
-unPNat :: SPNat a -> Word32
-unPNat = \case
-  SPZero -> 0
-  SPSucc pn -> 1 + unPNat pn
-
-type family (m :: PNat) :<? (n :: PNat) :: Bool where
-  n :<? 'Zero = 'False
-  'Zero :<? 'Succ n = 'True
-  'Succ m :<? 'Succ n = m :<? n
-
-type m :< n = (m :<? n ~ 'True)
-
-prooveLessThan :: SPNat m -> SPNat n -> Maybe (m :<? n :~: 'True)
-prooveLessThan m SPZero = Nothing
-prooveLessThan SPZero (SPSucc n) = Just Refl
-prooveLessThan (SPSucc m) (SPSucc n) = prooveLessThan m n
-
-segSym :: Seg -> SomeSymbol
-segSym = someSymbolVal . Text.unpack . unSeg
-
-data SymbolList (a :: [Symbol]) where
-  SlEmpty :: SymbolList '[]
-  SlCons :: KnownSymbol s => Proxy s -> SymbolList sl -> SymbolList ('(:) s sl)
-deriving instance Show (SymbolList a)
-
-slSingleton :: KnownSymbol s => Proxy s -> SymbolList '[s]
-slSingleton p = SlCons p SlEmpty
-
-data SomeSymbolList where
-  SomeSymbolList :: SymbolList sl -> SomeSymbolList
-deriving instance Show (SomeSymbolList)
-
-type family SlConcat (a1 :: [k]) (a2 :: [k]) :: [k] where
-  SlConcat '[] a2s = a2s
-  SlConcat ('(:) a1 a1s) a2s = a1 : SlConcat a1s a2s
-
-slConcat :: SymbolList sl1 -> SymbolList sl2 -> SymbolList (SlConcat sl1 sl2)
-slConcat SlEmpty a2s = a2s
-slConcat (SlCons a1 a1s) a2s = SlCons a1 (slConcat a1s a2s)
-
-slMconcat :: [SomeSymbolList] -> SomeSymbolList
-slMconcat = go SlEmpty
-  where
-    go :: SymbolList sl -> [SomeSymbolList] -> SomeSymbolList
-    go acc [] = SomeSymbolList acc
-    go acc (ssl : ssls) = case ssl of
-      (SomeSymbolList sl) -> go (slConcat acc sl) ssls
-
-withKnownSymbol :: (forall s. KnownSymbol s => Proxy s -> r) -> String -> r
-withKnownSymbol f s = case someSymbolVal s of
-  (SomeSymbol p) -> f p
-
-symbolList :: [String] -> SomeSymbolList
-symbolList = slMconcat . fmap (withKnownSymbol $ SomeSymbolList . slSingleton)
-
-unSymbolList :: SymbolList sl -> [String]
-unSymbolList = \case
-  SlEmpty -> []
-  SlCons p sl -> symbolVal p : unSymbolList sl
-
-unSymbolList_ :: SomeSymbolList -> [String]
-unSymbolList_ (SomeSymbolList sl) = unSymbolList sl
-
-type family SlLength (a :: [k]) :: PNat where
-  SlLength '[] = 'Zero
-  SlLength ('(:) a as) = 'Succ (SlLength as)
-
-slLength :: SymbolList sl -> SPNat (SlLength sl)
-slLength = \case
-  SlEmpty -> SPZero
-  SlCons _ sl -> SPSucc $ slLength sl
-
-
 data EnumVal (sl :: [Symbol]) where
-  EnumVal :: (n :< (SlLength sl)) => SPNat n -> EnumVal sl
+  EnumVal :: (n :< (Length sl) ~ 'True) => SPNat n -> EnumVal sl
 
 enumVal :: MonadFail m => SymbolList sl -> Word32 -> m (EnumVal sl)
-enumVal sl w = let pnSl = slLength sl in case pNat w of
-  SomePNat pnW -> case prooveLessThan pnW pnSl of
+enumVal sl w = let pnSl = SL.length sl in case PNat.fromWord32 w of
+  SomePNat pnW -> case pnW %< pnSl of
     Nothing -> fail "darf"
     Just Refl -> return $ EnumVal pnW
 
