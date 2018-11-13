@@ -119,6 +119,9 @@ instance Eq SomeWireValue where
       Just Refl -> case getEq wt1 of
         Dict -> a1 == a2
 
+someWv :: WireType a -> a -> SomeWireValue
+someWv wt a = SomeWireValue $ WireValue wt a
+
 class Wireable a where
   wireTypeFor_ :: proxy a -> WireType a
 
@@ -149,10 +152,8 @@ instance (Wireable a, Wireable b) => Wireable (a, b) where
 wireTypeFor :: Wireable a => a -> WireType a
 wireTypeFor _ = wireTypeFor_ Proxy
 
-wireValue :: Wireable a => a -> WireValue
-wireValue a = WireValue (wireTypeOf a) a
+wvFromWireable :: Wireable a => a -> WireValue a
+wvFromWireable a = WireValue (wireTypeFor a) a
 
-getDict :: (c Time, c Time :=> c [Time]) => WireType a -> Dict (c a)
-getDict = \case
-  WtTime -> Dict
-  WtList wt -> undefined
+someWireable :: Wireable a => a -> SomeWireValue
+someWireable = SomeWireValue . wvFromWireable
