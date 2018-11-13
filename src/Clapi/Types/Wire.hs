@@ -35,6 +35,7 @@ import Data.Text (Text)
 import Data.Word
 import Data.Type.Equality (TestEquality(..), (:~:))
 import Data.Typeable
+import Text.Printf (printf)
 
 import Clapi.Types.Base (Time(..))
 
@@ -100,18 +101,23 @@ getShow = \case
 data SomeWireType where
   SomeWireType :: WireType a -> SomeWireType
 
-data WireValue where
-  WireValue :: WireType a -> a -> WireValue
+data WireValue a where
+  WireValue :: WireType a -> a -> WireValue a
 
-instance Show WireValue where
+instance Show (WireValue a) where
   show (WireValue wt a) = case getShow wt of
-    Dict -> show a
+    Dict -> printf "WireValue (%s) %s" (show wt) (show a)
 
-instance Eq WireValue where
-  WireValue wt1 a1 == WireValue wt2 a2 = case testEquality wt1 wt2 of
-    Nothing -> False
-    Just Refl -> case getEq wt1 of
-      Dict -> a1 == a2
+data SomeWireValue where
+  SomeWireValue :: WireValue a -> SomeWireValue
+deriving instance Show SomeWireValue
+
+instance Eq SomeWireValue where
+  SomeWireValue (WireValue wt1 a1) == SomeWireValue (WireValue wt2 a2) =
+    case testEquality wt1 wt2 of
+      Nothing -> False
+      Just Refl -> case getEq wt1 of
+        Dict -> a1 == a2
 
 class Wireable a where
   wireTypeFor_ :: proxy a -> WireType a
