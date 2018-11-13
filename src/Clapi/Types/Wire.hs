@@ -29,12 +29,12 @@ module Clapi.Types.Wire
   -- ) where
   where
 
-import Data.Constraint (Dict(..), mapDict, (:=>)(..), (:-)(..))
+import Data.Constraint (Dict(..))
 import Data.Int
+import Data.Proxy
 import Data.Text (Text)
 import Data.Word
-import Data.Type.Equality (TestEquality(..), (:~:))
-import Data.Typeable
+import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Text.Printf (printf)
 
 import Clapi.Types.Base (Time(..))
