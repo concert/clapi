@@ -25,7 +25,8 @@ import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (safeToEnum, ensureUnique)
 import Clapi.Types
-  (WireValue(..), SomeWireValue(..), WireType(..), WireTypeOf, Definition)
+  ( WireValue(..), SomeWireValue(..), WireType(..), WireTypeOf, Definition
+  , DefName)
 import Clapi.Types.EnumVal (enumVal)
 import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
@@ -129,7 +130,7 @@ validate tt (WireValue wt a) = do
   Refl <- typeValid wt tt
   TreeValue tt <$> validateValue tt a
 
-extractTypeAssertions :: TreeType a -> a -> [(Tagged Definition Seg, Path)]
+extractTypeAssertions :: TreeType a -> a -> [(DefName, Path)]
 extractTypeAssertions = \case
   TtRef s -> \path -> [(Tagged s, path)]
   TtList tt -> foldMap (extractTypeAssertions tt)

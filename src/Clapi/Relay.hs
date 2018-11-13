@@ -52,7 +52,8 @@ import Clapi.Types.Digests
   , ClientRegs(..), crNull, crDifference, crIntersection
   , trcsdClientRegs, frcsdFromClientRegs)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
-import Clapi.Types.Definitions (Editable(..), Definition, PostDefinition)
+import Clapi.Types.Definitions
+  (Editable(..), Definition, PostDefinition, DefName, PostDefName)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
@@ -82,9 +83,9 @@ oppifySequence al =
 --   can make a monoid instance. Namespaces must be tracked separately!
 --   This may or may not be a good idea *shrug*
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
-  { pfrcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
-  , pfrcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , pfrcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
+  { pfrcudPostDefs :: Map PostDefName (DefOp PostDefinition)
+  , pfrcudDefinitions :: Map DefName (DefOp Definition)
+  , pfrcudTypeAssignments :: Map Path (DefName, Editable)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
   , pfrcudErrors :: Map DataErrorIndex [Text]
@@ -534,7 +535,7 @@ rGet
   :: Map Namespace Valuespace -> Namespace -> Path
   -> Either
        (SubErrorIndex, String)
-       (Definition, Tagged Definition Seg, Editable, RoseTreeNode [WireValue])
+       (Definition, DefName, Editable, RoseTreeNode [SomeWireValue])
 rGet vsm ns p =
     vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 
