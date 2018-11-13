@@ -67,6 +67,8 @@ liftRefl Refl = Refl
 pairRefl :: a :~: b -> c :~: d -> (a, c) :~: (b, d)
 pairRefl Refl Refl = Refl
 
+-- FIXME: This should probably be defined in TH so I don't have to repeat the
+-- exact same function bodies everywhere!
 getEq :: WireType a -> Dict (Eq a)
 getEq = \case
   WtTime -> Dict
@@ -77,12 +79,9 @@ getEq = \case
   WtFloat -> Dict
   WtDouble -> Dict
   WtString -> Dict
-  WtList wt -> mapDict ins $ getEq wt
-  WtMaybe wt -> mapDict ins $ getEq wt
-  WtPair wt1 wt2 -> pairDictEq (getEq wt1) (getEq wt2)
-
-pairDictEq :: Dict (Eq a) -> Dict (Eq b) -> Dict (Eq (a, b))
-pairDictEq Dict Dict = Dict
+  WtList wt -> case getEq wt of Dict -> Dict
+  WtMaybe wt -> case getEq wt of Dict -> Dict
+  WtPair wt1 wt2 -> case (getEq wt1, getEq wt2) of (Dict, Dict) -> Dict
 
 getShow :: WireType a -> Dict (Show a)
 getShow = \case
@@ -94,12 +93,9 @@ getShow = \case
   WtFloat -> Dict
   WtDouble -> Dict
   WtString -> Dict
-  WtList wt -> mapDict ins $ getShow wt
-  WtMaybe wt -> mapDict ins $ getShow wt
-  WtPair wt1 wt2 -> pairDictShow (getShow wt1) (getShow wt2)
-
-pairDictShow :: Dict (Show a) -> Dict (Show b) -> Dict (Show (a, b))
-pairDictShow Dict Dict = Dict
+  WtList wt -> case getShow wt of Dict -> Dict
+  WtMaybe wt -> case getShow wt of Dict -> Dict
+  WtPair wt1 wt2 -> case (getShow wt1, getShow wt2) of (Dict, Dict) -> Dict
 
 data SomeWireType where
   SomeWireType :: WireType a -> SomeWireType
