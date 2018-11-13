@@ -35,8 +35,8 @@ data WireTypeName
   | WtnPair
   deriving (Show, Eq, Ord, Enum, Bounded)
 
-wtName :: (WireType a) -> WireTypeName
-wtName wt = case wt of
+wtName :: WireType a -> WireTypeName
+wtName = \case
   WtTime -> WtnTime
   WtWord32 -> WtnWord32
   WtWord64 -> WtnWord64
@@ -50,7 +50,7 @@ wtName wt = case wt of
   WtPair _ _ -> WtnPair
 
 wtnTag :: WireTypeName -> Tag
-wtnTag wt = case wt of
+wtnTag = \case
   WtnTime -> [btq|t|]
   WtnWord32 -> [btq|w|]
   WtnWord64 -> [btq|W|]
