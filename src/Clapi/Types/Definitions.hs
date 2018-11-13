@@ -12,6 +12,7 @@ import Data.Maybe.Clapi (note)
 import Clapi.Types.AssocList (AssocList, unAssocList)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Path (Seg)
+import Clapi.Types.Tree (SomeTreeType(..))
 
 data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
