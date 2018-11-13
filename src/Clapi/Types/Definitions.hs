@@ -18,9 +18,12 @@ data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
+type DefName = Tagged Definition Seg
+type PostDefName = Tagged PostDefinition Seg
+
 class OfMetaType metaType where
   metaType :: metaType -> MetaType
-  childTypeFor :: Seg -> metaType -> Maybe (Tagged Definition Seg)
+  childTypeFor :: Seg -> metaType -> Maybe DefName
   childEditableFor :: MonadFail m => metaType -> Seg -> m Editable
 
 data PostDefinition = PostDefinition
@@ -45,7 +48,7 @@ instance OfMetaType TupleDefinition where
 
 data StructDefinition = StructDefinition
   { strDefDoc :: Text
-  , strDefTypes :: AssocList Seg (Tagged Definition Seg, Editable)
+  , strDefTypes :: AssocList Seg (DefName, Editable)
   } deriving (Show, Eq)
 
 instance OfMetaType StructDefinition where
@@ -57,8 +60,8 @@ instance OfMetaType StructDefinition where
 
 data ArrayDefinition = ArrayDefinition
   { arrDefDoc :: Text
-  , arrPostType :: Maybe (Tagged PostDefinition Seg)
-  , arrDefChildType :: Tagged Definition Seg
+  , arrPostType :: Maybe PostDefName
+  , arrDefChildType :: DefName
   , arrDefChildEditable :: Editable
   } deriving (Show, Eq)
 
@@ -78,12 +81,10 @@ tupleDef :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> Definiti
 tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
 
 structDef
-  :: Text -> AssocList Seg (Tagged Definition Seg, Editable) -> Definition
+  :: Text -> AssocList Seg (DefName, Editable) -> Definition
 structDef doc types = StructDef $ StructDefinition doc types
 
-arrayDef :: Text
-  -> Maybe (Tagged PostDefinition Seg) -> Tagged Definition Seg
-  -> Editable -> Definition
+arrayDef :: Text -> Maybe PostDefName -> DefName -> Editable -> Definition
 arrayDef doc ptn tn ed = ArrayDef $ ArrayDefinition doc ptn tn ed
 
 defDispatch :: (forall a. OfMetaType a => a -> r) -> Definition -> r
