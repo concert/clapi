@@ -31,28 +31,19 @@ module Clapi.Types.Tree
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Constraint (Dict(..))
-import Data.Finite (Finite, packFinite)
 import Data.Int
-import Data.Maybe (fromJust)
-import Data.Proxy
 import Data.Set (Set)
 import Data.Text (Text)
-import qualified Data.Text as Text
-import Data.Type.Equality ((:~:)(..))
 import Data.Word
-
--- For `Symbol` and `(+)`. I can't seem to import `(+)` explicityly :-/
-import GHC.TypeLits
+import Text.Printf (printf)
 
 import Clapi.Types.Base (Time)
 import Clapi.Types.EnumVal (EnumVal)
-import Clapi.Types.Path (Path, Seg, mkSeg, unSeg)
-import Clapi.Types.PNat (SPNat, SomePNat(..), (:<), (%<))
-import qualified Clapi.Types.PNat as PNat
-import Clapi.Types.SymbolList (Length, SymbolList, SomeSymbolList(..))
+import Clapi.Types.Path (Path, Seg)
+import Clapi.Types.SymbolList (SymbolList, SomeSymbolList(..))
 import qualified Clapi.Types.SymbolList as SL
 import Clapi.Types.UniqList (UniqList)
-import Clapi.Types.Wire (WireType(..), SomeWireType(..))
+import Clapi.Types.Wire (WireType(..))
 import Clapi.Util (uncamel)
 
 
@@ -74,73 +65,146 @@ unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing
 
 -- | A value-level witness for any type that can be held in the CLAPI tree
-data SingTreeType a where
-  SttTime :: SingTreeType Time
-  SttEnum :: SymbolList ss -> SingTreeType (EnumVal ss)
-  SttWord32 :: SingTreeType Word32
-  SttRef :: SingTreeType Path
-  SttList :: SingTreeType a -> SingTreeType [a]
-  SttSet :: SingTreeType a -> SingTreeType (Set a)
-  SttPair :: SingTreeType a -> SingTreeType b -> SingTreeType (a, b)
+data TreeType a where
+  TtTime :: TreeType Time
+  TtEnum :: SymbolList ss -> TreeType (EnumVal ss)
+  TtWord32 :: Bounds Word32 -> TreeType Word32
+  TtWord64 :: Bounds Word64 -> TreeType Word64
+  TtInt64 :: Bounds Int64 -> TreeType Int64
+  TtInt32 :: Bounds Int32 -> TreeType Int32
+  TtFloat :: Bounds Float -> TreeType Float
+  TtDouble :: Bounds Double -> TreeType Double
+  TtString :: Text -> TreeType Text
+  -- FIXME: kinda want this to be TtRef (Tagged Definition TypeName) but that
+  -- creates an import loop:
+  TtRef :: Seg -> TreeType Path
+  TtList :: TreeType a -> TreeType [a]
+  TtSet :: TreeType a -> TreeType (Set a)
+  TtOrdSet :: TreeType a -> TreeType (UniqList a)
+  TtMaybe :: TreeType a -> TreeType (Maybe a)
+  TtPair :: TreeType a -> TreeType b -> TreeType (a, b)
+deriving instance Show (TreeType a)
+
+data SomeTreeType where
+  SomeTreeType :: TreeType a -> SomeTreeType
+deriving instance Show SomeTreeType
+
+ttTime :: SomeTreeType
+ttTime = SomeTreeType TtTime
+
+ttEnum :: [String] -> SomeTreeType
+ttEnum ss = case SL.fromStrings ss of
+  (SomeSymbolList sl) -> SomeTreeType $ TtEnum sl
+
+ttEnum'
+  :: forall e proxy. (Bounded e, Enum e, Show e) => proxy e -> SomeTreeType
+ttEnum' _ = ttEnum $ uncamel . show <$> [minBound @e ..]
+
+ttWord32 :: Bounds Word32 -> SomeTreeType
+ttWord32 = SomeTreeType . TtWord32
+
+ttWord64 :: Bounds Word64 -> SomeTreeType
+ttWord64 = SomeTreeType . TtWord64
+
+ttInt32 :: Bounds Int32 -> SomeTreeType
+ttInt32 = SomeTreeType . TtInt32
+
+ttInt64 :: Bounds Int64 -> SomeTreeType
+ttInt64 = SomeTreeType . TtInt64
+
+ttFloat :: Bounds Float -> SomeTreeType
+ttFloat = SomeTreeType . TtFloat
+
+ttDouble :: Bounds Double -> SomeTreeType
+ttDouble = SomeTreeType . TtDouble
+
+ttString :: Text -> SomeTreeType
+ttString = SomeTreeType . TtString
+
+ttRef :: Seg -> SomeTreeType
+ttRef = SomeTreeType . TtRef
+
+ttList :: SomeTreeType -> SomeTreeType
+ttList (SomeTreeType tt) = SomeTreeType $ TtList tt
+
+ttSet :: SomeTreeType -> SomeTreeType
+ttSet (SomeTreeType tt) = SomeTreeType $ TtSet tt
+
+ttOrdSet :: SomeTreeType -> SomeTreeType
+ttOrdSet (SomeTreeType tt) = SomeTreeType $ TtOrdSet tt
+
+ttMaybe :: SomeTreeType -> SomeTreeType
+ttMaybe (SomeTreeType tt) = SomeTreeType $ TtMaybe tt
+
+ttPair :: SomeTreeType -> SomeTreeType -> SomeTreeType
+ttPair (SomeTreeType tt1) (SomeTreeType tt2) = SomeTreeType $ TtPair tt1 tt2
+
+getTtShow :: TreeType a -> Dict (Show a)
+getTtShow = \case
+    TtTime -> Dict
+    TtEnum _ -> Dict
+    TtWord32 _ -> Dict
+    TtWord64 _ -> Dict
+    TtInt32 _ -> Dict
+    TtInt64 _ -> Dict
+    TtFloat _ -> Dict
+    TtDouble _ -> Dict
+    TtString _ -> Dict
+    TtRef _ -> Dict
+    TtList tt -> case getTtShow tt of Dict -> Dict
+    TtSet tt -> case getTtShow tt of Dict -> Dict
+    TtOrdSet tt -> case getTtShow tt of Dict -> Dict
+    TtMaybe tt -> case getTtShow tt of Dict -> Dict
+    TtPair tt1 tt2 -> case (getTtShow tt1, getTtShow tt2) of
+      (Dict, Dict) -> Dict
 
 -- | What type of value do we need to read off the wire to get a value we can
 --   put in the tree?
-sttWireType :: SingTreeType a -> SomeWireType
-sttWireType = \case
-    SttTime -> SomeWireType WtTime
-    SttWord32 -> SomeWireType WtWord32
-    SttRef -> SomeWireType WtString
-    SttList stt -> wrap (SomeWireType . WtList) stt
-    SttSet stt -> wrap (SomeWireType . WtList) stt
-    SttPair stt1 stt2 -> case (sttWireType stt1, sttWireType stt2) of
-      (SomeWireType wt1, SomeWireType wt2) -> SomeWireType $ WtPair wt1 wt2
-  where
-    wrap :: (forall x. WireType x -> SomeWireType) -> SingTreeType a -> SomeWireType
-    wrap con stt = case sttWireType stt of (SomeWireType wt) -> con wt
+type family WireTypeOf a where
+  WireTypeOf Time = Time
+  WireTypeOf (EnumVal ss) = Word32
+  WireTypeOf Word32 = Word32
+  WireTypeOf Word64 = Word64
+  WireTypeOf Int32 = Int32
+  WireTypeOf Int64 = Int64
+  WireTypeOf Float = Float
+  WireTypeOf Double = Double
+  WireTypeOf Text = Text
+  WireTypeOf Path = Text
+  WireTypeOf [a] = [WireTypeOf a]
+  WireTypeOf (Set a) = [WireTypeOf a]
+  WireTypeOf (UniqList a) = [WireTypeOf a]
+  WireTypeOf (Maybe a) = Maybe (WireTypeOf a)
+  WireTypeOf (a, b) = (WireTypeOf a, WireTypeOf b)
 
-data TreeType where
-  TtTime :: TreeType
-  TtEnum :: [String] -> TreeType
-  TtWord32 :: Bounds Word32 -> TreeType
-  TtWord64 :: Bounds Word64 -> TreeType
-  TtInt32 :: Bounds Int32 -> TreeType
-  TtInt64 :: Bounds Int64 -> TreeType
-  TtFloat :: Bounds Float -> TreeType
-  TtDouble :: Bounds Double -> TreeType
-  TtString :: Text -> TreeType
-  -- FIXME: kinda want this to be TtRef (Tagged Definition TypeName) but that
-  -- creates an import loop:
-  TtRef :: Seg -> TreeType
-  TtList :: TreeType -> TreeType
-  TtSet :: TreeType -> TreeType
-  TtOrdSet :: TreeType -> TreeType
-  TtMaybe :: TreeType -> TreeType
-  TtPair :: TreeType -> TreeType -> TreeType
+wireTypeOf :: TreeType a -> WireType (WireTypeOf a)
+wireTypeOf = \case
+    TtTime -> WtTime
+    TtEnum _ -> WtWord32
+    TtWord32 _ -> WtWord32
+    TtWord64 _ -> WtWord64
+    TtInt32 _ -> WtInt32
+    TtInt64 _ -> WtInt64
+    TtFloat _ -> WtFloat
+    TtDouble _ -> WtDouble
+    TtString _ -> WtString
+    TtRef _ -> WtString
+    TtList tt -> WtList $ wireTypeOf tt
+    TtSet tt -> WtList $ wireTypeOf tt
+    TtOrdSet tt -> WtList $ wireTypeOf tt
+    TtMaybe tt -> WtMaybe $ wireTypeOf tt
+    TtPair tt1 tt2 -> WtPair (wireTypeOf tt1) (wireTypeOf tt2)
 
-deriving instance Show TreeType
+data TreeValue a where
+  TreeValue :: TreeType a -> a -> TreeValue a
 
-ttWireType :: TreeType -> SomeWireType
-ttWireType = \case
-  TtTime -> SomeWireType WtTime
-  TtEnum _ -> SomeWireType  WtWord32
-  TtWord32 _ -> SomeWireType WtWord32
-  TtRef _ -> SomeWireType WtString
-  TtList tt -> case ttWireType tt of
-    (SomeWireType wt) -> SomeWireType $ WtList wt
-  TtSet tt -> case ttWireType tt of
-    (SomeWireType wt) -> SomeWireType $ WtList wt
-  TtOrdSet tt -> case ttWireType tt of
-    (SomeWireType wt) -> SomeWireType $ WtList wt
-  TtMaybe tt -> case ttWireType tt of
-    (SomeWireType wt) -> SomeWireType $ WtMaybe wt
-  TtPair tt1 tt2 -> case (ttWireType tt1, ttWireType tt2) of
-    (SomeWireType wt1, SomeWireType wt2) -> SomeWireType $ WtPair wt1 wt2
+instance Show (TreeValue a) where
+  show (TreeValue tt a) = case getTtShow tt of
+    Dict -> printf "TreeValue (%s) %s" (show tt) (show a)
 
-ttEnum :: [Seg] -> TreeType
-ttEnum = TtEnum . fmap (Text.unpack . unSeg)
-
-ttEnum' :: forall a. (Bounded a, Enum a, Show a) => Proxy a -> TreeType
-ttEnum' _ = TtEnum $ uncamel . show <$> [minBound @a ..]
+data SomeTreeValue where
+  SomeTreeValue :: TreeValue a -> SomeTreeValue
+deriving instance Show SomeTreeValue
 
 
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
@@ -155,7 +219,7 @@ data TreeTypeName
   | TtnPair
   deriving (Show, Eq, Ord, Enum, Bounded)
 
-instance TypeEnumOf TreeType TreeTypeName where
+instance TypeEnumOf (TreeType a) TreeTypeName where
   typeEnumOf tt = case tt of
     TtTime -> TtnTime
     TtEnum _ -> TtnEnum
