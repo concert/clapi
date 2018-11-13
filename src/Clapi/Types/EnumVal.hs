@@ -25,6 +25,13 @@ data EnumVal (ss :: [Symbol]) where
 instance Show (EnumVal ss) where
   show ev = "<EnumVal " ++ enumName ev ++ ">"
 
+instance Eq (EnumVal ss) where
+  EnumVal _ m == EnumVal _ n = PNat.toWord32 m == PNat.toWord32 n
+
+instance Ord (EnumVal ss) where
+  compare (EnumVal _ m) (EnumVal _ n) =
+    compare (PNat.toWord32 m) (PNat.toWord32 n)
+
 data SomeEnumVal where
   SomeEnumVal :: EnumVal ss -> SomeEnumVal
 
