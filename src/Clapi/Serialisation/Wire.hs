@@ -12,14 +12,14 @@ module Clapi.Serialisation.Wire where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
-import Data.Constraint (Dict(..), mapDict, (:=>)(..), (:-)(..))
-import Data.Typeable
+import Data.Constraint (Dict(..))
 
 import Data.Attoparsec.ByteString (Parser)
 
 import Clapi.Serialisation.Base (Encodable(..), (<<>>))
 import Clapi.Types.Base (Tag)
-import Clapi.Types.Wire (WireValue(..), WireType(..), SomeWireType(..))
+import Clapi.Types.Wire
+  (WireValue(..), WireType(..), SomeWireType(..), SomeWireValue(..))
 import Clapi.TH (btq)
 
 -- | We define a type for tags that we want to use to denote our types on the
@@ -111,21 +111,24 @@ instance Encodable SomeWireType where
       rtn :: WireType a -> Parser SomeWireType
       rtn = return . SomeWireType
 
+-- FIXME: TH
 getEncodable :: WireType a -> Dict (Encodable a)
 getEncodable = \case
   WtTime -> Dict
   WtWord32 -> Dict
-  WtList wt -> mapDict ins $ getEncodable wt
-  WtPair wt1 wt2 -> pairDict (getEncodable wt1) (getEncodable wt2)
+  WtWord64 -> Dict
+  WtInt32 -> Dict
+  WtInt64 -> Dict
+  WtFloat -> Dict
+  WtDouble -> Dict
+  WtString -> Dict
+  WtList wt -> case getEncodable wt of Dict -> Dict
+  WtMaybe wt -> case getEncodable wt of Dict -> Dict
+  WtPair wt1 wt2 -> case (getEncodable wt1, getEncodable wt2) of
+    (Dict, Dict) -> Dict
 
-pairDict :: Dict (Encodable a) -> Dict (Encodable b) -> Dict (Encodable (a, b))
-pairDict Dict Dict = Dict
-
-instance Encodable x :=> Encodable [x] where
-  ins = Sub Dict
-
-instance Encodable WireValue where
-  builder (WireValue wt a) =
+instance Encodable SomeWireValue where
+  builder (SomeWireValue (WireValue wt a)) =
     (<>) <$> builder (SomeWireType wt) <*> case getEncodable wt of
       Dict -> builder a
   parser = parser >>= \(SomeWireType wt) -> case getEncodable wt of
