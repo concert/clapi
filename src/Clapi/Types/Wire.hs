@@ -114,34 +114,34 @@ instance Eq WireValue where
       Dict -> a1 == a2
 
 class Wireable a where
-  wireTypeFor :: proxy a -> WireType a
+  wireTypeFor_ :: proxy a -> WireType a
 
 instance Wireable Time where
-  wireTypeFor _ = WtTime
+  wireTypeFor_ _ = WtTime
 instance Wireable Word32 where
-  wireTypeFor _ = WtWord32
+  wireTypeFor_ _ = WtWord32
 instance Wireable Word64 where
-  wireTypeFor _ = WtWord64
+  wireTypeFor_ _ = WtWord64
 instance Wireable Int32 where
-  wireTypeFor _ = WtInt32
+  wireTypeFor_ _ = WtInt32
 instance Wireable Int64 where
-  wireTypeFor _ = WtInt64
+  wireTypeFor_ _ = WtInt64
 instance Wireable Float where
-  wireTypeFor _ = WtFloat
+  wireTypeFor_ _ = WtFloat
 instance Wireable Double where
-  wireTypeFor _ = WtDouble
+  wireTypeFor_ _ = WtDouble
 instance Wireable Text where
-  wireTypeFor _ = WtString
+  wireTypeFor_ _ = WtString
 instance Wireable a => Wireable [a] where
-  wireTypeFor _ = WtList $ wireTypeFor $ Proxy @a
+  wireTypeFor_ _ = WtList $ wireTypeFor_ $ Proxy @a
 instance Wireable a => Wireable (Maybe a) where
-  wireTypeFor _ = WtMaybe $ wireTypeFor $ Proxy @a
+  wireTypeFor_ _ = WtMaybe $ wireTypeFor_ $ Proxy @a
 instance (Wireable a, Wireable b) => Wireable (a, b) where
-  wireTypeFor _ = WtPair (wireTypeFor $ Proxy @a) (wireTypeFor $ Proxy @b)
+  wireTypeFor_ _ = WtPair (wireTypeFor_ $ Proxy @a) (wireTypeFor_ $ Proxy @b)
 
 
-wireTypeOf :: Wireable a => a -> WireType a
-wireTypeOf _ = wireTypeFor Proxy
+wireTypeFor :: Wireable a => a -> WireType a
+wireTypeFor _ = wireTypeFor_ Proxy
 
 wireValue :: Wireable a => a -> WireValue
 wireValue a = WireValue (wireTypeOf a) a
