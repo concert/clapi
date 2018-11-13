@@ -19,7 +19,7 @@ import Data.Scientific (toRealFloat)
 
 import Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
-  , typeEnumOf, TreeType(..), TreeTypeName(..))
+  , typeEnumOf, TreeType(..), TreeTypeName(..), SomeTreeType(..))
 import Clapi.Types.Path (segP, unSeg)
 import qualified Clapi.Types.Path as Path
 
@@ -78,7 +78,7 @@ bracketNotNull t = case t of
   "" -> ""
   _ -> bracketText t
 
-ttToText :: TreeType a b -> Text
+ttToText :: TreeType a -> Text
 ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
   where
     bracketContent = case tt of
