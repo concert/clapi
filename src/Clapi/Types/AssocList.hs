@@ -11,7 +11,8 @@ module Clapi.Types.AssocList
   , alCons, alLookup, alInsert, alSetDefault, alDelete
   , alKeys, alKeysSet, alValues
   , alPartitionWithKey
-  , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
+  , alFmapWithKey, alTraverseWithKey, alMapKeys
+  , alFilterWithKey, alFoldlWithKey,  alFilterKey
   , alAlterF, alAlter, alAdjust
   ) where
 
@@ -104,6 +105,10 @@ alValues = fmap snd . unAssocList
 
 alFmapWithKey :: (k -> b -> c) -> AssocList k b -> AssocList k c
 alFmapWithKey f (AssocList kbs) = AssocList $ (\(k, b) -> (k, f k b)) <$> kbs
+
+alTraverseWithKey
+  :: Applicative m => (k -> b -> m c) -> AssocList k b -> m (AssocList k c)
+alTraverseWithKey f = traverse id . alFmapWithKey f
 
 alMapKeys
   :: (Ord k1, Show k1, MonadFail m)
