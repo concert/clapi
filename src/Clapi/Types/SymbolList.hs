@@ -13,9 +13,10 @@ module Clapi.Types.SymbolList where
 
 import Prelude hiding (length, (!!))
 import Data.Proxy
+import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 import GHC.TypeLits
-  (Symbol, KnownSymbol, SomeSymbol(..), someSymbolVal, symbolVal)
+  (Symbol, KnownSymbol, SomeSymbol(..), someSymbolVal, symbolVal, sameSymbol)
 
 import Clapi.Types.PNat (PNat(..), SPNat(..), (:<))
 
@@ -34,9 +35,25 @@ instance Show (SymbolList ss) where
       SlEmpty -> show SlEmpty
       _ -> "(" ++ show ss ++ ")"
 
+instance Eq (SymbolList ss) where
+  _ == _ = True  -- Guaranteed by type equality
+
+instance TestEquality SymbolList where
+  testEquality SlEmpty SlEmpty = Just Refl
+  testEquality (SlCons p1 sl1) (SlCons p2 sl2) =
+    case (sameSymbol p1 p2, testEquality sl1 sl2) of
+      (Just Refl, Just Refl) -> Just Refl
+      _ -> Nothing
+  testEquality _ _ = Nothing
+
 data SomeSymbolList where
   SomeSymbolList :: SymbolList ss -> SomeSymbolList
 deriving instance Show SomeSymbolList
+
+instance Eq SomeSymbolList where
+  SomeSymbolList sl1 == SomeSymbolList sl2 = case testEquality sl1 sl2 of
+    Just Refl -> sl1 == sl2
+    Nothing -> False
 
 cons :: String -> SymbolList ss -> SomeSymbolList
 cons s sl = case someSymbolVal s of
