@@ -11,9 +11,10 @@
 module Clapi.Validator where
 
 import Prelude hiding (fail)
-import Control.Monad (void, (>=>))
+import Control.Monad (join, (>=>))
 import Control.Monad.Fail (MonadFail(..))
-import Data.Constraint (Dict(..), mapDict, ins)
+import Data.Constraint (Dict(..))
+import Data.Either (partitionEithers)
 import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -23,7 +24,7 @@ import Data.Word (Word32)
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
-import Clapi.Util (safeToEnum, ensureUnique)
+import Clapi.Util (ensureUnique)
 import Clapi.Types
   ( WireValue(..), SomeWireValue(..), WireType(..), WireTypeOf, Definition
   , DefName)
@@ -32,8 +33,9 @@ import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( Bounds, boundsMin, boundsMax, TreeType(..), SomeTreeType(..)
-  , TreeValue(..))
+  , TreeValue(..), SomeTreeValue(..))
 import Clapi.Types.UniqList (mkUniqList)
+import Clapi.Util (fmtStrictZipError, strictZipWith)
 
 inBounds :: (Ord a, MonadFail m, PrintfArg a) => Bounds a -> a -> m a
 inBounds b n = go (boundsMin b) (boundsMax b)
@@ -130,6 +132,10 @@ validate tt (WireValue wt a) = do
   Refl <- typeValid wt tt
   TreeValue tt <$> validateValue tt a
 
+validate_ :: MonadFail m => SomeTreeType -> SomeWireValue -> m SomeTreeValue
+validate_ (SomeTreeType tt) (SomeWireValue wv) =
+  SomeTreeValue <$> validate tt wv
+
 extractTypeAssertions :: TreeType a -> a -> [(DefName, Path)]
 extractTypeAssertions = \case
   TtRef s -> \path -> [(Tagged s, path)]
@@ -141,3 +147,14 @@ extractTypeAssertions = \case
     extractTypeAssertions tt1 x <>
     extractTypeAssertions tt2 y
   _ -> const []
+
+
+validateValues
+  :: [SomeTreeType] -> [SomeWireValue] -> Either [Text] [SomeTreeValue]
+validateValues tts wvs = either (Left . pure . Text.pack) collect $
+    fmtStrictZipError "types" "values" $
+    strictZipWith validate_ tts wvs
+  where
+    collect :: [Either String SomeTreeValue] -> Either [Text] [SomeTreeValue]
+    collect etvs = let (errs, tvs) = partitionEithers etvs in
+      if null errs then Right tvs else Left (Text.pack <$> errs)
