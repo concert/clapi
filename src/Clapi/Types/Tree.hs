@@ -34,6 +34,7 @@ import Data.Constraint (Dict(..))
 import Data.Int
 import Data.Set (Set)
 import Data.Text (Text)
+import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Data.Word
 import Text.Printf (printf)
 
@@ -43,7 +44,7 @@ import Clapi.Types.Path (Path, Seg)
 import Clapi.Types.SymbolList (SymbolList, SomeSymbolList(..))
 import qualified Clapi.Types.SymbolList as SL
 import Clapi.Types.UniqList (UniqList)
-import Clapi.Types.Wire (WireType(..))
+import Clapi.Types.Wire (WireType(..), liftRefl, pairRefl)
 import Clapi.Util (uncamel)
 
 
@@ -84,10 +85,34 @@ data TreeType a where
   TtMaybe :: TreeType a -> TreeType (Maybe a)
   TtPair :: TreeType a -> TreeType b -> TreeType (a, b)
 deriving instance Show (TreeType a)
+deriving instance Eq (TreeType a)
+
+instance TestEquality TreeType where
+  testEquality TtTime TtTime = Just Refl
+  testEquality (TtEnum sl1) (TtEnum sl2) = liftRefl <$> testEquality sl1 sl2
+  testEquality (TtWord32 _)(TtWord32 _) = Just Refl
+  testEquality (TtWord64 _)(TtWord64 _) = Just Refl
+  testEquality (TtInt32 _)(TtInt32 _) = Just Refl
+  testEquality (TtInt64 _)(TtInt64 _) = Just Refl
+  testEquality (TtFloat _)(TtFloat _) = Just Refl
+  testEquality (TtString _)(TtString _) = Just Refl
+  testEquality (TtRef _)(TtRef _) = Just Refl
+  testEquality (TtList tt1) (TtList tt2) = liftRefl <$> testEquality tt1 tt2
+  testEquality (TtSet tt1) (TtSet tt2) = liftRefl <$> testEquality tt1 tt2
+  testEquality (TtOrdSet tt1) (TtOrdSet tt2) = liftRefl <$> testEquality tt1 tt2
+  testEquality (TtMaybe tt1) (TtMaybe tt2) = liftRefl <$> testEquality tt1 tt2
+  testEquality (TtPair tt1x tt1y) (TtPair tt2x tt2y) =
+    pairRefl <$> testEquality tt1x tt2x <*> testEquality tt1y tt2y
+  testEquality _ _ = Nothing
 
 data SomeTreeType where
   SomeTreeType :: TreeType a -> SomeTreeType
 deriving instance Show SomeTreeType
+
+instance Eq SomeTreeType where
+  SomeTreeType tt1 == SomeTreeType tt2 = case testEquality tt1 tt2 of
+    Just Refl -> tt1 == tt2
+    Nothing -> False
 
 ttTime :: SomeTreeType
 ttTime = SomeTreeType TtTime
