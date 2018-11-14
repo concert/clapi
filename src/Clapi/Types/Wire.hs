@@ -57,7 +57,14 @@ deriving instance Show (WireType a)
 instance TestEquality WireType where
   testEquality WtTime WtTime = Just Refl
   testEquality WtWord32 WtWord32 = Just Refl
+  testEquality WtWord64 WtWord64 = Just Refl
+  testEquality WtInt32 WtInt32 = Just Refl
+  testEquality WtInt64 WtInt64 = Just Refl
+  testEquality WtFloat WtFloat = Just Refl
+  testEquality WtDouble WtDouble = Just Refl
+  testEquality WtString WtString = Just Refl
   testEquality (WtList wt1) (WtList wt2) = liftRefl <$> testEquality wt1 wt2
+  testEquality (WtMaybe wt1) (WtMaybe wt2) = liftRefl <$> testEquality wt1 wt2
   testEquality (WtPair wt1x wt1y) (WtPair wt2x wt2y) =
     pairRefl <$> testEquality wt1x wt2x <*> testEquality wt1y wt2y
   testEquality _ _ = Nothing
