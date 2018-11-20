@@ -1,8 +1,11 @@
 {-# LANGUAGE
     DataKinds
+  , FlexibleContexts
+  , FlexibleInstances
   , GADTs
   , KindSignatures
   , LambdaCase
+  , MultiParamTypeClasses
   , RankNTypes
   , TypeFamilies
   , TypeOperators
@@ -11,6 +14,7 @@
 
 module Clapi.Types.PNat where
 
+import Data.Constraint (Dict(..))
 import Data.Type.Equality ((:~:)(..))
 import Data.Word
 
@@ -45,14 +49,58 @@ deriving instance Show SomePNat
 fromWord32 :: Word32 -> SomePNat
 fromWord32 = withSPNat SomePNat
 
--- | Type-level less-than function on Peano numbers
-type family (m :: PNat) :< (n :: PNat) :: Bool where
-  n :< 'Zero = 'False
-  'Zero :< 'Succ n = 'True
-  'Succ m :< 'Succ n = m :< n
+data (:<:) (m :: PNat) (n :: PNat) where
+  LT1 :: 'Zero :<: 'Succ n
+  LT2 :: m :<: n -> 'Succ m :<: 'Succ n
+deriving instance Show (m :<: n)
 
--- | Perhaps produce a proof that m < n
-(%<) :: SPNat m -> SPNat n -> Maybe (m :< n :~: 'True)
+(%<) :: SPNat m -> SPNat n -> Maybe (m :<: n)
 _ %< SPZero = Nothing
-SPZero %< (SPSucc _) = Just Refl
-(SPSucc m) %< (SPSucc n) = m %< n
+SPZero %< SPSucc n = Just LT1
+SPSucc m %< SPSucc n = LT2 <$> m %< n
+
+class (m :: PNat) < (n :: PNat) where
+  proofLT :: m :<: n
+
+instance 'Zero < 'Succ n where
+  proofLT = LT1
+
+instance m < n => 'Succ m < 'Succ n where
+  proofLT = LT2 proofLT
+
+ltDict :: m :<: n -> Dict (m < n)
+ltDict LT1 = Dict
+ltDict (LT2 proof) = case ltDict proof of Dict -> Dict
+
+data (:<=:) (m :: PNat) (n :: PNat) where
+  LTE1 :: 'Zero :<=: n
+  LTE2 :: m :<=: n -> 'Succ m :<=: 'Succ n
+deriving instance Show (m :<=: n)
+
+(%<=) :: SPNat m -> SPNat n -> Maybe (m :<=: n)
+SPZero %<= n = Just LTE1
+SPSucc m %<= SPZero = Nothing
+SPSucc m %<= SPSucc n = LTE2 <$> m %<= n
+
+class (m :: PNat) <= (n :: PNat) where
+  proofLTE :: m :<=: n
+
+instance 'Zero <= n where
+  proofLTE = LTE1
+
+instance (m <= n) => ('Succ m) <= ('Succ n) where
+  proofLTE = LTE2 proofLTE
+
+lteDict :: m :<=: n -> Dict (m <= n)
+lteDict LTE1 = Dict
+lteDict (LTE2 proof) = case lteDict proof of Dict -> Dict
+
+upcastLt :: m :<: n -> m :<=: n
+upcastLt = \case
+  LT1 -> LTE1
+  LT2 proof -> LTE2 $ upcastLt proof
+
+extendLt :: m :<: n1 -> n1 :<=: n2 -> m :<: n2
+extendLt LT1 (LTE2 _) = LT1
+extendLt (LT2 ltSubProof) (LTE2 lteSubProof) =
+  LT2 $ extendLt ltSubProof lteSubProof

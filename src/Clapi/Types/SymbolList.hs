@@ -1,8 +1,11 @@
 {-# LANGUAGE
     DataKinds
+  , FlexibleContexts
+  , FlexibleInstances
   , GADTs
   , KindSignatures
   , LambdaCase
+  , MultiParamTypeClasses
   , PolyKinds
   , RankNTypes
   , StandaloneDeriving
@@ -19,7 +22,8 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import GHC.TypeLits
   (Symbol, KnownSymbol, SomeSymbol(..), someSymbolVal, symbolVal, sameSymbol)
 
-import Clapi.Types.PNat (PNat(..), SPNat(..), (:<))
+import Clapi.Types.PNat
+  (PNat(..), SPNat(..), type (<)(..), (:<:)(..), (:<=:)(..))
 
 withKnownSymbol :: (forall s. KnownSymbol s => Proxy s -> r) -> String -> r
 withKnownSymbol f s = case someSymbolVal s of
@@ -69,7 +73,8 @@ singleton p = SlCons p SlEmpty
 singleton_ :: String -> SomeSymbolList
 singleton_ = withKnownSymbol (SomeSymbolList . singleton)
 
-type family Length (sa :: [k]) :: PNat where
+-- Length things:
+type family Length (as :: [k]) :: PNat where
   Length '[] = 'Zero
   Length ('(:) a as) = 'Succ (Length as)
 
@@ -78,10 +83,13 @@ length = \case
   SlEmpty -> SPZero
   SlCons _ sl -> SPSucc $ length sl
 
-(!!) :: n :< Length ss ~ 'True => SymbolList ss -> SPNat n -> SomeSymbol
-(!!) (SlCons p sl) = \case
-  SPZero -> SomeSymbol p
-  SPSucc sPNat -> sl !! sPNat
+(!!) :: n < Length ss => SymbolList ss -> SPNat n -> SomeSymbol
+(!!) = get proofLT
+  where
+    get :: n :<: Length ss -> SymbolList ss -> SPNat n -> SomeSymbol
+    get LT1 (SlCons p _) SPZero = SomeSymbol p
+    get (LT2 p) (SlCons _ sl) (SPSucc m) = get p sl m
+
 -- Reverse things:
 type family Reverse (as :: [k]) :: [k] where
   Reverse as = Reverse' '[] as
