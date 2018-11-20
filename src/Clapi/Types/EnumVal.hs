@@ -16,7 +16,7 @@ import Data.Word
 import GHC.TypeLits (Symbol, SomeSymbol(..), symbolVal)
 
 import Clapi.Types.PNat
-  (SPNat, SomePNat(..), type (<), (%<))
+  (SPNat, SomePNat(..), type (<), (%<), (:<=:))
 import qualified Clapi.Types.PNat as PNat
 import Clapi.Types.SymbolList
   (SymbolList, Length, (!!), IsPrefixOf(..), prefixProvesLte)
@@ -53,3 +53,17 @@ enumVal sl w = case PNat.fromWord32 w of
 
 enumVal_ :: MonadFail m => [String] -> Word32 -> m SomeEnumVal
 enumVal_ ss w = SL.withSymbolList (fmap SomeEnumVal . flip enumVal w) ss
+
+upcast
+  :: forall ss1 ss2.
+  ss1 `IsPrefixOf` ss2
+  => EnumVal ss1 -> SymbolList ss2 -> EnumVal ss2
+upcast (EnumVal _ sPNat) sl =
+    case blah (prefixProvesLte $ prefixProof @ss1 @ss2) sPNat of
+      Dict -> EnumVal sl sPNat
+  where
+    blah
+      :: forall n. n < Length ss1
+      => Length ss1 :<=: Length ss2 -> SPNat n -> Dict (n < Length ss2)
+    blah lteProof _ = PNat.ltDict $
+      PNat.extendLt (PNat.proofLT @n @(Length ss1)) lteProof
