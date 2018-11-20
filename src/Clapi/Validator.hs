@@ -1,17 +1,16 @@
 {-# LANGUAGE
     ApplicativeDo
   , LambdaCase
-  , FlexibleInstances
   , GADTs
-  , MultiParamTypeClasses
-  , Rank2Types
   , TypeOperators
 #-}
 
-module Clapi.Validator where
+module Clapi.Validator
+  (validateValues, revalidateValues, extractTypeAssertions
+  ) where
 
 import Prelude hiding (fail)
-import Control.Monad (join, (>=>))
+import Control.Monad (join, (>=>), void)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Constraint (Dict(..))
 import Data.Either (partitionEithers)
@@ -19,7 +18,7 @@ import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Type.Equality ((:~:)(..))
+import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Data.Word (Word32)
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
@@ -27,8 +26,9 @@ import Text.Printf (printf, PrintfArg)
 import Clapi.Util (ensureUnique)
 import Clapi.Types
   ( WireValue(..), SomeWireValue(..), WireType(..), WireTypeOf, Definition
-  , DefName)
+  , DefName, wireTypeOf)
 import Clapi.Types.EnumVal (enumVal)
+import qualified Clapi.Types.EnumVal as EnumVal
 import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
@@ -56,11 +56,23 @@ checkString r t = maybe
   (const $ return t)
   (Text.unpack t =~~ Text.unpack r :: Maybe ())
 
-checkEnum :: MonadFail m => [Seg] -> Word32 -> m Word32
-checkEnum ns w = let theMax = fromIntegral $ length ns in
-  if w >= theMax
-    then fail $ printf "Enum value %v out of range" w
-    else return w
+validateValue :: MonadFail m => TreeType a -> a -> m ()
+validateValue = \case
+    TtTime -> void . return
+    TtEnum _ -> void . return
+    TtWord32 b -> void . inBounds b
+    TtWord64 b -> void . inBounds b
+    TtInt32 b -> void . inBounds b
+    TtInt64 b -> void . inBounds b
+    TtFloat b -> void . inBounds b
+    TtDouble b -> void . inBounds b
+    TtString pat -> void . checkString pat
+    TtRef _ -> void . return
+    TtList tt -> mapM_ $ validateValue tt
+    TtSet tt ->  mapM_ $ validateValue tt
+    TtOrdSet tt -> mapM_ $ validateValue tt
+    TtMaybe tt -> mapM_ $ validateValue tt
+    TtPair tt1 tt2 -> \(a, b) -> validateValue tt1 a >> validateValue tt2 b
 
 
 typeValid
@@ -86,27 +98,29 @@ typeValid (WtPair wt1 wt2) (TtPair tt1 tt2) = do
   return $ Refl
 typeValid _ _ = fail "useful message here"
 
-validateValue :: MonadFail m => TreeType a -> WireTypeOf a -> m a
-validateValue = \case
+inflateValue
+  :: (MonadFail m)
+  => TreeType a -> WireTypeOf a -> m a
+inflateValue = \case
     TtTime -> return
     TtEnum sl -> enumVal sl
-    TtWord32 b -> inBounds b
-    TtWord64 b -> inBounds b
-    TtInt32 b -> inBounds b
-    TtInt64 b -> inBounds b
-    TtFloat b -> inBounds b
-    TtDouble b -> inBounds b
-    TtString pat -> checkString pat
+    TtWord32 b -> return
+    TtWord64 b -> return
+    TtInt32 b -> return
+    TtInt64 b -> return
+    TtFloat b -> return
+    TtDouble b -> return
+    TtString pat -> return
     TtRef _ -> Path.fromText Path.segP
-    TtList tt -> mapM $ validateValue tt
+    TtList tt -> mapM $ inflateValue tt
     TtSet tt -> case ordyShowy tt of
-      Dict -> mapM (validateValue tt) >=> ensureUnique "items"
+      Dict -> mapM (inflateValue tt) >=> ensureUnique "items"
               >=> return . Set.fromList
     TtOrdSet tt -> case ordyShowy tt of
-      Dict -> mapM (validateValue tt) >=> mkUniqList
-    TtMaybe tt -> mapM $ validateValue tt
-    TtPair tt1 tt2 -> \(x, y) ->
-      (,) <$> validateValue tt1 x <*> validateValue tt2 y
+      Dict -> mapM (inflateValue tt) >=> mkUniqList
+    TtMaybe tt -> mapM $ inflateValue tt
+    TtPair tt1 tt2 -> \(a, b) ->
+      (,) <$> inflateValue tt1 a <*> inflateValue tt2 b
   where
     ordyShowy :: TreeType a -> Dict (Ord a, Show a)
     ordyShowy = \case
@@ -128,13 +142,47 @@ validateValue = \case
         (Dict, Dict) -> Dict
 
 validate :: MonadFail m => TreeType a -> WireValue b -> m (TreeValue a)
-validate tt (WireValue wt a) = do
+validate tt (WireValue wt wta) = do
   Refl <- typeValid wt tt
-  TreeValue tt <$> validateValue tt a
+  a <- inflateValue tt wta
+  validateValue tt a
+  return $ TreeValue tt a
 
 validate_ :: MonadFail m => SomeTreeType -> SomeWireValue -> m SomeTreeValue
 validate_ (SomeTreeType tt) (SomeWireValue wv) =
   SomeTreeValue <$> validate tt wv
+
+-- NB: a and b are only different because we can cast between different EnumVal
+-- types without necessarily changing the meaning of the values.
+revalidate :: MonadFail m => TreeType a -> TreeValue b -> m (TreeValue a)
+revalidate tt2 (TreeValue tt1 a) = TreeValue tt2 <$>
+  case testEquality tt2 tt1 of
+    Nothing -> case (tt1, tt2) of
+      (TtEnum _, TtEnum sl2) -> EnumVal.castValue a sl2
+      _ -> fail "glamrum"
+    Just Refl -> validateValue tt2 a >> return a
+
+revalidate_ :: MonadFail m => SomeTreeType -> SomeTreeValue -> m SomeTreeValue
+revalidate_ (SomeTreeType tt) (SomeTreeValue tv) =
+  SomeTreeValue <$> revalidate tt tv
+
+zipWithTreeType
+  :: (SomeTreeType -> b -> Either String SomeTreeValue) -> [SomeTreeType] -> [b]
+  -> Either [Text] [SomeTreeValue]
+zipWithTreeType f tts vs = either (Left . pure . Text.pack) collect $
+    fmtStrictZipError "types" "values" $ strictZipWith f tts vs
+  where
+    collect :: [Either String SomeTreeValue] -> Either [Text] [SomeTreeValue]
+    collect etvs = let (errs, tvs) = partitionEithers etvs in
+      if null errs then Right tvs else Left (Text.pack <$> errs)
+
+validateValues
+  :: [SomeTreeType] -> [SomeWireValue] -> Either [Text] [SomeTreeValue]
+validateValues = zipWithTreeType validate_
+
+revalidateValues
+  :: [SomeTreeType] -> [SomeTreeValue] -> Either [Text] [SomeTreeValue]
+revalidateValues = zipWithTreeType revalidate_
 
 extractTypeAssertions :: TreeType a -> a -> [(DefName, Path)]
 extractTypeAssertions = \case
@@ -147,14 +195,3 @@ extractTypeAssertions = \case
     extractTypeAssertions tt1 x <>
     extractTypeAssertions tt2 y
   _ -> const []
-
-
-validateValues
-  :: [SomeTreeType] -> [SomeWireValue] -> Either [Text] [SomeTreeValue]
-validateValues tts wvs = either (Left . pure . Text.pack) collect $
-    fmtStrictZipError "types" "values" $
-    strictZipWith validate_ tts wvs
-  where
-    collect :: [Either String SomeTreeValue] -> Either [Text] [SomeTreeValue]
-    collect etvs = let (errs, tvs) = partitionEithers etvs in
-      if null errs then Right tvs else Left (Text.pack <$> errs)
