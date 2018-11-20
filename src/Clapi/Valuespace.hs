@@ -17,7 +17,7 @@ import Prelude hiding (fail)
 import Control.Monad (unless, liftM2, join)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Bifunctor (first, bimap)
-import Data.Either (lefts, partitionEithers)
+import Data.Either (lefts)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Merge.Strict
@@ -40,7 +40,7 @@ import qualified Data.Map.Dependencies as Dependencies
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
+import Clapi.Util (strictZipWith, fmtStrictZipError, Partition(..))
 import Clapi.Tree
   ( RoseTree(..), RoseTreeNode(..), treeInsert, treeChildren
   , RoseTreeNodeType(..), treePaths)
@@ -383,7 +383,7 @@ partitionEitherNestedMaps
   :: Map k1 (Map k2 (Either a b))
   -> (Map k1 (Map k2 a), Map k1 (Map k2 b))
 partitionEitherNestedMaps mm =
-  let partitioned = mapPartitionEither <$> mm in
+  let partitioned = partitionEithers <$> mm in
     (fst <$> partitioned, snd <$> partitioned)
 
 validateCreateAndCopAfters

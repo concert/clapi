@@ -11,19 +11,21 @@ module Clapi.Util (
     showItems,
     bound,
     safeToEnum,
-    mapPartitionEither,
     nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
+    Partition(..), partitionEithers',
     proxyF, proxyF3
 ) where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
+import Data.Bifunctor (bimap)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Either (isLeft, fromLeft, fromRight)
+import qualified Data.Either as Either
 import Data.Foldable (Foldable, toList)
 import qualified Data.Foldable as Foldable
-import Data.List (intercalate)
+import qualified Data.List as List
 import Data.List.Split (splitOn)
 import Data.Proxy
 import Data.Map (Map)
@@ -31,6 +33,9 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Printf (printf)
+
+import Clapi.Types.Dkmap (Dkmap)
+import qualified Clapi.Types.Dkmap as Dkmap
 
 
 duplicates :: forall a. (Ord a) => [a] -> Set.Set a
@@ -98,7 +103,7 @@ camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
     initCap (c:cs) = toUpper c : cs
 
 showItems :: (Foldable f, Show a) => f a -> String
-showItems = intercalate ", " . fmap show . toList
+showItems = List.intercalate ", " . fmap show . toList
 
 bound :: forall a b m. (Enum a, Enum b, Bounded b, MonadFail m) => a -> m b
 bound i =
@@ -146,9 +151,28 @@ foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
 
-mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
-mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
-  (fromLeft undefined <$> ls, fromRight undefined <$> rs)
+class Functor f => Partition f where
+  partition :: (a -> Bool) -> f a -> (f a, f a)
+  partitionEithers :: f (Either a b) -> (f a, f b)
+  partitionEithers =
+    bimap (fmap $ fromLeft undefined) (fmap $ fromRight undefined)
+    . partition isLeft
+
+instance Partition [] where
+  partition = List.partition
+  partitionEithers = Either.partitionEithers
+
+instance Partition (Map k) where
+  partition = Map.partition
+
+instance (Ord k0, Ord k1) => Partition (Dkmap k0 k1) where
+  partition = Dkmap.partition
+
+partitionEithers'
+  :: (Monoid a, Partition f, Foldable f)
+  => f (Either a b) -> Either a (f b)
+partitionEithers' f = let (as, bs) = partitionEithers f in
+    if null as then Right bs else Left $ mconcat $ toList as
 
 proxyF :: Proxy a -> Proxy b -> Proxy (a b)
 proxyF _ _ = Proxy
