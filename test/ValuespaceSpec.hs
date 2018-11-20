@@ -16,6 +16,7 @@ import Data.Word
 import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import Control.Monad (void)
 import Control.Monad.Fail (MonadFail)
 
 import qualified Data.Map.Mol as Mol
@@ -313,9 +314,7 @@ spec = do
             alEmpty
             mempty
             mempty
-      in do
-        vs <- vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable
-        vs `shouldBe` vs
+      in void $ vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable :: IO ()
     it "Rejects recursive struct" $
       let
         rS = [segq|r|]
