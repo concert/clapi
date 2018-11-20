@@ -105,6 +105,34 @@ reverse = go SlEmpty
     go acc SlEmpty = acc
     go acc (SlCons p sl) = go (SlCons p acc) sl
 
+-- Proof of prefix
+data PrefixProof (ss1 :: [Symbol]) (ss2 :: [Symbol]) where
+  PO1 :: PrefixProof '[] ss2
+  PO2 :: p1 :~: p2 -> PrefixProof ss1 ss2
+      -> PrefixProof ('(:) p1 ss1) ('(:) p1 ss2)
+
+isPrefixOf :: SymbolList ss1 -> SymbolList ss2 -> Maybe (PrefixProof ss1 ss2)
+SlEmpty `isPrefixOf` _ = Just PO1
+SlCons {} `isPrefixOf` SlEmpty = Nothing
+SlCons p1 sl1 `isPrefixOf` SlCons p2 sl2 =
+  case (sameSymbol p1 p2, sl1 `isPrefixOf` sl2) of
+  (Just Refl, Just proof) -> Just $ PO2 Refl proof
+  _ -> Nothing
+
+class (ss1 :: [Symbol]) `IsPrefixOf` (ss2 :: [Symbol]) where
+  prefixProof :: PrefixProof ss1 ss2
+
+instance '[] `IsPrefixOf` ss2 where
+  prefixProof = PO1
+
+instance (s1 ~ s2, s1s `IsPrefixOf` s2s) =>
+    ('(:) s1 s1s) `IsPrefixOf` ('(:) s2 s2s) where
+  prefixProof = PO2 Refl prefixProof
+
+prefixProvesLte :: PrefixProof ss1 ss2 -> (Length ss1) :<=: (Length ss2)
+prefixProvesLte = \case
+  PO1 -> LTE1
+  PO2 Refl subProof -> LTE2 $ prefixProvesLte subProof
 
 withSymbolList :: forall r. (forall ss. SymbolList ss -> r) -> [String] -> r
 withSymbolList f = go SlEmpty
