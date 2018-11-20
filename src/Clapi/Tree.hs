@@ -228,3 +228,17 @@ rtType rt = case rt of
   RtContainer _ -> RtntContainer
   RtConstData _ _ -> RtntConstData
   RtDataSeries _ -> RtntDataSeries
+
+treeConstSetAt :: Maybe Attributee -> Path -> a -> RoseTree a -> RoseTree a
+treeConstSetAt att p a = treeAdjust att (treeConstSet att a) p
+
+treeTpSetAt
+  :: MonadFail m
+  => Maybe Attributee -> Path -> TpId -> Time -> a -> Interpolation
+  -> RoseTree a -> m (RoseTree a)
+treeTpSetAt att p tpid t a i = treeAdjustF Nothing (treeSet tpid t a i att) p
+
+treeTpRemoveAt
+  :: MonadFail m
+  => Maybe Attributee -> Path -> TpId -> RoseTree a -> m (RoseTree a)
+treeTpRemoveAt att p tpid = treeAdjustF Nothing (treeRemove tpid) p
