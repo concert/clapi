@@ -82,3 +82,32 @@ rekey k0 k1' (Dkmap km vm) = do
 flatten :: (Ord k0, Ord k1) => (k1 -> v -> a) -> Dkmap k0 k1 v -> Map k0 a
 flatten f (Dkmap km vm) =
   Map.mapWithKey (\k0 v -> f (fromJust $ Bimap.lookupR k0 km) v) vm
+
+
+mapWithKeys
+  :: (Ord k0, Ord k1) => (k0 -> k1 -> a -> b) -> Dkmap k0 k1 a -> Dkmap k0 k1 b
+mapWithKeys f (Dkmap km vm) = Dkmap km $
+  Map.mapWithKey (\k0 a -> f k0 (fromJust $ Bimap.lookupR k0 km) a) vm
+
+traverseWithKeys
+  :: (Applicative t, Ord k0, Ord k1)
+  => (k0 -> k1 -> a -> t b) -> Dkmap k0 k1 a -> t (Dkmap k0 k1 b)
+traverseWithKeys f (Dkmap km vm) = fmap (Dkmap km) $
+  Map.traverseWithKey (\k0 a -> f k0 (fromJust $ Bimap.lookupR k0 km) a) vm
+
+
+partitionWithKeys
+  :: (Ord k0, Ord k1)
+  => (k0 -> k1 -> a -> Bool) -> Dkmap k0 k1 a -> (Dkmap k0 k1 a, Dkmap k0 k1 a)
+partitionWithKeys f (Dkmap km vm) =
+  let
+    (vm1, vm2) = Map.partitionWithKey
+      (\k0 a -> f k0 (fromJust $ Bimap.lookupR k0 km) a) vm
+    (km1, km2) = Bimap.partition (\_ k0 -> Map.member k0 vm1) km
+  in
+    (Dkmap km1 vm1, Dkmap km2 vm2)
+
+partition
+  :: (Ord k0, Ord k1)
+  => (a -> Bool) -> Dkmap k0 k1 a -> (Dkmap k0 k1 a, Dkmap k0 k1 a)
+partition f = partitionWithKeys (\_ _ a -> f a)
