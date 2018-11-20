@@ -299,6 +299,23 @@ spec = do
           mempty
           mempty
       in vsProviderErrorsOn testValuespace missingChild [Root]
+    it "Allows nested empty containers" $
+      let
+        emptyS = [segq|empty|]
+        arrS = [segq|arr|]
+        emptyNest = TrpDigest
+            (Namespace emptyS)
+            mempty
+            (Map.fromList
+              [ (Tagged emptyS, OpDefine $ structDef "oaea" $ alSingleton arrS (Tagged arrS, ReadOnly))
+              , (Tagged arrS, OpDefine $ arrayDef "ea" Nothing (Tagged arrS) ReadOnly)
+              ])
+            alEmpty
+            mempty
+            mempty
+      in do
+        vs <- vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable
+        vs `shouldBe` vs
     describe "Client" $
         it "Cannot itself create new array entries" $
           let
