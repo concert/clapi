@@ -8,10 +8,11 @@
   , StandaloneDeriving
   , TypeFamilies
   , TypeOperators
+  , UndecidableInstances
 #-}
 module Clapi.Types.SymbolList where
 
-import Prelude hiding (length, (!!))
+import Prelude hiding (length, reverse, (!!))
 import Data.Proxy
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
@@ -81,12 +82,27 @@ length = \case
 (!!) (SlCons p sl) = \case
   SPZero -> SomeSymbol p
   SPSucc sPNat -> sl !! sPNat
+-- Reverse things:
+type family Reverse (as :: [k]) :: [k] where
+  Reverse as = Reverse' '[] as
+
+type family Reverse' (acc :: [k]) (as :: [k]) where
+  Reverse' acc '[] = acc
+  Reverse' acc ('(:) a as) = Reverse' (a : acc) as
+
+reverse :: SymbolList ss -> SymbolList (Reverse ss)
+reverse = go SlEmpty
+  where
+    go :: SymbolList ss1 -> SymbolList ss2 -> SymbolList (Reverse' ss1 ss2)
+    go acc SlEmpty = acc
+    go acc (SlCons p sl) = go (SlCons p acc) sl
+
 
 withSymbolList :: forall r. (forall ss. SymbolList ss -> r) -> [String] -> r
 withSymbolList f = go SlEmpty
   where
     go :: SymbolList ss -> [String] -> r
-    go acc [] = f acc
+    go acc [] = f $ reverse acc  -- FIXME: reverse is wasteful
     go acc (s : ss) = case someSymbolVal s of
       SomeSymbol p -> go (SlCons p acc) ss
 
