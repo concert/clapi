@@ -263,19 +263,25 @@ validateVs t v = do
                   where
                     emptyArrays = mapMaybe mHandlable validationErrs
                     isEmptyContainer d = case d of
-                        ArrayDef _ -> True
-                        StructDef (StructDefinition _ defKids) -> defKids == alEmpty
-                        _ -> False
+                        ArrayDef _ -> Just True
+                        StructDef (StructDefinition _ defKids) ->
+                            and <$> (mapM typeIsEmptyContainer $ fst <$> alValues defKids)
+                        _ -> Just False
+                    typeIsEmptyContainer cts = vsLookupDef cts vs >>= isEmptyContainer
                     mHandlable ve = case ve of
                         MissingChild name -> do
-                          cts <- defDispatch (childTypeFor name) def
-                          cdef <- vsLookupDef cts vs
-                          if isEmptyContainer cdef
-                            then Just (path :/ name, cts)
-                            else Nothing
+                            cts <- defDispatch (childTypeFor name) def
+                            isEmpty <- typeIsEmptyContainer cts
+                            if isEmpty
+                              then Just (path :/ name, cts)
+                              else Nothing
                         BadNodeType _ treeType ->
-                          case (treeType, path, isEmptyContainer def) of
-                            (RtntEmpty, Root, True) -> Just (Root, ts)
+                          case (treeType, path) of
+                            (RtntEmpty, Root) -> do
+                                isEmpty <- isEmptyContainer def
+                                if isEmpty
+                                  then Just (Root, ts)
+                                  else Nothing
                             _ -> Nothing
                         _ -> Nothing
                     newTas' = newTas <> Map.fromList emptyArrays
