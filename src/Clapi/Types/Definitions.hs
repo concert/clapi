@@ -1,4 +1,10 @@
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE
+    DataKinds
+  , GADTs
+  , KindSignatures
+  , LambdaCase
+  , StandaloneDeriving
+#-}
 
 module Clapi.Types.Definitions where
 
@@ -18,13 +24,48 @@ data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
 
-type DefName = Tagged Definition Seg
+type DefName = Tagged SomeDefinition Seg
 type PostDefName = Tagged PostDefinition Seg
 
-class OfMetaType metaType where
-  metaType :: metaType -> MetaType
-  childTypeFor :: Seg -> metaType -> Maybe DefName
-  childEditableFor :: MonadFail m => metaType -> Seg -> m Editable
+data Definition (mt :: MetaType) where
+  TupleDef ::
+    { tupDefDoc :: Text
+    -- FIXME: this should eventually boil down to a single TreeType (NB remove
+    -- names too and just write more docstring) now that we have pairs:
+    , tupDefTys :: AssocList Seg SomeTreeType
+    , tupDefILimit :: InterpolationLimit
+    } -> Definition 'Tuple
+  StructDef ::
+    { strDefDoc :: Text
+    , strDefChildTys :: AssocList Seg (DefName, Editable)
+    } -> Definition 'Struct
+  ArrayDef ::
+    { arrDefDoc :: Text
+    , arrDefPostTy :: Maybe PostDefName
+    , arrDefChildTy :: DefName
+    , arrDefChildEditable :: Editable
+    } -> Definition 'Array
+deriving instance Show (Definition mt)
+
+data SomeDefinition where
+  SomeDefinition :: Definition mt -> SomeDefinition
+deriving instance Show SomeDefinition
+
+tupleDef
+  :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> SomeDefinition
+tupleDef doc tys ilimit = SomeDefinition $ TupleDef doc tys ilimit
+
+structDef :: Text -> AssocList Seg (DefName, Editable) -> SomeDefinition
+structDef doc tyinfo = SomeDefinition $ StructDef doc tyinfo
+
+arrayDef :: Text -> Maybe PostDefName -> DefName -> Editable -> SomeDefinition
+arrayDef doc ptn tn ed = SomeDefinition $ ArrayDef doc ptn tn ed
+
+metaType :: Definition mt -> MetaType
+metaType = \case
+  TupleDef {} -> Tuple
+  StructDef {} -> Struct
+  ArrayDef {} -> Array
 
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
@@ -33,61 +74,3 @@ data PostDefinition = PostDefinition
   , postDefArgs :: AssocList Seg [SomeTreeType]
   } deriving (Show)
 
-data TupleDefinition = TupleDefinition
-  { tupDefDoc :: Text
-  -- FIXME: this should eventually boil down to a single TreeType (NB remove
-  -- names too and just write more docstring) now that we have pairs:
-  , tupDefTypes :: AssocList Seg SomeTreeType
-  , tupDefInterpLimit :: InterpolationLimit
-  } deriving (Show)
-
-instance OfMetaType TupleDefinition where
-  metaType _ = Tuple
-  childTypeFor _ _ = Nothing
-  childEditableFor _ _ = fail "Tuples have no children"
-
-data StructDefinition = StructDefinition
-  { strDefDoc :: Text
-  , strDefTypes :: AssocList Seg (DefName, Editable)
-  } deriving (Show, Eq)
-
-instance OfMetaType StructDefinition where
-  metaType _ = Struct
-  childTypeFor seg (StructDefinition _ tyInfo) =
-    fst <$> lookup seg (unAssocList tyInfo)
-  childEditableFor (StructDefinition _ tyInfo) seg = note "No such child" $
-    snd <$> lookup seg (unAssocList tyInfo)
-
-data ArrayDefinition = ArrayDefinition
-  { arrDefDoc :: Text
-  , arrPostType :: Maybe PostDefName
-  , arrDefChildType :: DefName
-  , arrDefChildEditable :: Editable
-  } deriving (Show, Eq)
-
-instance OfMetaType ArrayDefinition where
-  metaType _ = Array
-  childTypeFor _ = Just . arrDefChildType
-  childEditableFor ad _ = return $ arrDefChildEditable ad
-
-
-data Definition
-  = TupleDef TupleDefinition
-  | StructDef StructDefinition
-  | ArrayDef ArrayDefinition
-  deriving (Show)
-
-tupleDef :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> Definition
-tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
-
-structDef
-  :: Text -> AssocList Seg (DefName, Editable) -> Definition
-structDef doc types = StructDef $ StructDefinition doc types
-
-arrayDef :: Text -> Maybe PostDefName -> DefName -> Editable -> Definition
-arrayDef doc ptn tn ed = ArrayDef $ ArrayDefinition doc ptn tn ed
-
-defDispatch :: (forall a. OfMetaType a => a -> r) -> Definition -> r
-defDispatch f (TupleDef d) = f d
-defDispatch f (StructDef d) = f d
-defDispatch f (ArrayDef d) = f d

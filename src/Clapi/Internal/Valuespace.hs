@@ -16,7 +16,7 @@ import Data.Map.Dependencies (Dependencies)
 
 import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
-  (Definition, PostDefinition, Editable, DefName)
+  (SomeDefinition, PostDefinition, Editable, DefName)
 import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Tree (SomeTreeValue(..))
@@ -30,7 +30,7 @@ type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
 data Valuespace = Valuespace
   { _vsTree :: RoseTree [SomeTreeValue]
   , _vsPostDefs :: DefMap PostDefinition
-  , _vsTyDefs :: DefMap Definition
+  , _vsTyDefs :: DefMap SomeDefinition
   , _vsTyAssns :: TypeAssignmentMap
   , _vsXrefs :: Xrefs
   , _vsRootEditable :: Editable

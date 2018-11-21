@@ -1,4 +1,8 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE
+    GADTs
+  , LambdaCase
+#-}
 
 module Clapi.Serialisation.Definitions where
 
@@ -10,8 +14,9 @@ import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
 import Clapi.Types.Definitions
   ( Editable(..), MetaType(..), metaType
-  , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
-  , Definition(..), defDispatch, PostDefinition(..))
+  , Definition(..), SomeDefinition(..), PostDefinition(..)
+  , tupleDef, structDef, arrayDef)
+import Clapi.Types.Tree (SomeTreeType(..))
 
 editableTaggedData :: TaggedData Editable Editable
 editableTaggedData = taggedData toTag id
@@ -29,37 +34,24 @@ instance Encodable SomeTreeType where
   builder (SomeTreeType tt) = builder $ ttToText tt
   parser = parser >>= ttFromText
 
-instance Encodable TupleDefinition where
-  builder (TupleDefinition doc types interpl) =
-    builder doc <<>> builder types <<>> builder interpl
-  parser = TupleDefinition <$> parser <*> parser <*> parser
-
-instance Encodable StructDefinition where
-  builder (StructDefinition doc tyinfo) = builder doc <<>> builder tyinfo
-  parser = StructDefinition <$> parser <*> parser
-
-instance Encodable ArrayDefinition where
-  builder (ArrayDefinition doc ptn ctn cl) =
-    builder doc <<>> builder ptn <<>> builder ctn <<>> builder cl
-  parser = ArrayDefinition <$> parser <*> parser <*> parser <*> parser
-
-defTaggedData :: TaggedData MetaType Definition
-defTaggedData = taggedData typeToTag (defDispatch metaType)
+defTaggedData :: TaggedData MetaType SomeDefinition
+defTaggedData = taggedData typeToTag $ \(SomeDefinition d) -> metaType d
   where
     typeToTag mt = case mt of
       Tuple -> [btq|T|]
       Struct -> [btq|S|]
       Array -> [btq|A|]
 
-instance Encodable Definition where
-  builder = tdTaggedBuilder defTaggedData $ \def -> case def of
-    TupleDef d -> builder d
-    StructDef d -> builder d
-    ArrayDef d -> builder d
+instance Encodable SomeDefinition where
+  builder = tdTaggedBuilder defTaggedData $ \(SomeDefinition d) -> case d of
+    TupleDef doc tys ilimit -> builder doc <<>> builder tys <<>> builder ilimit
+    StructDef doc tyinfo -> builder doc <<>> builder tyinfo
+    ArrayDef doc ptn tn ed ->
+      builder doc <<>> builder ptn <<>> builder tn <<>> builder ed
   parser = tdTaggedParser defTaggedData $ \mt -> case mt of
-    Tuple -> TupleDef <$> parser
-    Struct -> StructDef <$> parser
-    Array -> ArrayDef <$> parser
+    Tuple -> tupleDef <$> parser <*> parser <*> parser
+    Struct -> structDef <$> parser <*> parser
+    Array -> arrayDef <$> parser <*> parser <*> parser <*> parser
 
 instance Encodable PostDefinition where
   builder (PostDefinition doc args) = builder doc <<>> builder args

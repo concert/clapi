@@ -19,7 +19,8 @@ import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Editable, PostDefinition, DefName, PostDefName)
+import Clapi.Types.Definitions
+  (Definition, SomeDefinition, Editable, PostDefinition, DefName, PostDefName)
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
@@ -95,7 +96,7 @@ data PostOp
 data TrpDigest = TrpDigest
   { trpdNamespace :: Namespace
   , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
-  , trpdDefinitions :: Map DefName (DefOp Definition)
+  , trpdDefinitions :: Map DefName (DefOp SomeDefinition)
   , trpdData :: DataDigest
   , trpdContOps :: ContOps Seg
   -- FIXME: should errors come in a different digest to data updates? At the
@@ -251,7 +252,7 @@ frcsdFromClientRegs (ClientRegs p t d) = FrcSubDigest mempty p t d
 data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
   , frcudPostDefs :: Map PostDefName (DefOp PostDefinition)
-  , frcudDefinitions :: Map DefName (DefOp Definition)
+  , frcudDefinitions :: Map DefName (DefOp SomeDefinition)
   , frcudTypeAssignments :: Map Path (DefName, Editable)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
