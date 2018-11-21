@@ -278,11 +278,11 @@ validateVs t v = do
                               then Just (path :/ name, cts)
                               else Nothing
                         BadNodeType _ treeType ->
-                          case (treeType, path) of
-                            (RtntEmpty, Root) -> do
+                          case treeType of
+                            RtntEmpty -> do
                                 isEmpty <- isEmptyContainer mempty def
                                 if isEmpty
-                                  then Just (Root, ts)
+                                  then Just (path, ts)
                                   else Nothing
                             _ -> Nothing
                         _ -> Nothing
