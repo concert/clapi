@@ -314,7 +314,16 @@ spec = do
             alEmpty
             mempty
             mempty
-      in void $ vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable :: IO ()
+        addToNestedStruct = TrpDigest
+            (Namespace emptyS)
+            mempty
+            mempty
+            alEmpty
+            (Map.singleton [pathq|/arr|] $ Map.singleton emptyS (Nothing, SoAfter Nothing))
+            mempty
+      in do
+        vs <- vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable
+        void $ vsAppliesCleanly addToNestedStruct vs :: IO ()
     it "Rejects recursive struct" $
       let
         rS = [segq|r|]
