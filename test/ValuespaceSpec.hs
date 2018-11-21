@@ -16,6 +16,7 @@ import Data.Word
 import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import Control.Monad (void)
 import Control.Monad.Fail (MonadFail)
 
 import qualified Data.Map.Mol as Mol
@@ -299,6 +300,32 @@ spec = do
           mempty
           mempty
       in vsProviderErrorsOn testValuespace missingChild [Root]
+    it "Allows nested empty containers" $
+      let
+        emptyS = [segq|empty|]
+        arrS = [segq|arr|]
+        emptyNest = TrpDigest
+            (Namespace emptyS)
+            mempty
+            (Map.fromList
+              [ (Tagged emptyS, OpDefine $ structDef "oaea" $ alSingleton arrS (Tagged arrS, ReadOnly))
+              , (Tagged arrS, OpDefine $ arrayDef "ea" Nothing (Tagged arrS) ReadOnly)
+              ])
+            alEmpty
+            mempty
+            mempty
+      in void $ vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable :: IO ()
+    it "Rejects recursive struct" $
+      let
+        rS = [segq|r|]
+        rDef = TrpDigest
+            (Namespace rS)
+            mempty
+            (Map.singleton (Tagged rS) $ OpDefine $ structDef "r4eva" $ alSingleton rS (Tagged rS, ReadOnly))
+            alEmpty
+            mempty
+            mempty
+      in vsProviderErrorsOn (baseValuespace (Tagged rS) ReadOnly) rDef [Root]
     describe "Client" $
         it "Cannot itself create new array entries" $
           let
