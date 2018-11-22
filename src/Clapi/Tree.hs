@@ -84,6 +84,7 @@ treeApplyReorderings contOps (RtContainer children) =
   in
     RtContainer . alFmapWithKey reattribute . alPickFromMap childMap
     <$> (updateUniqList (snd <$> contOps) $ alKeys children)
+treeApplyReorderings contOps RtEmpty = treeApplyReorderings contOps (RtContainer alEmpty)
 treeApplyReorderings _ _ = fail "Not a container"
 
 treeConstSet :: Maybe Attributee -> a -> RoseTree a -> RoseTree a

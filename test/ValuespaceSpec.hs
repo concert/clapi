@@ -324,6 +324,17 @@ spec = do
       in do
         vs <- vsAppliesCleanly emptyNest $ baseValuespace (Tagged emptyS) Editable
         void $ vsAppliesCleanly addToNestedStruct vs :: IO ()
+    it "Allows contops in array declaring digest" $
+      let
+        codS = [segq|cod|]
+        codb = TrpDigest
+            (Namespace codS)
+            mempty
+            (Map.singleton (Tagged codS) $ OpDefine $ arrayDef "fishy" Nothing (Tagged codS) ReadOnly)
+            alEmpty
+            (Map.singleton Root $ Map.singleton codS (Nothing, SoAfter Nothing))
+            mempty
+      in void $ vsAppliesCleanly codb $ baseValuespace (Tagged codS) Editable :: IO ()
     it "Rejects recursive struct" $
       let
         rS = [segq|r|]
