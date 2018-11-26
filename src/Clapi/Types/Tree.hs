@@ -13,9 +13,7 @@
   , ScopedTypeVariables
   , StandaloneDeriving
   , TypeFamilies
-  , TypeInType
   , TypeOperators
-  , UndecidableInstances
 #-}
 
 module Clapi.Types.Tree
