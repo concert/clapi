@@ -17,7 +17,7 @@ import Text.Printf (printf)
 import GHC.TypeLits (Symbol, SomeSymbol(..), symbolVal)
 
 import Clapi.Types.PNat
-  (SPNat, SomePNat(..), type (<), (%<), type (<=), (:<=:))
+  (SPNat, SomePNat(..), type (<), (%<), (:<=:))
 import qualified Clapi.Types.PNat as PNat
 import Clapi.Types.SymbolList
   (SymbolList, Length, (!!), IsPrefixOf(..), prefixProvesLte)
@@ -54,6 +54,9 @@ enumVal sl w = case PNat.fromWord32 w of
 
 enumVal_ :: MonadFail m => [String] -> Word32 -> m SomeEnumVal
 enumVal_ ss w = SL.withSymbolList (fmap SomeEnumVal . flip enumVal w) ss
+
+toWord32 :: EnumVal ss -> Word32
+toWord32 (EnumVal _ n) = PNat.toWord32 n
 
 -- | Expand the type of an EnumVal to include a larger set of options, whilst
 --   guaranteeing that existing values will not change meaning.

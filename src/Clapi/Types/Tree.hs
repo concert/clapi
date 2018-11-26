@@ -28,9 +28,11 @@ module Clapi.Types.Tree
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
+import Data.Bifunctor (bimap)
 import Data.Constraint (Dict(..))
 import Data.Int
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Data.Word
@@ -38,11 +40,14 @@ import Text.Printf (printf)
 
 import Clapi.Types.Base (Time)
 import Clapi.Types.EnumVal (EnumVal)
+import qualified Clapi.Types.EnumVal as EnumVal
 import Clapi.Types.Path (Path, Seg)
+import qualified Clapi.Types.Path as Path
 import Clapi.Types.SymbolList (SymbolList, SomeSymbolList(..))
 import qualified Clapi.Types.SymbolList as SL
-import Clapi.Types.UniqList (UniqList)
-import Clapi.Types.Wire (WireType(..), liftRefl, pairRefl)
+import Clapi.Types.UniqList (UniqList(..))
+import Clapi.Types.Wire
+  (WireType(..), WireValue(..), liftRefl, pairRefl)
 import Clapi.Util (uncamel)
 
 
@@ -229,6 +234,26 @@ data SomeTreeValue where
   SomeTreeValue :: TreeValue a -> SomeTreeValue
 deriving instance Show SomeTreeValue
 
+toWireValue_ :: TreeType a -> a -> WireTypeOf a
+toWireValue_ = \case
+    TtTime -> id
+    TtEnum _ -> EnumVal.toWord32
+    TtWord32 _ -> id
+    TtWord64 _ -> id
+    TtInt32 _ -> id
+    TtInt64 _ -> id
+    TtFloat _ -> id
+    TtDouble _ -> id
+    TtString _ -> id
+    TtRef _ -> Path.toText Path.unSeg
+    TtList tt -> fmap (toWireValue_ tt)
+    TtSet tt ->  fmap (toWireValue_ tt) . Set.toList
+    TtOrdSet tt -> fmap (toWireValue_ tt) . unUniqList
+    TtMaybe tt ->  fmap (toWireValue_ tt)
+    TtPair tt1 tt2 -> bimap (toWireValue_ tt1) (toWireValue_ tt2)
+
+toWireValue :: TreeValue a -> WireValue (WireTypeOf a)
+toWireValue (TreeValue tt a) = WireValue (wireTypeOf tt) (toWireValue_ tt a)
 
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
   typeEnumOf :: a -> b
