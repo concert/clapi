@@ -19,6 +19,8 @@ import Data.Word
 import Data.Int
 import Data.Text (Text)
 
+import Data.Map.Mol (Mol)
+import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
@@ -117,6 +119,10 @@ instance (Ord a, Encodable a) => Encodable (Set a) where
 instance (Ord k, Ord v, Encodable k, Encodable v) => Encodable (Mos k v) where
   builder = builder . Mos.toList
   parser = Mos.fromList <$> parser
+
+instance (Ord k, Encodable k, Encodable v) => Encodable (Mol k v) where
+  builder = builder . Mol.toList
+  parser = Mol.fromList <$> parser
 
 (<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
 (<<>>) = liftM2 (<>)
