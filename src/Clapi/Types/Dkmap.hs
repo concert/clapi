@@ -1,6 +1,7 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
+  , DeriveTraversable
   , TemplateHaskell
   , TypeFamilies
 #-}
@@ -21,7 +22,7 @@ import qualified Data.Map as Map
 
 data Dkmap k0 k1 v
   = Dkmap {_keyMap :: (Bimap k1 k0), _valueMap :: (Map k0 v)}
-  deriving (Show, Eq, Functor, Foldable)
+  deriving (Show, Eq, Functor, Foldable, Traversable)
 
 valueMap :: Dkmap k0 k1 v -> Map k0 v
 valueMap = _valueMap
