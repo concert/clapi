@@ -5,12 +5,14 @@
 #-}
 module Data.Map.Mol where
 
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
 
 import Data.Map.Clapi as Map
 
 newtype Mol k a
-  = Mol {unMol :: Map.Map k [a]} deriving (Show, Eq, Ord, Functor, Foldable)
+  = Mol {unMol :: Map k [a]} deriving (Show, Eq, Ord, Functor, Foldable)
 
 instance Ord k => Semigroup (Mol k a) where
   (<>) = union
@@ -26,6 +28,9 @@ singletonList k as = Mol $ Map.singleton k as
 
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
+
+fromSet :: (k -> [a]) -> Set k -> Mol k a
+fromSet f = Mol . Map.fromSet f
 
 toList :: (Ord k) => Mol k a -> [(k, a)]
 toList (Mol m) = mconcat $ sequence <$> Map.toList m
