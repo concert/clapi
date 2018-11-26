@@ -47,7 +47,7 @@ import Clapi.Types.SymbolList (SymbolList, SomeSymbolList(..))
 import qualified Clapi.Types.SymbolList as SL
 import Clapi.Types.UniqList (UniqList(..))
 import Clapi.Types.Wire
-  (WireType(..), WireValue(..), liftRefl, pairRefl)
+  (WireType(..), WireValue(..), SomeWireValue(..), liftRefl, pairRefl)
 import Clapi.Util (uncamel)
 
 
@@ -234,8 +234,8 @@ data SomeTreeValue where
   SomeTreeValue :: TreeValue a -> SomeTreeValue
 deriving instance Show SomeTreeValue
 
-toWireValue_ :: TreeType a -> a -> WireTypeOf a
-toWireValue_ = \case
+toWireValue' :: TreeType a -> a -> WireTypeOf a
+toWireValue' = \case
     TtTime -> id
     TtEnum _ -> EnumVal.toWord32
     TtWord32 _ -> id
@@ -246,14 +246,17 @@ toWireValue_ = \case
     TtDouble _ -> id
     TtString _ -> id
     TtRef _ -> Path.toText Path.unSeg
-    TtList tt -> fmap (toWireValue_ tt)
-    TtSet tt ->  fmap (toWireValue_ tt) . Set.toList
-    TtOrdSet tt -> fmap (toWireValue_ tt) . unUniqList
-    TtMaybe tt ->  fmap (toWireValue_ tt)
-    TtPair tt1 tt2 -> bimap (toWireValue_ tt1) (toWireValue_ tt2)
+    TtList tt -> fmap (toWireValue' tt)
+    TtSet tt ->  fmap (toWireValue' tt) . Set.toList
+    TtOrdSet tt -> fmap (toWireValue' tt) . unUniqList
+    TtMaybe tt ->  fmap (toWireValue' tt)
+    TtPair tt1 tt2 -> bimap (toWireValue' tt1) (toWireValue' tt2)
 
 toWireValue :: TreeValue a -> WireValue (WireTypeOf a)
-toWireValue (TreeValue tt a) = WireValue (wireTypeOf tt) (toWireValue_ tt a)
+toWireValue (TreeValue tt a) = WireValue (wireTypeOf tt) (toWireValue' tt a)
+
+toWireValue_ :: SomeTreeValue -> SomeWireValue
+toWireValue_ (SomeTreeValue tv) = SomeWireValue $ toWireValue tv
 
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
   typeEnumOf :: a -> b
