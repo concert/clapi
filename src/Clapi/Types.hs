@@ -8,6 +8,8 @@ module Clapi.Types
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
+import Data.Text (Text)
+import qualified Data.Text as Text
 
 import Clapi.Types.AssocList as X
 import Clapi.Types.Base as X
@@ -22,3 +24,6 @@ type CanFail a = Either String a
 
 instance MonadFail (Either String) where
     fail s = Left s
+
+instance MonadFail (Either Text) where
+    fail = Left . Text.pack
