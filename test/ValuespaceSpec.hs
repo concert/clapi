@@ -255,44 +255,22 @@ spec = do
           vs'
         (vsAppliesCleanly (validVersionTypeChange vs'') vs''
           :: Either String Valuespace) `shouldSatisfy` isRight
-    it "copes with crossy xrefs" $
+    it "Copes with contOps and set in same bundle" $
       let
         xS = [segq|cross|]
         aS = [segq|a|]
-        asS = [segq|as|]
-        assS = [segq|ass|]
-        bS = [segq|b|]
-        bsS = [segq|bs|]
-        bssS = [segq|bss|]
         vs = baseValuespace (Tagged xS) Editable
         d = TrpDigest
             (Namespace xS)
             mempty
             (Map.fromList
-              [ (Tagged xS, OpDefine $ structDef "kriss" $ alFromList $ (\s -> (s, (Tagged s, ReadOnly))) <$> [assS, bssS])
-              , (Tagged assS, OpDefine $ arrayDef "arefss" Nothing (Tagged asS) ReadOnly)
-              , (Tagged asS, OpDefine $ arrayDef "arefs" Nothing (Tagged aS) ReadOnly)
-              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ TtRef bsS) ILUninterpolated)
-              , (Tagged bssS, OpDefine $ arrayDef "brefss" Nothing (Tagged bsS) ReadOnly)
-              , (Tagged bsS, OpDefine $ arrayDef "brefs" Nothing (Tagged bS) ReadOnly)
-              , (Tagged bS, OpDefine $ tupleDef "ref b" (alSingleton bS $ TtRef asS) ILUninterpolated)
+              [ (Tagged xS, OpDefine $ arrayDef "kriss" Nothing (Tagged aS) ReadOnly)
+              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ TtInt32 unbounded) ILUninterpolated)
               ])
+            (alSingleton [pathq|/ard|] $ ConstChange Nothing [WireValue @Int32 3])
+            (Map.singleton [pathq|/|] $ Map.singleton [segq|ard|] (Nothing, SoAbsent))
             mempty
-            mempty
-            mempty
-        d2 = TrpDigest
-            (Namespace xS)
-            mempty
-            mempty
-            (alFromList
-              [ ([pathq|/ass/ard/vark|], ConstChange Nothing [WireValue @Text "/bss/ban"])
-              , ([pathq|/bss/ban/ana|], ConstChange Nothing [WireValue @Text "/ass/ard"])
-              ])
-            (Map.singleton [pathq|/ass|] $ Map.singleton [segq|ard|] (Nothing, SoAbsent))
-            mempty
-      in do
-        vs' <- vsAppliesCleanly d vs
-        void $ vsAppliesCleanly d2 vs' :: IO ()
+      in void $ vsAppliesCleanly d vs :: IO ()
     it "Array" $
       let
         ars = [segq|arr|]
