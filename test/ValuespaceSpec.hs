@@ -255,7 +255,7 @@ spec = do
           vs'
         (vsAppliesCleanly (validVersionTypeChange vs'') vs''
           :: Either String Valuespace) `shouldSatisfy` isRight
-    it "Copes with contOps and set in same bundle" $
+    it "Copes with set and absent in same bundle" $
       let
         xS = [segq|cross|]
         aS = [segq|a|]

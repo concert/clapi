@@ -248,7 +248,8 @@ validateVs t v = do
             -- counted as such.
             Nothing -> case path of
               (parentPath :/ _) -> inner
-                newTas newRefClaims (Map.insert parentPath Nothing tainted)
+                newTas newRefClaims
+                (Map.insert parentPath Nothing $ Map.delete path tainted)
                 vs
               _ -> Left $ Mol.singleton GlobalError $
                 GenericErr "Attempted to taint parent of root"
