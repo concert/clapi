@@ -77,7 +77,9 @@ treeApplyReorderings contOps (RtContainer children) =
   let
     attMap = fst <$> contOps
     childMap = Map.foldlWithKey'
-        (\acc k att -> Map.insert k (att, RtEmpty) acc)
+        (\acc k att -> if Map.notMember k acc
+            then Map.insert k (att, RtEmpty) acc
+            else acc)
         (alToMap children)
         (fst <$> contOps)
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
