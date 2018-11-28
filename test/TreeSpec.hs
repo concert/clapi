@@ -5,14 +5,16 @@
 module TreeSpec where
 
 import Test.Hspec
+import qualified Data.Map as Map
 
 import Clapi.TH
 import Clapi.Types.AssocList (alSingleton, alFromList)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (Seg, pattern Root, pattern (:/))
+import Clapi.Types.SequenceOps (SequenceOp(SoAfter))
 import Clapi.Tree
   ( RoseTree(..), RoseTreeNode(..), treePaths, treeLookup, treeInsert
-  , treeDelete, treeLookupNode)
+  , treeDelete, treeLookupNode, treeApplyReorderings)
 
 import Instances ()
 
@@ -89,3 +91,8 @@ spec = do
     it "doesn't create illegitimate parents" $ do
       treeDelete [pathq|/t3/to/box|] t3 `shouldBe` t3
       treeDelete [pathq|/t1/to/box|] t3 `shouldBe` t3
+
+  describe "treeApplyReorderings" $ do
+    it "should preserve child contents" $
+      treeApplyReorderings (Map.singleton s3 (Nothing, SoAfter Nothing)) t4
+      `shouldBe` (Right t4 :: Either String (RoseTree Char))

@@ -255,6 +255,22 @@ spec = do
           vs'
         (vsAppliesCleanly (validVersionTypeChange vs'') vs''
           :: Either String Valuespace) `shouldSatisfy` isRight
+    it "Copes with set and absent in same bundle" $
+      let
+        xS = [segq|cross|]
+        aS = [segq|a|]
+        vs = baseValuespace (Tagged xS) Editable
+        d = TrpDigest
+            (Namespace xS)
+            mempty
+            (Map.fromList
+              [ (Tagged xS, OpDefine $ arrayDef "kriss" Nothing (Tagged aS) ReadOnly)
+              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ TtInt32 unbounded) ILUninterpolated)
+              ])
+            (alSingleton [pathq|/ard|] $ ConstChange Nothing [WireValue @Int32 3])
+            (Map.singleton [pathq|/|] $ Map.singleton [segq|ard|] (Nothing, SoAbsent))
+            mempty
+      in void $ vsAppliesCleanly d vs :: IO ()
     it "Array" $
       let
         ars = [segq|arr|]

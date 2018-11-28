@@ -14,9 +14,12 @@ import Test.QuickCheck (property)
 
 import Control.Monad.Fail (MonadFail)
 import Data.Proxy
+import qualified Data.Map as Map
 
 import Clapi.Types
-  (WireValue(..), Wireable, castWireValue, wireValueWireType, withWtProxy)
+  ( WireValue(..), Wireable, castWireValue, wireValueWireType, withWtProxy
+  , ulSingle)
+import Clapi.Types.SequenceOps (SequenceOp(..), updateUniqList)
 
 import Arbitrary ()
 
@@ -34,3 +37,8 @@ spec = do
   describe "WireValue" $ do
     it "should survive a round trip via a native Haskell value" $ property $
       either error id . roundTripWireValue
+  describe "SequenceOps" $ do
+    it "works on single no-op reordering" $
+      let
+        ul = ulSingle 'c'
+      in updateUniqList (Map.singleton 'c' $ SoAfter Nothing) ul `shouldBe` Just ul
