@@ -273,6 +273,7 @@ handleTrprd i d = runExceptT dropNamespace >>= either
       if (existing == Just i)
         then lift $ do
           updateOwners owners'
+          modifying rsVsMap $ Map.delete ns
           unsubscribeFromNs (Set.singleton ns) >>= lift . multicast . fmap Frcsd
           broadcast $ Frcrd $ FrcRootDigest $ Map.singleton ns SoAbsent
         else throwError "You're not the owner"
