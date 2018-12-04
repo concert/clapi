@@ -108,6 +108,15 @@ spec = do
         sendFwd $ ClientData "owner1" $ Trprd $ TrprDigest fooNs
         expectSet $ nsCease fooNs <$> ["owner1", "owner2"]
 
+        -- Check that the previously defined namespace is completely gone
+        sendFwd $ ClientConnect "Subscriber" "sub"
+        expect $ [emptyRootDig "sub"]
+        subscribe fooNs (Tagged @Definition foo) "sub"
+        expect $ [ServerData "sub" $ Frcsd $ mempty {
+          frcsdErrors = Map.singleton (NamespaceSubError fooNs)
+            ["Namespace not found"] }]
+        sendFwd $ ClientDisconnect "sub"
+
         sendFwd $ ClientData "owner2" $ Trpd $ simpleClaim foo
         expectSet $ nsExists fooNs <$> ["owner1", "owner2"]
 
