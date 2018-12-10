@@ -685,9 +685,12 @@ retrieve ns name =
     wname = "getting " ++ etName
   in withWitness wname $ do
     subscribe ns name wname
-    Right (ServerData _ (Frcud frcud)) <- waitUntil isRight
-    return $ fromMaybe (error $ "missing existing " ++ etName) $
+    Right (ServerData _ frd) <- waitUntil isRight
+    case frd of
+      Frcud frcud -> return $
+        fromMaybe (error $ "missing existing " ++ etName) $
         extractEntity name frcud
+      _ -> error $ show frd
 
 define :: Seg -> SomeDefinition -> TrpDigest -> TrpDigest
 define name def trpd = trpd
