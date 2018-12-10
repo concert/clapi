@@ -11,7 +11,7 @@ import Data.Typeable
 
 import Data.Attoparsec.ByteString (Parser)
 
-import Clapi.Serialisation.Base (Encodable(..), (<<>>))
+import Clapi.Serialisation.Base (Encodable(..), Decodable(..), (<<>>))
 import Clapi.Types.Base (Tag)
 import Clapi.Types.Wire
   (WireValue(..), Wireable, WireType(..), wireValueWireType, withWtProxy)
@@ -71,6 +71,7 @@ revAssoc f = [(f e, e) | e <- [minBound..]]
 
 instance Encodable WireTypeName where
   builder = builder . wtnTag
+instance Decodable WireTypeName where
   parser = parser >>= tagWtn
 
 instance Encodable WireType where
@@ -80,6 +81,7 @@ instance Encodable WireType where
       WtMaybe wt' -> builder wt'
       WtPair wt1 wt2 -> builder wt1 <<>> builder wt2
       _ -> return mempty
+instance Decodable WireType where
   parser = parser >>= go
     where
       go :: WireTypeName -> Parser WireType
@@ -99,6 +101,7 @@ instance Encodable WireType where
 instance Encodable WireValue where
   builder wv@(WireValue a) =
     (<>) <$> builder (wireValueWireType wv) <*> builder a
+instance Decodable WireValue where
   parser = parser >>= \wt -> withWtProxy wt go
     where
       go :: forall a. Wireable a => Proxy a -> Parser WireValue

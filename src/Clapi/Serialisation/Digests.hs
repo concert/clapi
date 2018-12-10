@@ -10,7 +10,7 @@
 module Clapi.Serialisation.Digests where
 
 import Clapi.Serialisation.Base
-  (Encodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
+  (Encodable(..), Decodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
 import Clapi.Serialisation.Definitions ()
 import Clapi.Serialisation.Path ()
 import Clapi.TH (btq)
@@ -46,6 +46,7 @@ instance Encodable DataErrorIndex where
     NamespaceError ns -> builder ns
     PathError p -> builder p
     TimePointError p tpid -> builder p <<>> builder tpid
+instance Decodable DataErrorIndex where
   parser = tdTaggedParser dataErrIndexTaggedData $ \eit -> case eit of
     DeitGlobal -> return GlobalError
     DeitNamespace -> NamespaceError <$> parser
@@ -79,6 +80,7 @@ instance Encodable SubErrorIndex where
     PostTypeSubError ns ttn -> builder ns <<>> builder ttn
     TypeSubError ns ttn -> builder ns <<>> builder ttn
     PathSubError ns p -> builder ns <<>> builder p
+instance Decodable SubErrorIndex where
   parser = tdTaggedParser subErrIndexTaggedData $ \eit -> case eit of
     SeitNamespace -> NamespaceSubError <$> parser
     SeitPostTypeName -> PostTypeSubError <$> parser <*> parser
@@ -94,6 +96,7 @@ subOpTaggedData = taggedData toTag id
 
 instance Encodable SubOp where
   builder = tdTaggedBuilder subOpTaggedData $ const $ return mempty
+instance Decodable SubOp where
   parser = tdTaggedParser subOpTaggedData return
 
 
@@ -113,6 +116,7 @@ instance Encodable a => Encodable (SequenceOp a) where
   builder = tdTaggedBuilder soTaggedData $ \case
     SoAfter mi -> builder mi
     SoAbsent -> return mempty
+instance Decodable a => Decodable (SequenceOp a) where
   parser = tdTaggedParser soTaggedData $ \case
     SoAfterT -> SoAfter <$> parser
     SoAbsentT -> return SoAbsent
@@ -134,6 +138,7 @@ instance Encodable TimeSeriesDataOp where
   builder = tdTaggedBuilder tsDOpTaggedData $ \case
     OpSet t wvs i -> builder t <<>> builder wvs <<>> builder i
     OpRemove -> return mempty
+instance Decodable TimeSeriesDataOp where
   parser = tdTaggedParser tsDOpTaggedData $ \case
     OpSetT -> OpSet <$> parser <*> parser <*> parser
     OpRemoveT -> return OpRemove
@@ -154,6 +159,7 @@ instance Encodable DataChange where
   builder = tdTaggedBuilder dcTaggedData $ \case
     ConstChange att wvs -> builder att <<>> builder wvs
     TimeChange m -> builder m
+instance Decodable DataChange where
   parser = tdTaggedParser dcTaggedData $ \case
     ConstChangeT -> ConstChange <$> parser <*> parser
     TimeChangeT -> TimeChange <$> parser
@@ -175,12 +181,14 @@ instance Encodable a => Encodable (DefOp a) where
   builder = tdTaggedBuilder defOpTaggedData $ \case
     OpDefine def -> builder def
     OpUndefine -> return mempty
+instance Decodable a => Decodable (DefOp a) where
   parser = tdTaggedParser defOpTaggedData $ \case
     OpDefineT -> OpDefine <$> parser
     OpUndefineT -> return OpUndefine
 
 instance Encodable CreateOp where
   builder (OpCreate args after) = builder args <<>> builder after
+instance Decodable CreateOp where
   parser = OpCreate <$> parser <*> parser
 
 
@@ -188,39 +196,49 @@ instance Encodable TrpDigest where
   builder (TrpDigest ns pds defs dat cops errs) =
     builder ns <<>> builder pds <<>> builder defs <<>> builder dat
     <<>> builder cops <<>> builder errs
+instance Decodable TrpDigest where
   parser = TrpDigest <$> parser <*> parser <*> parser <*> parser <*> parser
     <*> parser
 
 deriving instance Encodable TrprDigest
+deriving instance Decodable TrprDigest
 
 instance Encodable TrcSubDigest where
   builder (TrcSubDigest pts tys dat) =
     builder pts <<>> builder tys <<>> builder dat
+instance Decodable TrcSubDigest where
   parser = TrcSubDigest <$> parser <*> parser <*> parser
 
 instance Encodable TrcUpdateDigest where
   builder (TrcUpdateDigest ns dat crs cops) =
     builder ns <<>> builder dat <<>> builder crs <<>> builder cops
+instance Decodable TrcUpdateDigest where
   parser = TrcUpdateDigest <$> parser <*> parser <*> parser <*> parser
 
 
 instance Encodable FrpDigest where
   builder (FrpDigest ns dat crs cops) =
     builder ns <<>> builder dat <<>> builder crs <<>> builder cops
+instance Decodable FrpDigest where
   parser = FrpDigest <$> parser <*> parser <*> parser <*> parser
 
 deriving instance Encodable FrpErrorDigest
+deriving instance Decodable FrpErrorDigest
+
 deriving instance Encodable FrcRootDigest
+deriving instance Decodable FrcRootDigest
 
 instance Encodable FrcSubDigest where
   builder (FrcSubDigest errs pt ty dat) =
     builder errs <<>> builder pt <<>> builder ty <<>> builder dat
+instance Decodable FrcSubDigest where
   parser = FrcSubDigest <$> parser <*> parser <*> parser <*> parser
 
 instance Encodable FrcUpdateDigest where
   builder (FrcUpdateDigest ns pds defs tyas dat cops errs) =
     builder ns <<>> builder pds <<>> builder defs <<>> builder tyas <<>>
     builder dat <<>> builder cops <<>> builder errs
+instance Decodable FrcUpdateDigest where
   parser = FrcUpdateDigest <$> parser <*> parser <*> parser <*> parser
     <*> parser <*> parser <*> parser
 
@@ -247,6 +265,7 @@ instance Encodable TrDigest where
     Trprd trprd -> builder trprd
     Trcsd trcsd -> builder trcsd
     Trcud trcud -> builder trcud
+instance Decodable TrDigest where
   parser = tdTaggedParser trTaggedData $ \case
     TrpdT -> Trpd <$> parser
     TrprdT -> Trprd <$> parser
@@ -281,6 +300,7 @@ instance Encodable FrDigest where
     Frcrd frcrd -> builder frcrd
     Frcsd frcsd -> builder frcsd
     Frcud frcud -> builder frcud
+instance Decodable FrDigest where
   parser = tdTaggedParser frTaggedData $ \case
     FrpdT -> Frpd <$> parser
     FrpedT -> Frped <$> parser

@@ -50,36 +50,49 @@ import Clapi.TH (btq)
 
 class Encodable a where
   builder :: MonadFail m => a -> m Builder
+
+class Decodable a where
   parser :: Parser a
 
 instance Encodable Time where
   builder (Time w64 w32) = return $
     BVw.denseVarWordBe w64 <> BVw.denseVarWordBe w32
+instance Decodable Time where
   parser = Time <$> AVw.denseVarWordBe <*> AVw.denseVarWordBe
 
 instance Encodable Word32 where
   builder = return . BVw.denseVarWordBe
+instance Decodable Word32 where
   parser = AVw.denseVarWordBe
+
 instance Encodable Word64 where
   builder = return . BVw.denseVarWordBe
+instance Decodable Word64 where
   parser = AVw.denseVarWordBe
 
 instance Encodable Int32 where
   builder = return . fromInt32be
+instance Decodable Int32 where
   parser = fromIntegral <$> anyWord32be
+
 instance Encodable Int64 where
   builder = return . fromInt64be
+instance Decodable Int64 where
   parser = fromIntegral <$> anyWord64be
 
 instance Encodable Float where
   builder = return . floatBE
+instance Decodable Float where
   parser = wordToFloat <$> anyWord32be
+
 instance Encodable Double where
   builder = return . doubleBE
+instance Decodable Double where
   parser = wordToDouble <$> anyWord64be
 
 instance Encodable Text where
   builder t = return $ fromText t <> fromWord8 0
+instance Decodable Text where
   parser = DAB.takeWhile (/= 0) <* anyWord8 >>= return . decodeUtf8With onError
     where
       onError :: String -> Maybe Word8 -> Maybe Char
@@ -87,9 +100,11 @@ instance Encodable Text where
       onError _ _ = Just '?'  -- Undecodable
 
 deriving instance Encodable a => Encodable (Tagged t a)
+deriving instance Decodable a => Decodable (Tagged t a)
 
 instance Encodable a => Encodable [a] where
   builder = listBuilder builder
+instance Decodable a => Decodable [a] where
   parser = listParser parser
 
 listBuilder :: MonadFail m => (a -> m Builder) -> [a] -> m Builder
@@ -102,23 +117,28 @@ listParser dec = do
     len <- AVw.denseVarWordBe
     count len dec
 
-instance (Encodable a, Ord a, Show a) => Encodable (UniqList a) where
+instance Encodable a => Encodable (UniqList a) where
   builder = builder . unUniqList
+instance (Ord a, Show a, Decodable a) => Decodable (UniqList a) where
   parser = parser >>= mkUniqList
 
-instance (Ord k, Encodable k, Encodable v) => Encodable (Map k v) where
+instance (Encodable k, Encodable v) => Encodable (Map k v) where
   builder = builder . Map.toList
+instance (Ord k, Decodable k, Decodable v) => Decodable (Map k v) where
   parser = Map.fromList <$> parser
 
-deriving instance (Ord k, Encodable k, Encodable v) => Encodable (Mol k v)
+deriving instance (Encodable k, Encodable v) => Encodable (Mol k v)
+deriving instance (Ord k, Decodable k, Decodable v) => Decodable (Mol k v)
 
 
-instance (Ord a, Encodable a) => Encodable (Set a) where
+instance Encodable a => Encodable (Set a) where
   builder = builder . Set.toList
+instance (Ord a, Decodable a) => Decodable (Set a) where
   parser = Set.fromList <$> parser
 
-instance (Ord k, Ord v, Encodable k, Encodable v) => Encodable (Mos k v) where
+instance (Encodable k, Encodable v) => Encodable (Mos k v) where
   builder = builder . Mos.toList
+instance (Ord k, Ord v, Decodable k, Decodable v) => Decodable (Mos k v) where
   parser = Mos.fromList <$> parser
 
 (<<>>) :: (Monad m) => m Builder -> m Builder -> m Builder
@@ -126,11 +146,13 @@ instance (Ord k, Ord v, Encodable k, Encodable v) => Encodable (Mos k v) where
 
 instance Encodable Tag where
     builder = return . fromWord8 . unTag
+instance Decodable Tag where
     parser = anyWord8 >>= mkTag
 
 instance (Encodable a) => Encodable (Maybe a) where
     builder (Just a) = builder [btq|J|] <<>> builder a
     builder Nothing = builder [btq|N|]
+instance Decodable a => Decodable (Maybe a) where
     parser = parser >>= unpack
       where
         unpack :: Tag -> Parser (Maybe a)
@@ -140,19 +162,23 @@ instance (Encodable a) => Encodable (Maybe a) where
 
 instance (Encodable a) => Encodable (TimeStamped a) where
     builder (TimeStamped (t, a)) = builder t <<>> builder a
+instance Decodable a => Decodable (TimeStamped a) where
     parser = curry TimeStamped <$> parser <*> parser
 
 instance (Encodable a, Encodable b) => Encodable (a, b) where
     builder (a, b) = builder a <<>> builder b
+instance (Decodable a, Decodable b) => Decodable (a, b) where
     parser = (,) <$> parser <*> parser
 
-instance (Ord k, Show k, Encodable k, Encodable v)
-  => Encodable (AssocList k v) where
+instance (Encodable k, Encodable v) => Encodable (AssocList k v) where
     builder = builder . unAssocList
+instance (Ord k, Show k, Decodable k, Decodable v)
+  => Decodable (AssocList k v) where
     parser = parser >>= mkAssocList
 
 
 deriving instance Encodable Attributee
+deriving instance Decodable Attributee
 
 
 tdTaggedParser :: TaggedData e a -> (e -> Parser a) -> Parser a
@@ -179,6 +205,7 @@ ilTaggedData = taggedData ilToTag id
 
 instance Encodable InterpolationLimit where
   builder = tdTaggedBuilder ilTaggedData $ const $ return mempty
+instance Decodable InterpolationLimit where
   parser = tdTaggedParser ilTaggedData return
 
 itToTag :: InterpolationType -> Tag
@@ -194,6 +221,7 @@ instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
         (IBezier a b) -> BVw.denseVarWordBe a <> BVw.denseVarWordBe b
         _ -> mempty
+instance Decodable Interpolation where
     parser = tdTaggedParser interpolationTaggedData $ \e -> case e of
         ItConstant -> return IConstant
         ItLinear -> return ILinear
@@ -213,10 +241,12 @@ instance (Encodable a, Encodable b) => Encodable (Either a b) where
   builder = tdTaggedBuilder eitherTaggedData $ \case
     Left a -> builder a
     Right b -> builder b
+instance (Decodable a, Decodable b) => Decodable (Either a b) where
   parser = tdTaggedParser eitherTaggedData $ \case
     L -> Left <$> parser
     R -> Right <$> parser
 
 instance Encodable () where
   builder _ = return mempty
+instance Decodable () where
   parser = return ()

@@ -24,7 +24,7 @@ import Data.Word
 import Data.Typeable
 import Data.Maybe (fromJust)
 
-import Clapi.Serialisation.Base (Encodable)
+import Clapi.Serialisation.Base (Encodable, Decodable)
 import Clapi.Types.Base (Time(..))
 import Clapi.Types.WireTH (mkWithWtProxy)
 import Clapi.Util (proxyF, proxyF3)
@@ -38,7 +38,7 @@ cast' a =
     maybe die return $ cast a
 
 
-class (Typeable a, Show a, Eq a, Ord a, Encodable a) => Wireable a
+class (Typeable a, Show a, Eq a, Ord a, Encodable a, Decodable a) => Wireable a
 instance Wireable Time
 instance Wireable Word32
 instance Wireable Word64
