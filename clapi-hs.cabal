@@ -136,11 +136,13 @@ test-suite clapi-hs-test
                      , bytestring
                      , blaze-builder
                      , async
+                     , constraints
                      , containers
                      , clapi-hs
                      , either
                      , hspec
                      , hspec-expectations
+                     , lens
                      , mtl
                      , multiset
                      , network
