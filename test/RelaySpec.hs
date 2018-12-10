@@ -626,8 +626,8 @@ instance Subscribe PostDefinition where
   type Mutator PostDefinition = Text
   mutate doc pd = pd { postDefDoc = doc }
 
-instance Subscribe Definition where
-  type EntityId Definition = Tagged Definition Seg
+instance Subscribe SomeDefinition where
+  type EntityId SomeDefinition = Tagged SomeDefinition Seg
   mkTrcsd ns name op = mempty {trcsdTypes = Map.singleton (ns, name) op}
   mkFrcsd ns name = mempty {frcsdTypeUnsubs = Mos.singleton ns name}
   mkTrpd ns name ent = (trpdEmpty ns)
@@ -636,11 +636,11 @@ instance Subscribe Definition where
     { frcudDefinitions = Map.singleton name $ OpDefine ent }
   _repr _ = "def"
   extractEntity name = Map.lookup name . frcudDefinitions >=> unOpDefine
-  type Mutator Definition = Text
-  mutate doc = \case
-    ArrayDef ad -> ArrayDef ad {arrDefDoc = doc}
-    StructDef ad -> StructDef ad {strDefDoc = doc}
-    TupleDef ad -> TupleDef ad {tupDefDoc = doc}
+  type Mutator SomeDefinition = Text
+  mutate doc (SomeDefinition def) = case def of
+    ArrayDef {} -> SomeDefinition $ def {arrDefDoc = doc}
+    StructDef {} -> SomeDefinition $ def {strDefDoc = doc}
+    TupleDef {} -> SomeDefinition $ def {tupDefDoc = doc}
 
 instance Subscribe [SomeWireValue] where
   type EntityId [SomeWireValue] = Path
@@ -689,7 +689,7 @@ retrieve ns name =
     return $ fromMaybe (error $ "missing existing " ++ etName) $
         extractEntity name frcud
 
-define :: Seg -> Definition -> TrpDigest -> TrpDigest
+define :: Seg -> SomeDefinition -> TrpDigest -> TrpDigest
 define name def trpd = trpd
   { trpdDefinitions = Map.insert (Tagged name) (OpDefine def) $
     trpdDefinitions trpd }
@@ -713,7 +713,7 @@ foo = [segq|foo|]; bar = [segq|bar|]; baz = [segq|baz|]; x = [segq|x|]
 fooNs, barNs, bazNs :: Namespace
 fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
 
-fooTn, barTn, bazTn :: Tagged Definition Seg
+fooTn, barTn, bazTn :: Tagged SomeDefinition Seg
 fooTn = Tagged foo; barTn = Tagged bar; bazTn = Tagged baz
 
 fooPdn, barPdn, bazPdn :: Tagged PostDefinition Seg
@@ -723,10 +723,10 @@ fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 root :: Path
 root = Root
 
-arrayDef' :: Text -> Seg -> Editable -> Definition
+arrayDef' :: Text -> Seg -> Editable -> SomeDefinition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
 
-structDef' :: Text -> [(Seg, Seg)] -> Definition
+structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition
 structDef' doc tys = structDef doc $ unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
