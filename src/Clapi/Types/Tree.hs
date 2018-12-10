@@ -258,9 +258,6 @@ toWireValue (TreeValue tt a) = WireValue (wireTypeOf tt) (toWireValue' tt a)
 toWireValue_ :: SomeTreeValue -> SomeWireValue
 toWireValue_ (SomeTreeValue tv) = SomeWireValue $ toWireValue tv
 
-class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
-  typeEnumOf :: a -> b
-
 data TreeTypeName
   = TtnTime | TtnEnum
   | TtnWord32 | TtnWord64 | TtnInt32 | TtnInt64 | TtnFloat | TtnDouble

@@ -1,6 +1,8 @@
 {-# LANGUAGE
     DeriveLift
   , GeneralizedNewtypeDeriving
+  , MultiParamTypeClasses
+  , FunctionalDependencies
 #-}
 
 module Clapi.Types.Base
@@ -9,6 +11,7 @@ module Clapi.Types.Base
   , Attributee(..)
   , InterpolationLimit(..), Interpolation(..)
   , InterpolationType(..), interpolationType
+  , TypeEnumOf(..)
   ) where
 
 import Prelude hiding (fail)
@@ -48,3 +51,6 @@ interpolationType :: Interpolation -> InterpolationType
 interpolationType IConstant = ItConstant
 interpolationType ILinear = ItLinear
 interpolationType (IBezier _ _) = ItBezier
+
+class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
+  typeEnumOf :: a -> b
