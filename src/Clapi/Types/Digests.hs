@@ -64,6 +64,9 @@ isUndef :: DefOp a -> Bool
 isUndef OpUndefine = True
 isUndef _ = False
 
+isDef :: DefOp a -> Bool
+isDef = not . isUndef
+
 data TimeSeriesDataOp =
   OpSet Time [SomeWireValue] Interpolation | OpRemove deriving (Show, Eq)
 
