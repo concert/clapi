@@ -108,6 +108,9 @@ getShow = \case
 data SomeWireType where
   SomeWireType :: WireType a -> SomeWireType
 
+withWireType :: (forall a. WireType a -> r) -> SomeWireType -> r
+withWireType f (SomeWireType wt) = f wt
+
 wtTime, wtWord32, wtWord64, wtInt32, wtInt64, wtFloat, wtDouble, wtString
   :: SomeWireType
 wtTime = SomeWireType WtTime
@@ -213,5 +216,7 @@ wireTypeFor _ = wireTypeFor_ Proxy
 wvFromWireable :: Wireable a => a -> WireValue a
 wvFromWireable a = WireValue (wireTypeFor a) a
 
+-- | Like `someWv`, but if `a` is unambiguous we can pick the correct type
+--   witness
 someWireable :: Wireable a => a -> SomeWireValue
 someWireable = SomeWireValue . wvFromWireable
