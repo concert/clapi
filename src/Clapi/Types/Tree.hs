@@ -98,6 +98,7 @@ instance TestEquality TreeType where
   testEquality (TtInt32 _)(TtInt32 _) = Just Refl
   testEquality (TtInt64 _)(TtInt64 _) = Just Refl
   testEquality (TtFloat _)(TtFloat _) = Just Refl
+  testEquality (TtDouble _)(TtDouble _) = Just Refl
   testEquality (TtString _)(TtString _) = Just Refl
   testEquality (TtRef _)(TtRef _) = Just Refl
   testEquality (TtList tt1) (TtList tt2) = liftRefl <$> testEquality tt1 tt2
