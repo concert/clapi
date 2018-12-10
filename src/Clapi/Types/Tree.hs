@@ -118,6 +118,9 @@ instance Eq SomeTreeType where
     Just Refl -> tt1 == tt2
     Nothing -> False
 
+withTreeType :: (forall a. TreeType a -> r) -> SomeTreeType -> r
+withTreeType f (SomeTreeType tt) = f tt
+
 ttTime :: SomeTreeType
 ttTime = SomeTreeType TtTime
 
@@ -234,6 +237,9 @@ instance Show (TreeValue a) where
 data SomeTreeValue where
   SomeTreeValue :: TreeValue a -> SomeTreeValue
 deriving instance Show SomeTreeValue
+
+someTv :: TreeType a -> a -> SomeTreeValue
+someTv tt a = SomeTreeValue $ TreeValue tt a
 
 toWireValue' :: TreeType a -> a -> WireTypeOf a
 toWireValue' = \case
