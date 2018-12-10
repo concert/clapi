@@ -3,7 +3,8 @@
 #-}
 module Clapi.Internal.Valuespace
   ( Valuespace(Valuespace)
-  , vsTree, vsPostDefs, vsTyDefs, vsTyAssns, vsXrefs, vsRootEditable
+  , vsTree, vsPostDefs, vsTyDefs, vsTyAssns, vsXrefs
+  , vsRootDefName, vsRootEditable
   , DefMap, TypeAssignmentMap, Referer, Referee, Xrefs
   ) where
 
@@ -31,9 +32,11 @@ data Valuespace = Valuespace
   { _vsTree :: RoseTree [SomeTreeValue]
   , _vsPostDefs :: DefMap PostDefinition
   , _vsTyDefs :: DefMap SomeDefinition
+  , _vsRootDefName :: DefName
+  , _vsRootEditable :: Editable
+  -- These are really just a caches that help us do reverse lookups:
   , _vsTyAssns :: TypeAssignmentMap
   , _vsXrefs :: Xrefs
-  , _vsRootEditable :: Editable
   } deriving (Show)
 
 makeLenses ''Valuespace

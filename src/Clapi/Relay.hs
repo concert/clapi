@@ -53,21 +53,25 @@ import Clapi.Types.Digests
   , trcsdClientRegs, frcsdFromClientRegs)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
 import Clapi.Types.Definitions
-  (Editable(..), Definition, PostDefinition, DefName, PostDefName)
-import Clapi.Types.Wire (WireValue)
+  ( Editable(..), Definition, SomeDefinition, PostDefinition, DefName
+  , PostDefName)
+import Clapi.Types.Wire (WireValue, SomeWireValue(..))
+import Clapi.Types.Tree (SomeTreeValue, toWireValue_)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
 import Clapi.Valuespace
-  ( Valuespace(..), baseValuespace, vsLookupDef
-  , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
+  ( Valuespace(..), baseValuespace, vsLookupDef, vsLookupNode
+  , processTrpd, processTrcud, valuespaceGet
   , getEditable, ProtoFrpDigest(..), VsLookupDef(..))
 import Clapi.Protocol (Protocol, sendRev, liftedWaitThen)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Util (partitionDifference, flattenNestedMaps)
 
-oppifyTimeSeries :: TimeSeries [WireValue] -> DataChange
-oppifyTimeSeries ts = TimeChange $
-  Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
+import Debug.Trace
+
+oppifyTimeSeries :: TimeSeries [SomeTreeValue] -> DataChange
+oppifyTimeSeries = TimeChange . Dkmap.flatten
+  (\t (att, (i, tvs)) -> (att, OpSet t (fmap toWireValue_ tvs) i))
 
 -- FIXME: return type might make more sense swapped...
 oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
@@ -84,11 +88,11 @@ oppifySequence al =
 --   This may or may not be a good idea *shrug*
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
   { pfrcudPostDefs :: Map PostDefName (DefOp PostDefinition)
-  , pfrcudDefinitions :: Map DefName (DefOp Definition)
+  , pfrcudDefinitions :: Map DefName (DefOp SomeDefinition)
   , pfrcudTypeAssignments :: Map Path (DefName, Editable)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
-  , pfrcudErrors :: Map DataErrorIndex [Text]
+  , pfrcudErrors :: Mol DataErrorIndex Text
   }
 
 instance Semigroup ProtoFrcUpdateDigest where
@@ -96,7 +100,7 @@ instance Semigroup ProtoFrcUpdateDigest where
       <> ProtoFrcUpdateDigest pd2 defs2 ta2 d2 co2 err2 =
     ProtoFrcUpdateDigest
       (pd1 <> pd2) (defs1 <> defs2) (ta1 <> ta2) (d1 <> d2) (co1 <> co2)
-      (Map.unionWith (<>) err1 err2)
+      (err1 <> err2)
 instance Monoid ProtoFrcUpdateDigest where
   mempty = ProtoFrcUpdateDigest mempty mempty mempty mempty mempty mempty
   mappend = (<>)
@@ -195,7 +199,7 @@ handleTrpd i d = do
         -- NB: as long as we make sure the initial claim defines something we
         -- can never subsequently have an empty valuespace:
         when (definesNothing d) $ throwError $
-          Map.singleton (NamespaceError ns) ["Empty namespace claim"]
+          Mol.singleton (NamespaceError ns) "Empty namespace claim"
         frcud <- tryVsUpdate
         lift $ updateOwners newOwners
         -- FIXME: would be nice if we didn't have to track ourselves that we'd
@@ -205,8 +209,8 @@ handleTrpd i d = do
         return frcud
       (Just i') -> if (i' == i)
         then tryVsUpdate -- no owner map change
-        else throwError $ Map.singleton (NamespaceError ns)
-          ["Already owned by another provider"]
+        else throwError $ Mol.singleton (NamespaceError ns)
+          "Already owned by another provider"
     either
       (\errMap -> do
         sendData' i $ Frped $ FrpErrorDigest errMap
@@ -226,19 +230,19 @@ handleTrpd i d = do
     tryVsUpdate :: (Ord i, Monad m) => ExceptT _ (StateT (RelayState i) m) _
     tryVsUpdate = do
         vs <- maybe bvs id . view (rsVsMap . at ns) <$> get
-        let result = processToRelayProviderDigest d vs
-        case result of
+        case processTrpd d vs of
           Left errMap -> throwError errMap
-          Right (updatedTyAssns, vs') -> do
+          Right (frcud, vs') -> do
             modify (set (rsVsMap . at ns) (Just vs'))
-            return $ produceFrcud vs vs' updatedTyAssns
+            -- return $ produceFrcud vs vs' updatedTyAssns
+            return frcud
     produceFrcud vs vs' updatedTyAssns =
       let
         augmentedTyAssns = Map.mapWithKey
            (\p tn -> (tn, either error id $ getEditable p vs')) updatedTyAssns
-        getContOps p = case fromJust $ treeLookupNode p $ vsTree vs' of
+        getContOps p = case fromJust $ vsLookupNode p vs' of
           RtnChildren kb ->
-            (p,) <$> mayContDiff (treeLookupNode p $ vsTree vs) kb
+            (p,) <$> mayContDiff (vsLookupNode p vs) kb
           _ -> Nothing
         extraCops = Map.fromAscList $
           mapMaybe (\p -> parentPath p >>= getContOps) $ Set.toAscList $
@@ -267,6 +271,7 @@ handleTrprd i d = runExceptT dropNamespace >>= either
       if (existing == Just i)
         then lift $ do
           updateOwners owners'
+          modifying rsVsMap $ Map.delete ns
           unsubscribeFromNs (Set.singleton ns) >>= lift . multicast . fmap Frcsd
           broadcast $ Frcrd $ FrcRootDigest $ Map.singleton ns SoAbsent
         else throwError "You're not the owner"
@@ -312,17 +317,14 @@ handleTrcud i d = runExceptT go >>= either
       when (owner == Just i) $ throwError "Acted as client on own namespace"
       use (rsVsMap . at ns) >>= \case
         Nothing -> lift $ sendData' i $ Frcud $ (frcudEmpty ns) {frcudErrors =
-          Map.singleton (NamespaceError ns) ["Namespace does not exist"]}
-        Just vs ->
-          let
-            (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs d
-            frpd = FrpDigest ns dat cr cont
-          in do
-            unless (null errMap) $ lift $ sendData' i $ Frcud $
-              (frcudEmpty ns) {frcudErrors = fmap (Text.pack . show) <$> errMap}
+          Mol.singleton (NamespaceError ns) "Namespace does not exist"}
+        Just vs -> let (errs, frpd) = processTrcud d vs in do
+          unless (null errs) $
+            lift $ sendData' i $ Frcud $ (frcudEmpty ns) {frcudErrors = errs}
+          unless (frpdNull frpd) $
             case owner of
               Nothing -> error "Namespace doesn't have owner, apparently"
-              Just oi -> unless (frpdNull frpd) $ lift $ sendData' oi $ Frpd frpd
+              Just oi -> lift $ sendData' oi $ Frpd frpd
 
 handleDisconnect
   :: (Ord i, Monad m) => i -> StateT (RelayState i) (RelayProtocol i m) ()
@@ -418,7 +420,7 @@ generateClientDigests (FrcUpdateDigest ns ptds tds tas dat cops errs) =
           (Map.restrictKeys tas nsDs)
           (alFilterKey (`Set.member` nsDs) dat)
           (Map.restrictKeys cops nsDs)
-          (Map.filterWithKey (\dei _ -> case dei of
+          (Mol $ Map.filterWithKey (\dei _ -> case dei of
             GlobalError -> True
             NamespaceError errNs ->
                  (pt `Mos.hasKey` errNs)
@@ -426,7 +428,7 @@ generateClientDigests (FrcUpdateDigest ns ptds tds tas dat cops errs) =
               || (d `Mos.hasKey` errNs)
             PathError p -> p `Set.member` nsDs
             TimePointError p _ -> p `Set.member` nsDs)
-            errs)
+          $ unMol errs)
 
 
 throwOutProvider
@@ -435,7 +437,7 @@ throwOutProvider
 throwOutProvider i nss msg = do
   -- FIXME: I'm quite sure that we should be taking namespaces...
   lift $ sendRev $ Right $ ServerData i $ Frped $ FrpErrorDigest $
-    Map.fromSet (const [Text.pack msg]) $ Set.map NamespaceError nss
+    Mol.fromSet (const [Text.pack msg]) $ Set.map NamespaceError nss
   lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
 
@@ -516,7 +518,8 @@ doInitSub trcsd currentSubs vsm = runWriter $ do
           RtnChildren kids -> pfrcud
             { pfrcudContOps = Map.singleton path (oppifySequence kids) }
           RtnConstData att vals -> pfrcud
-            { pfrcudData = alSingleton path (ConstChange att vals) }
+            { pfrcudData =
+                alSingleton path (ConstChange att $ fmap toWireValue_ vals) }
           RtnDataSeries ts -> pfrcud
             { pfrcudData = alSingleton path (oppifyTimeSeries ts) }
 
@@ -535,7 +538,7 @@ rGet
   :: Map Namespace Valuespace -> Namespace -> Path
   -> Either
        (SubErrorIndex, String)
-       (Definition, DefName, Editable, RoseTreeNode [SomeWireValue])
+       (SomeDefinition, DefName, Editable, RoseTreeNode [SomeTreeValue])
 rGet vsm ns p =
     vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 
