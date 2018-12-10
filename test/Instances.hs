@@ -8,9 +8,14 @@ module Instances where
 
 import Data.String (IsString(..))
 
+import Clapi.Internal.Valuespace
 import Clapi.PerClientProto (ServerEvent(..))
+import Clapi.Tree
 import Clapi.Types
 import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Valuespace
+deriving instance Eq RoseTreeNodeType
+deriving instance Eq ValidationErr
 
 
 deriving instance (Ord ident, Ord a) => Ord (ServerEvent ident a)

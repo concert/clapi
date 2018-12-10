@@ -37,13 +37,12 @@ import Clapi.Types.Path
   ( Path, pattern (:/), pattern Root, Seg, Namespace(..))
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
-  , processTrcUpdateDigest, ValidationErr(..))
+  , processTrcUpdateDigest)
 import Clapi.Tree
-  ( RoseTree(..), RoseTreeNodeType(..), treePaths, updateTreeWithDigest)
+  ( RoseTree(..), treePaths, updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 
-deriving instance Eq RoseTreeNodeType
-deriving instance Eq ValidationErr
+import Instances ()
 
 -- | Fully revalidates the given Valuespace and throws an error if there are any
 --   validation issues.
