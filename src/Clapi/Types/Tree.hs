@@ -1,7 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
 
 module Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
@@ -18,6 +16,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 
+import Clapi.Types.Base (TypeEnumOf(..))
 import Clapi.Types.Path (Seg, mkSeg)
 import Clapi.Util (uncamel)
 
@@ -38,10 +37,6 @@ bounds m0 m1 = return $ Bounds m0 m1
 
 unbounded :: Bounds a
 unbounded = Bounds Nothing Nothing
-
-
-class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
-  typeEnumOf :: a -> b
 
 data TreeType
   = TtTime
