@@ -437,7 +437,7 @@ throwOutProvider
 throwOutProvider i nss msg = do
   -- FIXME: I'm quite sure that we should be taking namespaces...
   lift $ sendRev $ Right $ ServerData i $ Frped $ FrpErrorDigest $
-    Mol.fromSet (const $ Text.pack msg) $ Set.map NamespaceError nss
+    Mol.fromSetSingle (const $ Text.pack msg) $ Set.map NamespaceError nss
   lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
 

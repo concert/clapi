@@ -565,7 +565,7 @@ processTrcUpdateDigest vs trcud =
     dataErrs = mappend refErrs $ Mol.mapKeysMonotonic PathError $ mconcat
       [ GenericErr . Text.unpack <$> updateErrs
       , validationErrs, roErrs
-      , Mol.fromSet (const TouchedNonExistantPath) $
+      , Mol.fromSetSingle (const TouchedNonExistantPath) $
           alKeysSet nonExistantSets
       ]
     errs = mconcat [createErrs, copErrs, dataErrs]

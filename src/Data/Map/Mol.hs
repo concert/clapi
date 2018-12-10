@@ -12,7 +12,7 @@ import Data.Set (Set)
 import Data.Map.Clapi as Map
 
 newtype Mol k a
-  = Mol {unMol :: Map.Map k [a]} deriving (Show, Eq, Ord, Functor, Foldable)
+  = Mol {unMol :: Map k [a]} deriving (Show, Eq, Ord, Functor, Foldable)
 
 instance Ord k => Semigroup (Mol k a) where
   (<>) = union
@@ -31,14 +31,17 @@ singletonList k as = Mol $ if null as
 fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
 
+fromSet :: (k -> [a]) -> Set k -> Mol k a
+fromSet f = Mol . Map.fromSet f
+
 toList :: (Ord k) => Mol k a -> [(k, a)]
 toList (Mol m) = mconcat $ sequence <$> Map.toList m
 
 fromMap :: Map k [a] -> Mol k a
 fromMap = Mol . Map.filter (not . null)
 
-fromSet :: (k -> a) -> Set k -> Mol k a
-fromSet f = Mol . Map.fromSet (pure . f)
+fromSetSingle :: (k -> a) -> Set k -> Mol k a
+fromSetSingle f = fromSet (pure . f)
 
 keys :: Mol k a -> [k]
 keys = Map.keys . unMol
