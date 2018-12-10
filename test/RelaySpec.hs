@@ -531,10 +531,10 @@ expectFrped clientId expected = do
     handleFrped (Right (ServerData i (Frped frped))) = do
       i `shouldBe` clientId
       forM_ expected $ \(ei, expMsg) ->
-        case Map.lookup ei $ frpedErrors frped of
-          Nothing -> expectationFailure $
+        case Mol.lookup ei $ frpedErrors frped of
+          [] -> expectationFailure $
             printf "%s not in errors:\n%s" (show ei) (show $ frpedErrors frped)
-          Just msgs -> mapM_ (`shouldContain` expMsg) $ Text.unpack <$> msgs
+          msgs -> mapM_ (`shouldContain` expMsg) $ Text.unpack <$> msgs
     handleFrped _ = expectationFailure "Not an error digest"
 
 -- FIXME: might this be better is we had explicit error digests for the client,
@@ -547,10 +547,10 @@ expectSubErr clientId ei expMsg = onNext isRight handleFrcud
   where
     handleFrcud (Right (ServerData i (Frcud frcud))) = do
       i `shouldBe` clientId
-      case Map.lookup ei $ frcudErrors frcud of
-        Nothing -> expectationFailure $
+      case Mol.lookup ei $ frcudErrors frcud of
+        [] -> expectationFailure $
           printf "%s not in errors:\n%s" (show ei) (show $ frcudErrors frcud)
-        Just msgs -> mapM_ (`shouldContain` expMsg) $ Text.unpack <$> msgs
+        msgs -> mapM_ (`shouldContain` expMsg) $ Text.unpack <$> msgs
     handleFrcud _ = expectationFailure "Not a client data update"
 
 
