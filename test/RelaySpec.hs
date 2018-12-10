@@ -29,6 +29,7 @@ import qualified Data.Text as Text
 import Data.Void (Void)
 import Text.Printf
 
+import qualified Data.Map.Mol as Mol
 import qualified Data.Map.Mos as Mos
 
 import Clapi.TH
@@ -40,14 +41,15 @@ import Clapi.Types.AssocList
   ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
-  ( ArrayDefinition(..), StructDefinition(..), TupleDefinition(..)
-  , arrayDef, structDef, tupleDef
-  , Editable(..), Definition(..), PostDefinition(..))
+  ( arrayDef, structDef, tupleDef
+  , Editable(..), Definition(..), PostDefinition(..), SomeDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
-import Clapi.Types.Tree (TreeType(..), unbounded)
-import Clapi.Types.Wire (WireValue(..))
+import Clapi.Types.Tree
+  ( TreeType(..), SomeTreeType(..), SomeTreeValue(..), unbounded
+  , ttInt32, ttInt64, ttString)
+import Clapi.Types.Wire (WireType(..), WireValue(..), SomeWireValue(..), someWv)
 
 import Clapi.Internal.Valuespace (DefMap)
 import Instances ()
