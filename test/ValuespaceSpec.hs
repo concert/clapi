@@ -27,7 +27,7 @@ import Clapi.Types.AssocList
   ( AssocList, alSingleton, alEmpty, alInsert, alFromList)
 import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), WireValue(..)
-  , TreeType(..), unbounded, Editable(..)
+  , TreeType(..), unbounded, Editability(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
   , Definition(..), SomeDefinition, withDefinition, DefName
   , TrpDigest(..), DefOp(..), DataChange(..)
@@ -116,7 +116,7 @@ redefTestRoot f vs =
   where
     currentKids = fmap fst $ withDefinition grabDefTypes $ fromJust $
       Map.lookup (Tagged $ unNamespace testNs) $ vsTyDefs vs
-    grabDefTypes :: Definition mt -> AssocList Seg (DefName, Editable)
+    grabDefTypes :: Definition mt -> AssocList Seg (DefName, Editability)
     grabDefTypes (StructDef { strDefChildTys = tyinfo }) = tyinfo
     grabDefTypes _ = error "Test vs root type not a struct!"
 

@@ -22,7 +22,7 @@ import qualified Data.Map.Mos as Mos
 import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions
-  (SomeDefinition, DefName, Editable, PostDefinition)
+  (SomeDefinition, DefName, Editability, PostDefinition)
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
@@ -255,7 +255,7 @@ data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
   , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , frcudDefinitions :: Map DefName (DefOp SomeDefinition)
-  , frcudTypeAssignments :: Map Path (DefName, Editable)
+  , frcudTypeAssignments :: Map Path (DefName, Editability)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Mol DataErrorIndex Text

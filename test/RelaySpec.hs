@@ -42,7 +42,7 @@ import Clapi.Types.AssocList
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
   ( arrayDef, structDef, tupleDef, DefName
-  , Editable(..), Definition(..), SomeDefinition(..), PostDefinition(..))
+  , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
@@ -732,7 +732,7 @@ fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 root :: Path
 root = Root
 
-arrayDef' :: Text -> Seg -> Editable -> SomeDefinition
+arrayDef' :: Text -> Seg -> Editability -> SomeDefinition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
 
 structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition

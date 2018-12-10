@@ -13,21 +13,21 @@ import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
 import Clapi.Types.Base (TypeEnumOf(..))
 import Clapi.Types.Definitions
-  ( Editable(..), MetaType(..)
+  ( Editability(..), MetaType(..)
   , Definition(..), SomeDefinition(..), tupleDef, structDef, arrayDef
   , PostDefinition(..))
 import Clapi.Types.Tree (TreeType)
 
-editableTaggedData :: TaggedData Editable Editable
+editableTaggedData :: TaggedData Editability Editability
 editableTaggedData = taggedData toTag id
   where
     toTag r = case r of
       Editable -> [btq|w|]
       ReadOnly -> [btq|r|]
 
-instance Encodable Editable where
+instance Encodable Editability where
   builder = tdTaggedBuilder editableTaggedData $ const $ return mempty
-instance Decodable Editable where
+instance Decodable Editability where
   parser = tdTaggedParser editableTaggedData return
 
 -- FIXME: do we want to serialise the type to text first?!

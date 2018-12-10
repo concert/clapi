@@ -11,7 +11,7 @@ import Data.Map.Dependencies (Dependencies)
 
 import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
-  (SomeDefinition, PostDefinition, Editable, DefName)
+  (SomeDefinition, PostDefinition, Editability, DefName)
 import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Wire (WireValue)
@@ -28,5 +28,5 @@ data Valuespace = Valuespace
   , vsTyDefs :: DefMap SomeDefinition
   , vsTyAssns :: TypeAssignmentMap
   , vsXrefs :: Xrefs
-  , vsRootEditable :: Editable
+  , vsRootEditability :: Editability
   } deriving Show

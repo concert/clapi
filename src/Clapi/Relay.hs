@@ -53,7 +53,7 @@ import Clapi.Types.Digests
   , trcsdClientRegs, frcsdFromClientRegs)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
 import Clapi.Types.Definitions
-  (Editable(..), SomeDefinition, PostDefinition, DefName)
+  (Editability(..), SomeDefinition, PostDefinition, DefName)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
@@ -85,7 +85,7 @@ oppifySequence al =
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
   { pfrcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
   , pfrcudDefinitions :: Map DefName (DefOp SomeDefinition)
-  , pfrcudTypeAssignments :: Map Path (DefName, Editable)
+  , pfrcudTypeAssignments :: Map Path (DefName, Editability)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
   , pfrcudErrors :: Mol DataErrorIndex Text
@@ -536,7 +536,7 @@ rGet
   :: Map Namespace Valuespace -> Namespace -> Path
   -> Either
        (SubErrorIndex, String)
-       (SomeDefinition, DefName, Editable, RoseTreeNode [WireValue])
+       (SomeDefinition, DefName, Editability, RoseTreeNode [WireValue])
 rGet vsm ns p =
     vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 

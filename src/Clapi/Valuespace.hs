@@ -53,7 +53,7 @@ import Clapi.Types.AssocList
   , alFmapWithKey, alToMap, alPartitionWithKey, alFilterKey)
 import Clapi.Types.Definitions
   ( Definition(..), SomeDefinition(..), withDefinition
-  , Editable(..), PostDefinition(..)
+  , Editability(..), PostDefinition(..)
   , DefName, childEditableFor, childTypeFor)
 import Clapi.Types.Digests
   ( TpId, DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
@@ -83,7 +83,7 @@ removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
     updateTpMap (Just tpSet) = let tpSet' = Set.difference tpSet tpids in
       if null tpSet' then Nothing else Just $ Just tpSet'
 
-baseValuespace :: DefName -> Editable -> Valuespace
+baseValuespace :: DefName -> Editability -> Valuespace
 baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
@@ -127,16 +127,16 @@ lookupTypeName
   :: MonadFail m => Path -> TypeAssignmentMap -> m DefName
 lookupTypeName p tam = note "Type name not found" $ Dependencies.lookup p tam
 
-getEditable :: MonadFail m => Path -> Valuespace -> m Editable
+getEditable :: MonadFail m => Path -> Valuespace -> m Editability
 getEditable path vs = case path of
   p :/ s -> defForPath p vs >>= withDefinition (childEditableFor s)
-  _ -> pure $ vsRootEditable vs  -- Root
+  _ -> pure $ vsRootEditability vs  -- Root
 
 valuespaceGet
   :: MonadFail m => Path -> Valuespace
   -> m ( SomeDefinition
        , DefName
-       , Editable
+       , Editability
        , RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
     rtn <- note "Path not found" $ Tree.treeLookupNode p tree
@@ -357,7 +357,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Mol.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' postDefs' defs' tas xrefs' (vsRootEditable vs)
+      Valuespace tree' postDefs' defs' tas xrefs' (vsRootEditability vs)
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))

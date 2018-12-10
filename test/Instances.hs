@@ -54,7 +54,7 @@ deriving instance Ord Attributee
 deriving instance IsString Attributee
 
 deriving instance Ord PostDefinition
-deriving instance Ord Editable
+deriving instance Ord Editability
 
 instance Ord (Definition mt) where
   compare (TupleDef doc1 tys1 ilimit1) (TupleDef doc2 tys2 ilimit2) =

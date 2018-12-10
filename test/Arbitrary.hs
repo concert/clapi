@@ -100,7 +100,7 @@ instance Arbitrary a => Arbitrary (Path' a) where
   arbitrary = Path' <$> smallListOf arbitrary
   shrink (Path' names) = fmap Path' . drop 1 . reverse . inits $ names
 
-instance Arbitrary Editable where
+instance Arbitrary Editability where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary InterpolationLimit where
