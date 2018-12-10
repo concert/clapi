@@ -14,8 +14,6 @@ import Control.Monad.Fail (MonadFail(..))
 import Data.Tagged (Tagged)
 import Data.Text (Text)
 
-import Data.Maybe.Clapi (note)
-
 import Clapi.Types.AssocList (AssocList, unAssocList, alLookup)
 import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
