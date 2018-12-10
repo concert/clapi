@@ -13,11 +13,14 @@ module Clapi.Util (
     safeToEnum,
     nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
+    foldMapM,
     Partition(..), partitionEithers',
     proxyF, proxyF3
 ) where
 
 import Prelude hiding (fail)
+
+import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Bifunctor (bimap)
 import Data.Char (isUpper, toLower, toUpper)
@@ -150,6 +153,9 @@ foldlNestedMaps
 foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
+
+foldMapM :: (Foldable t, Monoid b, Monad m) => (a -> m b) -> t a -> m b
+foldMapM f = foldM (\b a -> (b <>) <$> f a) mempty
 
 class Functor f => Partition f where
   partition :: (a -> Bool) -> f a -> (f a, f a)
