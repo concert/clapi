@@ -1,19 +1,14 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     ConstraintKinds
-  , FlexibleContexts
   , FlexibleInstances
-  , FunctionalDependencies
   , GADTs
   , KindSignatures
   , LambdaCase
   , MultiParamTypeClasses
-  , PartialTypeSignatures
   , RankNTypes
-  , ScopedTypeVariables
   , StandaloneDeriving
   , TypeFamilies
-  , TypeOperators
 #-}
 
 module Clapi.Types.Tree
