@@ -1,6 +1,13 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    GeneralizedNewtypeDeriving
+    DataKinds
+  , DefaultSignatures
+  , FlexibleContexts
+  , FlexibleInstances
+  , GADTs
+  , GeneralizedNewtypeDeriving
+  , LambdaCase
+  , OverloadedStrings
   , Rank2Types
   , StandaloneDeriving
   , TemplateHaskell
@@ -9,29 +16,35 @@ module Arbitrary where
 
 import Test.QuickCheck
   ( Arbitrary(..), Gen
-  , arbitraryBoundedEnum, choose, elements, listOf, oneof, shuffle)
+  , arbitraryBoundedEnum, choose, elements, listOf, oneof, shuffle, sublistOf)
 
 import Control.Monad (replicateM)
+import Data.Constraint (Dict(..))
 import Data.Int
 import Data.List (inits)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.Proxy
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
 import System.Random (Random)
 
+import Data.Map.Mol (Mol)
+import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
+import Clapi.Types.EnumVal (EnumVal)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.WireTH (mkWithWtProxy)
-import Clapi.Util (proxyF, proxyF3)
+import Clapi.Types.SymbolList (SomeSymbolList(..))
+import qualified Clapi.Types.SymbolList as SL
 
 
 deriving instance Arbitrary a => Arbitrary (Tagged t a)
@@ -56,7 +69,22 @@ smallMap = smallMapOf arbitrary arbitrary
 instance (Ord k, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (Mos k v) where
   arbitrary = Mos.fromList . mconcat <$> smallListOf (do
     mkPair <- (,) <$> arbitrary
-    fmap mkPair <$> smallListOf arbitrary)
+    fmap mkPair <$> smallListOf1 arbitrary)
+  shrink =
+    fmap
+      ( Mos.fromList . Map.foldMapWithKey (\k -> fmap (k,) . Set.toList))
+    . traverse shrink
+    . Mos.unMos
+
+genMol :: Ord k => Gen k -> Gen v -> Gen (Mol k v)
+genMol k v = Mol.fromList . mconcat <$> smallListOf (do
+  mkPair <- (,) <$> k
+  fmap mkPair <$> smallListOf1 v)
+
+instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
+  arbitrary = genMol arbitrary arbitrary
+  shrink =
+    fmap (Mol.Mol . Map.filter (not . null)) . traverse shrink . Mol.unMol
 
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
@@ -64,6 +92,7 @@ assocListOf gk gv = alFromMap <$> smallMapOf gk gv
 
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
+  shrink = fmap unsafeMkAssocList . shrink . unAssocList
 
 
 arbitraryTextNoNull :: Gen Text
@@ -72,6 +101,7 @@ arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$>
 
 instance Arbitrary Text where
   arbitrary = arbitraryTextNoNull
+  shrink = fmap Text.pack . shrink . Text.unpack
 
 
 name :: Gen Seg
@@ -84,7 +114,7 @@ deriving instance Arbitrary Attributee
 
 instance Arbitrary a => Arbitrary (Path' a) where
   arbitrary = Path' <$> smallListOf arbitrary
-  shrink (Path' names) = fmap Path' . drop 1 . reverse . inits $ names
+  shrink (Path' names) = fmap Path' $ shrink $ names
 
 instance Arbitrary Editable where
     arbitrary = arbitraryBoundedEnum
@@ -94,13 +124,18 @@ instance Arbitrary InterpolationLimit where
 
 instance Arbitrary Time where
   arbitrary = Time <$> arbitrary <*> arbitrary
+  shrink = \case
+    Time 0 0 -> []
+    Time x y -> [Time x' y' | (x', y') <- shrink (x, y)]
 
 instance Arbitrary Interpolation where
   arbitrary = oneof
       [ return IConstant
       , return ILinear
       , IBezier <$> arbitrary <*> arbitrary]
-
+  shrink = \case
+    IBezier _ _ -> [IConstant]
+    _ -> []
 
 instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
     arbitrary = mkBounds <$> arbitrary
@@ -108,6 +143,7 @@ instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
         mkBounds (a, b) = either error id $ case (a, b) of
           (Just _, Just _) -> bounds (min a b) (max a b)
           _ -> bounds a b
+    shrink (Bounds lo hi) = [Bounds lo' hi' | (lo', hi') <- shrink (lo, hi)]
 
 arbitraryRegex :: Gen Text
 arbitraryRegex =
@@ -119,33 +155,55 @@ arbitraryRegex =
     delims <- flip replicate "[]" <$> choose (0, 3)
     Text.pack . mconcat <$> shuffle (safe ++ delims)
 
-data TestEnum
-  = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
+instance Arbitrary SomeSymbolList where
+  arbitrary = SL.fromStrings <$> sublistOf (("elem" ++) . pure <$> ['A'..'Z'])
+  shrink = fmap SL.fromStrings . shrink . SL.toStrings_
 
-instance Arbitrary TreeType where
+instance Arbitrary SomeTreeType where
   arbitrary = oneof
-    [ return TtTime
-    , return $ ttEnum $ Proxy @TestEnum
-    , TtWord32 <$> arbitrary, TtWord64 <$> arbitrary
-    , TtInt32 <$> arbitrary, TtInt64 <$> arbitrary
-    , TtFloat <$> arbitrary, TtDouble <$> arbitrary
-    , TtString <$> arbitraryRegex
-    , TtRef <$> arbitrary
-    , TtList <$> arbitrary, TtSet <$> arbitrary, TtOrdSet <$> arbitrary
-    , TtMaybe <$> arbitrary
-    , TtPair <$> arbitrary <*> arbitrary
+    [ return ttTime
+    -- FIXME: could now generate arbitrary Enums more easily ;-)
+    , return $ ttEnum ["TestOne", "TestTwo", "TestThree"]
+    , ttWord32 <$> arbitrary, ttWord64 <$> arbitrary
+    , ttInt32 <$> arbitrary, ttInt64 <$> arbitrary
+    , ttFloat <$> arbitrary, ttDouble <$> arbitrary
+    , ttString <$> arbitraryRegex
+    , ttRef <$> arbitrary
+    , ttList <$> arbitrary
+    , ttSet <$> arbitrary
+    , ttOrdSet <$> arbitrary
+    , ttMaybe <$> arbitrary
+    , ttPair <$> arbitrary <*> arbitrary
     ]
-
+  shrink (SomeTreeType tt) = case tt of
+    TtTime -> []
+    TtEnum sl -> ttEnum <$> shrink (SL.toStrings sl)
+    TtWord32 b -> ttWord32 <$> shrink b
+    TtWord64 b -> ttWord64 <$> shrink b
+    TtInt32 b -> ttInt32 <$> shrink b
+    TtInt64 b -> ttInt64 <$> shrink b
+    TtFloat b -> ttFloat <$> shrink b
+    TtDouble b -> ttDouble <$> shrink b
+    TtString r -> case r of
+      "" -> []
+      _ -> [ttString ""]
+    TtRef _ -> []
+    TtList tt1 -> ttList <$> shrink (SomeTreeType tt1)
+    TtSet tt1 -> ttSet <$> shrink (SomeTreeType tt1)
+    TtOrdSet tt1 -> ttOrdSet <$> shrink (SomeTreeType tt1)
+    TtMaybe tt1 -> ttMaybe <$> shrink (SomeTreeType tt1)
+    TtPair tt1 tt2 ->
+      uncurry ttPair <$> shrink (SomeTreeType tt1, SomeTreeType tt2)
 
 -- | An Arbitrary class where we can be more picky about exactly what we
 --   generate. Specifically, we want only small lists and text without \NUL
 --   characters.
-class Arbitrary a => PickyArbitrary a where
+class PickyArbitrary a where
   pArbitrary :: Gen a
+  default pArbitrary :: Arbitrary a => Gen a
   pArbitrary = arbitrary
 
 instance PickyArbitrary Time
-instance PickyArbitrary Word8
 instance PickyArbitrary Word32
 instance PickyArbitrary Word64
 instance PickyArbitrary Int32
@@ -156,71 +214,135 @@ instance PickyArbitrary Text where
   pArbitrary = arbitraryTextNoNull
 instance PickyArbitrary a => PickyArbitrary [a] where
   pArbitrary = smallListOf pArbitrary
-instance PickyArbitrary a => PickyArbitrary (Maybe a)
-instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b)
+instance PickyArbitrary a => PickyArbitrary (Maybe a) where
+  pArbitrary = oneof [return Nothing, Just <$> pArbitrary]
+instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b) where
+  pArbitrary = (,) <$> pArbitrary <*> pArbitrary
 
-instance Arbitrary WireType where
-  arbitrary = oneof
-    [ return WtTime
-    , return WtWord32, return WtWord64
-    , return WtInt32, return WtInt64
-    , return WtFloat, return WtDouble
-    , return WtString
-    , WtList <$> arbitrary, WtMaybe <$> arbitrary
-    , WtPair <$> arbitrary <*> arbitrary
-    ]
+instance PickyArbitrary SomeWireType where
+  pArbitrary = oneof $
+    (return <$>
+       [ wtTime, wtWord32, wtWord64, wtInt32, wtInt64, wtFloat, wtDouble
+       , wtString])
+    ++ [ wtList <$> pArbitrary
+       , wtMaybe <$> pArbitrary
+       , wtPair <$> pArbitrary <*> pArbitrary
+       ]
 
-mkWithWtProxy "withPArbWtProxy" [''PickyArbitrary, ''Wireable]
+arbitraryFromWireType :: WireType a -> Dict (Arbitrary a)
+arbitraryFromWireType = \case
+  WtTime -> Dict
+  WtWord32 -> Dict
+  WtWord64 -> Dict
+  WtInt32 -> Dict
+  WtInt64 -> Dict
+  WtFloat -> Dict
+  WtDouble -> Dict
+  WtString -> Dict
+  WtList wt -> case arbitraryFromWireType wt of Dict -> Dict
+  WtMaybe wt -> case arbitraryFromWireType wt of Dict -> Dict
+  WtPair wt1 wt2 ->
+    case (arbitraryFromWireType wt1, arbitraryFromWireType wt2) of
+      (Dict, Dict) -> Dict
 
-withPArbWvValue
-  :: forall r. WireValue
-  -> (forall a. (PickyArbitrary a, Wireable a) => a -> r) -> r
-withPArbWvValue wv f = withPArbWtProxy wt g
-  where
-    wt = wireValueWireType wv
-    g :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> r
-    g _ = f $ fromJust $ castWireValue @a wv
+pArbitraryFromWireType :: WireType a -> Dict (PickyArbitrary a)
+pArbitraryFromWireType = \case
+  WtTime -> Dict
+  WtWord32 -> Dict
+  WtWord64 -> Dict
+  WtInt32 -> Dict
+  WtInt64 -> Dict
+  WtFloat -> Dict
+  WtDouble -> Dict
+  WtString -> Dict
+  WtList wt -> case pArbitraryFromWireType wt of Dict -> Dict
+  WtMaybe wt -> case pArbitraryFromWireType wt of Dict -> Dict
+  WtPair wt1 wt2 ->
+    case (pArbitraryFromWireType wt1, pArbitraryFromWireType wt2) of
+      (Dict, Dict) -> Dict
 
+wireableFromWireType :: WireType a -> Dict (Wireable a)
+wireableFromWireType = \case
+  WtTime -> Dict
+  WtWord32 -> Dict
+  WtWord64 -> Dict
+  WtInt32 -> Dict
+  WtInt64 -> Dict
+  WtFloat -> Dict
+  WtDouble -> Dict
+  WtString -> Dict
+  WtList wt -> case wireableFromWireType wt of Dict -> Dict
+  WtMaybe wt -> case wireableFromWireType wt of Dict -> Dict
+  WtPair wt1 wt2 ->
+    case (wireableFromWireType wt1, wireableFromWireType wt2) of
+      (Dict, Dict) -> Dict
 
-instance Arbitrary WireValue where
+instance Wireable a => Arbitrary (WireValue a) where
+  arbitrary = let wt = wireTypeFor_ $ Proxy @a in
+    case pArbitraryFromWireType wt of
+      Dict -> WireValue wt <$> pArbitrary @a
+  shrink (WireValue wt a) = case arbitraryFromWireType wt of
+      Dict -> WireValue wt <$> shrink a
+
+instance Arbitrary SomeWireValue where
   arbitrary = do
-      wt <- arbitrary @WireType
-      withPArbWtProxy wt f
-    where
-      f :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> Gen WireValue
-      f _ = WireValue <$> pArbitrary @a
-  shrink wv = withPArbWvValue wv f
-    where
-      f :: forall a. (PickyArbitrary a, Wireable a) => a -> [WireValue]
-      f a = WireValue <$> shrink a
+    SomeWireType wt <- pArbitrary
+    case pArbitraryFromWireType wt of
+      Dict -> SomeWireValue . WireValue wt <$> pArbitrary
+  shrink (SomeWireValue wv@(WireValue wt _)) = case wireableFromWireType wt of
+    Dict -> SomeWireValue <$> shrink wv
 
 
 instance Arbitrary PostDefinition where
   arbitrary = PostDefinition <$> arbitrary <*>
     assocListOf arbitrary (smallListOf arbitrary)
 
-instance Arbitrary Definition where
+instance Arbitrary (Definition 'Tuple) where
+  arbitrary =
+    TupleDef <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
+  shrink (TupleDef d ty ilim) =
+    [TupleDef d' ty' ilim' | (d', ty', ilim') <- shrink (d, ty, ilim)]
+instance Arbitrary (Definition 'Struct) where
+  arbitrary = StructDef <$> arbitraryTextNoNull <*> arbitrary
+  shrink (StructDef d tyinfo) =
+    [StructDef d' tyinfo' | (d', tyinfo') <- shrink (d, tyinfo)]
+instance Arbitrary (Definition 'Array) where
+  arbitrary = ArrayDef <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
+    <*> arbitrary
+  shrink (ArrayDef d pd ty ed) =
+    [ArrayDef d' pd' ty' ed' | (d', pd', ty', ed') <- shrink (d, pd, ty, ed)]
+
+instance Arbitrary SomeDefinition where
   arbitrary = oneof
-    [ TupleDef <$>
-        (TupleDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary)
-    , StructDef <$>
-        (StructDefinition <$> arbitraryTextNoNull <*> arbitrary)
-    , ArrayDef <$>
-        (ArrayDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
-         <*> arbitrary)
+    [ SomeDefinition <$> arbitrary @(Definition 'Tuple)
+    , SomeDefinition <$> arbitrary @(Definition 'Struct)
+    , SomeDefinition <$> arbitrary @(Definition 'Array)
     ]
+  shrink (SomeDefinition def) = case def of
+    TupleDef {} -> SomeDefinition <$> shrink def
+    StructDef {}-> SomeDefinition <$> shrink def
+    ArrayDef {} -> SomeDefinition <$> shrink def
 
 
 instance Arbitrary CreateOp where
   arbitrary = OpCreate <$> smallListOf (smallListOf arbitrary) <*> arbitrary
+  shrink (OpCreate args after) =
+    [OpCreate args' after' | (args', after') <- shrink (args, after)]
 
 instance Arbitrary d => Arbitrary (DefOp d) where
   arbitrary = oneof [OpDefine <$> arbitrary, return OpUndefine]
+  shrink = \case
+    OpUndefine -> []
+    OpDefine def -> OpUndefine : (OpDefine <$> shrink def)
 
 instance Arbitrary TimeSeriesDataOp where
   arbitrary = oneof
     [ OpSet <$> arbitrary <*> smallListOf arbitrary <*> arbitrary
     , return OpRemove]
+  shrink = \case
+    OpRemove -> []
+    OpSet t wvs i ->
+      OpRemove : [OpSet t' wvs' i' | (t', wvs', i') <- shrink (t, wvs, i)]
 
 instance Arbitrary DataChange where
   arbitrary = oneof
@@ -256,38 +378,60 @@ creates = smallMapOf arbitrary smallMap
 contOps :: Arbitrary a => Gen (ContOps a)
 contOps = smallMapOf arbitrary smallMap
 
+errs :: Gen (Mol DataErrorIndex Text)
+errs = genMol arbitrary arbitraryTextNoNull
+
 
 instance Arbitrary TrpDigest where
   arbitrary = TrpDigest <$> arbitrary <*> smallMap <*> smallMap
-    <*> arbitrary <*> contOps <*> smallMapOf arbitrary (smallListOf arbitrary)
+    <*> arbitrary <*> contOps <*> arbitrary
+  shrink (TrpDigest ns pds ds dat cops _errs) =
+    [TrpDigest ns pds' ds' dat' cops' mempty
+    | (pds', ds', dat', cops') <- shrink (pds, ds, dat, cops)]
 
 deriving instance Arbitrary TrprDigest
 
 instance Arbitrary TrcSubDigest where
   arbitrary = TrcSubDigest <$> smallMap <*> smallMap <*> smallMap
+  shrink (TrcSubDigest pts ts dat) =
+    [TrcSubDigest pts' ts' dat' | (pts', ts', dat') <- shrink (pts, ts, dat)]
 
 instance Arbitrary TrcUpdateDigest where
   arbitrary = TrcUpdateDigest <$> arbitrary <*> arbitrary <*> creates
     <*> contOps
+  shrink (TrcUpdateDigest ns dat crs cops) =
+    [TrcUpdateDigest ns dat' crs' cops'
+    | (dat', crs', cops') <- shrink (dat, crs, cops)]
 
 
 instance Arbitrary FrpDigest where
   arbitrary = FrpDigest <$> arbitrary <*> arbitrary <*> creates <*> contOps
+  shrink (FrpDigest ns dat crs cops) =
+    [FrpDigest ns dat' crs' cops'
+    | (dat', crs', cops') <- shrink (dat, crs, cops)]
 
+-- deriving instance Arbitrary FrpErrorDigest
 instance Arbitrary FrpErrorDigest where
-  arbitrary = FrpErrorDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
+  arbitrary = FrpErrorDigest <$> errs
+  shrink (FrpErrorDigest mol) = if null mol then [] else [FrpErrorDigest mempty]
 
 instance Arbitrary FrcRootDigest where
   arbitrary = FrcRootDigest <$> smallMap
+  shrink (FrcRootDigest m) = FrcRootDigest <$> shrink m
 
 instance Arbitrary FrcSubDigest where
   arbitrary = FrcSubDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
     <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (FrcSubDigest e pt t d) =
+    [FrcSubDigest e' pt' t' d' | (e', pt', t', d') <- shrink (e, pt, t, d)]
 
 instance Arbitrary FrcUpdateDigest where
   arbitrary = FrcUpdateDigest <$> arbitrary <*> smallMap <*> smallMap
     <*> smallMap <*> arbitrary <*> contOps
-    <*> smallMapOf arbitrary (smallListOf arbitrary)
+    <*> arbitrary
+  shrink (FrcUpdateDigest ns pt ty tas d cops _errs) =
+    [FrcUpdateDigest ns pt' ty' tas' d' cops' mempty
+    | (pt', ty', tas', d', cops') <- shrink (pt, ty, tas, d, cops)]
 
 
 instance Arbitrary TrDigest where
@@ -297,6 +441,11 @@ instance Arbitrary TrDigest where
     , Trcsd <$> arbitrary
     , Trcud <$> arbitrary
     ]
+  shrink = \case
+    Trpd trpd -> Trpd <$> shrink trpd
+    Trprd trprd -> Trprd <$> shrink trprd
+    Trcsd trcsd -> Trcsd <$> shrink trcsd
+    Trcud trcud -> Trcud <$> shrink trcud
 
 instance Arbitrary FrDigest where
   arbitrary = oneof
@@ -306,3 +455,9 @@ instance Arbitrary FrDigest where
     , Frcsd <$> arbitrary
     , Frcud <$> arbitrary
     ]
+  shrink = \case
+    Frpd frpd -> Frpd <$> shrink frpd
+    Frped frped -> Frped <$> shrink frped
+    Frcrd frcrd -> Frcrd <$> shrink frcrd
+    Frcsd frcsd -> Frcsd <$> shrink frcsd
+    Frcud frcud -> Frcud <$> shrink frcud
