@@ -9,6 +9,7 @@ module Clapi.Types.Path
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
   , isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths
+  , prefixes, prefixesMap
   ) where
 
 import Prelude hiding (fail)
@@ -16,6 +17,9 @@ import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)
@@ -109,3 +113,18 @@ parentPath :: Path' a -> Maybe (Path' a)
 parentPath p = case p of
   (pp :/ _) -> Just pp
   _ -> Nothing
+
+prefixes :: Ord a => Set (Path' a) -> Set (Path' a)
+prefixes = Map.keysSet . prefixesMap . Map.fromSet (const ())
+
+-- FIXME: Might want to test the property that
+-- `Map.valid (prefixesMap ps) == True` for all ps
+prefixesMap :: Eq k => Map (Path' k) v -> Map (Path' k) v
+prefixesMap = Map.fromAscList . f . Map.toAscList
+  where
+    f [] = []
+    f ((p,v):pvs) = (p, v) : g p v pvs
+    g _ _ [] = []
+    g p1 v1 ((p2,v2):pvs) = if p1 `isParentOf` p2
+      then g p1 v1 pvs
+      else (p2, v2) : g p2 v2 pvs
