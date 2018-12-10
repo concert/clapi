@@ -16,7 +16,7 @@ import Data.Text (Text)
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.Types.AssocList (AssocList, unAssocList)
+import Clapi.Types.AssocList (AssocList, unAssocList, alLookup)
 import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (SomeTreeType(..))
@@ -75,3 +75,18 @@ data PostDefinition = PostDefinition
   , postDefArgs :: AssocList Seg [SomeTreeType]
   } deriving (Show)
 
+getTyInfoForSeg :: MonadFail m => Seg -> Definition mt -> m (DefName, Editable)
+getTyInfoForSeg childName = \case
+  TupleDef {} -> fail "Tuples do not have children"
+  StructDef { strDefChildTys = tyinfo } ->
+    maybe (fail $ "Invalid struct child") return
+    $ alLookup childName tyinfo
+  ArrayDef { arrDefChildTy = dn, arrDefChildEditable = e } -> return (dn, e)
+
+childEditableFor :: MonadFail m => Seg -> Definition mt -> m Editable
+childEditableFor seg = \case
+  TupleDef {} -> fail "Tuples have no children"
+  StructDef { strDefChildTys = tyinfo } ->
+    maybe (fail "No such child") return $
+    snd <$> lookup seg (unAssocList tyinfo)
+  ArrayDef { arrDefChildEditable = e } -> return e
