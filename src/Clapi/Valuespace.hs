@@ -42,9 +42,7 @@ import qualified Data.Map.Dependencies as Dependencies
 import Data.Maybe.Clapi (note)
 
 import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
-import Clapi.Tree
-  ( RoseTree(..), RoseTreeNode(..), treeInsert, treeChildren
-  , RoseTreeNodeType(..), treePaths)
+import Clapi.Tree (RoseTree(..), RoseTreeNode(..), RoseTreeNodeType(..))
 import qualified Clapi.Tree as Tree
 import Clapi.Types (WireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
@@ -139,7 +137,7 @@ valuespaceGet
        , Editability
        , RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
-    rtn <- note "Path not found" $ Tree.treeLookupNode p tree
+    rtn <- note "Path not found" $ Tree.lookupNode p tree
     ts <- lookupTypeName p tas
     def <- lookupDef ts defs
     ed <- getEditable p vs
@@ -222,7 +220,7 @@ validateVs t v = do
   where
     errP p = first (Mol.singleton (PathError p) . GenericErr)
     tLook p = maybe (Left $ Mol.singleton (PathError p) $ ProgrammingErr "Missing RTN") Right .
-      Tree.treeLookup p
+      Tree.lookup p
     changed :: Eq a => a -> a -> Maybe a
     changed a1 a2 | a1 == a2 = Nothing
                   | otherwise = Just a2
@@ -294,7 +292,7 @@ validateVs t v = do
                     newTas' = newTas <> Map.fromList emptyArrays
                     tainted' = Map.fromList (fmap (const Nothing) <$> emptyArrays) <> tainted
                     att = Nothing  -- FIXME: who is this attributed to?
-                    insertEmpty p = treeInsert att p (RtContainer alEmpty)
+                    insertEmpty p = Tree.insert att p (RtContainer alEmpty)
                     vs' = vs {vsTree = foldl (\acc (p, _) -> insertEmpty p acc) tree emptyArrays}
                 Right pathRefClaims -> inner
                       (newTas <> changedChildPaths)
@@ -305,10 +303,10 @@ validateVs t v = do
                   where
                     oldChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                       (\name _ -> Dependencies.lookup (path :/ name) oldTyAssns) $
-                      treeChildren rtn
+                      Tree.children rtn
                     newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
                       (\name _ -> childTypeFor name def) $
-                      treeChildren rtn
+                      Tree.children rtn
                     changedChildTypes = merge
                       dropMissing preserveMissing
                       (zipWithMaybeMatched $ const changed)
@@ -363,7 +361,7 @@ processToRelayProviderDigest trpd vs =
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validatePath vs p mTpids = do
     SomeDefinition def <- first pure $ first GenericErr $ defForPath p vs
-    t <- maybe (Left [ProgrammingErr "Tainted but missing"]) Right $ Tree.treeLookup p $ vsTree vs
+    t <- maybe (Left [ProgrammingErr "Tainted but missing"]) Right $ Tree.lookup p $ vsTree vs
     validateRoseTreeNode def t mTpids
 
 -- | Returns an intermediary error structure
@@ -435,7 +433,7 @@ validateCreateAndCopAfters vs creates cops =
       Just pCops -> Map.keysSet $ Map.filter (isSoAbsent . snd) pCops
 
     getExistingChildSegs :: Path -> Set Seg
-    getExistingChildSegs p = case Tree.treeLookupNode p $ vsTree vs of
+    getExistingChildSegs p = case Tree.lookupNode p $ vsTree vs of
       Just (RtnChildren al) -> Set.difference (alKeysSet al) (removed p)
       _ -> mempty
 
@@ -549,8 +547,8 @@ processTrcUpdateDigest vs trcud =
     validSegCops = fmap (Map.mapMaybe $ traverse dropPlaceholder) validCops
     -- adding to the front of the path will not break uniqueness
     validPaths = Set.difference
-      (maybe mempty (Set.fromList . treePaths Root) $
-        Tree.treeLookup Root $ vsTree vs) (removedPaths validCops)
+      (maybe mempty (Set.fromList . Tree.paths Root) $
+        Tree.lookup Root $ vsTree vs) (removedPaths validCops)
     (pathValidDd, nonExistantSets) = alPartitionWithKey
       (\p _ -> Set.member p validPaths) $ trcudData trcud
     (updateErrs, tree') = Tree.updateTreeWithDigest validSegCops pathValidDd $

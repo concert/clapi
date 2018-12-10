@@ -56,7 +56,8 @@ import Clapi.Types.Definitions
   (Editability(..), SomeDefinition, PostDefinition, DefName)
 import Clapi.Types.Wire (WireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
+import Clapi.Tree (RoseTreeNode(..), TimeSeries)
+import qualified Clapi.Tree as Tree
 import Clapi.Valuespace
   ( Valuespace(..), baseValuespace, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
@@ -236,9 +237,9 @@ handleTrpd i d = do
       let
         augmentedTyAssns = Map.mapWithKey
            (\p tn -> (tn, either error id $ getEditable p vs')) updatedTyAssns
-        getContOps p = case fromJust $ treeLookupNode p $ vsTree vs' of
+        getContOps p = case fromJust $ Tree.lookupNode p $ vsTree vs' of
           RtnChildren kb ->
-            (p,) <$> mayContDiff (treeLookupNode p $ vsTree vs) kb
+            (p,) <$> mayContDiff (Tree.lookupNode p $ vsTree vs) kb
           _ -> Nothing
         extraCops = Map.fromAscList $
           mapMaybe (\p -> parentPath p >>= getContOps) $ Set.toAscList $

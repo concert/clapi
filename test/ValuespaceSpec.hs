@@ -23,6 +23,7 @@ import Control.Monad.Fail (MonadFail)
 import qualified Data.Map.Mol as Mol
 
 import Clapi.TH
+import qualified Clapi.Tree as Tree
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, alEmpty, alInsert, alFromList)
 import Clapi.Types
@@ -38,8 +39,7 @@ import Clapi.Types.Path
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
   , processTrcUpdateDigest)
-import Clapi.Tree
-  ( RoseTree(..), treePaths, updateTreeWithDigest)
+import Clapi.Tree (RoseTree(..), updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 
 import Instances ()
@@ -49,7 +49,7 @@ import Instances ()
 unsafeValidateVs :: Valuespace -> Valuespace
 unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
   where
-    allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $ vsTree vs
+    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $ vsTree vs
 
 
 testS :: Seg
@@ -172,7 +172,7 @@ spec = do
     it "raw baseValuespace invalid" $
       let
         rawValuespace = baseValuespace (Tagged testS) Editable
-        allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
+        allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $
           vsTree rawValuespace
       in validateVs allTainted rawValuespace `shouldSatisfy` isLeft
     it "rechecks on data changes" $
