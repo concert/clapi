@@ -152,3 +152,10 @@ toStrings = \case
 
 toStrings_ :: SomeSymbolList -> [String]
 toStrings_ (SomeSymbolList sl) = toStrings sl
+
+class SlFromType ss where
+  fromType :: SymbolList ss
+instance SlFromType '[] where
+  fromType = SlEmpty
+instance (KnownSymbol s, SlFromType ss) => SlFromType ('(:) s ss) where
+  fromType = SlCons (Proxy @s) fromType
