@@ -135,4 +135,4 @@ instance Encodable SomeWireValue where
     (<>) <$> builder (SomeWireType wt) <*> case getEncodable wt of
       Dict -> builder a
   parser = parser >>= \(SomeWireType wt) -> case getEncodable wt of
-    Dict -> parser
+    Dict -> SomeWireValue . WireValue wt <$> parser
