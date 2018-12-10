@@ -129,6 +129,27 @@ instance Eq SomeWireValue where
 someWv :: WireType a -> a -> SomeWireValue
 someWv wt a = SomeWireValue $ WireValue wt a
 
+data WireTypeName
+  = WtnTime
+  | WtnWord32 | WtnWord64 | WtnInt32 | WtnInt64 | WtnFloat | WtnDouble
+  | WtnString
+  | WtnList | WtnMaybe
+  | WtnPair
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+instance TypeEnumOf (WireType a) WireTypeName where
+  typeEnumOf = \case
+    WtTime -> WtnTime
+    WtWord32 -> WtnWord32
+    WtWord64 -> WtnWord64
+    WtInt32 -> WtnInt32
+    WtInt64 -> WtnInt64
+    WtFloat -> WtnFloat
+    WtDouble -> WtnDouble
+    WtString -> WtnString
+    WtList _ -> WtnList
+    WtMaybe _ -> WtnMaybe
+    WtPair _ _ -> WtnPair
 class Wireable a where
   wireTypeFor_ :: proxy a -> WireType a
 
