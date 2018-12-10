@@ -29,6 +29,7 @@ import Clapi.Types.Path (
 import Clapi.Types.Digests
   ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..), TpId)
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
+import Clapi.Types.Tree (SomeTreeValue(..))
 
 type TimePoint a = (Interpolation, a)
 type Attributed a = (Maybe Attributee, a)
@@ -145,56 +146,6 @@ treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
     buildChildTree s p =
       fmap ((att,) . RtContainer . alSingleton s) <$> inner p Nothing
 
-updateTreeStructure
-  :: ContOps Seg -> RoseTree a -> (Map Path [Text], RoseTree a)
-updateTreeStructure contOps = runState $ do
-    errs <- sequence $ Map.mapWithKey applyContOp contOps
-    return $ Map.filter (not . null) errs
-  where
-    applyContOp
-      :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg)
-      -> State (RoseTree a) [Text]
-    applyContOp np m = do
-      eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
-      either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
-
-updateTreeData
-  :: DataDigest -> RoseTree [WireValue]
-  -> (Map Path [Text], RoseTree [WireValue])
-updateTreeData dd = runState $ do
-    errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
-    return $ Map.filter (not . null) errs
-  where
-    applyDd
-      :: Path -> DataChange
-      -> State (RoseTree [WireValue]) [Text]
-    applyDd np dc = case dc of
-      ConstChange att wv -> do
-        modify $ treeAdjust Nothing (treeConstSet att wv) np
-        return []
-      TimeChange m -> mconcat <$> (mapM (applyTc np) $ Map.toList m)
-    applyTc
-      :: Path
-      -> (TpId, (Maybe Attributee, TimeSeriesDataOp))
-      -> State (RoseTree [WireValue]) [Text]
-    applyTc np (tpId, (att, op)) = case op of
-      OpSet t wv i -> get >>=
-        either (return . pure . Text.pack) (\vs -> put vs >> return [])
-        . treeAdjustF Nothing (treeSet tpId t wv i att) np
-      OpRemove -> get >>=
-        either (return . pure . Text.pack) (\vs -> put vs >> return [])
-        . treeAdjustF Nothing (treeRemove tpId) np
-
-
--- FIXME: Maybe reorder the args to reflect application order?
-updateTreeWithDigest
-  :: ContOps Seg -> DataDigest -> RoseTree [WireValue]
-  -> (Map Path [Text], RoseTree [WireValue])
-updateTreeWithDigest contOps dd = runState $ do
-    errs <- state (updateTreeData dd)
-    errs' <- state (updateTreeStructure contOps)
-    return $ Map.unionWith (<>) errs errs'
-
 data RoseTreeNode a
   = RtnEmpty
   | RtnChildren (AssocList Seg (Maybe Attributee))
@@ -242,3 +193,13 @@ treeTpRemoveAt
   :: MonadFail m
   => Maybe Attributee -> Path -> TpId -> RoseTree a -> m (RoseTree a)
 treeTpRemoveAt att p tpid = treeAdjustF Nothing (treeRemove tpid) p
+
+treeApplyReorderingsAt
+  :: MonadFail m
+  => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a
+  -> m (RoseTree a)
+treeApplyReorderingsAt p cOps =
+  treeAdjustF Nothing (treeApplyReorderings cOps) p
+
+treeChildNamesAt :: Path -> RoseTree a -> Maybe [Seg]
+treeChildNamesAt p = fmap treeChildNames . treeLookup p
