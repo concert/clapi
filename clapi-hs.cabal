@@ -155,6 +155,7 @@ test-suite clapi-hs-test
                      , Data.Map.DependenciesSpec
                      , Data.Map.MosSpec
                      , Arbitrary
+                     , ErrorSpec
                      , Instances
                      , SerialisationProtocolSpec
                      , PathSpec
