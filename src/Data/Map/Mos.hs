@@ -5,7 +5,7 @@
 module Data.Map.Mos
   ( Mos, unMos
   , singleton, singletonSet
-  , fromFoldable, fromList, invertMap
+  , fromMap, fromFoldable, fromList, invertMap
   , keysSet, hasKey, member, contains
   , invert
   , toList, toSet, valueSet
@@ -51,6 +51,9 @@ singleton k a = Mos $ Map.singleton k $ Set.singleton a
 
 singletonSet :: Ord k => k -> Set a -> Mos k a
 singletonSet k sa = Mos $ if null sa then mempty else Map.singleton k sa
+
+fromMap :: Map k (Set a) -> Mos k a
+fromMap = Mos . Map.filter (not . null)
 
 fromFoldable :: (Ord k, Ord a, Foldable f) => f (k, a) -> Mos k a
 fromFoldable = foldl' (\mos (k, a) -> insert k a mos) mempty
