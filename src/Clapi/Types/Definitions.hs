@@ -4,6 +4,7 @@
   , KindSignatures
   , LambdaCase
   , MultiParamTypeClasses
+  , RankNTypes
   , StandaloneDeriving
 #-}
 
@@ -49,6 +50,9 @@ deriving instance Show (Definition mt)
 data SomeDefinition where
   SomeDefinition :: Definition mt -> SomeDefinition
 deriving instance Show SomeDefinition
+
+withDefinition :: (forall mt. Definition mt -> r) -> SomeDefinition -> r
+withDefinition f (SomeDefinition def) = f def
 
 tupleDef
   :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> SomeDefinition
