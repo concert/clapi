@@ -55,3 +55,9 @@ union (Mol m1) (Mol m2) = Mol $ Map.unionWith (<>) m1 m2
 
 unions :: (Ord k) => [Mol k a] -> Mol k a
 unions = Mol . Map.unionsWith (<>) . fmap unMol
+
+lookup :: (Ord k) => k -> Mol k a -> [a]
+lookup k = maybe [] id . Map.lookup k . unMol
+
+keysSet :: Mol k a -> Set k
+keysSet = Map.keysSet . unMol
