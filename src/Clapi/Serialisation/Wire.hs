@@ -13,6 +13,7 @@ module Clapi.Serialisation.Wire where
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Constraint (Dict(..))
+import Text.Printf (printf)
 
 import Data.Attoparsec.ByteString (Parser)
 
@@ -67,7 +68,9 @@ tagWtns :: [(Tag, WireTypeName)]
 tagWtns = revAssoc wtnTag
 
 tagWtn :: MonadFail m => Tag -> m WireTypeName
-tagWtn t = maybe (fail "Unrecognised type tag") return $ lookup t tagWtns
+tagWtn t = maybe
+  (fail $ printf "Unrecognised type tag %s" $ show t) return $
+  lookup t tagWtns
 
 -- FIXME: could use an association list type that checks the uniqueness of the
 -- keys on creation:
