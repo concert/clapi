@@ -5,6 +5,7 @@
 module Clapi.Util (
     duplicates, ensureUnique,
     strictZipWith, strictZip, fmtStrictZipError,
+    headAndLike,
     partitionDifference, partitionDifferenceF,
     camel,
     uncamel,
@@ -72,6 +73,10 @@ fmtStrictZipError n0 n1 = either fmt return
   where
     fmt (i, j) = fail $
       printf "Mismatched numbers of %v (%i) and %v (%i)" n0 i n1 j
+
+headAndLike :: (a -> a -> Bool) -> [a] -> [a]
+headAndLike _ [] = []
+headAndLike f (a:as) = a : filter (f a) as
 
 
 partitionDifference
