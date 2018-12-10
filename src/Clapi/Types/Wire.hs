@@ -135,16 +135,22 @@ instance Show (WireValue a) where
   show (WireValue wt a) = case getShow wt of
     Dict -> printf "WireValue (%s) %s" (show wt) (show a)
 
+instance Eq (WireValue a) where
+  WireValue wt a1 == WireValue _ a2 = case getEq wt of
+    Dict -> a1 == a2
+
 data SomeWireValue where
   SomeWireValue :: WireValue a -> SomeWireValue
 deriving instance Show SomeWireValue
 
+instance TestEquality WireValue where
+  testEquality (WireValue wt1 _) (WireValue wt2 _) = testEquality wt1 wt2
+
 instance Eq SomeWireValue where
-  SomeWireValue (WireValue wt1 a1) == SomeWireValue (WireValue wt2 a2) =
-    case testEquality wt1 wt2 of
+  SomeWireValue wv1 == SomeWireValue wv2 =
+    case testEquality wv1 wv2 of
       Nothing -> False
-      Just Refl -> case getEq wt1 of
-        Dict -> a1 == a2
+      Just Refl -> wv1 == wv2
 
 someWv :: WireType a -> a -> SomeWireValue
 someWv wt a = SomeWireValue $ WireValue wt a
