@@ -1,6 +1,7 @@
 {-# LANGUAGE
     GADTs
   , OverloadedStrings
+  , RankNTypes
 #-}
 
 module Clapi.TextSerialisation where
@@ -17,11 +18,13 @@ import Data.Attoparsec.Text (Parser)
 import qualified Data.Attoparsec.Text as Dat
 import Data.Scientific (toRealFloat)
 
+import Clapi.Types.Base (typeEnumOf)
 import Clapi.Types.Tree
   ( Bounds, bounds, unbounded, boundsMin, boundsMax
-  , typeEnumOf, TreeType(..), TreeTypeName(..), SomeTreeType(..))
+  , TreeType(..), TreeTypeName(..), SomeTreeType(..), withTreeType, ttEnum)
 import Clapi.Types.Path (segP, unSeg)
 import qualified Clapi.Types.Path as Path
+import qualified Clapi.Types.SymbolList as SL
 
 
 argsOpen, argsClose, boundsSep, listSep :: Char
@@ -83,7 +86,8 @@ ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
   where
     bracketContent = case tt of
       TtTime -> ""
-      -- TtEnum -> Text.intercalate (Text.singleton listSep) (Text.pack . show <$> [minBound ..])
+      TtEnum sl -> Text.intercalate (Text.singleton listSep) $
+        Text.pack <$> SL.toStrings sl
       TtWord32 b -> boundsToText b
       TtWord64 b -> boundsToText b
       TtInt32 b -> boundsToText b
@@ -97,6 +101,9 @@ ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtOrdSet tt' -> ttToText tt'
       TtMaybe tt' -> ttToText tt'
       TtPair tt1 tt2 -> ttToText tt1 <> Text.singleton listSep <> ttToText tt2
+
+ttToText_ :: SomeTreeType -> Text
+ttToText_ = withTreeType ttToText
 
 ttParser' :: Parser SomeTreeType
 ttParser' = ttNameParser >>= argsParser
@@ -116,7 +123,8 @@ ttParser' = ttNameParser >>= argsParser
         Dat.scan (False, 1 :: Int) f
     argsParser ttn = case ttn of
       TtnTime -> return $ SomeTreeType TtTime
-      -- TtnEnum -> SomeTreeType . TtEnum <$> bracketed (Dat.sepBy segP $ sep'd listSep)
+      TtnEnum -> ttEnum <$> fmap (Text.unpack . unSeg)
+        <$> bracketed (Dat.sepBy segP $ sep'd listSep)
       TtnWord32 -> SomeTreeType . TtWord32 <$> bbp Dat.decimal
       TtnWord64 -> SomeTreeType . TtWord64 <$> bbp Dat.decimal
       TtnInt32 -> SomeTreeType . TtInt32 <$> bbp (Dat.signed Dat.decimal)
@@ -125,17 +133,17 @@ ttParser' = ttNameParser >>= argsParser
       TtnDouble -> SomeTreeType . TtDouble <$> bbp (toRealFloat <$> Dat.scientific)
       TtnString -> SomeTreeType . TtString <$> optionalBracket "" regex
       TtnRef -> SomeTreeType . TtRef <$> bracketed Path.segP
-      TtnList -> bracketed $ do
-        (SomeTreeType tt) <- ttParser'
-        return $ SomeTreeType $ TtList tt
-      -- TtnSet -> bracketed $ TtSet <$> ttParser'
-      -- TtnOrdSet -> bracketed $ TtOrdSet <$> ttParser'
-      -- TtnMaybe -> bracketed $ TtMaybe <$> ttParser'
-      -- TtnPair -> bracketed $ do
-      --   tt1 <- ttParser'
-      --   sep'd listSep
-      --   tt2 <- ttParser'
-      --   return $ TtPair tt1 tt2
+      TtnList -> bracketed $ withParsedTt $ SomeTreeType . TtList
+      TtnSet -> bracketed $ withParsedTt $ SomeTreeType . TtSet
+      TtnOrdSet -> bracketed $ withParsedTt $ SomeTreeType . TtOrdSet
+      TtnMaybe -> bracketed $ withParsedTt $ SomeTreeType . TtMaybe
+      TtnPair -> bracketed $ do
+        SomeTreeType tt1 <- ttParser'
+        sep'd listSep
+        SomeTreeType tt2 <- ttParser'
+        return $ SomeTreeType $ TtPair tt1 tt2
+    withParsedTt :: (forall a. TreeType a -> r) -> Parser r
+    withParsedTt f = withTreeType f <$> ttParser'
 
 ttFromText :: MonadFail m => Text -> m SomeTreeType
 ttFromText = either fail return . Dat.parseOnly (ttParser' <* Dat.endOfInput)
