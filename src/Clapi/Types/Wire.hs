@@ -150,6 +150,10 @@ instance TypeEnumOf (WireType a) WireTypeName where
     WtList _ -> WtnList
     WtMaybe _ -> WtnMaybe
     WtPair _ _ -> WtnPair
+
+instance TypeEnumOf (WireValue a) WireTypeName where
+  typeEnumOf (WireValue wt _) = typeEnumOf wt
+
 class Wireable a where
   wireTypeFor_ :: proxy a -> WireType a
 
