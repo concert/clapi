@@ -6,7 +6,7 @@
 #-}
 
 module Clapi.Validator
-  (validateValues, revalidateValues, extractTypeAssertions
+  (validate, validateValues, revalidateValues, extractTypeAssertions
   ) where
 
 import Prelude hiding (fail)
@@ -30,6 +30,7 @@ import Clapi.Types
 import Clapi.Types.EnumVal (enumVal)
 import qualified Clapi.Types.EnumVal as EnumVal
 import Clapi.Types.Path (Seg, Path)
+import Clapi.TextSerialisation (ttToText)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
   ( Bounds, boundsMin, boundsMax, TreeType(..), SomeTreeType(..)
@@ -75,10 +76,12 @@ validateValue = \case
     TtPair tt1 tt2 -> \(a, b) -> validateValue tt1 a >> validateValue tt2 b
 
 
-typeValid
-  :: MonadFail m => WireType a -> TreeType b -> m (a :~: WireTypeOf b)
+typeValid :: MonadFail m => WireType a -> TreeType b -> m (a :~: WireTypeOf b)
 typeValid WtTime TtTime = return Refl
-typeValid WtWord32 (TtWord32 _) = return Refl
+typeValid WtWord32 tt1
+  | TtWord32 _ <- tt1 = return Refl
+  | TtEnum _ <- tt1 = return Refl
+typeValid WtWord32 (TtEnum _) = return Refl
 typeValid WtWord64 (TtWord64 _) = return Refl
 typeValid WtInt32 (TtInt32 _) = return Refl
 typeValid WtInt64 (TtInt64 _) = return Refl
@@ -96,7 +99,8 @@ typeValid (WtPair wt1 wt2) (TtPair tt1 tt2) = do
   Refl <- typeValid wt1 tt1
   Refl <- typeValid wt2 tt2
   return $ Refl
-typeValid _ _ = fail "useful message here"
+typeValid wt tt = fail $ printf "Type mismatch: Cannot produce %s from %s"
+  (ttToText tt) (show wt)
 
 inflateValue
   :: (MonadFail m)
