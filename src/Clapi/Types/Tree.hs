@@ -38,7 +38,7 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Data.Word
 import Text.Printf (printf)
 
-import Clapi.Types.Base (Time)
+import Clapi.Types.Base (Time, TypeEnumOf(..))
 import Clapi.Types.EnumVal (EnumVal)
 import qualified Clapi.Types.EnumVal as EnumVal
 import Clapi.Types.Path (Path, Seg)
