@@ -121,8 +121,8 @@ spec = do
           -- the error...
           forM_ [ pt op $ Tagged @PostDefinition foo
                 , pt op $ Tagged @PostDefinition bar
-                , t op $ Tagged @Definition foo
-                , t op $ Tagged @Definition bar
+                , t op $ Tagged @SomeDefinition foo
+                , t op $ Tagged @SomeDefinition bar
                 , d op $ Root
                 , d op $ Root :/ bar
                 ] $ \subDig ->
@@ -131,7 +131,7 @@ spec = do
               sendFwd $ ClientData "owner" $ Trpd $ simpleClaim foo
               expect [emptyRootDig "owner", nsExists fooNs "owner"]
               sendFwd $ ClientData "owner" $ Trpd $
-                postDefine foo (postDef' "fooy" [(x, TtInt64 unbounded)]) $
+                postDefine foo (postDef' "fooy" [(x, ttInt64 unbounded)]) $
                 trpdEmpty fooNs
               sendFwd $ ClientData "owner" $ Trcsd subDig
               expect [ err "owner" (NamespaceError fooNs)
@@ -152,7 +152,7 @@ spec = do
           subscribe fooNs id_ "sub"
           expect [ServerData "sub" $ Frcsd $
             mempty {frcsdErrors = Map.singleton ei [msg]}]
-        pd = postDef' "fooy" [(x, TtInt64 unbounded)]
+        pd = postDef' "fooy" [(x, ttInt64 unbounded)]
         bar1 = [segq|bar1|]
       in do
         sendFwd $ ClientConnect "Subscriber" "sub"
@@ -171,15 +171,15 @@ spec = do
           trpdEmpty fooNs
         expectSet $ nsExists fooNs <$> ["owner", "sub"]
 
-        badSub (root :/ bar1) (PathSubError fooNs $ root :/ bar1) "Path not found"
+        badSub (root :/ bar1) (PathSubError fooNs $ root :/ bar1) "Node not found"
 
         sendFwd $ ClientData "owner" $ Trpd $
-          ownerSet (root :/ bar1) [WireValue @Int32 1] $
+          ownerSet (root :/ bar1) [someWv WtInt32 1] $
           trpdEmpty fooNs
 
         -- We check that now the thing we just failed to subscribe to _is_
         -- defined we don't suddenly start getting data:
-        verifyNoDataSub "owner" "sub" fooNs (root :/ bar1) [WireValue @Int32 16]
+        verifyNoDataSub "owner" "sub" fooNs (root :/ bar1) [someWv WtInt32 16]
 
         -- Invalid PostDefinition and Definition IDs:
         badSub bazPdn (PostTypeSubError fooNs bazPdn) "Missing post def"
@@ -209,14 +209,14 @@ spec = do
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
           { frcudDefinitions = Map.singleton fooTn $ OpDefine intDef
           , frcudTypeAssignments = Map.singleton Root (fooTn, Editable)
-          , frcudData = alSingleton Root $ ConstChange Nothing [WireValue @Int32 12]
+          , frcudData = alSingleton Root $ ConstChange Nothing [someWv WtInt32 12]
           }]
-        verifyDataSub "owner" "sub" fooNs Root [WireValue @Int32 13]
+        verifyDataSub "owner" "sub" fooNs Root [someWv WtInt32 13]
         verifyTySub "owner" "sub" fooNs fooTn
 
       -- After unsubscribing from the data, check that
       -- a) The data subscription is terminated
-      verifyNoDataSub "owner" "sub" fooNs Root [WireValue @Int32 14]
+      verifyNoDataSub "owner" "sub" fooNs Root [someWv WtInt32 14]
       -- b) The type subscription remains
       verifyTySub "owner" "sub" fooNs fooTn
 
@@ -232,7 +232,7 @@ spec = do
       verifyNoTySub "owner" "sub" fooNs fooTn
 
       -- Test sub/unsub cycle for PostDefinitions too
-      let pd = postDef' "fooy" [(x, TtInt64 unbounded)]
+      let pd = postDef' "fooy" [(x, ttInt64 unbounded)]
       sendFwd $ ClientData "owner" $ Trpd $ postDefine foo pd $ trpdEmpty fooNs
       withSubscription fooNs fooPdn "sub" $ do
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
@@ -268,14 +268,14 @@ spec = do
 
         sendFwd $ ClientConnect "Owner" "owner"
         expect [emptyRootDig "owner"]
-        let pd = postDef' "fooy" [(x, TtInt64 unbounded)]
+        let pd = postDef' "fooy" [(x, ttInt64 unbounded)]
         sendFwd $ ClientData "owner" $ Trpd $
           postDefine foo pd $ simpleClaim foo
         expectSet $ nsExists fooNs <$> ["owner", "sub"]
 
         -- PostDefinition, Definition and data don't exist:
         checkAlreadyUnsub $ Tagged @PostDefinition bar
-        checkAlreadyUnsub $ Tagged @Definition bar
+        checkAlreadyUnsub $ Tagged @SomeDefinition bar
         checkAlreadyUnsub $ Root :/ bar
 
         -- PostDefinition, Definition and data exist, but never subscribed
@@ -301,10 +301,10 @@ spec = do
             { frcudDefinitions = Map.singleton fooTn $ OpDefine intDef
             , frcudTypeAssignments = Map.singleton Root (fooTn, Editable)
             , frcudData = alSingleton Root $
-              ConstChange Nothing [WireValue @Int32 12]
+              ConstChange Nothing [someWv WtInt32 12]
             }]
         checkAlreadyUnsub root
-        verifyNoDataSub "owner" "sub" fooNs root [WireValue @Int32 15]
+        verifyNoDataSub "owner" "sub" fooNs root [someWv WtInt32 15]
 
 
     let sub_owner_preamble = do
@@ -347,7 +347,7 @@ spec = do
 
     it "unsubscribes clients on owner disconnect and disowns" $
       -- Also that the client gets notified of the deletion of the owner's data.
-      testRelay mempty $ let textyTn = Tagged @Definition [segq|texty|] in do
+      testRelay mempty $ let textyTn = Tagged @SomeDefinition [segq|texty|] in do
         sub_owner_preamble
         subscribe fooNs textyTn "sub"
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
@@ -369,13 +369,13 @@ spec = do
       testRelay mempty $ do
         sub_owner_preamble
         sendFwd $ ClientData "sub" $ Trcud $
-          subSet (Root :/ foo) [WireValue @Text "hello"] $
-          subSet (Root :/ bar) [WireValue @Int32 3, WireValue @Int32 4] $
+          subSet (Root :/ foo) [someWv WtString "hello"] $
+          subSet (Root :/ bar) [someWv WtInt32 3, someWv WtInt32 4] $
           trcudEmpty fooNs
         expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
         expect [ServerData "owner" $ Frpd $ (frpdEmpty fooNs)
           { frpdData = alSingleton (Root :/ foo) $
-            ConstChange Nothing [WireValue @Text "hello"]
+            ConstChange Nothing [someWv WtString "hello"]
           }]
 
     it "validates owner claims" $ testRelay mempty $ do
@@ -383,7 +383,7 @@ spec = do
       expect [emptyRootDig "owner"]
 
       sendFwd $ ClientData "owner" $ Trpd $
-        ownerSet root [WireValue @Text "Not an int"] $
+        ownerSet root [someWv WtString "Not an int"] $
         define foo intDef $
         trpdEmpty fooNs
       expectFrped "owner" [(PathError Root, "Type mismatch")]
@@ -394,23 +394,23 @@ spec = do
       expect [emptyRootDig "owner", nsExists fooNs "owner"]
 
       sendFwd $ ClientData "owner" $ Trpd $
-        ownerSet root [WireValue @Text "Not an int"] $ trpdEmpty fooNs
+        ownerSet root [someWv WtString "Not an int"] $ trpdEmpty fooNs
       expectFrped "owner" [(PathError Root, "Type mismatch")]
 
     it "rejects orphan data" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
       expect [emptyRootDig "owner"]
       sendFwd $ ClientData "owner" $ Trpd $
-        ownerSet (Root :/ baz) [WireValue @Text "Orphan"] $ structClaim foo
-      expectFrped "owner" [(PathError Root, "ExtraChild baz")]
+        ownerSet (Root :/ baz) [someWv WtString "Orphan"] $ structClaim foo
+      expectFrped "owner" [(PathError $ Root :/ baz, "Invalid")]
 
   where
     rootDig client = ServerData client . Frcrd . FrcRootDigest
     emptyRootDig client = rootDig client mempty
     nsExists ns client = rootDig client $ Map.singleton ns $ SoAfter Nothing
     nsCease ns client = rootDig client $ Map.singleton ns $ SoAbsent
-    err client i msg = errs client [(i, [msg])]
-    errs client = ServerData client . Frped . FrpErrorDigest . Map.fromList
+    err client i msg = errs client [(i, msg)]
+    errs client = ServerData client . Frped . FrpErrorDigest . Mol.fromList
 
     verifySub
       :: Subscribe entity
@@ -424,8 +424,8 @@ spec = do
       sendFwd $ ClientData ownerId $ Trpd $ mkTrpd ns ident existing
       expect [ServerData subId $ Frcud $ mkFrcud ns ident existing]
 
-    verifyDataSub = verifySub @[WireValue]
-    verifyTySub o s n i = verifySub @Definition o s n i "changed doc"
+    verifyDataSub = verifySub @[SomeWireValue]
+    verifyTySub o s n i = verifySub @SomeDefinition o s n i "changed doc"
     verifyPdSub o s n i = verifySub @PostDefinition o s n i "changed doc"
 
     -- FIXME: this will only work if there are _no subscribers at all_ to the
@@ -442,22 +442,22 @@ spec = do
       sendFwd $ ClientData ownerId $ Trpd $ mkTrpd ns ident existing
       nothingWaiting
 
-    verifyNoDataSub = verifyNoSub @[WireValue]
-    verifyNoTySub o s n i = verifyNoSub @Definition o s n i "changed doc"
+    verifyNoDataSub = verifyNoSub @[SomeWireValue]
+    verifyNoTySub o s n i = verifyNoSub @SomeDefinition o s n i "changed doc"
     verifyNoPdSub o s n i = verifyNoSub @PostDefinition o s n i "changed doc"
 
     intDef = tupleDef'
-      "A single unbounded integer" [(x, TtInt32 unbounded)] ILUninterpolated
-    strDef = tupleDef' "Any string" [(x, TtString "")] ILUninterpolated
+      "A single unbounded integer" [(x, ttInt32 unbounded)] ILUninterpolated
+    strDef = tupleDef' "Any string" [(x, ttString "")] ILUninterpolated
 
     simpleClaim name =
-      ownerSet Root [WireValue @Int32 12] $
+      ownerSet Root [someWv WtInt32 12] $
       define name intDef $
       trpdEmpty $ Namespace name
 
     structClaim name =
-      ownerSet (Root :/ bar) [WireValue @Int32 2] $
-      ownerSet (Root :/ foo) [WireValue @Text "one"] $
+      ownerSet (Root :/ bar) [someWv WtInt32 2] $
+      ownerSet (Root :/ foo) [someWv WtString "one"] $
       define name (structDef' "test"
         [ (foo, [segq|texty|])
         , (bar, [segq|inty|])
@@ -593,7 +593,7 @@ unOpDefine = \case
   OpDefine a -> Just a
   _ -> Nothing
 
-unConstChange :: DataChange -> Maybe [WireValue]
+unConstChange :: DataChange -> Maybe [SomeWireValue]
 unConstChange = \case
   ConstChange _ wvs -> Just wvs
   _ -> Nothing
@@ -642,8 +642,8 @@ instance Subscribe Definition where
     StructDef ad -> StructDef ad {strDefDoc = doc}
     TupleDef ad -> TupleDef ad {tupDefDoc = doc}
 
-instance Subscribe [WireValue] where
-  type EntityId [WireValue] = Path
+instance Subscribe [SomeWireValue] where
+  type EntityId [SomeWireValue] = Path
   mkTrcsd ns path op = mempty {trcsdData = Map.singleton (ns, path) op}
   mkFrcsd ns path = mempty {frcsdDataUnsubs = Mos.singleton ns path}
   mkTrpd ns name ent = (trpdEmpty ns)
@@ -652,7 +652,7 @@ instance Subscribe [WireValue] where
     {frcudData = alSingleton name $ ConstChange Nothing ent }
   _repr _ = "data"
   extractEntity name = alLookup name . frcudData >=> unConstChange
-  type Mutator [WireValue] = [WireValue]
+  type Mutator [SomeWireValue] = [SomeWireValue]
   mutate wvs _ = wvs
 
 subscribe
@@ -699,11 +699,11 @@ postDefine name def trpd = trpd
   { trpdPostDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdPostDefs trpd }
 
-ownerSet :: Path -> [WireValue] -> TrpDigest -> TrpDigest
+ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
 ownerSet path values trpd = trpd
   { trpdData = alInsert path (ConstChange Nothing values) $ trpdData trpd }
 
-subSet :: Path -> [WireValue] -> TrcUpdateDigest -> TrcUpdateDigest
+subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
   { trcudData = alInsert path (ConstChange Nothing values) $ trcudData trcud }
 
@@ -730,10 +730,11 @@ structDef' :: Text -> [(Seg, Seg)] -> Definition
 structDef' doc tys = structDef doc $ unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
-tupleDef' :: Text -> [(Seg, TreeType)] -> InterpolationLimit -> Definition
+tupleDef'
+  :: Text -> [(Seg, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
 tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il
 
-postDef' :: Text -> [(Seg, TreeType)] -> PostDefinition
+postDef' :: Text -> [(Seg, SomeTreeType)] -> PostDefinition
 postDef' doc tys = PostDefinition doc (unsafeMkAssocList $ fmap pure <$> tys)
 
 defMap :: [(Seg, def)] -> DefMap def
