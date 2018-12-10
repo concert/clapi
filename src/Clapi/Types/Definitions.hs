@@ -3,6 +3,7 @@
   , GADTs
   , KindSignatures
   , LambdaCase
+  , MultiParamTypeClasses
   , StandaloneDeriving
 #-}
 
@@ -16,13 +17,13 @@ import Data.Text (Text)
 import Data.Maybe.Clapi (note)
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
-import Clapi.Types.Base (InterpolationLimit(..))
+import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (SomeTreeType(..))
 
 data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
-data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
+data MetaType = Tuple | Struct | Array deriving (Show, Eq, Ord, Enum, Bounded)
 
 type DefName = Tagged SomeDefinition Seg
 type PostDefName = Tagged PostDefinition Seg
@@ -61,11 +62,11 @@ structDef doc tyinfo = SomeDefinition $ StructDef doc tyinfo
 arrayDef :: Text -> Maybe PostDefName -> DefName -> Editable -> SomeDefinition
 arrayDef doc ptn tn ed = SomeDefinition $ ArrayDef doc ptn tn ed
 
-metaType :: Definition mt -> MetaType
-metaType = \case
-  TupleDef {} -> Tuple
-  StructDef {} -> Struct
-  ArrayDef {} -> Array
+instance TypeEnumOf (Definition mt) MetaType where
+  typeEnumOf = \case
+    TupleDef {} -> Tuple
+    StructDef {} -> Struct
+    ArrayDef {} -> Array
 
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
