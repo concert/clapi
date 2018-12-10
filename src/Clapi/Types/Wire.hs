@@ -108,6 +108,26 @@ getShow = \case
 data SomeWireType where
   SomeWireType :: WireType a -> SomeWireType
 
+wtTime, wtWord32, wtWord64, wtInt32, wtInt64, wtFloat, wtDouble, wtString
+  :: SomeWireType
+wtTime = SomeWireType WtTime
+wtWord32 = SomeWireType WtWord32
+wtWord64 = SomeWireType WtWord64
+wtInt32 = SomeWireType WtInt32
+wtInt64 = SomeWireType WtInt64
+wtFloat = SomeWireType WtFloat
+wtDouble = SomeWireType WtDouble
+wtString = SomeWireType WtString
+
+wtList :: SomeWireType -> SomeWireType
+wtList (SomeWireType wt) = SomeWireType $ WtList wt
+
+wtMaybe :: SomeWireType -> SomeWireType
+wtMaybe (SomeWireType wt) = SomeWireType $ WtMaybe wt
+
+wtPair :: SomeWireType -> SomeWireType -> SomeWireType
+wtPair (SomeWireType wt1) (SomeWireType wt2) = SomeWireType $ WtPair wt1 wt2
+
 data WireValue a where
   WireValue :: WireType a -> a -> WireValue a
 
