@@ -12,8 +12,9 @@ import Clapi.Serialisation.Path ()
 import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
+import Clapi.Types.Base (TypeEnumOf(..))
 import Clapi.Types.Definitions
-  ( Editable(..), MetaType(..), metaType
+  ( Editable(..), MetaType(..)
   , Definition(..), SomeDefinition(..), PostDefinition(..)
   , tupleDef, structDef, arrayDef)
 import Clapi.Types.Tree (SomeTreeType(..))
@@ -35,7 +36,7 @@ instance Encodable SomeTreeType where
   parser = parser >>= ttFromText
 
 defTaggedData :: TaggedData MetaType SomeDefinition
-defTaggedData = taggedData typeToTag $ \(SomeDefinition d) -> metaType d
+defTaggedData = taggedData typeToTag $ \(SomeDefinition d) -> typeEnumOf d
   where
     typeToTag mt = case mt of
       Tuple -> [btq|T|]
