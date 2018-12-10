@@ -37,7 +37,7 @@ import Data.Word
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Text.Printf (printf)
 
-import Clapi.Types.Base (Time(..))
+import Clapi.Types.Base (Time(..), TypeEnumOf(..))
 
 data WireType a where
   WtTime :: WireType Time
