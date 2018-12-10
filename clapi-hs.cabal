@@ -164,7 +164,6 @@ test-suite clapi-hs-test
                      , SerialisationSpec
                      , TextSerialisationSpec
                      , TreeSpec
-                     , TypesSpec
                      , UtilSpec
                      , ValidatorSpec
                      , ValuespaceSpec
