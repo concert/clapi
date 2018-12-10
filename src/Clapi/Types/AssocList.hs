@@ -11,7 +11,7 @@ module Clapi.Types.AssocList
   , alCons, alLookup, alInsert, alSetDefault, alDelete
   , alKeys, alKeysSet, alValues
   , alPartitionWithKey
-  , alFmapWithKey, alTraverseWithKey, alMapKeys
+  , alFmapWithKey, alTraverseWithKey, alMapKeys, alMapMaybeWithKey, alMapMaybe
   , alFilterWithKey, alFoldlWithKey,  alFilterKey
   , alAlterF, alAlter, alAdjust
   ) where
@@ -114,6 +114,15 @@ alMapKeys
   :: (Ord k1, Show k1, MonadFail m)
   => (k0 -> k1) -> AssocList k0 b -> m (AssocList k1 b)
 alMapKeys f = mkAssocList . fmap (\(a, b) -> (f a, b)) . unAssocList
+
+alMapMaybeWithKey
+  :: Eq k => (k -> a -> Maybe b) -> AssocList k a -> AssocList k b
+alMapMaybeWithKey f = alFoldlWithKey g alEmpty
+  where
+    g acc k a = maybe acc (\b -> alInsert k b acc) $ f k a
+
+alMapMaybe :: Eq k => (a -> Maybe b) -> AssocList k a -> AssocList k b
+alMapMaybe f = alMapMaybeWithKey $ const f
 
 alFoldlWithKey :: (acc -> k -> b -> acc) -> acc -> AssocList k b -> acc
 alFoldlWithKey f acc = foldl (\acc' (k, b) -> f acc' k b) acc . unAssocList
