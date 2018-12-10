@@ -1,7 +1,10 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    GeneralizedNewtypeDeriving
-  , Rank2Types
+    DataKinds
+  , FlexibleInstances
+  , GADTs
+  , GeneralizedNewtypeDeriving
+  , RankNTypes
   , StandaloneDeriving
   , TemplateHaskell
 #-}
@@ -210,17 +213,28 @@ instance Arbitrary PostDefinition where
   arbitrary = PostDefinition <$> arbitrary <*>
     assocListOf arbitrary (smallListOf arbitrary)
 
-instance Arbitrary Definition where
-  arbitrary = oneof
-    [ TupleDef <$>
-        (TupleDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary)
-    , StructDef <$>
-        (StructDefinition <$> arbitraryTextNoNull <*> arbitrary)
-    , ArrayDef <$>
-        (ArrayDefinition <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
-         <*> arbitrary)
-    ]
+instance Arbitrary (Definition 'Tuple) where
+  arbitrary = TupleDef <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
+  shrink (TupleDef d ty ilim) =
+    [TupleDef d' ty' ilim' | (d', ty', ilim') <- shrink (d, ty, ilim)]
 
+instance Arbitrary (Definition 'Struct) where
+  arbitrary = StructDef <$> arbitraryTextNoNull <*> arbitrary
+  shrink (StructDef d tyinfo) =
+    [StructDef d' tyinfo' | (d', tyinfo') <- shrink (d, tyinfo)]
+
+instance Arbitrary (Definition 'Array) where
+  arbitrary = ArrayDef <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
+    <*> arbitrary
+  shrink (ArrayDef d ptn tn ed) =
+    [ArrayDef d' ptn' tn' ed' | (d', ptn', tn', ed') <- shrink (d, ptn, tn, ed)]
+
+instance Arbitrary SomeDefinition where
+  arbitrary = oneof
+    [ SomeDefinition <$> arbitrary @(Definition 'Tuple)
+    , SomeDefinition <$> arbitrary @(Definition 'Struct)
+    , SomeDefinition <$> arbitrary @(Definition 'Array)
+    ]
 
 instance Arbitrary CreateOp where
   arbitrary = OpCreate <$> smallListOf (smallListOf arbitrary) <*> arbitrary

@@ -11,6 +11,8 @@ import qualified Data.ByteString as B
 
 import qualified Data.Map.Mol as Mol
 
+import Instances ()
+
 import Clapi.Types (FrDigest(..), FrpErrorDigest(..), DataErrorIndex(..))
 import Clapi.Protocol
   ((<<->), sendRev, sendFwd, waitThenFwdOnly, waitThenRevOnly, runEffect)

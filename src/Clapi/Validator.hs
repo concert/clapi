@@ -16,7 +16,7 @@ import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
 import Clapi.Util (ensureUnique)
-import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue, Definition)
+import Clapi.Types (WireValue, Time, Wireable, cast', castWireValue, DefName)
 import Clapi.Types.Path (Seg, Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (Bounds, boundsMin, boundsMax, TreeType(..))
@@ -37,7 +37,7 @@ inBounds b n = go (boundsMin b) (boundsMax b)
 
 extractTypeAssertions
   :: MonadFail m
-  => TreeType -> WireValue -> m [(Tagged Definition Seg, Path)]
+  => TreeType -> WireValue -> m [(DefName, Path)]
 extractTypeAssertions tt = fmap (fmap $ first Tagged) .
   withWireable (extractTypeAssertions' tt) tt
 

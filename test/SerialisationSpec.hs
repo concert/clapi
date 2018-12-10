@@ -21,6 +21,7 @@ import Clapi.Types (TrDigest(..), FrDigest(..))
 import Clapi.Serialisation (Encodable(..), Decodable(..))
 
 import Arbitrary ()
+import Instances ()
 
 
 encode :: (MonadFail m, Encodable a) => a -> m ByteString

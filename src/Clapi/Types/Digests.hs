@@ -21,7 +21,8 @@ import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Editable, PostDefinition)
+import Clapi.Types.Definitions
+  (SomeDefinition, DefName, Editable, PostDefinition)
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
@@ -44,7 +45,7 @@ data DataErrorIndex
 data SubErrorIndex
   = NamespaceSubError Namespace
   | PostTypeSubError Namespace (Tagged PostDefinition Seg)
-  | TypeSubError Namespace (Tagged Definition Seg)
+  | TypeSubError Namespace DefName
   | PathSubError Namespace Path
   deriving (Show, Eq, Ord)
 
@@ -53,7 +54,7 @@ class MkSubErrIdx a where
 
 instance MkSubErrIdx (Tagged PostDefinition Seg) where
   mkSubErrIdx = PostTypeSubError
-instance MkSubErrIdx (Tagged Definition Seg) where
+instance MkSubErrIdx DefName where
   mkSubErrIdx = TypeSubError
 instance MkSubErrIdx Path where
   mkSubErrIdx = PathSubError
@@ -97,14 +98,14 @@ data PostOp
 data TrpDigest = TrpDigest
   { trpdNamespace :: Namespace
   , trpdPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
-  , trpdDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
+  , trpdDefinitions :: Map DefName (DefOp SomeDefinition)
   , trpdData :: DataDigest
   , trpdContOps :: ContOps Seg
   -- FIXME: should errors come in a different digest to data updates? At the
   -- moment we just check a TrpDigest isn't null when processing namespace
   -- claims...
   , trpdErrors :: Mol DataErrorIndex Text
-  } deriving (Show, Eq)
+  } deriving Show
 
 trpdEmpty :: Namespace -> TrpDigest
 trpdEmpty ns = TrpDigest ns mempty mempty alEmpty mempty mempty
@@ -148,7 +149,7 @@ isSub _ = False
 
 data TrcSubDigest = TrcSubDigest
   { trcsdPostTypes :: Map (Namespace, Tagged PostDefinition Seg) SubOp
-  , trcsdTypes :: Map (Namespace, Tagged Definition Seg) SubOp
+  , trcsdTypes :: Map (Namespace, DefName) SubOp
   , trcsdData :: Map (Namespace, Path) SubOp
   } deriving (Show, Eq)
 
@@ -169,7 +170,7 @@ trcsdNamespaces (TrcSubDigest p t d) =
 data ClientRegs
   = ClientRegs
   { crPostTypeRegs :: Mos Namespace (Tagged PostDefinition Seg)
-  , crTypeRegs :: Mos Namespace (Tagged Definition Seg)
+  , crTypeRegs :: Mos Namespace DefName
   , crDataRegs :: Mos Namespace Path
   } deriving (Show)
 
@@ -229,7 +230,7 @@ data FrcSubDigest = FrcSubDigest
   -- FIXME: really this is a Mol:
   { frcsdErrors :: Map SubErrorIndex [Text]
   , frcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
-  , frcsdTypeUnsubs :: Mos Namespace (Tagged Definition Seg)
+  , frcsdTypeUnsubs :: Mos Namespace DefName
   , frcsdDataUnsubs :: Mos Namespace Path
   } deriving (Show, Eq)
 
@@ -253,12 +254,12 @@ frcsdFromClientRegs (ClientRegs p t d) = FrcSubDigest mempty p t d
 data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
   , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
-  , frcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , frcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
+  , frcudDefinitions :: Map DefName (DefOp SomeDefinition)
+  , frcudTypeAssignments :: Map Path (DefName, Editable)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Mol DataErrorIndex Text
-  } deriving (Show, Eq)
+  } deriving Show
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
 frcudEmpty ns = FrcUpdateDigest ns mempty mempty mempty alEmpty mempty mempty
@@ -276,7 +277,7 @@ data TrDigest
   | Trprd TrprDigest
   | Trcsd TrcSubDigest
   | Trcud TrcUpdateDigest
-  deriving (Show, Eq)
+  deriving Show
 
 data FrDigest
   = Frpd FrpDigest
@@ -284,7 +285,7 @@ data FrDigest
   | Frcrd FrcRootDigest
   | Frcsd FrcSubDigest
   | Frcud FrcUpdateDigest
-  deriving (Show, Eq)
+  deriving Show
 
 frNull :: FrDigest -> Bool
 frNull = \case
@@ -320,4 +321,4 @@ data OutboundDigest
   | Ocud OutboundClientUpdateDigest
   | Opd OutboundProviderDigest
   | Ope FrpErrorDigest
-  deriving (Show, Eq)
+  deriving Show

@@ -41,9 +41,8 @@ import Clapi.Types.AssocList
   ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
-  ( ArrayDefinition(..), StructDefinition(..), TupleDefinition(..)
-  , arrayDef, structDef, tupleDef
-  , Editable(..), Definition(..), PostDefinition(..))
+  ( arrayDef, structDef, tupleDef, DefName
+  , Editable(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
@@ -111,7 +110,7 @@ spec = do
         -- Check that the previously defined namespace is completely gone
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect $ [emptyRootDig "sub"]
-        subscribe fooNs (Tagged @Definition foo) "sub"
+        subscribe fooNs (Tagged @SomeDefinition foo) "sub"
         expect $ [ServerData "sub" $ Frcsd $ mempty {
           frcsdErrors = Map.singleton (NamespaceSubError fooNs)
             ["Namespace not found"] }]
@@ -131,8 +130,8 @@ spec = do
           -- the error...
           forM_ [ pt op $ Tagged @PostDefinition foo
                 , pt op $ Tagged @PostDefinition bar
-                , t op $ Tagged @Definition foo
-                , t op $ Tagged @Definition bar
+                , t op $ Tagged @SomeDefinition foo
+                , t op $ Tagged @SomeDefinition bar
                 , d op $ Root
                 , d op $ Root :/ bar
                 ] $ \subDig ->
@@ -285,7 +284,7 @@ spec = do
 
         -- PostDefinition, Definition and data don't exist:
         checkAlreadyUnsub $ Tagged @PostDefinition bar
-        checkAlreadyUnsub $ Tagged @Definition bar
+        checkAlreadyUnsub $ Tagged @SomeDefinition bar
         checkAlreadyUnsub $ Root :/ bar
 
         -- PostDefinition, Definition and data exist, but never subscribed
@@ -357,7 +356,7 @@ spec = do
 
     it "unsubscribes clients on owner disconnect and disowns" $
       -- Also that the client gets notified of the deletion of the owner's data.
-      testRelay mempty $ let textyTn = Tagged @Definition [segq|texty|] in do
+      testRelay mempty $ let textyTn = Tagged @SomeDefinition [segq|texty|] in do
         sub_owner_preamble
         subscribe fooNs textyTn "sub"
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
@@ -435,7 +434,7 @@ spec = do
       expect [ServerData subId $ Frcud $ mkFrcud ns ident existing]
 
     verifyDataSub = verifySub @[WireValue]
-    verifyTySub o s n i = verifySub @Definition o s n i "changed doc"
+    verifyTySub o s n i = verifySub @SomeDefinition o s n i "changed doc"
     verifyPdSub o s n i = verifySub @PostDefinition o s n i "changed doc"
 
     -- FIXME: this will only work if there are _no subscribers at all_ to the
@@ -453,7 +452,7 @@ spec = do
       nothingWaiting
 
     verifyNoDataSub = verifyNoSub @[WireValue]
-    verifyNoTySub o s n i = verifyNoSub @Definition o s n i "changed doc"
+    verifyNoTySub o s n i = verifyNoSub @SomeDefinition o s n i "changed doc"
     verifyNoPdSub o s n i = verifyNoSub @PostDefinition o s n i "changed doc"
 
     intDef = tupleDef'
@@ -636,8 +635,8 @@ instance Subscribe PostDefinition where
   type Mutator PostDefinition = Text
   mutate doc pd = pd { postDefDoc = doc }
 
-instance Subscribe Definition where
-  type EntityId Definition = Tagged Definition Seg
+instance Subscribe SomeDefinition where
+  type EntityId SomeDefinition = DefName
   mkTrcsd ns name op = mempty {trcsdTypes = Map.singleton (ns, name) op}
   mkFrcsd ns name = mempty {frcsdTypeUnsubs = Mos.singleton ns name}
   mkTrpd ns name ent = (trpdEmpty ns)
@@ -646,11 +645,11 @@ instance Subscribe Definition where
     { frcudDefinitions = Map.singleton name $ OpDefine ent }
   _repr _ = "def"
   extractEntity name = Map.lookup name . frcudDefinitions >=> unOpDefine
-  type Mutator Definition = Text
-  mutate doc = \case
-    ArrayDef ad -> ArrayDef ad {arrDefDoc = doc}
-    StructDef ad -> StructDef ad {strDefDoc = doc}
-    TupleDef ad -> TupleDef ad {tupDefDoc = doc}
+  type Mutator SomeDefinition = Text
+  mutate doc (SomeDefinition def) = case def of
+    ArrayDef {} -> SomeDefinition $ def {arrDefDoc = doc}
+    StructDef {} -> SomeDefinition $ def {strDefDoc = doc}
+    TupleDef {} -> SomeDefinition $ def {tupDefDoc = doc}
 
 instance Subscribe [WireValue] where
   type EntityId [WireValue] = Path
@@ -699,7 +698,7 @@ retrieve ns name =
     return $ fromMaybe (error $ "missing existing " ++ etName) $
         extractEntity name frcud
 
-define :: Seg -> Definition -> TrpDigest -> TrpDigest
+define :: Seg -> SomeDefinition -> TrpDigest -> TrpDigest
 define name def trpd = trpd
   { trpdDefinitions = Map.insert (Tagged name) (OpDefine def) $
     trpdDefinitions trpd }
@@ -723,7 +722,7 @@ foo = [segq|foo|]; bar = [segq|bar|]; baz = [segq|baz|]; x = [segq|x|]
 fooNs, barNs, bazNs :: Namespace
 fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
 
-fooTn, barTn, bazTn :: Tagged Definition Seg
+fooTn, barTn, bazTn :: DefName
 fooTn = Tagged foo; barTn = Tagged bar; bazTn = Tagged baz
 
 fooPdn, barPdn, bazPdn :: Tagged PostDefinition Seg
@@ -733,14 +732,14 @@ fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 root :: Path
 root = Root
 
-arrayDef' :: Text -> Seg -> Editable -> Definition
+arrayDef' :: Text -> Seg -> Editable -> SomeDefinition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
 
-structDef' :: Text -> [(Seg, Seg)] -> Definition
+structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition
 structDef' doc tys = structDef doc $ unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
-tupleDef' :: Text -> [(Seg, TreeType)] -> InterpolationLimit -> Definition
+tupleDef' :: Text -> [(Seg, TreeType)] -> InterpolationLimit -> SomeDefinition
 tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il
 
 postDef' :: Text -> [(Seg, TreeType)] -> PostDefinition

@@ -1,9 +1,10 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE
+    GADTs
+  , OverloadedStrings
+  , QuasiQuotes
+  , StandaloneDeriving
+#-}
 module ValuespaceSpec where
 
 import Test.Hspec
@@ -28,8 +29,7 @@ import Clapi.Types
   ( InterpolationLimit(ILUninterpolated), WireValue(..)
   , TreeType(..), unbounded, Editable(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
-  , Definition(..)
-  , StructDefinition(strDefTypes)
+  , Definition(..), SomeDefinition, withDefinition, DefName
   , TrpDigest(..), DefOp(..), DataChange(..)
   , TrcUpdateDigest(..), trcudEmpty)
 import qualified Clapi.Types.Path as Path
@@ -109,18 +109,18 @@ vsAppliesCleanly d vs = either (fail . show) (return . snd) $
   processToRelayProviderDigest d vs
 
 redefTestRoot
-  :: (AssocList Seg (Tagged Definition Seg)
-      -> AssocList Seg (Tagged Definition Seg))
-  -> Valuespace -> Definition
+  :: (AssocList Seg DefName -> AssocList Seg DefName)
+  -> Valuespace -> SomeDefinition
 redefTestRoot f vs =
     structDef "Frigged by test" $ (, ReadOnly) <$> f currentKids
   where
-    currentKids = fmap fst $ grabDefTypes $ fromJust $
+    currentKids = fmap fst $ withDefinition grabDefTypes $ fromJust $
       Map.lookup (Tagged $ unNamespace testNs) $ vsTyDefs vs
-    grabDefTypes (StructDef sd) = strDefTypes sd
+    grabDefTypes :: Definition mt -> AssocList Seg (DefName, Editable)
+    grabDefTypes (StructDef { strDefChildTys = tyinfo }) = tyinfo
     grabDefTypes _ = error "Test vs root type not a struct!"
 
-extendedVs :: MonadFail m => Definition -> Seg -> DataChange -> m Valuespace
+extendedVs :: MonadFail m => SomeDefinition -> Seg -> DataChange -> m Valuespace
 extendedVs def s dc =
   let
     rootDef = redefTestRoot (alInsert s $ Tagged s) testValuespace

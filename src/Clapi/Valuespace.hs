@@ -1,5 +1,6 @@
 {-# LANGUAGE
     FlexibleContexts
+  , GADTs
   , LambdaCase
   , OverloadedStrings
 #-}
@@ -51,9 +52,9 @@ import Clapi.Types.AssocList
   ( alKeysSet, alValues, alEmpty
   , alFmapWithKey, alToMap, alPartitionWithKey, alFilterKey)
 import Clapi.Types.Definitions
-  ( Definition(..), Editable(..), TupleDefinition(..)
-  , StructDefinition(..), ArrayDefinition(..), PostDefinition(..), defDispatch
-  , childEditableFor, childTypeFor)
+  ( Definition(..), SomeDefinition(..), withDefinition
+  , Editable(..), PostDefinition(..)
+  , DefName, childEditableFor, childTypeFor)
 import Clapi.Types.Digests
   ( TpId, DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
   , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates
@@ -82,7 +83,7 @@ removeXrefsTps referer tpids = fmap (Map.update updateTpMap referer)
     updateTpMap (Just tpSet) = let tpSet' = Set.difference tpSet tpids in
       if null tpSet' then Nothing else Just $ Just tpSet'
 
-baseValuespace :: Tagged Definition Seg -> Editable -> Valuespace
+baseValuespace :: DefName -> Editable -> Valuespace
 baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
@@ -109,32 +110,32 @@ class VsLookupDef def where
 instance VsLookupDef PostDefinition where
   ldErrStr _ = "post def"
   vsGetDefMap = vsPostDefs
-  defForPath p vs = defForPath @Definition p vs
-    >>= (\case
-      ArrayDef ad -> maybe (fail "array does not define post type") return $
-        arrPostType ad
+  defForPath p vs = defForPath @SomeDefinition p vs
+    >>= (\(SomeDefinition d) -> case d of
+      ArrayDef { arrDefPostTy = mpt } ->
+        maybe (fail "array does not define post type") return mpt
       _ -> fail "Definition at path not for array")
     >>= flip vsLookupDef vs
 
-instance VsLookupDef Definition where
+instance VsLookupDef SomeDefinition where
   ldErrStr _ = "def"
   vsGetDefMap = vsTyDefs
   defForPath p vs = lookupTypeName p (vsTyAssns vs)
     >>= flip lookupDef (vsTyDefs vs)
 
 lookupTypeName
-  :: MonadFail m => Path -> TypeAssignmentMap -> m (Tagged Definition Seg)
+  :: MonadFail m => Path -> TypeAssignmentMap -> m DefName
 lookupTypeName p tam = note "Type name not found" $ Dependencies.lookup p tam
 
 getEditable :: MonadFail m => Path -> Valuespace -> m Editable
 getEditable path vs = case path of
-  p :/ s -> defForPath p vs >>= defDispatch (flip childEditableFor s)
+  p :/ s -> defForPath p vs >>= withDefinition (childEditableFor s)
   _ -> pure $ vsRootEditable vs  -- Root
 
 valuespaceGet
   :: MonadFail m => Path -> Valuespace
-  -> m ( Definition
-       , Tagged Definition Seg
+  -> m ( SomeDefinition
+       , DefName
        , Editable
        , RoseTreeNode [WireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
@@ -144,7 +145,7 @@ valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
     ed <- getEditable p vs
     return (def, ts, ed, rtn)
 
-type RefTypeClaims = Mos (Tagged Definition Seg) Referee
+type RefTypeClaims = Mos DefName Referee
 type TypeClaimsByPath =
   Map Referer (Either RefTypeClaims (Map TpId RefTypeClaims))
 
@@ -198,7 +199,7 @@ checkRefClaims tyAssns = smashErrMap . Map.mapWithKey checkRefsAtPath
           (smashErrMap .
            Map.mapWithKey (\tpid -> doCheck (TimePointError path tpid)))
           refClaims
-    checkRef :: Tagged Definition Seg -> Path -> Either ValidationErr ()
+    checkRef :: DefName -> Path -> Either ValidationErr ()
     checkRef requiredTs refP = case lookupTypeName refP tyAssns of
         Nothing -> Left $ RefTargetNotFound refP
         Just actualTs -> if actualTs == requiredTs
@@ -209,7 +210,7 @@ validateVs
   :: Map Path (Maybe (Set TpId)) -> Valuespace
   -> Either
        (Mol DataErrorIndex ValidationErr)
-       (Map Path (Tagged Definition Seg), Valuespace)
+       (Map Path DefName, Valuespace)
 validateVs t v = do
     (newTypeAssns, refClaims, vs) <- inner mempty mempty t v
     checkRefClaims (vsTyAssns vs) refClaims
@@ -231,11 +232,11 @@ validateVs t v = do
     -- then we should probably stop, but if we just encouter bad data, we should
     -- probably just capture the error and continue.
     inner
-      :: Map Path (Tagged Definition Seg)
+      :: Map Path DefName
       -> TypeClaimsByPath
       -> Map Path (Maybe (Set TpId)) -> Valuespace
       -> Either (Mol DataErrorIndex ValidationErr)
-           (Map Path (Tagged Definition Seg), TypeClaimsByPath, Valuespace)
+           (Map Path DefName, TypeClaimsByPath, Valuespace)
     inner newTas newRefClaims tainted vs =
       let tree = vsTree vs; oldTyAssns = vsTyAssns vs in
       case Map.toAscList tainted of
@@ -254,7 +255,7 @@ validateVs t v = do
               _ -> Left $ Mol.singleton GlobalError $
                 GenericErr "Attempted to taint parent of root"
             Just ts -> do
-              def <- errP path $ vsLookupDef ts vs
+              SomeDefinition def <- errP path $ vsLookupDef ts vs
               rtn <- tLook path tree
               case validateRoseTreeNode def rtn invalidatedTps of
                 Left validationErrs -> if null emptyArrays
@@ -263,17 +264,20 @@ validateVs t v = do
                     else inner newTas' newRefClaims tainted' vs'
                   where
                     emptyArrays = mapMaybe mHandlable validationErrs
+                    isEmptyContainer :: Set DefName -> Definition mt -> Maybe Bool
                     isEmptyContainer seen d = case d of
-                        ArrayDef _ -> Just True
-                        StructDef (StructDefinition _ defKids) ->
+                        ArrayDef {} -> Just True
+                        StructDef { strDefChildTys = defKids } ->
                             and <$> (mapM (typeIsEmptyContainer seen) $ fst <$> alValues defKids)
                         _ -> Just False
                     typeIsEmptyContainer seen cts = if Set.member cts seen
                         then Nothing
-                        else vsLookupDef cts vs >>= isEmptyContainer (Set.insert cts seen)
+                        else do
+                          SomeDefinition d <- vsLookupDef cts vs
+                          isEmptyContainer (Set.insert cts seen) d
                     mHandlable ve = case ve of
                         MissingChild name -> do
-                            cts <- defDispatch (childTypeFor name) def
+                            cts <- childTypeFor name def
                             isEmpty <- typeIsEmptyContainer mempty cts
                             if isEmpty
                               then Just (path :/ name, cts)
@@ -303,7 +307,7 @@ validateVs t v = do
                       (\name _ -> Dependencies.lookup (path :/ name) oldTyAssns) $
                       treeChildren rtn
                     newChildTypes = Map.mapMaybe id $ alToMap $ alFmapWithKey
-                      (\name _ -> defDispatch (childTypeFor name) def) $
+                      (\name _ -> childTypeFor name def) $
                       treeChildren rtn
                     changedChildTypes = merge
                       dropMissing preserveMissing
@@ -332,7 +336,7 @@ processToRelayProviderDigest
   :: TrpDigest -> Valuespace
   -> Either
       (Mol DataErrorIndex Text)
-      (Map Path (Tagged Definition Seg), Valuespace)
+      (Map Path DefName, Valuespace)
 processToRelayProviderDigest trpd vs =
   let
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
@@ -358,7 +362,7 @@ processToRelayProviderDigest trpd vs =
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validatePath vs p mTpids = do
-    def <- first pure $ first GenericErr $ defForPath p vs
+    SomeDefinition def <- first pure $ first GenericErr $ defForPath p vs
     t <- maybe (Left [ProgrammingErr "Tainted but missing"]) Right $ Tree.treeLookup p $ vsTree vs
     validateRoseTreeNode def t mTpids
 
@@ -583,8 +587,8 @@ data ValidationErr
   | RefTargetNotFound Path
   | RefTargetTypeErr
     { veRttePath :: Path
-    , veRtteExpectedType :: Tagged Definition Seg
-    , veRtteTargetType :: Tagged Definition Seg}
+    , veRtteExpectedType :: DefName
+    , veRtteTargetType :: DefName}
   | EditableErr String
   | CreateReferencedAbsentName Placeholder (Either Placeholder Seg)
   | MoveReferencedAbsentName Seg (Either Placeholder Seg)
@@ -594,26 +598,26 @@ data ValidationErr
   | BadCreateArgs {vePh :: Placeholder, veArgName :: Seg}
   deriving (Show)
 
-defNodeType :: Definition -> RoseTreeNodeType
+defNodeType :: Definition mt -> RoseTreeNodeType
 defNodeType def = case def of
-    StructDef _ -> RtntContainer
-    ArrayDef _ -> RtntContainer
-    TupleDef (TupleDefinition _ _ interpLim) -> case interpLim of
+    StructDef {} -> RtntContainer
+    ArrayDef {} -> RtntContainer
+    TupleDef { tupDefILimit = ilimit } -> case ilimit of
         ILUninterpolated -> RtntConstData
         _ -> RtntDataSeries
 
 validateRoseTreeNode
-  :: Definition -> RoseTree [WireValue] -> Maybe (Set TpId)
+  :: Definition mt -> RoseTree [WireValue] -> Maybe (Set TpId)
   -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validateRoseTreeNode def t invalidatedTps = case t of
     RtEmpty -> tyErr
     RtConstData _ wvs -> case def of
-      TupleDef (TupleDefinition _ alTreeTypes _) ->
+      TupleDef { tupDefTys = alTreeTypes } ->
         first pure $ first GenericErr $
         Left <$> validateWireValues (alValues alTreeTypes) wvs
       _ -> tyErr
     RtDataSeries m -> case def of
-      TupleDef (TupleDefinition _ alTreeTypes _) ->
+      TupleDef { tupDefTys = alTreeTypes } ->
         let toValidate = case invalidatedTps of
               Nothing -> Dkmap.valueMap m
               Just tpids -> Map.restrictKeys (Dkmap.valueMap m) tpids
@@ -622,8 +626,8 @@ validateRoseTreeNode def t invalidatedTps = case t of
           mapM (validateWireValues (alValues alTreeTypes) . snd . snd) toValidate
       _ -> tyErr
     RtContainer alCont -> case def of
-      TupleDef _ -> tyErr
-      StructDef (StructDefinition _ alDef) -> if defSegs == rtnSegs
+      TupleDef {} -> tyErr
+      StructDef { strDefChildTys = alDef } -> if defSegs == rtnSegs
           then return $ Left mempty
           else Left $ fmap MissingChild missingSegs ++ fmap ExtraChild extraSegs
         where
@@ -631,7 +635,7 @@ validateRoseTreeNode def t invalidatedTps = case t of
           rtnSegs = alKeysSet alCont
           missingSegs = Set.toList $ Set.difference defSegs rtnSegs
           extraSegs = Set.toList $ Set.difference rtnSegs defSegs
-      ArrayDef _ -> return $ Left mempty
+      ArrayDef {} -> return $ Left mempty
   where
     tyErr = Left [BadNodeType (defNodeType def) (Tree.rtType t)]
 
@@ -645,7 +649,7 @@ validateWireValues tts wvs =
     vr tt wv = validate tt wv >> extractTypeAssertions tt wv
 
 validateExistingXrefs
-  :: Xrefs -> Map Path (Tagged Definition Seg)
+  :: Xrefs -> Map Path DefName
   -> Mol DataErrorIndex ValidationErr
 validateExistingXrefs xrs newTas =
   let
