@@ -17,60 +17,120 @@ import qualified Data.Text as Text
 import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
 
-type Errs ei = Mol ei Text
-type ErrsM s ei = ExceptT (Errs ei) (WriterT (Errs ei) (State s))
+import Clapi.Types.Digests (DataErrorIndex(..), TpId)
+import Clapi.Types.Path (Path)
 
-runErrsM :: Ord ei => ErrsM s ei a -> s -> (Either (Errs ei) a, s)
-runErrsM vsm = first smush . runState (runWriterT $ runExceptT vsm)
+import Debug.Trace
+
+
+type ErrsM s e = ExceptT e (WriterT e (State s))
+
+runErrsM :: (Monoid e, Eq e) => ErrsM s e a -> s -> (Either e a, s)
+runErrsM errsM = first smush . runState (runWriterT $ runExceptT errsM)
   where
-    smush :: Ord ei => (Either (Errs ei) a, Errs ei) -> Either (Errs ei) a
-    smush (eMolA, mol1) = case eMolA of
-      Left mol2 -> Left $ mol1 <> mol2
-      Right a -> if null mol1 then return a else Left mol1
+    smush :: (Monoid e, Eq e) => (Either e a, e) -> Either e a
+    smush (eea, e1) = case eea of
+      Left e2 -> Left $ e1 <> e2
+      Right a -> if e1 == mempty then Right a else Left e1
 
-report :: Ord ei => ei -> Text -> ErrsM s ei ()
-report ei = reports ei . pure
+runErrsMSoft :: Semigroup e => ErrsM s e a -> s -> (e, Maybe a, s)
+runErrsMSoft errsM = smush . runState (runWriterT $ runExceptT errsM)
+  where
+    smush :: Semigroup e => ((Either e a, e), s) -> (e, Maybe a, s)
+    smush ((eea, e1), s) = case eea of
+      Left e2 -> (e1 <> e2, Nothing, s)
+      Right a -> (e1, Just a, s)
 
-reports :: Ord ei => ei -> [Text] -> ErrsM s ei ()
-reports ei = tell . Mol.singletonList ei
 
-abort :: Ord ei => ei -> Text -> ErrsM s ei a
-abort ei = aborts ei . pure
+didItMoan :: (Monoid e, Eq e, Show e) => String -> ErrsM s e a -> ErrsM s e a
+didItMoan msg m = do
+  s <- get
+  let ((ea, e), s') = runState (runWriterT $ runExceptT m) s
+  put s'
+  case ea of
+    Left e' -> trace (msg ++ " aborted") $ traceShow (e <> e') $ throwError e'
+    Right a -> if (e == mempty)
+      then return a
+      else trace (msg ++ " reported") $ traceShow e $ tell e >> return a
 
-aborts :: Ord ei => ei -> [Text] -> ErrsM s ei a
-aborts ei = throwError . Mol.singletonList ei
+report :: (Applicative t, Monoid (t e)) => e -> ErrsM s (t e) ()
+report = reports . pure
 
-soften :: Ord ei => ErrsM s ei a -> ErrsM s ei (Maybe a)
-soften vsm = lift (runExceptT vsm) >>= softEither tell
+reports :: Monoid e => e -> ErrsM s e ()
+reports = tell
 
-harden :: Ord ei => ErrsM s ei (Maybe a) -> ErrsM s ei a
-harden vsm = vsm >>= maybe (throwError mempty) return
+abort :: (Applicative t, Monoid (t e)) => e -> ErrsM s (t e) a
+abort = aborts . pure
 
-collect :: (Traversable t, Ord ei) => t (ErrsM s ei a) -> ErrsM s ei (t a)
-collect = harden . fmap sequence . traverse soften
+aborts :: Monoid e => e -> ErrsM s e a
+aborts = throwError
 
-reportEither :: Ord ei => ei -> Either Text a -> ErrsM s ei (Maybe a)
-reportEither ei = softEither $ report ei
+soften :: Monoid e => ErrsM s e a -> ErrsM s e (Maybe a)
+soften vsm = lift (runExceptT vsm) >>= handleEither tell
 
-reportsEither :: Ord ei => ei -> Either [Text] a -> ErrsM s ei (Maybe a)
-reportsEither ei = softEither $ reports ei
+harden :: (Monoid e, Eq e) => ErrsM s e a -> ErrsM s e a
+harden m = do
+  (a, es) <- listen m
+  if es == mempty then return a else throwError mempty
 
-abortEither :: Ord ei => ei -> Either Text a -> ErrsM s ei a
-abortEither ei = either (abort ei) return
+collect
+  :: (Traversable t, Monoid e) => t (ErrsM s e b) -> ErrsM s e (t b)
+collect t = mapM soften t >>= maybe (throwError mempty) return . sequence
 
-abortsEither :: Ord ei => ei -> Either [Text] a -> ErrsM s ei a
-abortsEither ei = either (aborts ei) return
+-- FIXME: I think I also want a version of collect that grabs all the success it
+-- can and just notes down the failures
 
-softEither
-  :: Ord ei => (e -> ErrsM s ei ()) -> Either e a -> ErrsM s ei (Maybe a)
-softEither f = either (\e -> f e >> return Nothing) (return . Just)
+reportEither
+  :: (Applicative t, Monoid (t e)) => Either e a -> ErrsM s (t e) (Maybe a)
+reportEither = handleEither report
 
-modifying'''
-  :: (MonadState s m, MonadError e m)
-  => Lens' s a -> (a -> Either e a) -> m ()
-modifying''' lens f = use lens >>= either throwError (assign lens) . f
+reportsEither :: Monoid e => Either e a -> ErrsM s e (Maybe a)
+reportsEither = handleEither reports
+
+abortEither :: (Applicative t, Monoid (t e)) => Either e a -> ErrsM s (t e) a
+abortEither = either abort return
+
+abortsEither :: Monoid e => Either e a -> ErrsM s e a
+abortsEither = either aborts return
+
+handleEither
+  :: Monoid e2 => (e1 -> ErrsM s e2 ()) -> Either e1 a -> ErrsM s e2 (Maybe a)
+handleEither f = either (\e -> f e >> return Nothing) (return . Just)
+
+castErrs
+  :: (Monoid e1, Monoid e2, Eq e1) => (e1 -> e2) -> ErrsM s e1 a -> ErrsM s e2 a
+castErrs f errsM = do
+  (ee1a, e1) <- lift $ lift $ runWriterT $ runExceptT errsM
+  case ee1a of
+    Left e1' -> aborts (f $ e1 <> e1')
+    Right a -> unless (e1 == mempty) (reports (f e1)) >> return a
+
+monadFail :: Either String a -> ErrsM s Text a
+monadFail = either (aborts . Text.pack) return
+
+type Errs = Mol DataErrorIndex Text
+
+pathError :: Path -> ErrsM s Text a -> ErrsM s Errs a
+pathError p = castErrs $ Mol.singleton $ PathError p
+
+pathErrors :: Path -> ErrsM s [Text] a -> ErrsM s Errs a
+pathErrors p = castErrs $ Mol.singletonList $ PathError p
+
+timePointError :: Path -> TpId -> ErrsM s Text a -> ErrsM s Errs a
+timePointError p tpid = castErrs $ Mol.singleton $ TimePointError p tpid
+
+timePointErrors :: Path -> TpId -> ErrsM s [Text] a -> ErrsM s Errs a
+timePointErrors p tpid = castErrs $ Mol.singletonList $ TimePointError p tpid
 
 modifying''
-  :: Ord ei => Lens' s a -> ei -> (a -> Either String a) -> ErrsM s ei ()
-modifying'' lens ei f =
-  use lens >>= either (abort ei . Text.pack) (assign lens) . f
+  :: (MonadState s m, MonadError e m)
+  => Lens' s a -> (a -> Either e a) -> m ()
+modifying'' lens f = use lens >>= either throwError (assign lens) . f
+
+modifying''' :: Monoid e => Lens' s a -> (a -> ErrsM s e a) -> ErrsM s e ()
+modifying''' lens f = use lens >>= f >>= assign lens
+
+-- modifying''
+--   :: Ord ei => Lens' s a -> ei -> (a -> Either String a) -> ErrsM s ei ()
+-- modifying'' lens ei f =
+--   use lens >>= either (abort ei . Text.pack) (assign lens) . f
