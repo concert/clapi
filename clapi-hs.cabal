@@ -29,6 +29,7 @@ library
                      , Data.Map.Dependencies
                      , Clapi.Attributor
                      , Clapi.Internal.Valuespace
+                     , Clapi.Internal.Wire
                      , Clapi.SerialisationProtocol
                      , Clapi.Protocol
                      , Clapi.PerClientProto
@@ -73,6 +74,7 @@ library
                      , bytestring
                      , bytestring-builder-varword
                      , clock
+                     , constraints
                      , containers
                      , data-binary-ieee754
                      , either
