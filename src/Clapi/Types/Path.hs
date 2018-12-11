@@ -8,7 +8,8 @@ module Clapi.Types.Path
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
-  , isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths
+  , isParentOf, isStrictParentOf, isChildOf, isStrictChildOf
+  , isParentOfAny, isChildOfAny, childPaths
   ) where
 
 import Prelude hiding (fail)
@@ -93,8 +94,14 @@ fromText p = either fail return . DAT.parseOnly (pathP p <* DAT.endOfInput)
 isParentOf :: Eq a => Path' a -> Path' a -> Bool
 isParentOf (Path' as1) (Path' as2) = isPrefixOf as1 as2
 
+isStrictParentOf :: Eq a => Path' a -> Path' a -> Bool
+isStrictParentOf p1 p2 = p1 `isParentOf` p2 && p1 /= p2
+
 isChildOf :: Eq a => Path' a -> Path' a -> Bool
 isChildOf = flip isParentOf
+
+isStrictChildOf :: Eq a => Path' a -> Path' a -> Bool
+isStrictChildOf = flip isStrictParentOf
 
 isParentOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
 isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
