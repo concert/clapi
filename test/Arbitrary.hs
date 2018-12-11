@@ -4,6 +4,7 @@
   , FlexibleInstances
   , GADTs
   , GeneralizedNewtypeDeriving
+  , LambdaCase
   , RankNTypes
   , StandaloneDeriving
   , TemplateHaskell
@@ -22,6 +23,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.Proxy
+import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -69,9 +71,14 @@ severalCkps = mconcat <$> smallListOf commonKeyPairs
 
 instance (Ord k, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (Mos k v) where
   arbitrary = Mos.fromList <$> severalCkps
+  shrink =
+    fmap (Mos.fromList . Map.foldMapWithKey (\k -> fmap (k,) . Set.toList))
+    . traverse shrink
+    . Mos.unMos
 
 instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
   arbitrary = Mol.fromList <$> severalCkps
+  shrink = fmap Mol.fromMap . traverse shrink . Mol.unMol
 
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
@@ -79,6 +86,7 @@ assocListOf gk gv = alFromMap <$> smallMapOf gk gv
 
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
+  shrink = fmap unsafeMkAssocList . shrink . unAssocList
 
 
 arbitraryTextNoNull :: Gen Text
@@ -87,6 +95,7 @@ arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$>
 
 instance Arbitrary Text where
   arbitrary = arbitraryTextNoNull
+  shrink = fmap Text.pack . shrink . Text.unpack
 
 
 name :: Gen Seg
@@ -109,20 +118,27 @@ instance Arbitrary InterpolationLimit where
 
 instance Arbitrary Time where
   arbitrary = Time <$> arbitrary <*> arbitrary
+  shrink = \case
+    Time 0 0 -> []
+    Time x y -> [Time x' y' | (x', y') <- shrink (x, y)]
 
 instance Arbitrary Interpolation where
   arbitrary = oneof
       [ return IConstant
       , return ILinear
       , IBezier <$> arbitrary <*> arbitrary]
+  shrink = \case
+    IBezier _ _ -> [IConstant]
+    _ -> []
 
+mkBounds :: Ord a => Maybe a -> Maybe a -> Bounds a
+mkBounds a b = either error id $ case (a, b) of
+  (Just _, Just _) -> bounds (min a b) (max a b)
+  _ -> bounds a b
 
 instance (Ord a, Random a, Arbitrary a) => Arbitrary (Bounds a) where
-    arbitrary = mkBounds <$> arbitrary
-      where
-        mkBounds (a, b) = either error id $ case (a, b) of
-          (Just _, Just _) -> bounds (min a b) (max a b)
-          _ -> bounds a b
+    arbitrary = mkBounds <$> arbitrary <*> arbitrary
+    shrink b = [mkBounds lo hi | (lo, hi) <- shrink (boundsMin b, boundsMax b)]
 
 arbitraryRegex :: Gen Text
 arbitraryRegex =
