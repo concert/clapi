@@ -53,7 +53,7 @@ import Clapi.Types.Digests
   , trcsdClientRegs, frcsdFromClientRegs)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
 import Clapi.Types.Definitions
-  (Editability(..), SomeDefinition, PostDefinition, DefName)
+  (Editability(..), SomeDefinition, PostDefinition, DefName, PostDefName)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
@@ -84,7 +84,7 @@ oppifySequence al =
 --   can make a monoid instance. Namespaces must be tracked separately!
 --   This may or may not be a good idea *shrug*
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
-  { pfrcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
+  { pfrcudPostDefs :: Map PostDefName (DefOp PostDefinition)
   , pfrcudDefinitions :: Map DefName (DefOp SomeDefinition)
   , pfrcudTypeAssignments :: Map Path (DefName, Editability)
   , pfrcudData :: DataDigest

@@ -40,7 +40,7 @@ import Clapi.Types.AssocList
   ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
 import Clapi.Types.Base (InterpolationLimit(..))
 import Clapi.Types.Definitions
-  ( arrayDef, structDef, tupleDef, DefName
+  ( arrayDef, structDef, tupleDef, DefName, PostDefName
   , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -622,7 +622,7 @@ class Subscribe entity where
     mkTrcsd ns name op
 
 instance Subscribe PostDefinition where
-  type EntityId PostDefinition = Tagged PostDefinition Seg
+  type EntityId PostDefinition = PostDefName
   mkTrcsd ns name op = mempty {trcsdPostTypes = Map.singleton (ns, name) op}
   mkFrcsd ns name = mempty {frcsdPostTypeUnsubs = Mos.singleton ns name}
   mkTrpd ns name ent = (trpdEmpty ns)
@@ -724,7 +724,7 @@ fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
 fooTn, barTn, bazTn :: DefName
 fooTn = Tagged foo; barTn = Tagged bar; bazTn = Tagged baz
 
-fooPdn, barPdn, bazPdn :: Tagged PostDefinition Seg
+fooPdn, barPdn, bazPdn :: PostDefName
 fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 
 -- | A non-polymorphic root path

@@ -11,7 +11,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
 
@@ -22,7 +21,7 @@ import qualified Data.Map.Mos as Mos
 import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions
-  (SomeDefinition, DefName, Editability, PostDefinition)
+  (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
@@ -44,7 +43,7 @@ data DataErrorIndex
 
 data SubErrorIndex
   = NamespaceSubError Namespace
-  | PostTypeSubError Namespace (Tagged PostDefinition Seg)
+  | PostTypeSubError Namespace PostDefName
   | TypeSubError Namespace DefName
   | PathSubError Namespace Path
   deriving (Show, Eq, Ord)
@@ -52,7 +51,7 @@ data SubErrorIndex
 class MkSubErrIdx a where
   mkSubErrIdx :: Namespace -> a -> SubErrorIndex
 
-instance MkSubErrIdx (Tagged PostDefinition Seg) where
+instance MkSubErrIdx PostDefName where
   mkSubErrIdx = PostTypeSubError
 instance MkSubErrIdx DefName where
   mkSubErrIdx = TypeSubError
@@ -97,7 +96,7 @@ data PostOp
 
 data TrpDigest = TrpDigest
   { trpdNamespace :: Namespace
-  , trpdPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
+  , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
   , trpdDefinitions :: Map DefName (DefOp SomeDefinition)
   , trpdData :: DataDigest
   , trpdContOps :: ContOps Seg
@@ -148,7 +147,7 @@ isSub OpSubscribe = True
 isSub _ = False
 
 data TrcSubDigest = TrcSubDigest
-  { trcsdPostTypes :: Map (Namespace, Tagged PostDefinition Seg) SubOp
+  { trcsdPostTypes :: Map (Namespace, PostDefName) SubOp
   , trcsdTypes :: Map (Namespace, DefName) SubOp
   , trcsdData :: Map (Namespace, Path) SubOp
   } deriving (Show, Eq)
@@ -169,7 +168,7 @@ trcsdNamespaces (TrcSubDigest p t d) =
 
 data ClientRegs
   = ClientRegs
-  { crPostTypeRegs :: Mos Namespace (Tagged PostDefinition Seg)
+  { crPostTypeRegs :: Mos Namespace PostDefName
   , crTypeRegs :: Mos Namespace DefName
   , crDataRegs :: Mos Namespace Path
   } deriving (Show)
@@ -229,7 +228,7 @@ frcrdNull = null . frcrdContOps
 data FrcSubDigest = FrcSubDigest
   -- FIXME: really this is a Mol:
   { frcsdErrors :: Map SubErrorIndex [Text]
-  , frcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
+  , frcsdPostTypeUnsubs :: Mos Namespace PostDefName
   , frcsdTypeUnsubs :: Mos Namespace DefName
   , frcsdDataUnsubs :: Mos Namespace Path
   } deriving (Show, Eq)
@@ -253,7 +252,7 @@ frcsdFromClientRegs (ClientRegs p t d) = FrcSubDigest mempty p t d
 
 data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
-  , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
+  , frcudPostDefs :: Map PostDefName (DefOp PostDefinition)
   , frcudDefinitions :: Map DefName (DefOp SomeDefinition)
   , frcudTypeAssignments :: Map Path (DefName, Editability)
   , frcudData :: DataDigest
