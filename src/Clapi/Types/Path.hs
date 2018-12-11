@@ -8,8 +8,8 @@ module Clapi.Types.Path
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
-  , isParentOf, isStrictParentOf, isChildOf, isStrictChildOf
-  , isParentOfAny, isChildOfAny, childPaths
+  , isParentOf, isStrictParentOf, isChildOf, isStrictChildOf, childPaths
+  , isParentOfAny, isStrictParentOfAny, isChildOfAny, isStrictChildOfAny
   ) where
 
 import Prelude hiding (fail)
@@ -103,11 +103,17 @@ isChildOf = flip isParentOf
 isStrictChildOf :: Eq a => Path' a -> Path' a -> Bool
 isStrictChildOf = flip isStrictParentOf
 
-isParentOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
-isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
+ofAny
+  :: Foldable f
+  => (Path' a -> Path' a -> Bool) -> Path' a -> f (Path' a) -> Bool
+ofAny f candidate = any (f candidate)
 
-isChildOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
-isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
+isParentOfAny, isStrictParentOfAny, isChildOfAny, isStrictChildOfAny
+  :: (Eq a, Foldable f) => Path' a -> f (Path' a) -> Bool
+isParentOfAny = ofAny isParentOf
+isStrictParentOfAny = ofAny isStrictParentOf
+isChildOfAny = ofAny isParentOf
+isStrictChildOfAny = ofAny isStrictChildOf
 
 childPaths :: Functor f => Path' a -> f a -> f (Path' a)
 childPaths (Path' as1) as2 = Path' . (as1 ++) . pure <$> as2
