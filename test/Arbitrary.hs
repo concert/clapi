@@ -61,23 +61,18 @@ smallMapOf gk gv = Map.fromList <$> smallListOf ((,) <$> gk <*> gv)
 smallMap :: (Ord k, Arbitrary k, Arbitrary v) => Gen (Map k v)
 smallMap = smallMapOf arbitrary arbitrary
 
-commonKeyPairs :: (Arbitrary k, Arbitrary v) => Gen [(k, v)]
-commonKeyPairs = do
-    mkPair <- (,) <$> arbitrary
-    fmap mkPair <$> smallListOf arbitrary
-
-severalCkps :: (Arbitrary k, Arbitrary v) => Gen [(k, v)]
-severalCkps = mconcat <$> smallListOf commonKeyPairs
-
 instance (Ord k, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (Mos k v) where
-  arbitrary = Mos.fromList <$> severalCkps
+  arbitrary = Mos.fromMap <$> smallMapOf arbitrary arbitrary
   shrink =
     fmap (Mos.fromList . Map.foldMapWithKey (\k -> fmap (k,) . Set.toList))
     . traverse shrink
     . Mos.unMos
 
+genMol :: Ord k => Gen k -> Gen [v] -> Gen (Mol k v)
+genMol k vs = Mol.fromMap <$> smallMapOf k vs
+
 instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
-  arbitrary = Mol.fromList <$> severalCkps
+  arbitrary = genMol arbitrary arbitrary
   shrink = fmap Mol.fromMap . traverse shrink . Mol.unMol
 
 
@@ -220,18 +215,17 @@ instance Arbitrary PostDefinition where
     assocListOf arbitrary (smallListOf arbitrary)
 
 instance Arbitrary (Definition 'Tuple) where
-  arbitrary = TupleDef <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
+  arbitrary = TupleDef <$> arbitrary <*> arbitrary <*> arbitrary
   shrink (TupleDef d ty ilim) =
     [TupleDef d' ty' ilim' | (d', ty', ilim') <- shrink (d, ty, ilim)]
 
 instance Arbitrary (Definition 'Struct) where
-  arbitrary = StructDef <$> arbitraryTextNoNull <*> arbitrary
+  arbitrary = StructDef <$> arbitrary <*> arbitrary
   shrink (StructDef d tyinfo) =
     [StructDef d' tyinfo' | (d', tyinfo') <- shrink (d, tyinfo)]
 
 instance Arbitrary (Definition 'Array) where
-  arbitrary = ArrayDef <$> arbitraryTextNoNull <*> arbitrary <*> arbitrary
-    <*> arbitrary
+  arbitrary = ArrayDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
   shrink (ArrayDef d ptn tn ed) =
     [ArrayDef d' ptn' tn' ed' | (d', ptn', tn', ed') <- shrink (d, ptn, tn, ed)]
 
