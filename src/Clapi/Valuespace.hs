@@ -44,7 +44,7 @@ import Data.Maybe.Clapi (note)
 import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..), RoseTreeNodeType(..))
 import qualified Clapi.Tree as Tree
-import Clapi.Types (WireValue(..))
+import Clapi.Types (SomeWireValue(..))
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
   ( alKeysSet, alValues, alEmpty
@@ -135,7 +135,7 @@ valuespaceGet
   -> m ( SomeDefinition
        , DefName
        , Editability
-       , RoseTreeNode [WireValue])
+       , RoseTreeNode [SomeWireValue])
 valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
     rtn <- note "Path not found" $ Tree.lookupNode p tree
     ts <- lookupTypeName p tas
@@ -371,14 +371,14 @@ validateCreates vs creates = Mol.fromMap $ fmap mconcat $
     fmap (ocArgs . snd) <$> creates
   where
     getArgValidator
-      :: Path -> Placeholder -> [[WireValue]] -> [(Placeholder, String)]
+      :: Path -> Placeholder -> [[SomeWireValue]] -> [(Placeholder, String)]
     getArgValidator path ph =
       either (const . pure . (ph,)) (validatorFromPd ph) $
       defForPath @PostDefinition path vs
 
     -- FIXME: finer-grained errors from value validation would be preferable
     validatorFromPd
-      :: Placeholder -> PostDefinition -> [[WireValue]] -> [(Placeholder, String)]
+      :: Placeholder -> PostDefinition -> [[SomeWireValue]] -> [(Placeholder, String)]
     validatorFromPd ph pd = either pure mempty
       . first (ph,)
       . sequence . join
@@ -605,7 +605,7 @@ defNodeType def = case def of
         _ -> RtntDataSeries
 
 validateRoseTreeNode
-  :: Definition mt -> RoseTree [WireValue] -> Maybe (Set TpId)
+  :: Definition mt -> RoseTree [SomeWireValue] -> Maybe (Set TpId)
   -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
 validateRoseTreeNode def t invalidatedTps = case t of
     RtEmpty -> tyErr
@@ -639,12 +639,12 @@ validateRoseTreeNode def t invalidatedTps = case t of
 
 -- FIXME: this would be better if it would return more semantic errors
 validateWireValues
-  :: MonadFail m => [TreeType] -> [WireValue] -> m RefTypeClaims
+  :: MonadFail m => [TreeType] -> [SomeWireValue] -> m RefTypeClaims
 validateWireValues tts wvs =
     (fmtStrictZipError "types" "values" $ strictZipWith vr tts wvs)
     >>= sequence >>= return . Mos.fromList . mconcat
   where
-    vr tt wv = validate tt wv >> extractTypeAssertions tt wv
+    vr tt (SomeWireValue wv) = validate tt wv >> extractTypeAssertions tt wv
 
 validateExistingXrefs
   :: Xrefs -> Map Path DefName

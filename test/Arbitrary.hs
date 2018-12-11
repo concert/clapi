@@ -15,6 +15,7 @@ import Test.QuickCheck
   , arbitraryBoundedEnum, choose, elements, listOf, oneof, shuffle)
 
 import Control.Monad (replicateM)
+import Data.Constraint (Dict(..))
 import Data.Int
 import Data.List (inits)
 import Data.Map (Map)
@@ -25,6 +26,7 @@ import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word
+import Language.Haskell.TH (Type(ConT))
 import System.Random (Random)
 
 import Data.Map.Mol (Mol)
@@ -35,8 +37,7 @@ import qualified Data.Map.Mos as Mos
 import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.WireTH (mkWithWtProxy)
-import Clapi.Util (proxyF, proxyF3)
+import Clapi.Types.WireTH (mkGetWtConstraint)
 
 
 deriving instance Arbitrary a => Arbitrary (Tagged t a)
@@ -173,40 +174,29 @@ instance PickyArbitrary a => PickyArbitrary [a] where
 instance PickyArbitrary a => PickyArbitrary (Maybe a)
 instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b)
 
-instance Arbitrary WireType where
+instance Arbitrary SomeWireType where
   arbitrary = oneof
-    [ return WtTime
-    , return WtWord32, return WtWord64
-    , return WtInt32, return WtInt64
-    , return WtFloat, return WtDouble
-    , return WtString
-    , WtList <$> arbitrary, WtMaybe <$> arbitrary
-    , WtPair <$> arbitrary <*> arbitrary
+    [ return wtTime
+    , return wtWord32, return wtWord64
+    , return wtInt32, return wtInt64
+    , return wtFloat, return wtDouble
+    , return wtString
+    , wtList <$> arbitrary, wtMaybe <$> arbitrary
+    , wtPair <$> arbitrary <*> arbitrary
     ]
 
-mkWithWtProxy "withPArbWtProxy" [''PickyArbitrary, ''Wireable]
+mkGetWtConstraint "getArbitrary" $ ConT ''Arbitrary
 
-withPArbWvValue
-  :: forall r. WireValue
-  -> (forall a. (PickyArbitrary a, Wireable a) => a -> r) -> r
-withPArbWvValue wv f = withPArbWtProxy wt g
-  where
-    wt = wireValueWireType wv
-    g :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> r
-    g _ = f $ fromJust $ castWireValue @a wv
-
-
-instance Arbitrary WireValue where
+instance Arbitrary SomeWireValue where
   arbitrary = do
-      wt <- arbitrary @WireType
-      withPArbWtProxy wt f
-    where
-      f :: forall a. (PickyArbitrary a, Wireable a) => Proxy a -> Gen WireValue
-      f _ = WireValue <$> pArbitrary @a
-  shrink wv = withPArbWvValue wv f
-    where
-      f :: forall a. (PickyArbitrary a, Wireable a) => a -> [WireValue]
-      f a = WireValue <$> shrink a
+      SomeWireType wt <- arbitrary
+      case wt of
+        WtList wt1 -> case getArbitrary wt1 of
+          Dict -> someWv wt <$> smallListOf arbitrary
+        _ -> case getArbitrary wt of
+          Dict -> someWv wt <$> arbitrary
+  shrink (SomeWireValue (WireValue wt a)) = case getArbitrary wt of
+    Dict -> someWv wt <$> shrink a
 
 
 instance Arbitrary PostDefinition where

@@ -16,7 +16,6 @@ import Prelude hiding (pred)
 import Control.Monad (unless, forM_, (>=>), forever)
 import Control.Monad.Trans (lift)
 import Data.Either (isRight)
-import Data.Int (Int32)
 import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -47,7 +46,7 @@ import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
 import Clapi.Types.Tree (TreeType(..), unbounded)
-import Clapi.Types.Wire (WireValue(..))
+import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWv)
 
 import Clapi.Internal.Valuespace (DefMap)
 import Instances ()
@@ -183,12 +182,12 @@ spec = do
         badSub (root :/ bar1) (PathSubError fooNs $ root :/ bar1) "Path not found"
 
         sendFwd $ ClientData "owner" $ Trpd $
-          ownerSet (root :/ bar1) [WireValue @Int32 1] $
+          ownerSet (root :/ bar1) [someWv WtInt32 1] $
           trpdEmpty fooNs
 
         -- We check that now the thing we just failed to subscribe to _is_
         -- defined we don't suddenly start getting data:
-        verifyNoDataSub "owner" "sub" fooNs (root :/ bar1) [WireValue @Int32 16]
+        verifyNoDataSub "owner" "sub" fooNs (root :/ bar1) [someWv WtInt32 16]
 
         -- Invalid PostDefinition and Definition IDs:
         badSub bazPdn (PostTypeSubError fooNs bazPdn) "Missing post def"
@@ -218,14 +217,14 @@ spec = do
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
           { frcudDefinitions = Map.singleton fooTn $ OpDefine intDef
           , frcudTypeAssignments = Map.singleton Root (fooTn, Editable)
-          , frcudData = alSingleton Root $ ConstChange Nothing [WireValue @Int32 12]
+          , frcudData = alSingleton Root $ ConstChange Nothing [someWv WtInt32 12]
           }]
-        verifyDataSub "owner" "sub" fooNs Root [WireValue @Int32 13]
+        verifyDataSub "owner" "sub" fooNs Root [someWv WtInt32 13]
         verifyTySub "owner" "sub" fooNs fooTn
 
       -- After unsubscribing from the data, check that
       -- a) The data subscription is terminated
-      verifyNoDataSub "owner" "sub" fooNs Root [WireValue @Int32 14]
+      verifyNoDataSub "owner" "sub" fooNs Root [someWv WtInt32 14]
       -- b) The type subscription remains
       verifyTySub "owner" "sub" fooNs fooTn
 
@@ -310,10 +309,10 @@ spec = do
             { frcudDefinitions = Map.singleton fooTn $ OpDefine intDef
             , frcudTypeAssignments = Map.singleton Root (fooTn, Editable)
             , frcudData = alSingleton Root $
-              ConstChange Nothing [WireValue @Int32 12]
+              ConstChange Nothing [someWv WtInt32 12]
             }]
         checkAlreadyUnsub root
-        verifyNoDataSub "owner" "sub" fooNs root [WireValue @Int32 15]
+        verifyNoDataSub "owner" "sub" fooNs root [someWv WtInt32 15]
 
 
     let sub_owner_preamble = do
@@ -378,13 +377,13 @@ spec = do
       testRelay mempty $ do
         sub_owner_preamble
         sendFwd $ ClientData "sub" $ Trcud $
-          subSet (Root :/ foo) [WireValue @Text "hello"] $
-          subSet (Root :/ bar) [WireValue @Int32 3, WireValue @Int32 4] $
+          subSet (Root :/ foo) [someWv WtString "hello"] $
+          subSet (Root :/ bar) [someWv WtInt32 3, someWv WtInt32 4] $
           trcudEmpty fooNs
         expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
         expect [ServerData "owner" $ Frpd $ (frpdEmpty fooNs)
           { frpdData = alSingleton (Root :/ foo) $
-            ConstChange Nothing [WireValue @Text "hello"]
+            ConstChange Nothing [someWv WtString "hello"]
           }]
 
     it "validates owner claims" $ testRelay mempty $ do
@@ -392,10 +391,10 @@ spec = do
       expect [emptyRootDig "owner"]
 
       sendFwd $ ClientData "owner" $ Trpd $
-        ownerSet root [WireValue @Text "Not an int"] $
+        ownerSet root [someWv WtString "Not an int"] $
         define foo intDef $
         trpdEmpty fooNs
-      expectFrped "owner" [(PathError Root, "Type mismatch")]
+      expectFrped "owner" [(PathError Root, "not a valid")]
 
     it "validates owner mutations" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
@@ -403,14 +402,14 @@ spec = do
       expect [emptyRootDig "owner", nsExists fooNs "owner"]
 
       sendFwd $ ClientData "owner" $ Trpd $
-        ownerSet root [WireValue @Text "Not an int"] $ trpdEmpty fooNs
-      expectFrped "owner" [(PathError Root, "Type mismatch")]
+        ownerSet root [someWv WtString "Not an int"] $ trpdEmpty fooNs
+      expectFrped "owner" [(PathError Root, "not a valid")]
 
     it "rejects orphan data" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
       expect [emptyRootDig "owner"]
       sendFwd $ ClientData "owner" $ Trpd $
-        ownerSet (Root :/ baz) [WireValue @Text "Orphan"] $ structClaim foo
+        ownerSet (Root :/ baz) [someWv WtString "Orphan"] $ structClaim foo
       expectFrped "owner" [(PathError Root, "ExtraChild baz")]
 
   where
@@ -433,7 +432,7 @@ spec = do
       sendFwd $ ClientData ownerId $ Trpd $ mkTrpd ns ident existing
       expect [ServerData subId $ Frcud $ mkFrcud ns ident existing]
 
-    verifyDataSub = verifySub @[WireValue]
+    verifyDataSub = verifySub @[SomeWireValue]
     verifyTySub o s n i = verifySub @SomeDefinition o s n i "changed doc"
     verifyPdSub o s n i = verifySub @PostDefinition o s n i "changed doc"
 
@@ -451,7 +450,7 @@ spec = do
       sendFwd $ ClientData ownerId $ Trpd $ mkTrpd ns ident existing
       nothingWaiting
 
-    verifyNoDataSub = verifyNoSub @[WireValue]
+    verifyNoDataSub = verifyNoSub @[SomeWireValue]
     verifyNoTySub o s n i = verifyNoSub @SomeDefinition o s n i "changed doc"
     verifyNoPdSub o s n i = verifyNoSub @PostDefinition o s n i "changed doc"
 
@@ -460,13 +459,13 @@ spec = do
     strDef = tupleDef' "Any string" [(x, TtString "")] ILUninterpolated
 
     simpleClaim name =
-      ownerSet Root [WireValue @Int32 12] $
+      ownerSet Root [someWv WtInt32 12] $
       define name intDef $
       trpdEmpty $ Namespace name
 
     structClaim name =
-      ownerSet (Root :/ bar) [WireValue @Int32 2] $
-      ownerSet (Root :/ foo) [WireValue @Text "one"] $
+      ownerSet (Root :/ bar) [someWv WtInt32 2] $
+      ownerSet (Root :/ foo) [someWv WtString "one"] $
       define name (structDef' "test"
         [ (foo, [segq|texty|])
         , (bar, [segq|inty|])
@@ -602,7 +601,7 @@ unOpDefine = \case
   OpDefine a -> Just a
   _ -> Nothing
 
-unConstChange :: DataChange -> Maybe [WireValue]
+unConstChange :: DataChange -> Maybe [SomeWireValue]
 unConstChange = \case
   ConstChange _ wvs -> Just wvs
   _ -> Nothing
@@ -651,8 +650,8 @@ instance Subscribe SomeDefinition where
     StructDef {} -> SomeDefinition $ def {strDefDoc = doc}
     TupleDef {} -> SomeDefinition $ def {tupDefDoc = doc}
 
-instance Subscribe [WireValue] where
-  type EntityId [WireValue] = Path
+instance Subscribe [SomeWireValue] where
+  type EntityId [SomeWireValue] = Path
   mkTrcsd ns path op = mempty {trcsdData = Map.singleton (ns, path) op}
   mkFrcsd ns path = mempty {frcsdDataUnsubs = Mos.singleton ns path}
   mkTrpd ns name ent = (trpdEmpty ns)
@@ -661,7 +660,7 @@ instance Subscribe [WireValue] where
     {frcudData = alSingleton name $ ConstChange Nothing ent }
   _repr _ = "data"
   extractEntity name = alLookup name . frcudData >=> unConstChange
-  type Mutator [WireValue] = [WireValue]
+  type Mutator [SomeWireValue] = [SomeWireValue]
   mutate wvs _ = wvs
 
 subscribe
@@ -708,11 +707,11 @@ postDefine name def trpd = trpd
   { trpdPostDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdPostDefs trpd }
 
-ownerSet :: Path -> [WireValue] -> TrpDigest -> TrpDigest
+ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
 ownerSet path values trpd = trpd
   { trpdData = alInsert path (ConstChange Nothing values) $ trpdData trpd }
 
-subSet :: Path -> [WireValue] -> TrcUpdateDigest -> TrcUpdateDigest
+subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
   { trcudData = alInsert path (ConstChange Nothing values) $ trcudData trcud }
 

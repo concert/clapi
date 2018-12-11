@@ -55,7 +55,6 @@ library
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Path
                      , Clapi.Types.Tree
-                     , Clapi.Types.TreeTypeProxy
                      , Clapi.Types.Wire
                      , Clapi.Types.WireTH
                      , Clapi.Types.UniqList
@@ -132,6 +131,7 @@ test-suite clapi-hs-test
                      , bytestring
                      , blaze-builder
                      , async
+                     , constraints
                      , containers
                      , clapi-hs
                      , either
@@ -144,6 +144,7 @@ test-suite clapi-hs-test
                      , QuickCheck
                      , random
                      , tagged
+                     , template-haskell
                      , text
                      , transformers
                      , unagi-chan
@@ -160,7 +161,6 @@ test-suite clapi-hs-test
                      , SerialisationSpec
                      , TextSerialisationSpec
                      , TreeSpec
-                     , TypesSpec
                      , UtilSpec
                      , ValidatorSpec
                      , ValuespaceSpec

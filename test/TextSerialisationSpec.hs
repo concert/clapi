@@ -9,7 +9,8 @@ import Test.QuickCheck (property)
 
 import Clapi.TextSerialisation (ttFromText, ttToText)
 import Clapi.Types ()
-import TypesSpec ()
+
+import Arbitrary ()
 
 spec :: Spec
 spec = do

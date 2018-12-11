@@ -21,7 +21,7 @@ import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
 
 import Clapi.Types
-  (Time, Interpolation(..), Attributee, WireValue)
+  (Time, Interpolation(..), Attributee, SomeWireValue)
 import Clapi.Types.AssocList
   ( AssocList, unAssocList, alEmpty, alFmapWithKey, alSingleton, alAlterF
   , alKeys, alToMap, alPickFromMap)
@@ -163,15 +163,15 @@ updateTreeStructure contOps = runState $ do
       either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
 
 updateTreeData
-  :: DataDigest -> RoseTree [WireValue]
-  -> (Mol Path Text, RoseTree [WireValue])
+  :: DataDigest -> RoseTree [SomeWireValue]
+  -> (Mol Path Text, RoseTree [SomeWireValue])
 updateTreeData dd = runState $ do
     errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
     return $ Mol.fromMap errs
   where
     applyDd
       :: Path -> DataChange
-      -> State (RoseTree [WireValue]) [Text]
+      -> State (RoseTree [SomeWireValue]) [Text]
     applyDd np dc = case dc of
       ConstChange att wv -> do
         modify $ adjust Nothing (constSet att wv) np
@@ -180,7 +180,7 @@ updateTreeData dd = runState $ do
     applyTc
       :: Path
       -> (TpId, (Maybe Attributee, TimeSeriesDataOp))
-      -> State (RoseTree [WireValue]) [Text]
+      -> State (RoseTree [SomeWireValue]) [Text]
     applyTc np (tpId, (att, op)) = case op of
       OpSet t wv i -> get >>=
         either (return . pure . Text.pack) (\vs -> put vs >> return [])
@@ -192,8 +192,8 @@ updateTreeData dd = runState $ do
 
 -- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
-  :: ContOps Seg -> DataDigest -> RoseTree [WireValue]
-  -> (Mol Path Text, RoseTree [WireValue])
+  :: ContOps Seg -> DataDigest -> RoseTree [SomeWireValue]
+  -> (Mol Path Text, RoseTree [SomeWireValue])
 updateTreeWithDigest contOps dd = runState $ do
     errs <- state (updateTreeData dd)
     errs' <- state (updateTreeStructure contOps)

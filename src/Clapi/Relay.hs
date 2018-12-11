@@ -54,7 +54,7 @@ import Clapi.Types.Digests
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
 import Clapi.Types.Definitions
   (Editability(..), SomeDefinition, PostDefinition, DefName)
-import Clapi.Types.Wire (WireValue)
+import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
 import qualified Clapi.Tree as Tree
@@ -66,7 +66,7 @@ import Clapi.Protocol (Protocol, sendRev, liftedWaitThen)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Util (partitionDifference, flattenNestedMaps)
 
-oppifyTimeSeries :: TimeSeries [WireValue] -> DataChange
+oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
 oppifyTimeSeries ts = TimeChange $
   Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
 
@@ -537,7 +537,7 @@ rGet
   :: Map Namespace Valuespace -> Namespace -> Path
   -> Either
        (SubErrorIndex, String)
-       (SomeDefinition, DefName, Editability, RoseTreeNode [WireValue])
+       (SomeDefinition, DefName, Editability, RoseTreeNode [SomeWireValue])
 rGet vsm ns p =
     vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 

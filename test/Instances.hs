@@ -7,6 +7,7 @@
 
 module Instances where
 
+import Data.Constraint (Dict(..))
 import Data.String (IsString(..))
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
@@ -52,6 +53,15 @@ deriving instance (Ord ident, Ord a) => Ord (ServerEvent ident a)
 
 deriving instance Ord Attributee
 deriving instance IsString Attributee
+
+instance Ord (WireValue a) where
+  compare (WireValue wt a1) (WireValue _ a2) = case getOrd wt of
+    Dict -> compare a1 a2
+
+instance Ord SomeWireValue where
+  compare (SomeWireValue wv1) (SomeWireValue wv2) = case testEquality wv1 wv2 of
+    Nothing -> compare (typeEnumOf wv1) (typeEnumOf wv2)
+    Just Refl -> compare wv1 wv2
 
 deriving instance Ord PostDefinition
 deriving instance Ord Editability

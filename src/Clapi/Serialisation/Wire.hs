@@ -1,48 +1,26 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    ScopedTypeVariables
+    GADTs
+  , LambdaCase
+  , TemplateHaskell
 #-}
 
 module Clapi.Serialisation.Wire where
 
-import Prelude hiding (fail)
-import Control.Monad.Fail (MonadFail(..))
-import Data.Typeable
+import Data.Constraint (Dict(..))
+import Language.Haskell.TH (Type(ConT))
 
-import Data.Attoparsec.ByteString (Parser)
-
-import Clapi.Serialisation.Base (Encodable(..), Decodable(..), (<<>>))
-import Clapi.Types.Base (Tag)
+import Clapi.Serialisation.Base
+  (Encodable(..), Decodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
+import Clapi.TaggedData (TaggedData, taggedData)
+import Clapi.Types.Base (Tag, TypeEnumOf(..))
 import Clapi.Types.Wire
-  (WireValue(..), Wireable, WireType(..), wireValueWireType, withWtProxy)
+  ( WireType(..), SomeWireType(..), withWireType, WireTypeName(..)
+  , wtTime, wtWord32, wtWord64, wtInt32, wtInt64, wtFloat, wtDouble, wtString
+  , wtList, wtMaybe, wtPair
+  , WireValue(..), SomeWireValue(..), withWireValue, someWv)
+import Clapi.Types.WireTH (mkGetWtConstraint)
 import Clapi.TH (btq)
-
--- | We define a type for tags that we want to use to denote our types on the
---   wire, so that we can define functions that we can verify are total.
-data WireTypeName
-  = WtnTime
-  | WtnWord32 | WtnWord64
-  | WtnInt32 | WtnInt64
-  | WtnFloat | WtnDouble
-  | WtnString
-  | WtnList
-  | WtnMaybe
-  | WtnPair
-  deriving (Show, Eq, Ord, Enum, Bounded)
-
-wtName :: WireType -> WireTypeName
-wtName wt = case wt of
-  WtTime -> WtnTime
-  WtWord32 -> WtnWord32
-  WtWord64 -> WtnWord64
-  WtInt32 -> WtnInt32
-  WtInt64 -> WtnInt64
-  WtFloat -> WtnFloat
-  WtDouble -> WtnDouble
-  WtString -> WtnString
-  WtList _ -> WtnList
-  WtMaybe _ -> WtnMaybe
-  WtPair _ _ -> WtnPair
 
 wtnTag :: WireTypeName -> Tag
 wtnTag wt = case wt of
@@ -58,51 +36,46 @@ wtnTag wt = case wt of
   WtnMaybe -> [btq|m|]
   WtnPair -> [btq|p|]
 
-tagWtns :: [(Tag, WireTypeName)]
-tagWtns = revAssoc wtnTag
+wtnTaggedData :: TaggedData WireTypeName (WireType a)
+wtnTaggedData = taggedData wtnTag typeEnumOf
 
-tagWtn :: MonadFail m => Tag -> m WireTypeName
-tagWtn t = maybe (fail "Unrecognised type tag") return $ lookup t tagWtns
+instance Encodable (WireType a) where
+  builder = tdTaggedBuilder wtnTaggedData $ \case
+    WtList wt -> builder wt
+    WtMaybe wt -> builder wt
+    WtPair wt1 wt2 -> builder wt1 <<>> builder wt2
+    _ -> return mempty
 
--- FIXME: could use an association list type that checks the uniqueness of the
--- keys on creation:
-revAssoc :: (Enum a, Bounded a) => (a -> r) -> [(r, a)]
-revAssoc f = [(f e, e) | e <- [minBound..]]
+someWtnTaggedData :: TaggedData WireTypeName SomeWireType
+someWtnTaggedData = taggedData wtnTag typeEnumOf
 
-instance Encodable WireTypeName where
-  builder = builder . wtnTag
-instance Decodable WireTypeName where
-  parser = parser >>= tagWtn
+instance Encodable SomeWireType where
+  builder = withWireType builder
+instance Decodable SomeWireType where
+  parser = tdTaggedParser someWtnTaggedData $ \case
+    WtnTime -> return wtTime
+    WtnWord32 -> return wtWord32
+    WtnWord64 -> return wtWord64
+    WtnInt32 -> return wtInt32
+    WtnInt64 -> return wtInt64
+    WtnFloat -> return wtFloat
+    WtnDouble -> return wtDouble
+    WtnString -> return wtString
+    WtnList -> wtList <$> parser
+    WtnMaybe -> wtMaybe <$> parser
+    WtnPair -> wtPair <$> parser <*> parser
 
-instance Encodable WireType where
-  builder wt =
-    builder (wtnTag $ wtName wt) <<>> case wt of
-      WtList wt' -> builder wt'
-      WtMaybe wt' -> builder wt'
-      WtPair wt1 wt2 -> builder wt1 <<>> builder wt2
-      _ -> return mempty
-instance Decodable WireType where
-  parser = parser >>= go
-    where
-      go :: WireTypeName -> Parser WireType
-      go wtn = case wtn of
-        WtnTime -> return WtTime
-        WtnWord32 -> return WtWord32
-        WtnWord64 -> return WtWord64
-        WtnInt32 -> return WtInt32
-        WtnInt64 -> return WtInt64
-        WtnFloat -> return WtFloat
-        WtnDouble -> return WtDouble
-        WtnString -> return WtString
-        WtnList -> WtList <$> parser
-        WtnMaybe -> WtMaybe <$> parser
-        WtnPair -> WtPair <$> parser <*> parser
+mkGetWtConstraint "getEncodable" $ ConT ''Encodable
+mkGetWtConstraint "getDecodable" $ ConT ''Decodable
 
-instance Encodable WireValue where
-  builder wv@(WireValue a) =
-    (<>) <$> builder (wireValueWireType wv) <*> builder a
-instance Decodable WireValue where
-  parser = parser >>= \wt -> withWtProxy wt go
-    where
-      go :: forall a. Wireable a => Proxy a -> Parser WireValue
-      go _ = WireValue <$> parser @a
+instance Encodable (WireValue a) where
+  builder (WireValue wt a) = builder wt <<>>
+    case getEncodable wt of Dict -> builder a
+
+instance Encodable SomeWireValue where
+  builder = withWireValue builder
+instance Decodable SomeWireValue where
+  parser = do
+    SomeWireType wt <- parser
+    case getDecodable wt of
+      Dict -> someWv wt <$> parser

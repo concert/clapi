@@ -26,7 +26,7 @@ import Clapi.Types.Definitions
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Types.Wire (WireValue)
+import Clapi.Types.Wire (SomeWireValue)
 
 
 type TpId = Word32
@@ -66,14 +66,14 @@ isUndef OpUndefine = True
 isUndef _ = False
 
 data TimeSeriesDataOp =
-  OpSet Time [WireValue] Interpolation | OpRemove deriving (Show, Eq)
+  OpSet Time [SomeWireValue] Interpolation | OpRemove deriving (Show, Eq)
 
 isRemove :: TimeSeriesDataOp -> Bool
 isRemove OpRemove = True
 isRemove _ = False
 
 data DataChange
-  = ConstChange (Maybe Attributee) [WireValue]
+  = ConstChange (Maybe Attributee) [SomeWireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))
   deriving (Show, Eq)
 type DataDigest = AssocList Path DataChange
@@ -82,7 +82,7 @@ data CreateOp
   = OpCreate
   -- FIXME: Nested lists of WireValues is a legacy hangover because our tree
   -- data nodes still contain [WireValue] as a single "value":
-  { ocArgs :: [[WireValue]]
+  { ocArgs :: [[SomeWireValue]]
   , ocAfter :: Maybe (Either Placeholder Seg)
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
@@ -93,7 +93,7 @@ type RootContOps = Map Namespace (SequenceOp Namespace)
 type ContOps after = Map Path (Map Seg (Maybe Attributee, SequenceOp after))
 
 data PostOp
-  = OpPost {opPath :: Path, opArgs :: Map Seg WireValue} deriving (Show, Eq)
+  = OpPost {opPath :: Path, opArgs :: Map Seg SomeWireValue} deriving (Show, Eq)
 
 data TrpDigest = TrpDigest
   { trpdNamespace :: Namespace

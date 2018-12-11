@@ -14,7 +14,7 @@ import Clapi.Types.Definitions
   (SomeDefinition, PostDefinition, Editability, DefName)
 import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
-import Clapi.Types.Wire (WireValue)
+import Clapi.Types.Wire (SomeWireValue)
 
 type DefMap def = Map (Tagged def Seg) def
 type TypeAssignmentMap = Dependencies Path DefName
@@ -23,7 +23,7 @@ type Referee = Path
 type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
 
 data Valuespace = Valuespace
-  { vsTree :: RoseTree [WireValue]
+  { vsTree :: RoseTree [SomeWireValue]
   , vsPostDefs :: DefMap PostDefinition
   , vsTyDefs :: DefMap SomeDefinition
   , vsTyAssns :: TypeAssignmentMap
