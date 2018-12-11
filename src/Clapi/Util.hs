@@ -11,6 +11,7 @@ module Clapi.Util (
     showItems,
     bound,
     safeToEnum,
+    foldMapM,
     mapPartitionEither,
     nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
@@ -18,6 +19,8 @@ module Clapi.Util (
 ) where
 
 import Prelude hiding (fail)
+
+import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Either (isLeft, fromLeft, fromRight)
@@ -145,6 +148,9 @@ foldlNestedMaps
 foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
+
+foldMapM :: (Foldable t, Monoid b, Monad m) => (a -> m b) -> t a -> m b
+foldMapM f = foldM (\b a -> (b <>) <$> f a) mempty
 
 mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
 mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
