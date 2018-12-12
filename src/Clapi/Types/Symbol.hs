@@ -51,14 +51,11 @@ data SomeSSymbol where
 deriving instance Show SomeSSymbol
 
 instance Eq SomeSSymbol where
-  SomeSSymbol s1 == SomeSSymbol s2 = case testEquality s1 s2 of
-    Just Refl -> s1 == s2
-    Nothing -> False
+  SomeSSymbol s1 == SomeSSymbol s2 = toString s1 == toString s2
 
 instance Ord SomeSSymbol where
-  compare (SomeSSymbol s1) (SomeSSymbol s2) = case testEquality s1 s2 of
-    Just Refl -> compare s1 s2
-    Nothing -> compare (toString s1) (toString s2)
+  compare (SomeSSymbol s1) (SomeSSymbol s2) =
+    compare (toString s1) (toString s2)
 
 
 withSSymbol :: (forall s. SSymbol s -> r) -> SomeSSymbol -> r
