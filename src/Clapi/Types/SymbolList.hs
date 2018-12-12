@@ -49,11 +49,9 @@ data SymbolList (ss :: [Symbol]) where
   SlCons :: KnownSymbol s => Proxy s -> SymbolList ss -> SymbolList ('(:) s ss)
 
 instance Show (SymbolList sl) where
-  show SlEmpty = "SlEmpty"
-  show (SlCons p ss) = "SlCons (Proxy @" ++ show (symbolVal p) ++ ") " ++
-    case ss of
-      SlEmpty -> show SlEmpty
-      _ -> "(" ++ show ss ++ ")"
+  showsPrec p sl = showParen (p >= 11) $
+      showString "fromStrings "
+    . showsPrec p (toStrings sl)
 
 instance Eq (SymbolList ss) where
   _ == _ = True
