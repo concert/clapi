@@ -17,7 +17,6 @@ module Clapi.Util (
     mapPartitionEither,
     nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
-    proxyF, proxyF3,
     liftRefl, pairRefl
 ) where
 
@@ -159,12 +158,6 @@ foldMapM f = foldM (\b a -> (b <>) <$> f a) mempty
 mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
 mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
   (fromLeft undefined <$> ls, fromRight undefined <$> rs)
-
-proxyF :: Proxy a -> Proxy b -> Proxy (a b)
-proxyF _ _ = Proxy
-
-proxyF3 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a b c)
-proxyF3 p1 p2 p3 = proxyF (proxyF p1 p2) p3
 
 liftRefl :: a :~: b -> f a :~: f b
 liftRefl Refl = Refl
