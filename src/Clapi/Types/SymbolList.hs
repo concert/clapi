@@ -15,12 +15,7 @@
 #-}
 
 module Clapi.Types.SymbolList
-  ( withKnownSymbol
-
-  , SSymbol(..), SomeSSymbol(..), withSSymbol
-  , sSymbolToString, sSymbolFromString
-  , sameSSymbol, withSSymbolFromString
-  , SymbolList(..), SomeSymbolList(..), withSymbolList
+  ( SymbolList(..), SomeSymbolList(..), withSymbolList
   , cons, cons_, singleton, singleton_
   , toStrings, toStrings_, fromStrings, fromType, withSymbolListFromStrings
 
@@ -34,46 +29,15 @@ module Clapi.Types.SymbolList
 
 import Prelude hiding (length, (!!), reverse)
 
-import Data.Proxy
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
-import GHC.TypeLits
-  (Symbol, KnownSymbol, SomeSymbol(..), someSymbolVal, symbolVal, sameSymbol)
+import GHC.TypeLits (Symbol, KnownSymbol)
 
 import Clapi.Types.Nat
   (Nat(..), SNat(..), type (<), proofLT, (:<:)(..), (:<=:)(..))
-
-
-withKnownSymbol :: (forall s. KnownSymbol s => Proxy s -> r) -> String -> r
-withKnownSymbol f s = case someSymbolVal s of
-  SomeSymbol p -> f p
-
-
--- | SSymbol is just a re-implementation of Data.Constraint.Dict, sepcifically
---   for representing Symbol types.
-data SSymbol (s :: Symbol) where
-  SSymbol :: KnownSymbol s => SSymbol s
-
-sameSSymbol :: forall s1 s2. SSymbol s1 -> SSymbol s2 -> Maybe (s1 :~: s2)
-sameSSymbol SSymbol SSymbol = sameSymbol (Proxy @s1) (Proxy @s2)
-
-sSymbolToString :: forall s. SSymbol s -> String
-sSymbolToString SSymbol = symbolVal $ Proxy @s
-
-data SomeSSymbol where
-  SomeSSymbol :: SSymbol s -> SomeSSymbol
-
-withSSymbol :: (forall s. SSymbol s -> r) -> SomeSSymbol -> r
-withSSymbol f (SomeSSymbol s) = f s
-
-sSymbolFromString :: String -> SomeSSymbol
-sSymbolFromString s = case someSymbolVal s of SomeSymbol p -> SomeSSymbol $ go p
-  where
-    go :: KnownSymbol s => Proxy s -> SSymbol s
-    go _ = SSymbol
-
-withSSymbolFromString :: (forall s. SSymbol s -> r) -> String -> r
-withSSymbolFromString f = withSSymbol f . sSymbolFromString
+import Clapi.Types.Symbol
+  (SSymbol(..), SomeSSymbol(..), sameSSymbol, withSSymbolFromString)
+import qualified Clapi.Types.Symbol as SSymbol
 
 
 data SymbolList (ss :: [Symbol]) where
@@ -121,7 +85,7 @@ instance Ord SomeSymbolList where
       go SlEmpty (SlCons _ _) = LT
       go (SlCons _ _) SlEmpty = GT
       go (SlCons s1 sl1') (SlCons s2 sl2') =
-        compare (sSymbolToString s1) (sSymbolToString s2) <> go sl1' sl2'
+        compare (SSymbol.toString s1) (SSymbol.toString s2) <> go sl1' sl2'
 
 
 cons :: String -> SymbolList ss -> SomeSymbolList
@@ -139,7 +103,7 @@ singleton_ = withSSymbolFromString (SomeSymbolList . singleton)
 toStrings :: SymbolList ss -> [String]
 toStrings = \case
   SlEmpty -> []
-  SlCons s sl -> sSymbolToString s : toStrings sl
+  SlCons s sl -> SSymbol.toString s : toStrings sl
 
 toStrings_ :: SomeSymbolList -> [String]
 toStrings_ = withSymbolList toStrings
@@ -150,7 +114,7 @@ withSymbolListFromStrings f = go SlEmpty
   where
     go :: SymbolList ss -> [String] -> r
     go acc [] = f $ reverse acc  -- FIXME: reverse is wasteful
-    go acc (s : ss) = case sSymbolFromString s of
+    go acc (s : ss) = case SSymbol.fromString s of
       SomeSSymbol sy -> go (SlCons sy acc) ss
 
 fromStrings :: [String] -> SomeSymbolList

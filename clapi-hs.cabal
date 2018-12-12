@@ -54,6 +54,7 @@ library
                      , Clapi.Types.Dkmap
                      , Clapi.Types.Nat
                      , Clapi.Types.SequenceOps
+                     , Clapi.Types.Symbol
                      , Clapi.Types.SymbolList
                      , Clapi.Types.Path
                      , Clapi.Types.Tree
