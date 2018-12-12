@@ -28,6 +28,7 @@ library
                      , Data.Map.Clapi
                      , Data.Map.Dependencies
                      , Clapi.Attributor
+                     , Clapi.Internal.TreeType
                      , Clapi.Internal.Valuespace
                      , Clapi.Internal.Wire
                      , Clapi.SerialisationProtocol

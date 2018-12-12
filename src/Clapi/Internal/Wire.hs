@@ -50,11 +50,11 @@ mkGetWtConstraint newFnName constrCon =
       []
   in
     return
-    [ SigD (mkName newFnName) $
+    [ SigD fn $
         (AppT (ConT ''WireType) (VarT a))
         `arrow`
         (AppT (ConT ''Dict) (AppT constrCon (VarT a)))
-    , FunD (mkName newFnName) $
+    , FunD fn $
       [ Clause
           []
           ( NormalB $ LamCaseE
