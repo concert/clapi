@@ -52,6 +52,7 @@ library
                      , Clapi.Types.Definitions
                      , Clapi.Types.Digests
                      , Clapi.Types.Dkmap
+                     , Clapi.Types.EnumVal
                      , Clapi.Types.Nat
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Symbol

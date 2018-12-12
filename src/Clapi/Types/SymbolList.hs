@@ -23,7 +23,7 @@ module Clapi.Types.SymbolList
   , Index, (!!)
   , Reverse, reverse
 
-  , PrefixProof(..), isPrefixOf, IsPrefixOf
+  , PrefixProof(..), isPrefixOf, IsPrefixOf(..)
   , prefixProvesLte
   ) where
 
