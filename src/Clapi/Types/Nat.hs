@@ -67,10 +67,10 @@ data (m :: Nat) :<: (n :: Nat) where
   LT2 :: m :<: n -> ('Succ m) :<: ('Succ n)
 deriving instance Show (m :<: n)
 
-(%<) :: SNat m -> SNat n -> Maybe (m :<: n)
+(%<) :: SNat m -> SNat n -> Maybe (Dict (m < n))
 _ %< SZero = Nothing
-SZero %< SSucc _ = Just LT1
-SSucc m %< SSucc n = LT2 <$> m %< n
+SZero %< SSucc _ = Just Dict
+SSucc m %< SSucc n = fmap (\Dict -> Dict) $ m %< n
 
 class (m :: Nat) < (n :: Nat) where
   proofLT :: m :<: n
@@ -89,10 +89,10 @@ data (m :: Nat) :<=: (n :: Nat) where
   LTE2 :: m :<=: n -> 'Succ m :<=: 'Succ n
 deriving instance Show (m :<=: n)
 
-(%<=) :: SNat m -> SNat n -> Maybe (m :<=: n)
-SZero %<= _ = Just LTE1
+(%<=) :: SNat m -> SNat n -> Maybe (Dict (m <= n))
+SZero %<= _ = Just Dict
 SSucc _ %<= SZero = Nothing
-SSucc m %<= SSucc n = LTE2 <$> m %<= n
+SSucc m %<= SSucc n = fmap (\Dict -> Dict) $ m %<= n
 
 class (m :: Nat) <= (n :: Nat) where
   proofLTE :: m :<=: n
@@ -104,6 +104,7 @@ instance (m <= n) => ('Succ m <= 'Succ n) where
 lteDict :: m :<=: n -> Dict (m <= n)
 lteDict LTE1 = Dict
 lteDict (LTE2 subProof) = case lteDict subProof of Dict -> Dict
+
 
 upcastLt :: m :<: n -> m :<=: n
 upcastLt = \case
