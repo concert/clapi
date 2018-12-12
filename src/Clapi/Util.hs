@@ -4,21 +4,21 @@
   , TypeOperators
 #-}
 
-module Clapi.Util (
-    duplicates, ensureUnique,
-    strictZipWith, strictZip, fmtStrictZipError,
-    partitionDifference, partitionDifferenceF,
-    camel,
-    uncamel,
-    showItems,
-    bound,
-    safeToEnum,
-    foldMapM,
-    mapPartitionEither,
-    nestMapsByKey,
-    flattenNestedMaps, foldlNestedMaps,
-    liftRefl, pairRefl
-) where
+module Clapi.Util
+  ( duplicates, ensureUnique
+  , strictZipWith, strictZip, fmtStrictZipError
+  , partitionDifference, partitionDifferenceF
+  , camel
+  , uncamel
+  , showItems
+  , bound
+  , safeToEnum
+  , foldMapM
+  , mapPartitionEither
+  , nestMapsByKey
+  , flattenNestedMaps, foldlNestedMaps
+  , liftRefl, pairRefl
+  ) where
 
 import Prelude hiding (fail)
 
