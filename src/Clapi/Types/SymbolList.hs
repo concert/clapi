@@ -16,6 +16,10 @@
 
 module Clapi.Types.SymbolList
   ( withKnownSymbol
+
+  , SSymbol(..), SomeSSymbol(..), withSSymbol
+  , sSymbolToString, sSymbolFromString
+  , sameSSymbol, withSSymbolFromString
   , SymbolList(..), SomeSymbolList(..), withSymbolList
   , cons, cons_, singleton, singleton_
   , toStrings, toStrings_, fromStrings, fromType, withSymbolListFromStrings
@@ -44,9 +48,36 @@ withKnownSymbol f s = case someSymbolVal s of
   SomeSymbol p -> f p
 
 
+-- | SSymbol is just a re-implementation of Data.Constraint.Dict, sepcifically
+--   for representing Symbol types.
+data SSymbol (s :: Symbol) where
+  SSymbol :: KnownSymbol s => SSymbol s
+
+sameSSymbol :: forall s1 s2. SSymbol s1 -> SSymbol s2 -> Maybe (s1 :~: s2)
+sameSSymbol SSymbol SSymbol = sameSymbol (Proxy @s1) (Proxy @s2)
+
+sSymbolToString :: forall s. SSymbol s -> String
+sSymbolToString SSymbol = symbolVal $ Proxy @s
+
+data SomeSSymbol where
+  SomeSSymbol :: SSymbol s -> SomeSSymbol
+
+withSSymbol :: (forall s. SSymbol s -> r) -> SomeSSymbol -> r
+withSSymbol f (SomeSSymbol s) = f s
+
+sSymbolFromString :: String -> SomeSSymbol
+sSymbolFromString s = case someSymbolVal s of SomeSymbol p -> SomeSSymbol $ go p
+  where
+    go :: KnownSymbol s => Proxy s -> SSymbol s
+    go _ = SSymbol
+
+withSSymbolFromString :: (forall s. SSymbol s -> r) -> String -> r
+withSSymbolFromString f = withSSymbol f . sSymbolFromString
+
+
 data SymbolList (ss :: [Symbol]) where
   SlEmpty :: SymbolList '[]
-  SlCons :: KnownSymbol s => Proxy s -> SymbolList ss -> SymbolList ('(:) s ss)
+  SlCons :: SSymbol s -> SymbolList ss -> SymbolList ('(:) s ss)
 
 instance Show (SymbolList sl) where
   showsPrec p sl = showParen (p >= 11) $
@@ -61,8 +92,8 @@ instance Ord (SymbolList ss) where
 
 instance TestEquality SymbolList where
   testEquality SlEmpty SlEmpty = Just Refl
-  testEquality (SlCons p1 sl1) (SlCons p2 sl2) =
-    case (sameSymbol p1 p2, testEquality sl1 sl2) of
+  testEquality (SlCons s1 sl1) (SlCons s2 sl2) =
+    case (sameSSymbol s1 s2, testEquality sl1 sl2) of
       (Just Refl, Just Refl) -> Just Refl
       _ -> Nothing
   testEquality _ _ = Nothing
@@ -88,26 +119,26 @@ instance Ord SomeSymbolList where
       go SlEmpty SlEmpty = EQ
       go SlEmpty (SlCons _ _) = LT
       go (SlCons _ _) SlEmpty = GT
-      go (SlCons p1 sl1') (SlCons p2 sl2') =
-        compare (symbolVal p1) (symbolVal p2) <> go sl1' sl2'
+      go (SlCons s1 sl1') (SlCons s2 sl2') =
+        compare (sSymbolToString s1) (sSymbolToString s2) <> go sl1' sl2'
 
 
 cons :: String -> SymbolList ss -> SomeSymbolList
-cons s sl = withKnownSymbol (\p -> SomeSymbolList $ SlCons p sl) s
+cons s sl = withSSymbolFromString (\sy -> SomeSymbolList $ SlCons sy sl) s
 
 cons_ :: String -> SomeSymbolList -> SomeSymbolList
 cons_ s (SomeSymbolList sl) = cons s sl
 
-singleton :: KnownSymbol s => Proxy s -> SymbolList '[s]
-singleton p = SlCons p SlEmpty
+singleton :: SSymbol s -> SymbolList '[s]
+singleton s = SlCons s SlEmpty
 
 singleton_ :: String -> SomeSymbolList
-singleton_ = withKnownSymbol (SomeSymbolList . singleton)
+singleton_ = withSSymbolFromString (SomeSymbolList . singleton)
 
 toStrings :: SymbolList ss -> [String]
 toStrings = \case
   SlEmpty -> []
-  SlCons p sl -> symbolVal p : toStrings sl
+  SlCons s sl -> sSymbolToString s : toStrings sl
 
 toStrings_ :: SomeSymbolList -> [String]
 toStrings_ = withSymbolList toStrings
@@ -118,8 +149,8 @@ withSymbolListFromStrings f = go SlEmpty
   where
     go :: SymbolList ss -> [String] -> r
     go acc [] = f $ reverse acc  -- FIXME: reverse is wasteful
-    go acc (s : ss) = case someSymbolVal s of
-      SomeSymbol p -> go (SlCons p acc) ss
+    go acc (s : ss) = case sSymbolFromString s of
+      SomeSSymbol sy -> go (SlCons sy acc) ss
 
 fromStrings :: [String] -> SomeSymbolList
 fromStrings = withSymbolListFromStrings SomeSymbolList
@@ -130,7 +161,7 @@ class SlFromType ss where
 instance SlFromType '[] where
   fromType = SlEmpty
 instance (KnownSymbol s, SlFromType ss) => SlFromType ('(:) s ss) where
-  fromType = SlCons (Proxy @s) fromType
+  fromType = SlCons (SSymbol @s) fromType
 
 --                        -------- Reverse --------
 type family Reverse (as :: [k]) :: [k] where
@@ -159,11 +190,11 @@ length = \case
   SlEmpty -> SZero
   SlCons _ sl -> SSucc $ length sl
 
-(!!) :: n < Length ss => SymbolList ss -> SNat n -> SomeSymbol
+(!!) :: n < Length ss => SymbolList ss -> SNat n -> SomeSSymbol
 (!!) = get proofLT
   where
-    get :: n :<: Length ss -> SymbolList ss -> SNat n -> SomeSymbol
-    get LT1 (SlCons p _) SZero = SomeSymbol p
+    get :: n :<: Length ss -> SymbolList ss -> SNat n -> SomeSSymbol
+    get LT1 (SlCons s _) SZero = SomeSSymbol s
     get (LT2 subProof) (SlCons _ sl) (SSucc n) = get subProof sl n
 
 
@@ -176,8 +207,8 @@ data PrefixProof (as1 :: [k]) (as2 :: [k]) where
 isPrefixOf :: SymbolList ss1 -> SymbolList ss2 -> Maybe (PrefixProof ss1 ss2)
 SlEmpty `isPrefixOf` _ = Just PO1
 SlCons {} `isPrefixOf` SlEmpty = Nothing
-SlCons p1 sl1 `isPrefixOf` SlCons p2 sl2 =
-  case (sameSymbol p1 p2, sl1 `isPrefixOf` sl2) of
+SlCons s1 sl1 `isPrefixOf` SlCons s2 sl2 =
+  case (sameSSymbol s1 s2, sl1 `isPrefixOf` sl2) of
     (Just Refl, Just subProof) -> Just $ PO2 Refl subProof
     _ -> Nothing
 
