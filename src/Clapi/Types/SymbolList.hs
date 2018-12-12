@@ -24,7 +24,8 @@ module Clapi.Types.SymbolList
   , cons, cons_, singleton, singleton_
   , toStrings, toStrings_, fromStrings, fromType, withSymbolListFromStrings
 
-  , Length, length, (!!)
+  , Length, length
+  , Index, (!!)
   , Reverse, reverse
 
   , PrefixProof(..), isPrefixOf, IsPrefixOf
@@ -190,11 +191,16 @@ length = \case
   SlEmpty -> SZero
   SlCons _ sl -> SSucc $ length sl
 
-(!!) :: n < Length ss => SymbolList ss -> SNat n -> SomeSSymbol
+--                        -------- Indexing --------
+type family Index (as :: [k]) (i :: Nat) :: k where
+  Index ('(:) a as) 'Zero = a
+  Index ('(:) a as) ('Succ n) = Index as n
+
+(!!) :: n < Length ss => SymbolList ss -> SNat n -> SSymbol (Index ss n)
 (!!) = get proofLT
   where
-    get :: n :<: Length ss -> SymbolList ss -> SNat n -> SomeSSymbol
-    get LT1 (SlCons s _) SZero = SomeSSymbol s
+    get :: n :<: Length ss -> SymbolList ss -> SNat n -> SSymbol (Index ss n)
+    get LT1 (SlCons s _) SZero = s
     get (LT2 subProof) (SlCons _ sl) (SSucc n) = get subProof sl n
 
 
