@@ -1,5 +1,7 @@
 {-# LANGUAGE
-    PolyKinds
+    GADTs
+  , PolyKinds
+  , TypeOperators
 #-}
 
 module Clapi.Util (
@@ -15,7 +17,8 @@ module Clapi.Util (
     mapPartitionEither,
     nestMapsByKey,
     flattenNestedMaps, foldlNestedMaps,
-    proxyF, proxyF3
+    proxyF, proxyF3,
+    liftRefl, pairRefl
 ) where
 
 import Prelude hiding (fail)
@@ -33,6 +36,7 @@ import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Type.Equality ((:~:)(..))
 import Text.Printf (printf)
 
 
@@ -161,3 +165,9 @@ proxyF _ _ = Proxy
 
 proxyF3 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a b c)
 proxyF3 p1 p2 p3 = proxyF (proxyF p1 p2) p3
+
+liftRefl :: a :~: b -> f a :~: f b
+liftRefl Refl = Refl
+
+pairRefl :: a :~: b -> c :~: d -> (a, c) :~: (b, d)
+pairRefl Refl Refl = Refl

@@ -34,6 +34,7 @@ import Text.Printf (printf)
 import Clapi.Internal.Wire (WireType(..))
 import Clapi.Types.Base (Time(..), TypeEnumOf(..))
 import Clapi.Types.WireTH (mkGetWtConstraint)
+import Clapi.Util (liftRefl, pairRefl)
 
 
 deriving instance Show (WireType a)
@@ -64,12 +65,6 @@ wtMaybe (SomeWireType wt) = SomeWireType $ WtMaybe wt
 
 wtPair :: SomeWireType -> SomeWireType -> SomeWireType
 wtPair (SomeWireType wt1) (SomeWireType wt2) = SomeWireType $ WtPair wt1 wt2
-
-liftRefl :: a :~: b -> f a :~: f b
-liftRefl Refl = Refl
-
-pairRefl :: a :~: b -> c :~: d -> (a, c) :~: (b, d)
-pairRefl Refl Refl = Refl
 
 instance TestEquality WireType where
   testEquality WtTime WtTime = Just Refl
