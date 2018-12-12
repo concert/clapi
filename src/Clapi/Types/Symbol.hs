@@ -4,12 +4,13 @@
   , KindSignatures
   , RankNTypes
   , TypeOperators
+  , StandaloneDeriving
 #-}
 
 module Clapi.Types.Symbol where
 
 import Data.Proxy
-import Data.Type.Equality ((:~:)(..))
+import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 import GHC.TypeLits
   (Symbol, KnownSymbol, SomeSymbol(..), someSymbolVal, symbolVal, sameSymbol)
@@ -25,6 +26,20 @@ withKnownSymbol f s = case someSymbolVal s of
 data SSymbol (s :: Symbol) where
   SSymbol :: KnownSymbol s => SSymbol s
 
+instance Show (SSymbol s) where
+  showsPrec p s = showParen (p >= 11) $
+      showString "fromString "
+    . showsPrec p (toString s)
+
+instance Eq (SSymbol s) where
+  _ == _ = True
+
+instance Ord (SSymbol s) where
+  compare _ _ = EQ
+
+instance TestEquality SSymbol where
+  testEquality = sameSSymbol
+
 sameSSymbol :: forall s1 s2. SSymbol s1 -> SSymbol s2 -> Maybe (s1 :~: s2)
 sameSSymbol SSymbol SSymbol = sameSymbol (Proxy @s1) (Proxy @s2)
 
@@ -33,6 +48,18 @@ toString SSymbol = symbolVal $ Proxy @s
 
 data SomeSSymbol where
   SomeSSymbol :: SSymbol s -> SomeSSymbol
+deriving instance Show SomeSSymbol
+
+instance Eq SomeSSymbol where
+  SomeSSymbol s1 == SomeSSymbol s2 = case testEquality s1 s2 of
+    Just Refl -> s1 == s2
+    Nothing -> False
+
+instance Ord SomeSSymbol where
+  compare (SomeSSymbol s1) (SomeSSymbol s2) = case testEquality s1 s2 of
+    Just Refl -> compare s1 s2
+    Nothing -> compare (toString s1) (toString s2)
+
 
 withSSymbol :: (forall s. SSymbol s -> r) -> SomeSSymbol -> r
 withSSymbol f (SomeSSymbol s) = f s
