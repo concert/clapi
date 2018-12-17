@@ -235,17 +235,30 @@ instance Arbitrary SomeDefinition where
     , SomeDefinition <$> arbitrary @(Definition 'Struct)
     , SomeDefinition <$> arbitrary @(Definition 'Array)
     ]
+  shrink (SomeDefinition def) = case def of
+    TupleDef {} -> SomeDefinition <$> shrink def
+    StructDef {} -> SomeDefinition <$> shrink def
+    ArrayDef {} -> SomeDefinition <$> shrink def
 
 instance Arbitrary CreateOp where
   arbitrary = OpCreate <$> smallListOf (smallListOf arbitrary) <*> arbitrary
+  shrink (OpCreate args after) =
+    [OpCreate args' after' | (args', after') <- shrink (args, after)]
 
 instance Arbitrary d => Arbitrary (DefOp d) where
   arbitrary = oneof [OpDefine <$> arbitrary, return OpUndefine]
+  shrink = \case
+    OpUndefine -> []
+    OpDefine def -> OpUndefine : (OpDefine <$> shrink def)
 
 instance Arbitrary TimeSeriesDataOp where
   arbitrary = oneof
     [ OpSet <$> arbitrary <*> smallListOf arbitrary <*> arbitrary
     , return OpRemove]
+  shrink = \case
+    OpRemove -> []
+    OpSet t wvs i ->
+      OpRemove : [OpSet t' wvs' i' | (t', wvs', i') <- shrink (t, wvs, i)]
 
 instance Arbitrary DataChange where
   arbitrary = oneof
@@ -285,34 +298,52 @@ contOps = smallMapOf arbitrary smallMap
 instance Arbitrary TrpDigest where
   arbitrary = TrpDigest <$> arbitrary <*> smallMap <*> smallMap
     <*> arbitrary <*> contOps <*> arbitrary
+  shrink (TrpDigest ns pds ds dat cops _errs) =
+    [TrpDigest ns pds' ds' dat' cops' mempty
+    | (pds', ds', dat', cops') <- shrink (pds, ds, dat, cops)]
 
 deriving instance Arbitrary TrprDigest
 
 instance Arbitrary TrcSubDigest where
   arbitrary = TrcSubDigest <$> smallMap <*> smallMap <*> smallMap
+  shrink (TrcSubDigest pts ts dat) =
+    [TrcSubDigest pts' ts' dat' | (pts', ts', dat') <- shrink (pts, ts, dat)]
 
 instance Arbitrary TrcUpdateDigest where
   arbitrary = TrcUpdateDigest <$> arbitrary <*> arbitrary <*> creates
     <*> contOps
+  shrink (TrcUpdateDigest ns dat crs cops) =
+    [TrcUpdateDigest ns dat' crs' cops'
+    | (dat', crs', cops') <- shrink (dat, crs, cops)]
 
 
 instance Arbitrary FrpDigest where
   arbitrary = FrpDigest <$> arbitrary <*> arbitrary <*> creates <*> contOps
+  shrink (FrpDigest ns dat crs cops) =
+    [FrpDigest ns dat' crs' cops'
+    | (dat', crs', cops') <- shrink (dat, crs, cops)]
 
 instance Arbitrary FrpErrorDigest where
   arbitrary = FrpErrorDigest <$> arbitrary
+  shrink (FrpErrorDigest mol) = FrpErrorDigest <$> shrink mol
 
 instance Arbitrary FrcRootDigest where
   arbitrary = FrcRootDigest <$> smallMap
+  shrink (FrcRootDigest m) = FrcRootDigest <$> shrink m
 
 instance Arbitrary FrcSubDigest where
   arbitrary = FrcSubDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
     <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (FrcSubDigest e pt t d) =
+    [FrcSubDigest e' pt' t' d' | (e', pt', t', d') <- shrink (e, pt, t, d)]
 
 instance Arbitrary FrcUpdateDigest where
   arbitrary = FrcUpdateDigest <$> arbitrary <*> smallMap <*> smallMap
     <*> smallMap <*> arbitrary <*> contOps
     <*> arbitrary
+  shrink (FrcUpdateDigest ns pt ty tas d cops _errs) =
+    [FrcUpdateDigest ns pt' ty' tas' d' cops' mempty
+    | (pt', ty', tas', d', cops') <- shrink (pt, ty, tas, d, cops)]
 
 
 instance Arbitrary TrDigest where
@@ -322,6 +353,11 @@ instance Arbitrary TrDigest where
     , Trcsd <$> arbitrary
     , Trcud <$> arbitrary
     ]
+  shrink = \case
+    Trpd trpd -> Trpd <$> shrink trpd
+    Trprd trprd -> Trprd <$> shrink trprd
+    Trcsd trcsd -> Trcsd <$> shrink trcsd
+    Trcud trcud -> Trcud <$> shrink trcud
 
 instance Arbitrary FrDigest where
   arbitrary = oneof
@@ -331,3 +367,9 @@ instance Arbitrary FrDigest where
     , Frcsd <$> arbitrary
     , Frcud <$> arbitrary
     ]
+  shrink = \case
+    Frpd frpd -> Frpd <$> shrink frpd
+    Frped frped -> Frped <$> shrink frped
+    Frcrd frcrd -> Frcrd <$> shrink frcrd
+    Frcsd frcsd -> Frcsd <$> shrink frcsd
+    Frcud frcud -> Frcud <$> shrink frcud
