@@ -293,10 +293,3 @@ frNull = \case
   Frcrd d -> frcrdNull d
   Frcsd d -> frcsdNull d
   Frcud d -> frcudNull d
-
--- | "Split" because kinda like :: Map k1 a -> Map k2 (Map k3 a)
-splitMap :: (Ord a, Ord b) => [(a, (b, c))] -> Map a (Map b c)
-splitMap = foldl mush mempty
-  where
-    mush m (a, bc) = Map.alter (mush' bc) a m
-    mush' (b, c) = Just . Map.insert b c . maybe mempty id
