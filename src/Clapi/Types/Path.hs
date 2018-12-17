@@ -8,7 +8,9 @@ module Clapi.Types.Path
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
-  , isParentOf, isChildOf, isParentOfAny, isChildOfAny, childPaths
+  , isParentOf, isStrictParentOf, isChildOf, isStrictChildOf, childPaths
+  , isParentOfAny, isStrictParentOfAny, isChildOfAny, isStrictChildOfAny
+  , prefixes, prefixesMap
   ) where
 
 import Prelude hiding (fail)
@@ -16,6 +18,9 @@ import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
 import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Control.Monad.Fail (MonadFail, fail)
@@ -93,14 +98,26 @@ fromText p = either fail return . DAT.parseOnly (pathP p <* DAT.endOfInput)
 isParentOf :: Eq a => Path' a -> Path' a -> Bool
 isParentOf (Path' as1) (Path' as2) = isPrefixOf as1 as2
 
+isStrictParentOf :: Eq a => Path' a -> Path' a -> Bool
+isStrictParentOf p1 p2 = p1 `isParentOf` p2 && p1 /= p2
+
 isChildOf :: Eq a => Path' a -> Path' a -> Bool
 isChildOf = flip isParentOf
 
-isParentOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
-isParentOfAny parent candidates = or $ isParentOf parent <$> candidates
+isStrictChildOf :: Eq a => Path' a -> Path' a -> Bool
+isStrictChildOf = flip isStrictParentOf
 
-isChildOfAny :: (Eq a, Functor f, Foldable f) => Path' a -> f (Path' a) -> Bool
-isChildOfAny candidateChild parents = or $ isChildOf candidateChild <$> parents
+ofAny
+  :: Foldable f
+  => (Path' a -> Path' a -> Bool) -> Path' a -> f (Path' a) -> Bool
+ofAny f candidate = any (f candidate)
+
+isParentOfAny, isStrictParentOfAny, isChildOfAny, isStrictChildOfAny
+  :: (Eq a, Foldable f) => Path' a -> f (Path' a) -> Bool
+isParentOfAny = ofAny isParentOf
+isStrictParentOfAny = ofAny isStrictParentOf
+isChildOfAny = ofAny isParentOf
+isStrictChildOfAny = ofAny isStrictChildOf
 
 childPaths :: Functor f => Path' a -> f a -> f (Path' a)
 childPaths (Path' as1) as2 = Path' . (as1 ++) . pure <$> as2
@@ -109,3 +126,17 @@ parentPath :: Path' a -> Maybe (Path' a)
 parentPath p = case p of
   (pp :/ _) -> Just pp
   _ -> Nothing
+
+prefixes :: Eq a => Set (Path' a) -> Set (Path' a)
+prefixes = Map.keysSet . prefixesMap . Map.fromSet (const ())
+
+prefixesMap :: Eq k => Map (Path' k) v -> Map (Path' k) v
+prefixesMap = Map.fromAscList . f . Map.toAscList
+  where
+    f [] = []
+    f ((p, v):pvs) = (p, v) : g p v pvs
+
+    g _ _ [] = []
+    g p1 v1 ((p2, v2):pvs) = if p1 `isParentOf` p2
+      then g p1 v1 pvs
+      else (p2, v2) : g p2 v2 pvs

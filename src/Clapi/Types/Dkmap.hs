@@ -1,8 +1,7 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
-  , TemplateHaskell
-  , TypeFamilies
+  , DeriveTraversable
 #-}
 
 module Clapi.Types.Dkmap where
@@ -10,7 +9,6 @@ module Clapi.Types.Dkmap where
 -- | Doubly-keyed maps.
 
 import Prelude hiding (fail)
--- import Control.Lens (Index, IxValue, Ixed(..), At(..), makeLenses)
 import Control.Monad (when)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Bimap (Bimap)
@@ -21,7 +19,7 @@ import qualified Data.Map as Map
 
 data Dkmap k0 k1 v
   = Dkmap {_keyMap :: (Bimap k1 k0), _valueMap :: (Map k0 v)}
-  deriving (Show, Eq, Functor, Foldable)
+  deriving (Show, Eq, Functor, Foldable, Traversable)
 
 valueMap :: Dkmap k0 k1 v -> Map k0 v
 valueMap = _valueMap
@@ -82,3 +80,15 @@ rekey k0 k1' (Dkmap km vm) = do
 flatten :: (Ord k0, Ord k1) => (k1 -> v -> a) -> Dkmap k0 k1 v -> Map k0 a
 flatten f (Dkmap km vm) =
   Map.mapWithKey (\k0 v -> f (fromJust $ Bimap.lookupR k0 km) v) vm
+
+mapWithKeys
+  :: (Ord k0, Ord k1)
+  => (k0 -> k1 -> a -> b) -> Dkmap k0 k1 a -> Dkmap k0 k1 b
+mapWithKeys f (Dkmap km vm) = Dkmap km $
+  Map.mapWithKey (\k0 a -> f k0 (fromJust $ Bimap.lookupR k0 km) a) vm
+
+traverseWithKeys
+  :: (Applicative t, Ord k0, Ord k1)
+  => (k0 -> k1 -> a -> t b) -> Dkmap k0 k1 a -> t (Dkmap k0 k1 b)
+traverseWithKeys f (Dkmap km vm) = Dkmap km <$>
+  Map.traverseWithKey (\k0 a -> f k0 (fromJust $ Bimap.lookupR k0 km) a) vm

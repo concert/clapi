@@ -11,7 +11,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word (Word32)
 
@@ -21,11 +20,12 @@ import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
-import Clapi.Types.Definitions (Definition, Editable, PostDefinition)
+import Clapi.Types.Definitions
+  (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Types.Wire (WireValue)
+import Clapi.Types.Wire (SomeWireValue)
 
 
 type TpId = Word32
@@ -43,17 +43,17 @@ data DataErrorIndex
 
 data SubErrorIndex
   = NamespaceSubError Namespace
-  | PostTypeSubError Namespace (Tagged PostDefinition Seg)
-  | TypeSubError Namespace (Tagged Definition Seg)
+  | PostTypeSubError Namespace PostDefName
+  | TypeSubError Namespace DefName
   | PathSubError Namespace Path
   deriving (Show, Eq, Ord)
 
 class MkSubErrIdx a where
   mkSubErrIdx :: Namespace -> a -> SubErrorIndex
 
-instance MkSubErrIdx (Tagged PostDefinition Seg) where
+instance MkSubErrIdx PostDefName where
   mkSubErrIdx = PostTypeSubError
-instance MkSubErrIdx (Tagged Definition Seg) where
+instance MkSubErrIdx DefName where
   mkSubErrIdx = TypeSubError
 instance MkSubErrIdx Path where
   mkSubErrIdx = PathSubError
@@ -65,14 +65,14 @@ isUndef OpUndefine = True
 isUndef _ = False
 
 data TimeSeriesDataOp =
-  OpSet Time [WireValue] Interpolation | OpRemove deriving (Show, Eq)
+  OpSet Time [SomeWireValue] Interpolation | OpRemove deriving (Show, Eq)
 
 isRemove :: TimeSeriesDataOp -> Bool
 isRemove OpRemove = True
 isRemove _ = False
 
 data DataChange
-  = ConstChange (Maybe Attributee) [WireValue]
+  = ConstChange (Maybe Attributee) [SomeWireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))
   deriving (Show, Eq)
 type DataDigest = AssocList Path DataChange
@@ -81,7 +81,7 @@ data CreateOp
   = OpCreate
   -- FIXME: Nested lists of WireValues is a legacy hangover because our tree
   -- data nodes still contain [WireValue] as a single "value":
-  { ocArgs :: [[WireValue]]
+  { ocArgs :: [[SomeWireValue]]
   , ocAfter :: Maybe (Either Placeholder Seg)
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
@@ -92,19 +92,19 @@ type RootContOps = Map Namespace (SequenceOp Namespace)
 type ContOps after = Map Path (Map Seg (Maybe Attributee, SequenceOp after))
 
 data PostOp
-  = OpPost {opPath :: Path, opArgs :: Map Seg WireValue} deriving (Show, Eq)
+  = OpPost {opPath :: Path, opArgs :: Map Seg SomeWireValue} deriving (Show, Eq)
 
 data TrpDigest = TrpDigest
   { trpdNamespace :: Namespace
-  , trpdPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
-  , trpdDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
+  , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
+  , trpdDefinitions :: Map DefName (DefOp SomeDefinition)
   , trpdData :: DataDigest
   , trpdContOps :: ContOps Seg
   -- FIXME: should errors come in a different digest to data updates? At the
   -- moment we just check a TrpDigest isn't null when processing namespace
   -- claims...
   , trpdErrors :: Mol DataErrorIndex Text
-  } deriving (Show, Eq)
+  } deriving Show
 
 trpdEmpty :: Namespace -> TrpDigest
 trpdEmpty ns = TrpDigest ns mempty mempty alEmpty mempty mempty
@@ -147,8 +147,8 @@ isSub OpSubscribe = True
 isSub _ = False
 
 data TrcSubDigest = TrcSubDigest
-  { trcsdPostTypes :: Map (Namespace, Tagged PostDefinition Seg) SubOp
-  , trcsdTypes :: Map (Namespace, Tagged Definition Seg) SubOp
+  { trcsdPostTypes :: Map (Namespace, PostDefName) SubOp
+  , trcsdTypes :: Map (Namespace, DefName) SubOp
   , trcsdData :: Map (Namespace, Path) SubOp
   } deriving (Show, Eq)
 
@@ -168,8 +168,8 @@ trcsdNamespaces (TrcSubDigest p t d) =
 
 data ClientRegs
   = ClientRegs
-  { crPostTypeRegs :: Mos Namespace (Tagged PostDefinition Seg)
-  , crTypeRegs :: Mos Namespace (Tagged Definition Seg)
+  { crPostTypeRegs :: Mos Namespace PostDefName
+  , crTypeRegs :: Mos Namespace DefName
   , crDataRegs :: Mos Namespace Path
   } deriving (Show)
 
@@ -228,8 +228,8 @@ frcrdNull = null . frcrdContOps
 data FrcSubDigest = FrcSubDigest
   -- FIXME: really this is a Mol:
   { frcsdErrors :: Map SubErrorIndex [Text]
-  , frcsdPostTypeUnsubs :: Mos Namespace (Tagged PostDefinition Seg)
-  , frcsdTypeUnsubs :: Mos Namespace (Tagged Definition Seg)
+  , frcsdPostTypeUnsubs :: Mos Namespace PostDefName
+  , frcsdTypeUnsubs :: Mos Namespace DefName
   , frcsdDataUnsubs :: Mos Namespace Path
   } deriving (Show, Eq)
 
@@ -252,13 +252,13 @@ frcsdFromClientRegs (ClientRegs p t d) = FrcSubDigest mempty p t d
 
 data FrcUpdateDigest = FrcUpdateDigest
   { frcudNamespace :: Namespace
-  , frcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
-  , frcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , frcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
+  , frcudPostDefs :: Map PostDefName (DefOp PostDefinition)
+  , frcudDefinitions :: Map DefName (DefOp SomeDefinition)
+  , frcudTypeAssignments :: Map Path (DefName, Editability)
   , frcudData :: DataDigest
   , frcudContOps :: ContOps Seg
   , frcudErrors :: Mol DataErrorIndex Text
-  } deriving (Show, Eq)
+  } deriving Show
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
 frcudEmpty ns = FrcUpdateDigest ns mempty mempty mempty alEmpty mempty mempty
@@ -276,7 +276,7 @@ data TrDigest
   | Trprd TrprDigest
   | Trcsd TrcSubDigest
   | Trcud TrcUpdateDigest
-  deriving (Show, Eq)
+  deriving Show
 
 data FrDigest
   = Frpd FrpDigest
@@ -284,7 +284,7 @@ data FrDigest
   | Frcrd FrcRootDigest
   | Frcsd FrcSubDigest
   | Frcud FrcUpdateDigest
-  deriving (Show, Eq)
+  deriving Show
 
 frNull :: FrDigest -> Bool
 frNull = \case
@@ -320,4 +320,4 @@ data OutboundDigest
   | Ocud OutboundClientUpdateDigest
   | Opd OutboundProviderDigest
   | Ope FrpErrorDigest
-  deriving (Show, Eq)
+  deriving Show

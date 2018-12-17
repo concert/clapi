@@ -1,4 +1,12 @@
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE
+    DataKinds
+  , GADTs
+  , KindSignatures
+  , LambdaCase
+  , MultiParamTypeClasses
+  , RankNTypes
+  , StandaloneDeriving
+#-}
 
 module Clapi.Types.Definitions where
 
@@ -10,83 +18,81 @@ import Data.Text (Text)
 import Data.Maybe.Clapi (note)
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
-import Clapi.Types.Base (InterpolationLimit(..))
+import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
-import Clapi.Types.Tree (TreeType(..))
+import Clapi.Types.Tree (SomeTreeType(..))
 
-data Editable = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
+data Editability = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
-data MetaType = Tuple | Struct | Array deriving (Show, Eq, Enum, Bounded)
+data MetaType = Tuple | Struct | Array deriving (Show, Eq, Ord, Enum, Bounded)
 
-class OfMetaType metaType where
-  metaType :: metaType -> MetaType
-  childTypeFor :: Seg -> metaType -> Maybe (Tagged Definition Seg)
-  childEditableFor :: MonadFail m => metaType -> Seg -> m Editable
+type DefName = Tagged SomeDefinition Seg
+type PostDefName = Tagged PostDefinition Seg
 
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
   -- FIXME: We really need to stop treating single values as lists of types,
   -- which makes the "top level" special:
-  , postDefArgs :: AssocList Seg [TreeType]
+  , postDefArgs :: AssocList Seg [SomeTreeType]
   } deriving (Show, Eq)
 
-data TupleDefinition = TupleDefinition
-  { tupDefDoc :: Text
+data Definition (mt :: MetaType) where
+  TupleDef ::
+    { tupDefDoc :: Text
   -- FIXME: this should eventually boil down to a single TreeType (NB remove
   -- names too and just write more docstring) now that we have pairs:
-  , tupDefTypes :: AssocList Seg TreeType
-  , tupDefInterpLimit :: InterpolationLimit
-  } deriving (Show, Eq)
+    , tupDefTys :: AssocList Seg SomeTreeType
+    , tupDefILimit :: InterpolationLimit
+    } -> Definition 'Tuple
+  StructDef ::
+    { strDefDoc :: Text
+    , strDefChildTys :: AssocList Seg (DefName, Editability)
+    } -> Definition 'Struct
+  ArrayDef ::
+    { arrDefDoc :: Text
+    , arrDefPostTy :: Maybe PostDefName
+    , arrDefChildTy :: DefName
+    , arrDefChildEd :: Editability
+    } -> Definition 'Array
+deriving instance Show (Definition mt)
 
-instance OfMetaType TupleDefinition where
-  metaType _ = Tuple
-  childTypeFor _ _ = Nothing
-  childEditableFor _ _ = fail "Tuples have no children"
+data SomeDefinition where
+  SomeDefinition :: Definition mt -> SomeDefinition
+deriving instance Show SomeDefinition
 
-data StructDefinition = StructDefinition
-  { strDefDoc :: Text
-  , strDefTypes :: AssocList Seg (Tagged Definition Seg, Editable)
-  } deriving (Show, Eq)
+withDefinition :: (forall mt. Definition mt -> r) -> SomeDefinition -> r
+withDefinition f (SomeDefinition d) = f d
 
-instance OfMetaType StructDefinition where
-  metaType _ = Struct
-  childTypeFor seg (StructDefinition _ tyInfo) =
-    fst <$> lookup seg (unAssocList tyInfo)
-  childEditableFor (StructDefinition _ tyInfo) seg = note "No such child" $
-    snd <$> lookup seg (unAssocList tyInfo)
+tupleDef
+  :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> SomeDefinition
+tupleDef doc tys ilimit = SomeDefinition $ TupleDef doc tys ilimit
 
-data ArrayDefinition = ArrayDefinition
-  { arrDefDoc :: Text
-  , arrPostType :: Maybe (Tagged PostDefinition Seg)
-  , arrDefChildType :: Tagged Definition Seg
-  , arrDefChildEditable :: Editable
-  } deriving (Show, Eq)
+structDef :: Text -> AssocList Seg (DefName, Editability) -> SomeDefinition
+structDef doc tyinfo = SomeDefinition $ StructDef doc tyinfo
 
-instance OfMetaType ArrayDefinition where
-  metaType _ = Array
-  childTypeFor _ = Just . arrDefChildType
-  childEditableFor ad _ = return $ arrDefChildEditable ad
+arrayDef
+  :: Text -> Maybe PostDefName -> DefName -> Editability -> SomeDefinition
+arrayDef doc ptn tn ed = SomeDefinition $ ArrayDef doc ptn tn ed
 
+instance TypeEnumOf (Definition mt) MetaType where
+  typeEnumOf = \case
+    TupleDef {} -> Tuple
+    StructDef {} -> Struct
+    ArrayDef {} -> Array
 
-data Definition
-  = TupleDef TupleDefinition
-  | StructDef StructDefinition
-  | ArrayDef ArrayDefinition
-  deriving (Show, Eq)
+instance TypeEnumOf SomeDefinition MetaType where
+  typeEnumOf = withDefinition typeEnumOf
 
-tupleDef :: Text -> AssocList Seg TreeType -> InterpolationLimit -> Definition
-tupleDef doc types interpl = TupleDef $ TupleDefinition doc types interpl
+childTypeFor :: Seg -> Definition mt -> Maybe DefName
+childTypeFor seg = \case
+  TupleDef {} -> Nothing
+  StructDef { strDefChildTys = tyinfo } ->
+    fst <$> lookup seg (unAssocList tyinfo)
+  ArrayDef { arrDefChildTy = tn } -> Just tn
 
-structDef
-  :: Text -> AssocList Seg (Tagged Definition Seg, Editable) -> Definition
-structDef doc types = StructDef $ StructDefinition doc types
-
-arrayDef :: Text
-  -> Maybe (Tagged PostDefinition Seg) -> Tagged Definition Seg
-  -> Editable -> Definition
-arrayDef doc ptn tn ed = ArrayDef $ ArrayDefinition doc ptn tn ed
-
-defDispatch :: (forall a. OfMetaType a => a -> r) -> Definition -> r
-defDispatch f (TupleDef d) = f d
-defDispatch f (StructDef d) = f d
-defDispatch f (ArrayDef d) = f d
+childEditableFor :: MonadFail m => Seg -> Definition mt -> m Editability
+childEditableFor seg = \case
+  TupleDef {} -> fail "Tuples have not children"
+  StructDef { strDefChildTys = tyinfo } -> note "No such child" $
+    snd <$> lookup seg (unAssocList tyinfo)
+  ArrayDef { arrDefChildEd = ed } -> return ed

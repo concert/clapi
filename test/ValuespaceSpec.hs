@@ -1,9 +1,10 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE
+    GADTs
+  , OverloadedStrings
+  , QuasiQuotes
+  , StandaloneDeriving
+#-}
 module ValuespaceSpec where
 
 import Test.Hspec
@@ -11,9 +12,6 @@ import Test.Hspec
 import Data.Maybe (fromJust)
 import Data.Either (either, isRight, isLeft)
 import Data.Tagged (Tagged(..))
-import Data.Text (Text)
-import Data.Word
-import Data.Int
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Control.Monad (void)
@@ -22,14 +20,15 @@ import Control.Monad.Fail (MonadFail)
 import qualified Data.Map.Mol as Mol
 
 import Clapi.TH
+import qualified Clapi.Tree as Tree
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, alEmpty, alInsert, alFromList)
 import Clapi.Types
-  ( InterpolationLimit(ILUninterpolated), WireValue(..)
-  , TreeType(..), unbounded, Editable(..)
+  ( InterpolationLimit(ILUninterpolated)
+  , someWv, WireType(..), someWireable
+  , ttInt32, ttString, ttRef, unbounded, Editability(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
-  , Definition(..)
-  , StructDefinition(strDefTypes)
+  , Definition(..), SomeDefinition, withDefinition, DefName
   , TrpDigest(..), DefOp(..), DataChange(..)
   , TrcUpdateDigest(..), trcudEmpty)
 import qualified Clapi.Types.Path as Path
@@ -37,20 +36,18 @@ import Clapi.Types.Path
   ( Path, pattern (:/), pattern Root, Seg, Namespace(..))
 import Clapi.Valuespace
   ( Valuespace(..), validateVs, baseValuespace, processToRelayProviderDigest
-  , processTrcUpdateDigest, ValidationErr(..))
-import Clapi.Tree
-  ( RoseTree(..), RoseTreeNodeType(..), treePaths, updateTreeWithDigest)
+  , processTrcUpdateDigest)
+import Clapi.Tree (RoseTree(..), updateTreeWithDigest)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 
-deriving instance Eq RoseTreeNodeType
-deriving instance Eq ValidationErr
+import Instances ()
 
 -- | Fully revalidates the given Valuespace and throws an error if there are any
 --   validation issues.
 unsafeValidateVs :: Valuespace -> Valuespace
 unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
   where
-    allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $ vsTree vs
+    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $ vsTree vs
 
 
 testS :: Seg
@@ -68,10 +65,10 @@ testValuespace = unsafeValidateVs $ (baseValuespace (Tagged testS) Editable)
           [ (versionS, (Tagged versionS, ReadOnly))
           ])
       , (Tagged versionS, tupleDef
-          "versioney" (alSingleton versionS $ TtInt32 unbounded) ILUninterpolated)
+          "versioney" (alSingleton versionS $ ttInt32 unbounded) ILUninterpolated)
       ]
   , vsTree = RtContainer $ alSingleton versionS
-      (Nothing, RtConstData Nothing [WireValue @Int32 3])
+      (Nothing, RtConstData Nothing [someWv WtInt32 3])
   }
 
 vsProviderErrorsOn :: Valuespace -> TrpDigest -> [Path] -> Expectation
@@ -89,7 +86,7 @@ validVersionTypeChange :: Valuespace -> TrpDigest
 validVersionTypeChange vs =
   let
     svd = tupleDef
-      "Stringy" (alSingleton [segq|vstr|] $ TtString "pear")
+      "Stringy" (alSingleton [segq|vstr|] $ ttString "pear")
       ILUninterpolated
     rootDef = redefTestRoot
       (alInsert versionS $ Tagged [segq|stringVersion|]) vs
@@ -101,7 +98,7 @@ validVersionTypeChange vs =
       , (Tagged $ unNamespace testNs, OpDefine rootDef)
       ])
     (alSingleton [pathq|/version|]
-      $ ConstChange Nothing [WireValue ("pear" :: Text)])
+      $ ConstChange Nothing [someWv WtString "pear"])
     mempty
     mempty
 
@@ -110,18 +107,18 @@ vsAppliesCleanly d vs = either (fail . show) (return . snd) $
   processToRelayProviderDigest d vs
 
 redefTestRoot
-  :: (AssocList Seg (Tagged Definition Seg)
-      -> AssocList Seg (Tagged Definition Seg))
-  -> Valuespace -> Definition
+  :: (AssocList Seg DefName -> AssocList Seg DefName)
+  -> Valuespace -> SomeDefinition
 redefTestRoot f vs =
     structDef "Frigged by test" $ (, ReadOnly) <$> f currentKids
   where
-    currentKids = fmap fst $ grabDefTypes $ fromJust $
+    currentKids = fmap fst $ withDefinition grabDefTypes $ fromJust $
       Map.lookup (Tagged $ unNamespace testNs) $ vsTyDefs vs
-    grabDefTypes (StructDef sd) = strDefTypes sd
+    grabDefTypes :: Definition mt -> AssocList Seg (DefName, Editability)
+    grabDefTypes (StructDef { strDefChildTys = tyinfo }) = tyinfo
     grabDefTypes _ = error "Test vs root type not a struct!"
 
-extendedVs :: MonadFail m => Definition -> Seg -> DataChange -> m Valuespace
+extendedVs :: MonadFail m => SomeDefinition -> Seg -> DataChange -> m Valuespace
 extendedVs def s dc =
   let
     rootDef = redefTestRoot (alInsert s $ Tagged s) testValuespace
@@ -142,10 +139,10 @@ vsWithXRef =
     newNodeDef = tupleDef
       "for test"
       -- FIXME: Should the ref seg be tagged?:
-      (alSingleton [segq|daRef|] $ TtRef versionS)
+      (alSingleton [segq|daRef|] $ ttRef versionS)
       ILUninterpolated
     newVal = ConstChange Nothing
-      [WireValue $ Path.toText Path.unSeg [pathq|/version|]]
+      [someWireable $ Path.toText Path.unSeg [pathq|/version|]]
   in extendedVs newNodeDef refSeg newVal
 
 refSeg :: Seg
@@ -173,14 +170,14 @@ spec = do
     it "raw baseValuespace invalid" $
       let
         rawValuespace = baseValuespace (Tagged testS) Editable
-        allTainted = Map.fromList $ fmap (,Nothing) $ treePaths Root $
+        allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $
           vsTree rawValuespace
       in validateVs allTainted rawValuespace `shouldSatisfy` isLeft
     it "rechecks on data changes" $
       let
         d = TrpDigest testNs mempty mempty
           (alSingleton [pathq|/version|] $
-           ConstChange Nothing [WireValue @Text "wrong"])
+           ConstChange Nothing [someWv WtString "wrong"])
           mempty mempty
       in vsProviderErrorsOn testValuespace d [[pathq|/version|]]
     it "rechecks on type def changes" $
@@ -189,7 +186,7 @@ spec = do
       let
           newDef = tupleDef
             "for test"
-            (alSingleton [segq|versionString|] $ TtString "apple")
+            (alSingleton [segq|versionString|] $ ttString "apple")
             ILUninterpolated
           d = TrpDigest
             testNs mempty
@@ -234,7 +231,7 @@ spec = do
       let
         v2s = [segq|v2|]
         v2Val = alSingleton (Root :/ v2s) $ ConstChange Nothing
-          [WireValue @Int32 123]
+          [someWv WtInt32 123]
       in do
         vs <- vsWithXRef
         -- Add another version node:
@@ -250,7 +247,7 @@ spec = do
           (TrpDigest testNs mempty mempty
             (alSingleton (Root :/ refSeg)
              $ ConstChange Nothing
-             [WireValue $ Path.toText Path.unSeg [pathq|/v2|]])
+             [someWireable $ Path.toText Path.unSeg [pathq|/v2|]])
             mempty mempty)
           vs'
         (vsAppliesCleanly (validVersionTypeChange vs'') vs''
@@ -265,9 +262,9 @@ spec = do
             mempty
             (Map.fromList
               [ (Tagged xS, OpDefine $ arrayDef "kriss" Nothing (Tagged aS) ReadOnly)
-              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ TtInt32 unbounded) ILUninterpolated)
+              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ ttInt32 unbounded) ILUninterpolated)
               ])
-            (alSingleton [pathq|/ard|] $ ConstChange Nothing [WireValue @Int32 3])
+            (alSingleton [pathq|/ard|] $ ConstChange Nothing [someWv WtInt32 3])
             (Map.singleton [pathq|/|] $ Map.singleton [segq|ard|] (Nothing, SoAbsent))
             mempty
       in void $ vsAppliesCleanly d vs :: IO ()
@@ -279,7 +276,7 @@ spec = do
           mempty
           mempty
           (alSingleton [pathq|/arr/bad|] $
-            ConstChange Nothing [WireValue @Text "boo"])
+            ConstChange Nothing [someWv WtString "boo"])
           mempty
           mempty
         goodChild = TrpDigest
@@ -287,7 +284,7 @@ spec = do
           mempty
           mempty
           (alSingleton [pathq|/arr/mehearties|] $
-            ConstChange Nothing [WireValue @Int32 3])
+            ConstChange Nothing [someWv WtInt32 3])
           mempty
           mempty
         removeGoodChild = TrpDigest
@@ -366,7 +363,7 @@ spec = do
         it "Cannot itself create new array entries" $
           let
             dd = alSingleton [pathq|/arr/a|] $ ConstChange Nothing
-                [WireValue @Word32 1, WireValue @Word32 2, WireValue @Int32 3]
+                [someWv WtWord32 1, someWv WtWord32 2, someWv WtInt32 3]
             trcud = (trcudEmpty testNs) {trcudData = dd}
           in do
             vs <- vsAppliesCleanly (emptyArrayD [segq|arr|] testValuespace) testValuespace

@@ -1,67 +1,65 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE
+    GADTs
+#-}
 
 module Clapi.Serialisation.Definitions where
 
 import Clapi.Serialisation.Base
-  (Encodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
+  ( Encodable(..), Decodable(..), (<<>>), tdTaggedBuilder, tdTaggedParser)
 import Clapi.Serialisation.Path ()
 import Clapi.TaggedData (TaggedData, taggedData)
 import Clapi.TextSerialisation (ttToText, ttFromText)
 import Clapi.TH (btq)
+import Clapi.Types.Base (TypeEnumOf(..))
 import Clapi.Types.Definitions
-  ( Editable(..), MetaType(..), metaType
-  , TupleDefinition(..), StructDefinition(..), ArrayDefinition(..)
-  , Definition(..), defDispatch, PostDefinition(..))
-import Clapi.Types.Tree (TreeType)
+  ( Editability(..), MetaType(..)
+  , Definition(..), SomeDefinition(..), tupleDef, structDef, arrayDef
+  , PostDefinition(..))
+import Clapi.Types.Tree (TreeType, SomeTreeType, withTreeType)
 
-editableTaggedData :: TaggedData Editable Editable
+editableTaggedData :: TaggedData Editability Editability
 editableTaggedData = taggedData toTag id
   where
     toTag r = case r of
       Editable -> [btq|w|]
       ReadOnly -> [btq|r|]
 
-instance Encodable Editable where
+instance Encodable Editability where
   builder = tdTaggedBuilder editableTaggedData $ const $ return mempty
+instance Decodable Editability where
   parser = tdTaggedParser editableTaggedData return
 
 -- FIXME: do we want to serialise the type to text first?!
-instance Encodable TreeType where
+instance Encodable (TreeType a) where
   builder = builder . ttToText
+
+instance Encodable SomeTreeType where
+  builder = withTreeType builder
+instance Decodable SomeTreeType where
   parser = parser >>= ttFromText
 
-instance Encodable TupleDefinition where
-  builder (TupleDefinition doc types interpl) =
-    builder doc <<>> builder types <<>> builder interpl
-  parser = TupleDefinition <$> parser <*> parser <*> parser
-
-instance Encodable StructDefinition where
-  builder (StructDefinition doc tyinfo) = builder doc <<>> builder tyinfo
-  parser = StructDefinition <$> parser <*> parser
-
-instance Encodable ArrayDefinition where
-  builder (ArrayDefinition doc ptn ctn cl) =
-    builder doc <<>> builder ptn <<>> builder ctn <<>> builder cl
-  parser = ArrayDefinition <$> parser <*> parser <*> parser <*> parser
-
-defTaggedData :: TaggedData MetaType Definition
-defTaggedData = taggedData typeToTag (defDispatch metaType)
+defTaggedData :: TaggedData MetaType SomeDefinition
+defTaggedData = taggedData typeToTag typeEnumOf
   where
     typeToTag mt = case mt of
       Tuple -> [btq|T|]
       Struct -> [btq|S|]
       Array -> [btq|A|]
 
-instance Encodable Definition where
-  builder = tdTaggedBuilder defTaggedData $ \def -> case def of
-    TupleDef d -> builder d
-    StructDef d -> builder d
-    ArrayDef d -> builder d
+instance Encodable SomeDefinition where
+  builder = tdTaggedBuilder defTaggedData $ \(SomeDefinition d) -> case d of
+    TupleDef doc tys ilimit -> builder doc <<>> builder tys <<>> builder ilimit
+    StructDef doc tyinfo -> builder doc <<>> builder tyinfo
+    ArrayDef doc ptn tn ed ->
+      builder doc <<>> builder ptn <<>> builder tn <<>> builder ed
+instance Decodable SomeDefinition where
   parser = tdTaggedParser defTaggedData $ \mt -> case mt of
-    Tuple -> TupleDef <$> parser
-    Struct -> StructDef <$> parser
-    Array -> ArrayDef <$> parser
+    Tuple -> tupleDef <$> parser <*> parser <*> parser
+    Struct -> structDef <$> parser <*> parser
+    Array -> arrayDef <$> parser <*> parser <*> parser <*> parser
 
 instance Encodable PostDefinition where
   builder (PostDefinition doc args) = builder doc <<>> builder args
+instance Decodable PostDefinition where
   parser = PostDefinition <$> parser <*> parser

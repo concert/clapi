@@ -9,11 +9,11 @@ import Data.ByteString.UTF8 (fromString)
 import Blaze.ByteString.Builder (toByteString)
 
 import Clapi.Types ()
-import Clapi.Serialisation.Base (Encodable(..))
+import Clapi.Serialisation.Base (Encodable(..), Decodable(..))
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 
 serialiser
-  :: (Encodable a, Encodable b, Monad m)
+  :: (Decodable a, Encodable b, Monad m)
   => Protocol ByteString a ByteString b m ()
 serialiser = serialiser' $ parse parser
   where

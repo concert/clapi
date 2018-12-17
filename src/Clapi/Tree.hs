@@ -7,7 +7,7 @@
 
 module Clapi.Tree where
 
-import Prelude hiding (fail)
+import Prelude hiding (fail, lookup)
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.State (State, get, put, modify, runState, state)
 import Data.Functor.Const (Const(..))
@@ -21,7 +21,7 @@ import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
 
 import Clapi.Types
-  (Time, Interpolation(..), Attributee, WireValue)
+  (Time, Interpolation(..), Attributee, SomeWireValue)
 import Clapi.Types.AssocList
   ( AssocList, unAssocList, alEmpty, alFmapWithKey, alSingleton, alAlterF
   , alKeys, alToMap, alPickFromMap)
@@ -44,56 +44,56 @@ data RoseTree a
   | RtDataSeries (TimeSeries a)
   deriving (Show, Eq, Functor, Foldable)
 
-treeMissing :: RoseTree a -> [Path]
-treeMissing = inner Root
+missing :: RoseTree a -> [Path]
+missing = inner Root
   where
     inner p RtEmpty = [p]
     inner p (RtContainer al) =
       mconcat $ (\(s, (_, rt)) -> inner (p :/ s) rt) <$> unAssocList al
     inner _ _ = []
 
-treeChildren :: RoseTree a -> AssocList Seg (RoseTree a)
-treeChildren t = case t of
+children :: RoseTree a -> AssocList Seg (RoseTree a)
+children t = case t of
     RtContainer al -> snd <$> al
     _ -> alEmpty
 
-treeChildNames :: RoseTree a -> [Seg]
-treeChildNames = fmap fst . unAssocList . treeChildren
+childNames :: RoseTree a -> [Seg]
+childNames = fmap fst . unAssocList . children
 
 -- FIXME: define in terms of treeChildren (if even used)
-treePaths :: Path -> RoseTree a -> [Path]
-treePaths p t = case t of
+paths :: Path -> RoseTree a -> [Path]
+paths p t = case t of
   RtEmpty -> [p]
   RtConstData _ _ -> [p]
   RtDataSeries _ -> [p]
   RtContainer al ->
-    p : (mconcat $ (\(s, (_, t')) -> treePaths (p :/ s) t') <$> unAssocList al)
+    p : (mconcat $ (\(s, (_, t')) -> paths (p :/ s) t') <$> unAssocList al)
 
-treeApplyReorderings
+applyReorderings
   :: MonadFail m
   => Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a
   -> m (RoseTree a)
-treeApplyReorderings contOps (RtContainer children) =
+applyReorderings contOps (RtContainer kids) =
   let
     attMap = fst <$> contOps
     childMap = Map.foldlWithKey'
         (\acc k att -> Map.alter (Just . maybe (att, RtEmpty) id) k acc)
-        (alToMap children)
+        (alToMap kids)
         (fst <$> contOps)
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
     RtContainer . alFmapWithKey reattribute . alPickFromMap childMap
-    <$> (updateUniqList (snd <$> contOps) $ alKeys children)
-treeApplyReorderings contOps RtEmpty = treeApplyReorderings contOps (RtContainer alEmpty)
-treeApplyReorderings _ _ = fail "Not a container"
+    <$> (updateUniqList (snd <$> contOps) $ alKeys kids)
+applyReorderings contOps RtEmpty = applyReorderings contOps (RtContainer alEmpty)
+applyReorderings _ _ = fail "Not a container"
 
-treeConstSet :: Maybe Attributee -> a -> RoseTree a -> RoseTree a
-treeConstSet att a _ = RtConstData att a
+constSet :: Maybe Attributee -> a -> RoseTree a -> RoseTree a
+constSet att a _ = RtConstData att a
 
-treeSet
+set
   :: MonadFail m => TpId -> Time -> a -> Interpolation -> Maybe Attributee
   -> RoseTree a -> m (RoseTree a)
-treeSet tpId t a i att rt =
+set tpId t a i att rt =
   let
     ts' = case rt of
       RtDataSeries ts -> ts
@@ -102,41 +102,41 @@ treeSet tpId t a i att rt =
     RtDataSeries <$> Dkmap.set tpId t (att, (i, a)) ts'
 
 
-treeRemove :: MonadFail m => TpId -> RoseTree a -> m (RoseTree a)
-treeRemove tpId rt = case rt of
+remove :: MonadFail m => TpId -> RoseTree a -> m (RoseTree a)
+remove tpId rt = case rt of
   RtDataSeries ts -> RtDataSeries <$> Dkmap.deleteK0' tpId ts
   _ -> fail "Not a time series"
 
 
-treeLookup :: Path -> RoseTree a -> Maybe (RoseTree a)
-treeLookup p = getConst . treeAlterF Nothing Const p
+lookup :: Path -> RoseTree a -> Maybe (RoseTree a)
+lookup p = getConst . alterF Nothing Const p
 
-treeInsert :: Maybe Attributee -> Path -> RoseTree a -> RoseTree a -> RoseTree a
-treeInsert att p t = treeAlter att (const $ Just t) p
+insert :: Maybe Attributee -> Path -> RoseTree a -> RoseTree a -> RoseTree a
+insert att p t = alter att (const $ Just t) p
 
-treeDelete :: Path -> RoseTree a -> RoseTree a
-treeDelete p = treeAlter Nothing (const Nothing) p
+delete :: Path -> RoseTree a -> RoseTree a
+delete p = alter Nothing (const Nothing) p
 
-treeAdjust
+adjust
   :: Maybe Attributee -> (RoseTree a -> RoseTree a) -> Path -> RoseTree a
   -> RoseTree a
-treeAdjust att f p = runIdentity . treeAdjustF att (Identity . f) p
+adjust att f p = runIdentity . adjustF att (Identity . f) p
 
-treeAdjustF
+adjustF
   :: Functor f => Maybe Attributee -> (RoseTree a -> f (RoseTree a)) -> Path
   -> RoseTree a -> f (RoseTree a)
-treeAdjustF att f = treeAlterF att (fmap Just . f . maybe RtEmpty id)
+adjustF att f = alterF att (fmap Just . f . maybe RtEmpty id)
 
-treeAlter
+alter
   :: Maybe Attributee -> (Maybe (RoseTree a) -> Maybe (RoseTree a)) -> Path
   -> RoseTree a -> RoseTree a
-treeAlter att f path = runIdentity . treeAlterF att (Identity . f) path
+alter att f path = runIdentity . alterF att (Identity . f) path
 
-treeAlterF
+alterF
   :: forall f a. Functor f
   => Maybe Attributee -> (Maybe (RoseTree a) -> f (Maybe (RoseTree a))) -> Path
   -> RoseTree a -> f (RoseTree a)
-treeAlterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
+alterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
   where
     inner
       :: Path -> Maybe (Maybe Attributee, RoseTree a)
@@ -159,41 +159,41 @@ updateTreeStructure contOps = runState $ do
       :: Path -> Map Seg (Maybe Attributee, SequenceOp Seg)
       -> State (RoseTree a) [Text]
     applyContOp np m = do
-      eRt <- treeAdjustF Nothing (treeApplyReorderings m) np <$> get
+      eRt <- adjustF Nothing (applyReorderings m) np <$> get
       either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
 
 updateTreeData
-  :: DataDigest -> RoseTree [WireValue]
-  -> (Mol Path Text, RoseTree [WireValue])
+  :: DataDigest -> RoseTree [SomeWireValue]
+  -> (Mol Path Text, RoseTree [SomeWireValue])
 updateTreeData dd = runState $ do
     errs <- alToMap <$> (sequence $ alFmapWithKey applyDd dd)
     return $ Mol.fromMap errs
   where
     applyDd
       :: Path -> DataChange
-      -> State (RoseTree [WireValue]) [Text]
+      -> State (RoseTree [SomeWireValue]) [Text]
     applyDd np dc = case dc of
       ConstChange att wv -> do
-        modify $ treeAdjust Nothing (treeConstSet att wv) np
+        modify $ adjust Nothing (constSet att wv) np
         return []
       TimeChange m -> mconcat <$> (mapM (applyTc np) $ Map.toList m)
     applyTc
       :: Path
       -> (TpId, (Maybe Attributee, TimeSeriesDataOp))
-      -> State (RoseTree [WireValue]) [Text]
+      -> State (RoseTree [SomeWireValue]) [Text]
     applyTc np (tpId, (att, op)) = case op of
       OpSet t wv i -> get >>=
         either (return . pure . Text.pack) (\vs -> put vs >> return [])
-        . treeAdjustF Nothing (treeSet tpId t wv i att) np
+        . adjustF Nothing (set tpId t wv i att) np
       OpRemove -> get >>=
         either (return . pure . Text.pack) (\vs -> put vs >> return [])
-        . treeAdjustF Nothing (treeRemove tpId) np
+        . adjustF Nothing (remove tpId) np
 
 
 -- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
-  :: ContOps Seg -> DataDigest -> RoseTree [WireValue]
-  -> (Mol Path Text, RoseTree [WireValue])
+  :: ContOps Seg -> DataDigest -> RoseTree [SomeWireValue]
+  -> (Mol Path Text, RoseTree [SomeWireValue])
 updateTreeWithDigest contOps dd = runState $ do
     errs <- state (updateTreeData dd)
     errs' <- state (updateTreeStructure contOps)
@@ -216,8 +216,8 @@ roseTreeNode t = case t of
   RtConstData att a -> RtnConstData att a
   RtDataSeries m -> RtnDataSeries m
 
-treeLookupNode :: Path -> RoseTree a -> Maybe (RoseTreeNode a)
-treeLookupNode p = fmap roseTreeNode . treeLookup p
+lookupNode :: Path -> RoseTree a -> Maybe (RoseTreeNode a)
+lookupNode p = fmap roseTreeNode . lookup p
 
 data RoseTreeNodeType
   = RtntEmpty

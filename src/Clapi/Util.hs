@@ -1,23 +1,28 @@
 {-# LANGUAGE
-    PolyKinds
+    GADTs
+  , PolyKinds
+  , TypeOperators
 #-}
 
-module Clapi.Util (
-    duplicates, ensureUnique,
-    strictZipWith, strictZip, fmtStrictZipError,
-    partitionDifference, partitionDifferenceF,
-    camel,
-    uncamel,
-    showItems,
-    bound,
-    safeToEnum,
-    mapPartitionEither,
-    nestMapsByKey,
-    flattenNestedMaps, foldlNestedMaps,
-    proxyF, proxyF3
-) where
+module Clapi.Util
+  ( duplicates, ensureUnique
+  , strictZipWith, strictZip, fmtStrictZipError
+  , partitionDifference, partitionDifferenceF
+  , camel
+  , uncamel
+  , showItems
+  , bound
+  , safeToEnum
+  , foldMapM
+  , mapPartitionEither
+  , nestMapsByKey
+  , flattenNestedMaps, foldlNestedMaps
+  , liftRefl, pairRefl
+  ) where
 
 import Prelude hiding (fail)
+
+import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Either (isLeft, fromLeft, fromRight)
@@ -30,6 +35,7 @@ import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Type.Equality ((:~:)(..))
 import Text.Printf (printf)
 
 
@@ -146,12 +152,15 @@ foldlNestedMaps f = Map.foldlWithKey g
   where
     g acc k0 = Map.foldlWithKey (\acc' k1 v -> f acc' k0 k1 v) acc
 
+foldMapM :: (Foldable t, Monoid b, Monad m) => (a -> m b) -> t a -> m b
+foldMapM f = foldM (\b a -> (b <>) <$> f a) mempty
+
 mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
 mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
   (fromLeft undefined <$> ls, fromRight undefined <$> rs)
 
-proxyF :: Proxy a -> Proxy b -> Proxy (a b)
-proxyF _ _ = Proxy
+liftRefl :: a :~: b -> f a :~: f b
+liftRefl Refl = Refl
 
-proxyF3 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a b c)
-proxyF3 p1 p2 p3 = proxyF (proxyF p1 p2) p3
+pairRefl :: a :~: b -> c :~: d -> (a, c) :~: (b, d)
+pairRefl Refl Refl = Refl

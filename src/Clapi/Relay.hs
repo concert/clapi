@@ -10,7 +10,7 @@
 module Clapi.Relay where
 
 import Control.Lens
-  (makeLenses, view, over, set, at, non, assign, modifying, use, _2)
+  (makeLenses, view, over, set, at, assign, modifying, use, _2)
 import Control.Monad (unless, when, forever, void)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Writer (Writer, runWriter, tell)
@@ -52,10 +52,12 @@ import Clapi.Types.Digests
   , ClientRegs(..), crNull, crDifference, crIntersection
   , trcsdClientRegs, frcsdFromClientRegs)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
-import Clapi.Types.Definitions (Editable(..), Definition, PostDefinition)
-import Clapi.Types.Wire (WireValue)
+import Clapi.Types.Definitions
+  (Editability(..), SomeDefinition, PostDefinition, DefName, PostDefName)
+import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Tree (RoseTreeNode(..), TimeSeries, treeLookupNode)
+import Clapi.Tree (RoseTreeNode(..), TimeSeries)
+import qualified Clapi.Tree as Tree
 import Clapi.Valuespace
   ( Valuespace(..), baseValuespace, vsLookupDef
   , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
@@ -64,7 +66,7 @@ import Clapi.Protocol (Protocol, sendRev, liftedWaitThen)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Util (partitionDifference, flattenNestedMaps)
 
-oppifyTimeSeries :: TimeSeries [WireValue] -> DataChange
+oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
 oppifyTimeSeries ts = TimeChange $
   Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
 
@@ -82,9 +84,9 @@ oppifySequence al =
 --   can make a monoid instance. Namespaces must be tracked separately!
 --   This may or may not be a good idea *shrug*
 data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
-  { pfrcudPostDefs :: Map (Tagged PostDefinition Seg) (DefOp PostDefinition)
-  , pfrcudDefinitions :: Map (Tagged Definition Seg) (DefOp Definition)
-  , pfrcudTypeAssignments :: Map Path (Tagged Definition Seg, Editable)
+  { pfrcudPostDefs :: Map PostDefName (DefOp PostDefinition)
+  , pfrcudDefinitions :: Map DefName (DefOp SomeDefinition)
+  , pfrcudTypeAssignments :: Map Path (DefName, Editability)
   , pfrcudData :: DataDigest
   , pfrcudContOps :: ContOps Seg
   , pfrcudErrors :: Mol DataErrorIndex Text
@@ -223,28 +225,21 @@ handleTrpd i d = do
     ns = trpdNamespace d
     bvs = baseValuespace (Tagged $ unNamespace ns) Editable
     tryVsUpdate :: (Ord i, Monad m) => ExceptT _ (StateT (RelayState i) m) _
-    tryVsUpdate =
-      let
-        -- NB: Type signature required to avoid monomorphism of f when trying to
-        -- use this lens in two different contexts:
-        l :: Functor f => (Valuespace -> f Valuespace) -> RelayState i
-          -> f (RelayState i)
-        l = rsVsMap . at ns . non bvs
-      in do
-        vs <- view l <$> get
+    tryVsUpdate = do
+        vs <- maybe bvs id <$> use (rsVsMap . at ns)
         let result = processToRelayProviderDigest d vs
         case result of
           Left errMap -> throwError errMap
           Right (updatedTyAssns, vs') -> do
-            modify (set l vs')
+            assign (rsVsMap . at ns) (Just vs')
             return $ produceFrcud vs vs' updatedTyAssns
     produceFrcud vs vs' updatedTyAssns =
       let
         augmentedTyAssns = Map.mapWithKey
            (\p tn -> (tn, either error id $ getEditable p vs')) updatedTyAssns
-        getContOps p = case fromJust $ treeLookupNode p $ vsTree vs' of
+        getContOps p = case fromJust $ Tree.lookupNode p $ vsTree vs' of
           RtnChildren kb ->
-            (p,) <$> mayContDiff (treeLookupNode p $ vsTree vs) kb
+            (p,) <$> mayContDiff (Tree.lookupNode p $ vsTree vs) kb
           _ -> Nothing
         extraCops = Map.fromAscList $
           mapMaybe (\p -> parentPath p >>= getContOps) $ Set.toAscList $
@@ -442,7 +437,7 @@ throwOutProvider
 throwOutProvider i nss msg = do
   -- FIXME: I'm quite sure that we should be taking namespaces...
   lift $ sendRev $ Right $ ServerData i $ Frped $ FrpErrorDigest $
-    Mol.fromSet (const $ Text.pack msg) $ Set.map NamespaceError nss
+    Mol.fromSetSingle (const $ Text.pack msg) $ Set.map NamespaceError nss
   lift $ sendRev $ Right $ ServerDisconnect i
   handleDisconnect i
 
@@ -542,7 +537,7 @@ rGet
   :: Map Namespace Valuespace -> Namespace -> Path
   -> Either
        (SubErrorIndex, String)
-       (Definition, Tagged Definition Seg, Editable, RoseTreeNode [WireValue])
+       (SomeDefinition, DefName, Editability, RoseTreeNode [SomeWireValue])
 rGet vsm ns p =
     vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 

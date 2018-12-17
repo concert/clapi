@@ -18,15 +18,16 @@ import Blaze.ByteString.Builder (toByteString)
 import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
 import Clapi.Types (TrDigest(..), FrDigest(..))
-import Clapi.Serialisation (Encodable(..))
+import Clapi.Serialisation (Encodable(..), Decodable(..))
 
 import Arbitrary ()
+import Instances ()
 
 
 encode :: (MonadFail m, Encodable a) => a -> m ByteString
 encode x = toByteString <$> builder x
 
-decode :: (MonadFail m, Encodable a) => ByteString -> m a
+decode :: (MonadFail m, Decodable a) => ByteString -> m a
 decode = either fail return . parseOnly (parser <* endOfInput)
 
 
@@ -35,7 +36,7 @@ showBytes = show . BS.unpack
 
 
 propDigestRoundTrip
-  :: forall digest. (Show digest, Eq digest, Encodable digest)
+  :: forall digest. (Show digest, Eq digest, Encodable digest, Decodable digest)
   => digest -> Property
 propDigestRoundTrip d = let
     mbs = encode d
