@@ -15,13 +15,16 @@ module Clapi.Types.Wire
   , wtList, wtMaybe, wtPair
 
   , WireValue(..), wireType, SomeWireValue(..), withWireValue, someWv
-  , Wireable(..), wireTypeFor, fromWireable, someWireable
+  , Wireable(..), wireTypeFor, fromWireable, someWireable, castWireValue
 
   , WireTypeName(..)
 
   , getWtShow, getWtEq, getWtOrd
   ) where
 
+import Prelude hiding (fail)
+
+import Control.Monad.Fail (MonadFail(..))
 import Data.Constraint (Dict(..))
 import Data.Int
 import Data.Proxy
@@ -157,6 +160,13 @@ fromWireable a = WireValue (wireTypeFor a) a
 --   correct type witness
 someWireable :: Wireable a => a -> SomeWireValue
 someWireable = SomeWireValue . fromWireable
+
+castWireValue :: forall m a. (MonadFail m, Wireable a) => SomeWireValue -> m a
+castWireValue (SomeWireValue (WireValue wt x)) =
+  let targetWt = wireTypeFor_ $ Proxy @a in
+    case testEquality wt targetWt of
+      Just Refl -> return x
+      Nothing -> fail $ printf "Can't cast %s to %s" (show wt) (show targetWt)
 
 data WireTypeName
   = WtnTime
