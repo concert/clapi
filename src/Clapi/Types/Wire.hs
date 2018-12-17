@@ -19,7 +19,7 @@ module Clapi.Types.Wire
 
   , WireTypeName(..)
 
-  , getShow, getEq, getOrd
+  , getWtShow, getWtEq, getWtOrd
   ) where
 
 import Data.Constraint (Dict(..))
@@ -88,16 +88,16 @@ data WireValue a where
 wireType :: WireValue a -> WireType a
 wireType (WireValue wt _) = wt
 
-mkGetWtConstraint "getShow" $ ConT ''Show
-mkGetWtConstraint "getEq" $ ConT ''Eq
-mkGetWtConstraint "getOrd" $ ConT ''Ord
+mkGetWtConstraint "getWtShow" $ ConT ''Show
+mkGetWtConstraint "getWtEq" $ ConT ''Eq
+mkGetWtConstraint "getWtOrd" $ ConT ''Ord
 
 instance Show (WireValue a) where
-  show (WireValue wt a) = case getShow wt of
+  show (WireValue wt a) = case getWtShow wt of
     Dict -> printf "WireValue (%s) %s" (show wt) (show a)
 
 instance Eq (WireValue a) where
-  WireValue wt a1 == WireValue _ a2 = case getEq wt of
+  WireValue wt a1 == WireValue _ a2 = case getWtEq wt of
     Dict -> a1 == a2
 
 instance TestEquality WireValue where

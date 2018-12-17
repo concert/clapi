@@ -55,13 +55,38 @@ deriving instance Ord Attributee
 deriving instance IsString Attributee
 
 instance Ord (WireValue a) where
-  compare (WireValue wt a1) (WireValue _ a2) = case getOrd wt of
+  compare (WireValue wt a1) (WireValue _ a2) = case getWtOrd wt of
     Dict -> compare a1 a2
 
 instance Ord SomeWireValue where
   compare (SomeWireValue wv1) (SomeWireValue wv2) = case testEquality wv1 wv2 of
     Nothing -> compare (typeEnumOf wv1) (typeEnumOf wv2)
     Just Refl -> compare wv1 wv2
+
+instance Ord (TreeType a) where
+  compare TtTime TtTime = EQ
+  compare (TtEnum sl1) (TtEnum sl2) =
+    compare (SomeSymbolList sl1) (SomeSymbolList sl2)
+  compare (TtWord32 b1) (TtWord32 b2) = compare b1 b2
+  compare (TtWord64 b1) (TtWord64 b2) = compare b1 b2
+  compare (TtInt32 b1) (TtInt32 b2) = compare b1 b2
+  compare (TtInt64 b1) (TtInt64 b2) = compare b1 b2
+  compare (TtFloat b1) (TtFloat b2) = compare b1 b2
+  compare (TtDouble b1) (TtDouble b2) = compare b1 b2
+  compare (TtString r1) (TtString r2) = compare r1 r2
+  compare (TtRef s1) (TtRef s2) = compare s1 s2
+  compare (TtList tt1) (TtList tt2) = compare tt1 tt2
+  compare (TtSet tt1) (TtSet tt2) = compare tt1 tt2
+  compare (TtOrdSet tt1) (TtOrdSet tt2) = compare tt1 tt2
+  compare (TtMaybe tt1) (TtMaybe tt2) = compare tt1 tt2
+  compare (TtPair tt1a tt1b) (TtPair tt2a tt2b) =
+    compare tt1a tt2a <> compare tt1b tt2b
+
+
+instance Ord SomeTreeType where
+  compare (SomeTreeType tt1) (SomeTreeType tt2) = case testEquality tt1 tt2 of
+    Nothing -> compare (typeEnumOf tt1) (typeEnumOf tt2)
+    Just Refl -> compare tt1 tt2
 
 deriving instance Ord PostDefinition
 deriving instance Ord Editability

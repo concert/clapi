@@ -20,7 +20,7 @@ import Data.Maybe.Clapi (note)
 import Clapi.Types.AssocList (AssocList, unAssocList)
 import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
-import Clapi.Types.Tree (TreeType(..))
+import Clapi.Types.Tree (SomeTreeType(..))
 
 data Editability = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
@@ -33,7 +33,7 @@ data PostDefinition = PostDefinition
   { postDefDoc :: Text
   -- FIXME: We really need to stop treating single values as lists of types,
   -- which makes the "top level" special:
-  , postDefArgs :: AssocList Seg [TreeType]
+  , postDefArgs :: AssocList Seg [SomeTreeType]
   } deriving (Show, Eq)
 
 data Definition (mt :: MetaType) where
@@ -41,7 +41,7 @@ data Definition (mt :: MetaType) where
     { tupDefDoc :: Text
   -- FIXME: this should eventually boil down to a single TreeType (NB remove
   -- names too and just write more docstring) now that we have pairs:
-    , tupDefTys :: AssocList Seg TreeType
+    , tupDefTys :: AssocList Seg SomeTreeType
     , tupDefILimit :: InterpolationLimit
     } -> Definition 'Tuple
   StructDef ::
@@ -64,7 +64,7 @@ withDefinition :: (forall mt. Definition mt -> r) -> SomeDefinition -> r
 withDefinition f (SomeDefinition d) = f d
 
 tupleDef
-  :: Text -> AssocList Seg TreeType -> InterpolationLimit -> SomeDefinition
+  :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> SomeDefinition
 tupleDef doc tys ilimit = SomeDefinition $ TupleDef doc tys ilimit
 
 structDef :: Text -> AssocList Seg (DefName, Editability) -> SomeDefinition

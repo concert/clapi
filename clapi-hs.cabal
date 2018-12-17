@@ -60,6 +60,7 @@ library
                      , Clapi.Types.SymbolList
                      , Clapi.Types.Path
                      , Clapi.Types.Tree
+                     , Clapi.Types.TreeTH
                      , Clapi.Types.Wire
                      , Clapi.Types.WireTH
                      , Clapi.Types.UniqList

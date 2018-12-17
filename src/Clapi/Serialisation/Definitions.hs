@@ -16,7 +16,7 @@ import Clapi.Types.Definitions
   ( Editability(..), MetaType(..)
   , Definition(..), SomeDefinition(..), tupleDef, structDef, arrayDef
   , PostDefinition(..))
-import Clapi.Types.Tree (TreeType)
+import Clapi.Types.Tree (TreeType, SomeTreeType, withTreeType)
 
 editableTaggedData :: TaggedData Editability Editability
 editableTaggedData = taggedData toTag id
@@ -31,9 +31,12 @@ instance Decodable Editability where
   parser = tdTaggedParser editableTaggedData return
 
 -- FIXME: do we want to serialise the type to text first?!
-instance Encodable TreeType where
+instance Encodable (TreeType a) where
   builder = builder . ttToText
-instance Decodable TreeType where
+
+instance Encodable SomeTreeType where
+  builder = withTreeType builder
+instance Decodable SomeTreeType where
   parser = parser >>= ttFromText
 
 defTaggedData :: TaggedData MetaType SomeDefinition

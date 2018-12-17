@@ -25,7 +25,7 @@ import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.Tree (TreeType(..), unbounded)
+import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, segq)
@@ -54,15 +54,15 @@ relayApiProto selfAddr =
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
-             (alSingleton [segq|commit_hash|] $ TtString "banana")
+             (alSingleton [segq|commit_hash|] $ ttString "banana")
              ILUninterpolated)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (alSingleton [segq|seconds|] $ TtFloat unbounded)
+             (alSingleton [segq|seconds|] $ ttFloat unbounded)
              ILUninterpolated)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
-             (alSingleton [segq|name|] $ TtString "")
+             (alSingleton [segq|name|] $ ttString "")
              ILUninterpolated)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
@@ -74,12 +74,12 @@ relayApiProto selfAddr =
         , ([segq|owner_info|], tupleDef "owner info"
              (alSingleton [segq|owner|]
                -- FIXME: want to make Ref's Seg tagged...
-               $ TtRef [segq|client_info|])
+               $ ttRef [segq|client_info|])
              ILUninterpolated)
         , ([segq|owners|], arrayDef "ownersdoc"
              Nothing (Tagged [segq|owner_info|]) ReadOnly)
         , ([segq|self|], tupleDef "Which client you are"
-             (alSingleton [segq|info|] $ TtRef [segq|client_info|])
+             (alSingleton [segq|info|] $ ttRef [segq|client_info|])
              ILUninterpolated)
         , ([segq|relay|], structDef "topdoc" $ staticAl
           [ ([segq|build|], (Tagged [segq|build|], ReadOnly))

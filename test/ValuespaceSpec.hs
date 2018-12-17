@@ -26,7 +26,7 @@ import Clapi.Types.AssocList
 import Clapi.Types
   ( InterpolationLimit(ILUninterpolated)
   , someWv, WireType(..), someWireable
-  , TreeType(..), unbounded, Editability(..)
+  , ttInt32, ttString, ttRef, unbounded, Editability(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
   , Definition(..), SomeDefinition, withDefinition, DefName
   , TrpDigest(..), DefOp(..), DataChange(..)
@@ -65,7 +65,7 @@ testValuespace = unsafeValidateVs $ (baseValuespace (Tagged testS) Editable)
           [ (versionS, (Tagged versionS, ReadOnly))
           ])
       , (Tagged versionS, tupleDef
-          "versioney" (alSingleton versionS $ TtInt32 unbounded) ILUninterpolated)
+          "versioney" (alSingleton versionS $ ttInt32 unbounded) ILUninterpolated)
       ]
   , vsTree = RtContainer $ alSingleton versionS
       (Nothing, RtConstData Nothing [someWv WtInt32 3])
@@ -86,7 +86,7 @@ validVersionTypeChange :: Valuespace -> TrpDigest
 validVersionTypeChange vs =
   let
     svd = tupleDef
-      "Stringy" (alSingleton [segq|vstr|] $ TtString "pear")
+      "Stringy" (alSingleton [segq|vstr|] $ ttString "pear")
       ILUninterpolated
     rootDef = redefTestRoot
       (alInsert versionS $ Tagged [segq|stringVersion|]) vs
@@ -139,7 +139,7 @@ vsWithXRef =
     newNodeDef = tupleDef
       "for test"
       -- FIXME: Should the ref seg be tagged?:
-      (alSingleton [segq|daRef|] $ TtRef versionS)
+      (alSingleton [segq|daRef|] $ ttRef versionS)
       ILUninterpolated
     newVal = ConstChange Nothing
       [someWireable $ Path.toText Path.unSeg [pathq|/version|]]
@@ -186,7 +186,7 @@ spec = do
       let
           newDef = tupleDef
             "for test"
-            (alSingleton [segq|versionString|] $ TtString "apple")
+            (alSingleton [segq|versionString|] $ ttString "apple")
             ILUninterpolated
           d = TrpDigest
             testNs mempty
@@ -262,7 +262,7 @@ spec = do
             mempty
             (Map.fromList
               [ (Tagged xS, OpDefine $ arrayDef "kriss" Nothing (Tagged aS) ReadOnly)
-              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ TtInt32 unbounded) ILUninterpolated)
+              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ ttInt32 unbounded) ILUninterpolated)
               ])
             (alSingleton [pathq|/ard|] $ ConstChange Nothing [someWv WtInt32 3])
             (Map.singleton [pathq|/|] $ Map.singleton [segq|ard|] (Nothing, SoAbsent))

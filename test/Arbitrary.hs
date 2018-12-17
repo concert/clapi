@@ -5,6 +5,7 @@
   , GADTs
   , GeneralizedNewtypeDeriving
   , LambdaCase
+  , OverloadedStrings
   , RankNTypes
   , StandaloneDeriving
   , TemplateHaskell
@@ -22,7 +23,6 @@ import Data.List (inits)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
-import Data.Proxy
 import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -37,8 +37,9 @@ import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.TextSerialisation (argsOpen, argsClose)
-import Clapi.Types
+import Clapi.Types hiding (reverse)
 import Clapi.Types.SequenceOps (SequenceOp(..))
+import qualified Clapi.Types.SymbolList as SL
 import Clapi.Types.WireTH (mkGetWtConstraint)
 
 
@@ -145,22 +146,38 @@ arbitraryRegex =
     delims <- flip replicate "[]" <$> choose (0, 3)
     Text.pack . mconcat <$> shuffle (safe ++ delims)
 
-data TestEnum
-  = TestOne | TestTwo | TestThree deriving (Show, Eq, Ord, Enum, Bounded)
-
-instance Arbitrary TreeType where
+instance Arbitrary SomeTreeType where
   arbitrary = oneof
-    [ return TtTime
-    , return $ ttEnum $ Proxy @TestEnum
-    , TtWord32 <$> arbitrary, TtWord64 <$> arbitrary
-    , TtInt32 <$> arbitrary, TtInt64 <$> arbitrary
-    , TtFloat <$> arbitrary, TtDouble <$> arbitrary
-    , TtString <$> arbitraryRegex
-    , TtRef <$> arbitrary
-    , TtList <$> arbitrary, TtSet <$> arbitrary, TtOrdSet <$> arbitrary
-    , TtMaybe <$> arbitrary
-    , TtPair <$> arbitrary <*> arbitrary
+    [ return ttTime
+    , ttEnum . fmap (Text.unpack . unSeg) <$> arbitrary
+    , ttWord32 <$> arbitrary, ttWord64 <$> arbitrary
+    , ttInt32 <$> arbitrary, ttInt64 <$> arbitrary
+    , ttFloat <$> arbitrary, ttDouble <$> arbitrary
+    , ttString <$> arbitraryRegex
+    , ttRef <$> arbitrary
+    , ttList <$> arbitrary, ttSet <$> arbitrary, ttOrdSet <$> arbitrary
+    , ttMaybe <$> arbitrary
+    , ttPair <$> arbitrary <*> arbitrary
     ]
+  shrink (SomeTreeType tt) = case tt of
+    TtTime -> []
+    TtEnum sl -> ttEnum <$> shrink (SL.toStrings sl)
+    TtWord32 b -> ttWord32 <$> shrink b
+    TtWord64 b -> ttWord64 <$> shrink b
+    TtInt32 b -> ttInt32 <$> shrink b
+    TtInt64 b -> ttInt64 <$> shrink b
+    TtFloat b -> ttFloat <$> shrink b
+    TtDouble b -> ttDouble <$> shrink b
+    TtString r -> case r of
+      "" -> []
+      _ -> [ttString ""]
+    TtRef _ -> []
+    TtList tt1 -> ttList <$> shrink (SomeTreeType tt1)
+    TtSet tt1 -> ttSet <$> shrink (SomeTreeType tt1)
+    TtOrdSet tt1 -> ttOrdSet <$> shrink (SomeTreeType tt1)
+    TtMaybe tt1 -> ttMaybe <$> shrink (SomeTreeType tt1)
+    TtPair tt1 tt2 ->
+      uncurry ttPair <$> shrink (SomeTreeType tt1, SomeTreeType tt2)
 
 
 -- | An Arbitrary class where we can be more picky about exactly what we

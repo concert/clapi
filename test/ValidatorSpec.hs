@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
-    OverloadedStrings
+    DataKinds
+  , OverloadedStrings
 #-}
 
 module ValidatorSpec where
@@ -10,17 +11,14 @@ import Test.Hspec
 import Control.Monad (void)
 import Data.Constraint (Dict(..))
 import Data.Either (isLeft, isRight)
-import Data.Int
-import Data.Proxy
-import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Word
 
 import Clapi.TextSerialisation (ttToText)
 import Clapi.TH
 import Clapi.Types
-  ( Time(..), WireType(..), SomeWireValue(..), wireType, someWv, someWireable
-  , TreeType(..), ttEnum, bounds, unbounded, getShow)
+  ( Time(..), WireType(..), SomeWireValue(..), someWv, someWireable
+  , TreeType(..), bounds, unbounded, getTtShow)
+import qualified Clapi.Types.SymbolList as SL
 import Clapi.Validator (validate)
 
 spec :: Spec
@@ -28,7 +26,7 @@ spec = describe "validation" $ do
   describeTreeType TtTime $ do
     successCase (someWireable $ Time 2 3)
     failureCase (someWv WtInt32 3)
-  describeTreeType (ttEnum $ Proxy @TestEnum) $ do
+  describeTreeType (TtEnum $ SL.fromType @('[ "One", "Two", "Three" ])) $ do
     successCase (someWv WtWord32 2)
     failureCase (someWv WtWord32 3)
   describe "example bounded numbers" $ do
@@ -73,18 +71,18 @@ spec = describe "validation" $ do
     successCase (someWv (WtMaybe WtString) $ Just "banana")
     failureCase (someWv (WtMaybe WtString) $ Just "apple")
 
-describeTreeType :: TreeType -> SpecWith TreeType -> Spec
+describeTreeType :: TreeType a -> SpecWith (TreeType a) -> Spec
 describeTreeType ty = around (\s -> void $ s ty) .
   describe ("validate of: " ++ (Text.unpack $ ttToText ty))
 
-successCase :: SomeWireValue -> SpecWith TreeType
-successCase (SomeWireValue wv) = case getShow $ wireType wv of
-  Dict -> it ("should accept the valid value: " ++ show wv) $
-    \ty -> validate @(Either String) ty wv `shouldSatisfy` isRight
+successCase :: SomeWireValue -> SpecWith (TreeType a)
+successCase (SomeWireValue wv) =
+  it ("should accept the valid value: " ++ show wv) $
+    \tt -> case getTtShow tt of
+      Dict -> validate @(Either String) tt wv `shouldSatisfy` isRight
 
-failureCase :: SomeWireValue -> SpecWith TreeType
-failureCase (SomeWireValue wv) = case getShow $ wireType wv of
-  Dict -> it ("should reject the invalid value: " ++ show wv) $
-    \ty -> validate @(Either String) ty wv `shouldSatisfy` isLeft
-
-data TestEnum = One | Two | Three deriving (Show, Enum, Bounded)
+failureCase :: SomeWireValue -> SpecWith (TreeType a)
+failureCase (SomeWireValue wv) =
+  it ("should reject the invalid value: " ++ show wv) $
+    \tt -> case getTtShow tt of
+      Dict -> validate @(Either String) tt wv `shouldSatisfy` isLeft

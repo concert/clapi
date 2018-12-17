@@ -45,7 +45,8 @@ import Clapi.Types.Definitions
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
-import Clapi.Types.Tree (TreeType(..), unbounded)
+import Clapi.Types.Tree
+  (SomeTreeType(..), unbounded, ttInt64, ttInt32, ttString)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWv)
 
 import Clapi.Internal.Valuespace (DefMap)
@@ -139,7 +140,7 @@ spec = do
               sendFwd $ ClientData "owner" $ Trpd $ simpleClaim foo
               expect [emptyRootDig "owner", nsExists fooNs "owner"]
               sendFwd $ ClientData "owner" $ Trpd $
-                postDefine foo (postDef' "fooy" [(x, TtInt64 unbounded)]) $
+                postDefine foo (postDef' "fooy" [(x, ttInt64 unbounded)]) $
                 trpdEmpty fooNs
               sendFwd $ ClientData "owner" $ Trcsd subDig
               expect [ err "owner" (NamespaceError fooNs)
@@ -160,7 +161,7 @@ spec = do
           subscribe fooNs id_ "sub"
           expect [ServerData "sub" $ Frcsd $
             mempty {frcsdErrors = Map.singleton ei [msg]}]
-        pd = postDef' "fooy" [(x, TtInt64 unbounded)]
+        pd = postDef' "fooy" [(x, ttInt64 unbounded)]
         bar1 = [segq|bar1|]
       in do
         sendFwd $ ClientConnect "Subscriber" "sub"
@@ -240,7 +241,7 @@ spec = do
       verifyNoTySub "owner" "sub" fooNs fooTn
 
       -- Test sub/unsub cycle for PostDefinitions too
-      let pd = postDef' "fooy" [(x, TtInt64 unbounded)]
+      let pd = postDef' "fooy" [(x, ttInt64 unbounded)]
       sendFwd $ ClientData "owner" $ Trpd $ postDefine foo pd $ trpdEmpty fooNs
       withSubscription fooNs fooPdn "sub" $ do
         expect [ ServerData "sub" $ Frcud $ (frcudEmpty fooNs)
@@ -276,7 +277,7 @@ spec = do
 
         sendFwd $ ClientConnect "Owner" "owner"
         expect [emptyRootDig "owner"]
-        let pd = postDef' "fooy" [(x, TtInt64 unbounded)]
+        let pd = postDef' "fooy" [(x, ttInt64 unbounded)]
         sendFwd $ ClientData "owner" $ Trpd $
           postDefine foo pd $ simpleClaim foo
         expectSet $ nsExists fooNs <$> ["owner", "sub"]
@@ -394,7 +395,7 @@ spec = do
         ownerSet root [someWv WtString "Not an int"] $
         define foo intDef $
         trpdEmpty fooNs
-      expectFrped "owner" [(PathError Root, "not a valid")]
+      expectFrped "owner" [(PathError Root, "Cannot produce int32")]
 
     it "validates owner mutations" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
@@ -403,7 +404,7 @@ spec = do
 
       sendFwd $ ClientData "owner" $ Trpd $
         ownerSet root [someWv WtString "Not an int"] $ trpdEmpty fooNs
-      expectFrped "owner" [(PathError Root, "not a valid")]
+      expectFrped "owner" [(PathError Root, "Cannot produce int32")]
 
     it "rejects orphan data" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
@@ -455,8 +456,8 @@ spec = do
     verifyNoPdSub o s n i = verifyNoSub @PostDefinition o s n i "changed doc"
 
     intDef = tupleDef'
-      "A single unbounded integer" [(x, TtInt32 unbounded)] ILUninterpolated
-    strDef = tupleDef' "Any string" [(x, TtString "")] ILUninterpolated
+      "A single unbounded integer" [(x, ttInt32 unbounded)] ILUninterpolated
+    strDef = tupleDef' "Any string" [(x, ttString "")] ILUninterpolated
 
     simpleClaim name =
       ownerSet Root [someWv WtInt32 12] $
@@ -738,10 +739,11 @@ structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition
 structDef' doc tys = structDef doc $ unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
-tupleDef' :: Text -> [(Seg, TreeType)] -> InterpolationLimit -> SomeDefinition
+tupleDef'
+  :: Text -> [(Seg, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
 tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il
 
-postDef' :: Text -> [(Seg, TreeType)] -> PostDefinition
+postDef' :: Text -> [(Seg, SomeTreeType)] -> PostDefinition
 postDef' doc tys = PostDefinition doc (unsafeMkAssocList $ fmap pure <$> tys)
 
 defMap :: [(Seg, def)] -> DefMap def
