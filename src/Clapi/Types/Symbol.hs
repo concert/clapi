@@ -21,7 +21,7 @@ withKnownSymbol f s = case someSymbolVal s of
   SomeSymbol p -> f p
 
 
--- | SSymbol is just a re-implementation of Data.Constraint.Dict, sepcifically
+-- | SSymbol is just a re-implementation of Data.Constraint.Dict, specifically
 --   for representing Symbol types.
 data SSymbol (s :: Symbol) where
   SSymbol :: KnownSymbol s => SSymbol s

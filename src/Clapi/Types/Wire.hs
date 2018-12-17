@@ -153,7 +153,7 @@ wireTypeFor _ = wireTypeFor_ Proxy
 fromWireable :: Wireable a => a -> WireValue a
 fromWireable a = WireValue (wireTypeFor a) a
 
--- | Like `someWv`, but if `a` is unambiguouts we can automatically pick the
+-- | Like `someWv`, but if `a` is unambiguous we can automatically pick the
 --   correct type witness
 someWireable :: Wireable a => a -> SomeWireValue
 someWireable = SomeWireValue . fromWireable
