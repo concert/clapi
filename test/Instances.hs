@@ -20,20 +20,6 @@ import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace
 
 
-instance TestEquality Definition where
-  TupleDef {} `testEquality` TupleDef {} = Just Refl
-  StructDef {} `testEquality` StructDef {} = Just Refl
-  ArrayDef {} `testEquality` ArrayDef {} = Just Refl
-  _ `testEquality` _ = Nothing
-
-
-deriving instance Eq (Definition mt)
-
-instance Eq SomeDefinition where
-  SomeDefinition d1 == SomeDefinition d2 = case testEquality d1 d2 of
-    Just Refl -> d1 == d2
-    Nothing -> False
-
 deriving instance Eq FrDigestType
 
 deriving instance Eq (TrDigest r a)
