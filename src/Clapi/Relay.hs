@@ -179,7 +179,7 @@ handleConnect
 handleConnect i = do
   modify $ over rsAllClients $ Set.insert i
   vsm <- view rsVsMap <$> get
-  sendData' i $ SomeFrDigest $ Frcrd $ Map.fromSet
+  sendData' i $ Frcrd $ Map.fromSet
     (const $ SoAfter Nothing) $ Map.keysSet vsm
 
 definesNothing :: TrpDigest -> Bool
@@ -202,7 +202,7 @@ handleTrpd i d = do
         lift $ updateOwners newOwners
         -- FIXME: would be nice if we didn't have to track ourselves that we'd
         -- added a new Namespace to the Valuespace Map...
-        lift $ broadcast $ SomeFrDigest $ Frcrd $ Map.singleton ns $
+        lift $ broadcast $ Frcrd $ Map.singleton ns $
           SoAfter Nothing
         return frcud
       (Just i') -> if (i' == i)
@@ -211,15 +211,15 @@ handleTrpd i d = do
           "Already owned by another provider"
     either
       (\errMap -> do
-        sendData' i $ SomeFrDigest $ Frped errMap
+        sendData' i $ Frped errMap
         -- FIXME: want to use throwOutProvider, but it does making of
         -- NamespaceErrors at the moment...
         lift $ sendRev $ Right $ ServerDisconnect i
         handleDisconnect i
       )
       (\frcud -> do
-         generateClientDigests frcud >>= lift . multicast . fmap SomeFrDigest
-         unsubscribeFromDeleted frcud >>= lift . multicast . fmap SomeFrDigest
+         generateClientDigests frcud >>= lift . multicast
+         unsubscribeFromDeleted frcud >>= lift . multicast
       )
       result
   where
@@ -270,9 +270,8 @@ handleTrprd i d = runExceptT dropNamespace >>= either
         then lift $ do
           updateOwners owners'
           modifying rsVsMap $ Map.delete ns
-          unsubscribeFromNs (Set.singleton ns) >>=
-            lift . multicast . fmap SomeFrDigest
-          broadcast $ SomeFrDigest $ Frcrd $ Map.singleton ns SoAbsent
+          unsubscribeFromNs (Set.singleton ns) >>= lift . multicast
+          broadcast $ Frcrd $ Map.singleton ns SoAbsent
         else throwError "You're not the owner"
 
 handleTrcsd
@@ -295,11 +294,11 @@ handleTrcsd i d = runExceptT go >>= either
       let subs' = mappend addSubs $ currentSubs `crDifference` dropSubs
       assign (rsRegs . at i) $ if (crNull subs') then Nothing else Just subs'
 
-      unless (crNull dropSubs) $ lift $ sendData' i $ SomeFrDigest $
+      unless (crNull dropSubs) $ lift $ sendData' i $
         frcsdFromClientRegs dropSubs
-      unless (null errMap) $ lift $ sendData' i $ SomeFrDigest $
+      unless (null errMap) $ lift $ sendData' i $
         frcsdEmpty { frcsdErrors = unMol errMap }
-      mapM_ (lift . sendData' i . SomeFrDigest) frcuds
+      mapM_ (lift . sendData' i) frcuds
 
 handleTrcud
   :: (Eq i, Ord i, Monad m)
@@ -315,7 +314,7 @@ handleTrcud i d = runExceptT go >>= either
       owner <- use (rsOwners . at ns)
       when (owner == Just i) $ throwError "Acted as client on own namespace"
       use (rsVsMap . at ns) >>= \case
-        Nothing -> lift $ sendData' i $ SomeFrDigest $ (frcudEmpty ns)
+        Nothing -> lift $ sendData' i $ (frcudEmpty ns)
           { frcudErrors =
             Mol.singleton (NamespaceError ns) "Namespace does not exist"}
         Just vs ->
@@ -323,12 +322,11 @@ handleTrcud i d = runExceptT go >>= either
             (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs d
             frpd = Frpd ns dat cr cont
           in do
-            unless (null errMap) $ lift $ sendData' i $ SomeFrDigest $
+            unless (null errMap) $ lift $ sendData' i $
               (frcudEmpty ns) {frcudErrors = Text.pack . show <$> errMap}
             case owner of
               Nothing -> error "Namespace doesn't have owner, apparently"
-              Just oi -> unless (frDigestNull frpd) $
-                lift $ sendData' oi $ SomeFrDigest frpd
+              Just oi -> unless (frDigestNull frpd) $ lift $ sendData' oi frpd
 
 handleDisconnect
   :: (Ord i, Monad m) => i -> StateT (RelayState i) (RelayProtocol i m) ()
@@ -338,24 +336,32 @@ handleDisconnect i = do
   (removed, remaining) <- Map.partition (== i) . view rsOwners
     <$> get
   modify $ over rsVsMap $ flip Map.withoutKeys (Map.keysSet removed)
-  unsubscribeFromNs (Map.keysSet removed) >>=
-    lift . multicast . fmap SomeFrDigest
+  unsubscribeFromNs (Map.keysSet removed) >>= lift . multicast
   unless (null removed) $ do
     updateOwners remaining
-    broadcast $ SomeFrDigest $ Frcrd $ fmap (const SoAbsent) removed
+    broadcast $ Frcrd $ fmap (const SoAbsent) removed
 
-sendData :: Monad m => i -> SomeFrDigest -> RelayProtocol i m ()
-sendData i = sendRev . Right . ServerData i
+sendData :: Monad m => i -> FrDigest r a -> RelayProtocol i m ()
+sendData i = sendData_ i . SomeFrDigest
 
-sendData' ::
-  Monad m => i -> SomeFrDigest -> StateT (RelayState i) (RelayProtocol i m) ()
+sendData_ :: Monad m => i -> SomeFrDigest -> RelayProtocol i m ()
+sendData_ i = sendRev . Right . ServerData i
+
+sendData'
+  :: Monad m
+  => i -> FrDigest r a -> StateT (RelayState i) (RelayProtocol i m) ()
 sendData' i = lift . sendData i
 
-multicast :: Monad m => Map i SomeFrDigest -> RelayProtocol i m ()
+sendData'_
+  :: Monad m
+  => i -> SomeFrDigest -> StateT (RelayState i) (RelayProtocol i m) ()
+sendData'_ i = lift . sendData_ i
+
+multicast :: Monad m => Map i (FrDigest r a) -> RelayProtocol i m ()
 multicast = void . sequence . Map.mapWithKey sendData
 
 broadcast
-  :: Monad m => SomeFrDigest -> StateT (RelayState i) (RelayProtocol i m) ()
+  :: Monad m => FrDigest r a -> StateT (RelayState i) (RelayProtocol i m) ()
 broadcast d = get
   >>= lift . multicast . Map.fromSet (const d) . view rsAllClients
 
