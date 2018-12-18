@@ -9,6 +9,7 @@
   , RankNTypes
   , StandaloneDeriving
   , TemplateHaskell
+  , TypeSynonymInstances
 #-}
 module Arbitrary where
 
@@ -313,80 +314,82 @@ contOps = smallMapOf arbitrary smallMap
 
 
 instance Arbitrary TrpDigest where
-  arbitrary = TrpDigest <$> arbitrary <*> smallMap <*> smallMap
+  arbitrary = Trpd <$> arbitrary <*> smallMap <*> smallMap
     <*> arbitrary <*> contOps <*> arbitrary
-  shrink (TrpDigest ns pds ds dat cops _errs) =
-    [TrpDigest ns pds' ds' dat' cops' mempty
+  shrink (Trpd ns pds ds dat cops _errs) =
+    [Trpd ns pds' ds' dat' cops' mempty
     | (pds', ds', dat', cops') <- shrink (pds, ds, dat, cops)]
 
-deriving instance Arbitrary TrprDigest
+instance Arbitrary TrprDigest where
+  arbitrary = Trprd <$> arbitrary
+
 
 instance Arbitrary TrcSubDigest where
-  arbitrary = TrcSubDigest <$> smallMap <*> smallMap <*> smallMap
-  shrink (TrcSubDigest pts ts dat) =
-    [TrcSubDigest pts' ts' dat' | (pts', ts', dat') <- shrink (pts, ts, dat)]
+  arbitrary = Trcsd <$> smallMap <*> smallMap <*> smallMap
+  shrink (Trcsd pts ts dat) =
+    [Trcsd pts' ts' dat' | (pts', ts', dat') <- shrink (pts, ts, dat)]
 
 instance Arbitrary TrcUpdateDigest where
-  arbitrary = TrcUpdateDigest <$> arbitrary <*> arbitrary <*> creates
+  arbitrary = Trcud <$> arbitrary <*> arbitrary <*> creates
     <*> contOps
-  shrink (TrcUpdateDigest ns dat crs cops) =
-    [TrcUpdateDigest ns dat' crs' cops'
+  shrink (Trcud ns dat crs cops) =
+    [Trcud ns dat' crs' cops'
     | (dat', crs', cops') <- shrink (dat, crs, cops)]
 
 
 instance Arbitrary FrpDigest where
-  arbitrary = FrpDigest <$> arbitrary <*> arbitrary <*> creates <*> contOps
-  shrink (FrpDigest ns dat crs cops) =
-    [FrpDigest ns dat' crs' cops'
+  arbitrary = Frpd <$> arbitrary <*> arbitrary <*> creates <*> contOps
+  shrink (Frpd ns dat crs cops) =
+    [Frpd ns dat' crs' cops'
     | (dat', crs', cops') <- shrink (dat, crs, cops)]
 
 instance Arbitrary FrpErrorDigest where
-  arbitrary = FrpErrorDigest <$> arbitrary
-  shrink (FrpErrorDigest mol) = FrpErrorDigest <$> shrink mol
+  arbitrary = Frped <$> arbitrary
+  shrink (Frped mol) = Frped <$> shrink mol
 
 instance Arbitrary FrcRootDigest where
-  arbitrary = FrcRootDigest <$> smallMap
-  shrink (FrcRootDigest m) = FrcRootDigest <$> shrink m
+  arbitrary = Frcrd <$> smallMap
+  shrink (Frcrd m) = Frcrd <$> shrink m
 
 instance Arbitrary FrcSubDigest where
-  arbitrary = FrcSubDigest <$> smallMapOf arbitrary (smallListOf arbitrary)
+  arbitrary = Frcsd <$> smallMapOf arbitrary (smallListOf arbitrary)
     <*> arbitrary <*> arbitrary <*> arbitrary
-  shrink (FrcSubDigest e pt t d) =
-    [FrcSubDigest e' pt' t' d' | (e', pt', t', d') <- shrink (e, pt, t, d)]
+  shrink (Frcsd e pt t d) =
+    [Frcsd e' pt' t' d' | (e', pt', t', d') <- shrink (e, pt, t, d)]
 
 instance Arbitrary FrcUpdateDigest where
-  arbitrary = FrcUpdateDigest <$> arbitrary <*> smallMap <*> smallMap
+  arbitrary = Frcud <$> arbitrary <*> smallMap <*> smallMap
     <*> smallMap <*> arbitrary <*> contOps
     <*> arbitrary
-  shrink (FrcUpdateDigest ns pt ty tas d cops _errs) =
-    [FrcUpdateDigest ns pt' ty' tas' d' cops' mempty
+  shrink (Frcud ns pt ty tas d cops _errs) =
+    [Frcud ns pt' ty' tas' d' cops' mempty
     | (pt', ty', tas', d', cops') <- shrink (pt, ty, tas, d, cops)]
 
 
-instance Arbitrary TrDigest where
+instance Arbitrary SomeTrDigest where
   arbitrary = oneof
-    [ Trpd <$> arbitrary
-    , Trprd <$> arbitrary
-    , Trcsd <$> arbitrary
-    , Trcud <$> arbitrary
+    [ SomeTrDigest <$> arbitrary @TrpDigest
+    , SomeTrDigest <$> arbitrary @TrprDigest
+    , SomeTrDigest <$> arbitrary @TrcSubDigest
+    , SomeTrDigest <$> arbitrary @TrcUpdateDigest
     ]
-  shrink = \case
-    Trpd trpd -> Trpd <$> shrink trpd
-    Trprd trprd -> Trprd <$> shrink trprd
-    Trcsd trcsd -> Trcsd <$> shrink trcsd
-    Trcud trcud -> Trcud <$> shrink trcud
+  shrink (SomeTrDigest d) = case d of
+    Trpd {} -> SomeTrDigest <$> shrink d
+    Trprd {} -> SomeTrDigest <$> shrink d
+    Trcsd {} -> SomeTrDigest <$> shrink d
+    Trcud {} -> SomeTrDigest <$> shrink d
 
-instance Arbitrary FrDigest where
+instance Arbitrary SomeFrDigest where
   arbitrary = oneof
-    [ Frpd <$> arbitrary
-    , Frped <$> arbitrary
-    , Frcrd <$> arbitrary
-    , Frcsd <$> arbitrary
-    , Frcud <$> arbitrary
+    [ SomeFrDigest <$> arbitrary @FrpDigest
+    , SomeFrDigest <$> arbitrary @FrpErrorDigest
+    , SomeFrDigest <$> arbitrary @FrcRootDigest
+    , SomeFrDigest <$> arbitrary @FrcSubDigest
+    , SomeFrDigest <$> arbitrary @FrcUpdateDigest
     ]
-  shrink = \case
-    Frpd frpd -> Frpd <$> shrink frpd
-    Frped frped -> Frped <$> shrink frped
-    Frcrd frcrd -> Frcrd <$> shrink frcrd
-    Frcsd frcsd -> Frcsd <$> shrink frcsd
-    Frcud frcud -> Frcud <$> shrink frcud
+  shrink (SomeFrDigest d) = case d of
+    Frpd {} -> SomeFrDigest <$> shrink d
+    Frped {} -> SomeFrDigest <$> shrink d
+    Frcrd {} -> SomeFrDigest <$> shrink d
+    Frcsd {} -> SomeFrDigest <$> shrink d
+    Frcud {} -> SomeFrDigest <$> shrink d

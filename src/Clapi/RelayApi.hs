@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    GADTs
+    DataKinds
+  , GADTs
   , OverloadedStrings
 #-}
 
@@ -14,14 +15,14 @@ import Data.Tagged (Tagged(..))
 import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Types
-  ( TrDigest(..), TrpDigest(..), FrDigest(..), FrpDigest(..), WireValue(..)
-  , TimeStamped(..), Editability(..))
+import Clapi.Types (WireValue(..), TimeStamped(..), Editability(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
 import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
-  (DefOp(OpDefine), DataChange(..), FrcUpdateDigest(..), DataDigest, ContOps)
+  ( TrDigest(..), FrDigest(..), SomeTrDigest(..), SomeFrDigest(..)
+  , trpdEmpty, OriginatorRole(..), DigestAction(..)
+  , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Path (Seg, pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
@@ -41,15 +42,15 @@ relayApiProto ::
     forall i. (Ord i, PathSegable i) =>
     i ->
     Protocol
-        (ClientEvent i (TimeStamped TrDigest))
-        (ClientEvent i TrDigest)
-        (ServerEvent i FrDigest)
-        (Either (Map Namespace i) (ServerEvent i FrDigest))
+        (ClientEvent i (TimeStamped SomeTrDigest))
+        (ClientEvent i SomeTrDigest)
+        (ServerEvent i SomeFrDigest)
+        (Either (Map Namespace i) (ServerEvent i SomeFrDigest))
         IO ()
 relayApiProto selfAddr =
     publishRelayApi >> steadyState mempty mempty
   where
-    publishRelayApi = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
+    publishRelayApi = sendFwd $ ClientData selfAddr $ SomeTrDigest $ Trpd
       rns
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
@@ -105,10 +106,10 @@ relayApiProto selfAddr =
     staticAl = alFromMap . Map.fromList
     steadyState
       :: Map i TimeDelta -> Map Namespace Seg -> Protocol
-            (ClientEvent i (TimeStamped TrDigest))
-            (ClientEvent i TrDigest)
-            (ServerEvent i FrDigest)
-            (Either (Map Namespace i) (ServerEvent i FrDigest))
+            (ClientEvent i (TimeStamped SomeTrDigest))
+            (ClientEvent i SomeTrDigest)
+            (ServerEvent i SomeFrDigest)
+            (Either (Map Namespace i) (ServerEvent i SomeFrDigest))
             IO ()
     steadyState timingMap ownerMap = waitThen fwd rev
       where
@@ -151,7 +152,7 @@ relayApiProto selfAddr =
             pubUpdate dd $ Map.insert [pathq|/clients|]
               (Map.singleton cSeg (Nothing, SoAbsent)) cops
             steadyState timingMap' ownerMap'
-        pubUpdate dd co = sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
+        pubUpdate dd co = sendFwd $ ClientData selfAddr $ SomeTrDigest $ Trpd
           rns mempty mempty dd co mempty
         rev (Left ownerAddrs) = do
           let ownerMap' = pathNameFor <$> ownerAddrs
@@ -164,15 +165,15 @@ relayApiProto selfAddr =
               return ()
         rev (Right se) = do
           case se of
-            ServerData cAddr d ->
+            ServerData cAddr sd@(SomeFrDigest d) ->
               case d of
-                Frcud frcud ->
-                  sendRev $ ServerData cAddr $ Frcud
-                  $ frcud {frcudData = viewAs cAddr $ frcudData frcud}
-                x@(Frcrd _) -> void $ sequence $ Map.mapWithKey
-                  (\addr _ -> sendRev $ ServerData addr x) timingMap
-                Frpd frpd -> if frpdNamespace frpd == rns
-                  then handleApiRequest frpd
+                Frcud {} ->
+                  sendRev $ ServerData cAddr $ SomeFrDigest
+                  $ d {frcudData = viewAs cAddr $ frcudData d}
+                Frcrd {} -> void $ sequence $ Map.mapWithKey
+                  (\addr _ -> sendRev $ ServerData addr sd) timingMap
+                Frpd {} -> if frpdNs d == rns
+                  then handleApiRequest d
                   else sendRev se
                 _ -> sendRev se
             _ -> sendRev se
@@ -206,6 +207,10 @@ relayApiProto selfAddr =
         -- This function trusts that the valuespace has completely validated the
         -- actions the client can perform (i.e. can only change the display name
         -- of a client)
+        handleApiRequest
+          :: Monad m
+          => FrDigest 'Provider 'Update
+          -> Protocol a (ClientEvent i SomeTrDigest) b' b m ()
         handleApiRequest frpd =
-            sendFwd $ ClientData selfAddr $ Trpd $ TrpDigest
-              (frpdNamespace frpd) mempty mempty (frpdData frpd) mempty mempty
+            sendFwd $ ClientData selfAddr $ SomeTrDigest $
+            (trpdEmpty $ frpdNs frpd) {trpdData = frpdData frpd}

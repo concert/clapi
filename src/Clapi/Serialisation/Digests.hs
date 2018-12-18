@@ -2,8 +2,9 @@
 {-# LANGUAGE
     TypeSynonymInstances
   , FlexibleInstances
-  , GeneralizedNewtypeDeriving
+  , GADTs
   , LambdaCase
+  , MultiParamTypeClasses
   , StandaloneDeriving
 #-}
 
@@ -14,6 +15,7 @@ import Clapi.Serialisation.Base
 import Clapi.Serialisation.Definitions ()
 import Clapi.Serialisation.Path ()
 import Clapi.TH (btq)
+import Clapi.Types.Base (TypeEnumOf(..), Tag)
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.TaggedData (TaggedData, taggedData)
@@ -192,118 +194,112 @@ instance Decodable CreateOp where
   parser = OpCreate <$> parser <*> parser
 
 
-instance Encodable TrpDigest where
-  builder (TrpDigest ns pds defs dat cops errs) =
-    builder ns <<>> builder pds <<>> builder defs <<>> builder dat
-    <<>> builder cops <<>> builder errs
-instance Decodable TrpDigest where
-  parser = TrpDigest <$> parser <*> parser <*> parser <*> parser <*> parser
-    <*> parser
-
-deriving instance Encodable TrprDigest
-deriving instance Decodable TrprDigest
-
-instance Encodable TrcSubDigest where
-  builder (TrcSubDigest pts tys dat) =
-    builder pts <<>> builder tys <<>> builder dat
-instance Decodable TrcSubDigest where
-  parser = TrcSubDigest <$> parser <*> parser <*> parser
-
-instance Encodable TrcUpdateDigest where
-  builder (TrcUpdateDigest ns dat crs cops) =
-    builder ns <<>> builder dat <<>> builder crs <<>> builder cops
-instance Decodable TrcUpdateDigest where
-  parser = TrcUpdateDigest <$> parser <*> parser <*> parser <*> parser
-
-
-instance Encodable FrpDigest where
-  builder (FrpDigest ns dat crs cops) =
-    builder ns <<>> builder dat <<>> builder crs <<>> builder cops
-instance Decodable FrpDigest where
-  parser = FrpDigest <$> parser <*> parser <*> parser <*> parser
-
-deriving instance Encodable FrpErrorDigest
-deriving instance Decodable FrpErrorDigest
-
-deriving instance Encodable FrcRootDigest
-deriving instance Decodable FrcRootDigest
-
-instance Encodable FrcSubDigest where
-  builder (FrcSubDigest errs pt ty dat) =
-    builder errs <<>> builder pt <<>> builder ty <<>> builder dat
-instance Decodable FrcSubDigest where
-  parser = FrcSubDigest <$> parser <*> parser <*> parser <*> parser
-
-instance Encodable FrcUpdateDigest where
-  builder (FrcUpdateDigest ns pds defs tyas dat cops errs) =
-    builder ns <<>> builder pds <<>> builder defs <<>> builder tyas <<>>
-    builder dat <<>> builder cops <<>> builder errs
-instance Decodable FrcUpdateDigest where
-  parser = FrcUpdateDigest <$> parser <*> parser <*> parser <*> parser
-    <*> parser <*> parser <*> parser
-
-
 data TrDigestType = TrpdT | TrprdT | TrcsdT | TrcudT deriving (Enum, Bounded)
 
-trTaggedData :: TaggedData TrDigestType TrDigest
-trTaggedData = taggedData typeToTag digestToType
-  where
-    typeToTag = \case
-      TrpdT -> [btq|U|]
-      TrprdT -> [btq|R|]
-      TrcsdT -> [btq|s|]
-      TrcudT -> [btq|u|]
-    digestToType = \case
-        Trpd _ -> TrpdT
-        Trprd _ -> TrprdT
-        Trcsd _ -> TrcsdT
-        Trcud _ -> TrcudT
+instance TypeEnumOf (TrDigest o a) TrDigestType where
+  typeEnumOf = \case
+    Trpd {} -> TrpdT
+    Trprd {} -> TrprdT
+    Trcsd {} -> TrcsdT
+    Trcud {} -> TrcudT
 
-instance Encodable TrDigest where
+instance TypeEnumOf SomeTrDigest TrDigestType where
+  typeEnumOf = withTrDigest typeEnumOf
+
+trdTypeToTag :: TrDigestType -> Tag
+trdTypeToTag = \case
+  TrpdT -> [btq|U|]
+  TrprdT -> [btq|R|]
+  TrcsdT -> [btq|s|]
+  TrcudT -> [btq|u|]
+
+trTaggedData :: TaggedData TrDigestType (TrDigest o a)
+trTaggedData = taggedData trdTypeToTag typeEnumOf
+
+strTaggedData :: TaggedData TrDigestType SomeTrDigest
+strTaggedData = taggedData trdTypeToTag typeEnumOf
+
+
+instance Encodable (TrDigest o a) where
   builder = tdTaggedBuilder trTaggedData $ \case
-    Trpd trpd -> builder trpd
-    Trprd trprd -> builder trprd
-    Trcsd trcsd -> builder trcsd
-    Trcud trcud -> builder trcud
-instance Decodable TrDigest where
-  parser = tdTaggedParser trTaggedData $ \case
-    TrpdT -> Trpd <$> parser
-    TrprdT -> Trprd <$> parser
-    TrcsdT -> Trcsd <$> parser
-    TrcudT -> Trcud <$> parser
+    Trpd ns pds defs dat cops errs ->
+      builder ns <<>> builder pds <<>> builder defs
+      <<>> builder dat <<>> builder cops <<>> builder errs
+    Trprd ns ->
+      builder ns
+    Trcsd pts tys dat ->
+      builder pts <<>> builder tys <<>> builder dat
+    Trcud ns dat crs cops ->
+      builder ns <<>> builder dat <<>> builder crs <<>> builder cops
+
+instance Encodable SomeTrDigest where
+  builder = withTrDigest builder
+instance Decodable SomeTrDigest where
+  parser = tdTaggedParser strTaggedData $ \case
+    TrpdT -> fmap SomeTrDigest $
+      Trpd <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
+    TrprdT -> fmap SomeTrDigest $
+      Trprd <$> parser
+    TrcsdT -> fmap SomeTrDigest $
+      Trcsd <$> parser <*> parser <*> parser
+    TrcudT -> fmap SomeTrDigest $
+      Trcud <$> parser <*> parser <*> parser <*> parser
 
 
 data FrDigestType
   = FrpdT | FrpedT | FrcrdT | FrcsdT | FrcudT deriving (Enum, Bounded)
 
+instance TypeEnumOf (FrDigest o a) FrDigestType where
+  typeEnumOf = \case
+    Frpd {} -> FrpdT
+    Frped {} -> FrpedT
+    Frcrd {} -> FrcrdT
+    Frcsd {} -> FrcsdT
+    Frcud {} -> FrcudT
 
-frTaggedData :: TaggedData FrDigestType FrDigest
-frTaggedData = taggedData typeToTag digestToType
-  where
-    typeToTag = \case
-      FrpdT -> [btq|U|]
-      FrpedT -> [btq|E|]
-      FrcrdT -> [btq|r|]
-      FrcsdT -> [btq|s|]
-      FrcudT -> [btq|u|]
-    digestToType = \case
-      Frpd _ -> FrpdT
-      Frped _ -> FrpedT
-      Frcrd _ -> FrcrdT
-      Frcsd _ -> FrcsdT
-      Frcud _ -> FrcudT
+instance TypeEnumOf SomeFrDigest FrDigestType where
+  typeEnumOf = withFrDigest typeEnumOf
 
-instance Encodable FrDigest where
+frdTypeToTag :: FrDigestType -> Tag
+frdTypeToTag = \case
+  FrpdT -> [btq|U|]
+  FrpedT -> [btq|E|]
+  FrcrdT -> [btq|r|]
+  FrcsdT -> [btq|s|]
+  FrcudT -> [btq|u|]
+
+frTaggedData :: TaggedData FrDigestType (FrDigest o a)
+frTaggedData = taggedData frdTypeToTag typeEnumOf
+
+sfrTaggedData :: TaggedData FrDigestType SomeFrDigest
+sfrTaggedData = taggedData frdTypeToTag typeEnumOf
+
+instance Encodable (FrDigest o a) where
   builder = tdTaggedBuilder frTaggedData $ \case
-    Frpd frpd -> builder frpd
-    Frped frped -> builder frped
-    Frcrd frcrd -> builder frcrd
-    Frcsd frcsd -> builder frcsd
-    Frcud frcud -> builder frcud
-instance Decodable FrDigest where
-  parser = tdTaggedParser frTaggedData $ \case
-    FrpdT -> Frpd <$> parser
-    FrpedT -> Frped <$> parser
-    FrcrdT -> Frcrd <$> parser
-    FrcsdT -> Frcsd <$> parser
-    FrcudT -> Frcud <$> parser
+    Frpd ns dat crs cops ->
+      builder ns <<>> builder dat <<>> builder crs <<>> builder cops
+    Frped errs ->
+      builder errs
+    Frcrd cops ->
+      builder cops
+    Frcsd errs pt ty dat ->
+      builder errs <<>> builder pt <<>> builder ty <<>> builder dat
+    Frcud ns pds defs tyas dat cops errs ->
+      builder ns <<>> builder pds <<>> builder defs <<>> builder tyas
+      <<>> builder dat <<>> builder cops <<>> builder errs
+
+instance Encodable SomeFrDigest where
+  builder = withFrDigest builder
+instance Decodable SomeFrDigest where
+  parser = tdTaggedParser sfrTaggedData $ \case
+    FrpdT -> fmap SomeFrDigest $
+      Frpd <$> parser <*> parser <*> parser <*> parser
+    FrpedT -> fmap SomeFrDigest $
+      Frped <$> parser
+    FrcrdT -> fmap SomeFrDigest $
+      Frcrd <$> parser
+    FrcsdT -> fmap SomeFrDigest $
+      Frcsd <$> parser <*> parser <*> parser <*> parser
+    FrcudT -> fmap SomeFrDigest $
+      Frcud <$> parser <*> parser <*> parser <*> parser <*> parser <*> parser
+      <*> parser

@@ -29,8 +29,8 @@ import Clapi.Types
   , ttInt32, ttString, ttRef, unbounded, Editability(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
   , Definition(..), SomeDefinition, withDefinition, DefName
-  , TrpDigest(..), DefOp(..), DataChange(..)
-  , TrcUpdateDigest(..), trcudEmpty)
+  , TrDigest(..), DefOp(..), DataChange(..)
+  , TrpDigest, TrcUpdateDigest, trcudEmpty)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Path
   ( Path, pattern (:/), pattern Root, Seg, Namespace(..))
@@ -90,7 +90,7 @@ validVersionTypeChange vs =
       ILUninterpolated
     rootDef = redefTestRoot
       (alInsert versionS $ Tagged [segq|stringVersion|]) vs
-  in TrpDigest
+  in Trpd
     testNs
     mempty
     (Map.fromList
@@ -122,7 +122,7 @@ extendedVs :: MonadFail m => SomeDefinition -> Seg -> DataChange -> m Valuespace
 extendedVs def s dc =
   let
     rootDef = redefTestRoot (alInsert s $ Tagged s) testValuespace
-    d = TrpDigest
+    d = Trpd
       testNs
       mempty
       (Map.fromList
@@ -149,7 +149,7 @@ refSeg :: Seg
 refSeg = [segq|ref|]
 
 emptyArrayD :: Seg -> Valuespace -> TrpDigest
-emptyArrayD s vs = TrpDigest
+emptyArrayD s vs = Trpd
     testNs
     mempty
     (Map.fromList
@@ -175,7 +175,7 @@ spec = do
       in validateVs allTainted rawValuespace `shouldSatisfy` isLeft
     it "rechecks on data changes" $
       let
-        d = TrpDigest testNs mempty mempty
+        d = Trpd testNs mempty mempty
           (alSingleton [pathq|/version|] $
            ConstChange Nothing [someWv WtString "wrong"])
           mempty mempty
@@ -188,14 +188,14 @@ spec = do
             "for test"
             (alSingleton [segq|versionString|] $ ttString "apple")
             ILUninterpolated
-          d = TrpDigest
+          d = Trpd
             testNs mempty
             (Map.singleton (Tagged versionS) $ OpDefine newDef)
             alEmpty mempty mempty
       in vsProviderErrorsOn testValuespace d [[pathq|/version|]]
     it "rechecks on container ops" $
       let
-        d = TrpDigest
+        d = Trpd
             testNs
             mempty
             mempty
@@ -238,13 +238,13 @@ spec = do
         let v2ApiDef = redefTestRoot
               (alInsert v2s $ Tagged [segq|version|]) vs
         vs' <- vsAppliesCleanly
-          (TrpDigest testNs mempty
+          (Trpd testNs mempty
             (Map.singleton (Tagged $ unNamespace testNs) $ OpDefine v2ApiDef)
             v2Val mempty mempty)
           vs
         -- Update the ref to point at new version:
         vs'' <- vsAppliesCleanly
-          (TrpDigest testNs mempty mempty
+          (Trpd testNs mempty mempty
             (alSingleton (Root :/ refSeg)
              $ ConstChange Nothing
              [someWireable $ Path.toText Path.unSeg [pathq|/v2|]])
@@ -257,7 +257,7 @@ spec = do
         xS = [segq|cross|]
         aS = [segq|a|]
         vs = baseValuespace (Tagged xS) Editable
-        d = TrpDigest
+        d = Trpd
             (Namespace xS)
             mempty
             (Map.fromList
@@ -271,7 +271,7 @@ spec = do
     it "Array" $
       let
         ars = [segq|arr|]
-        badChild = TrpDigest
+        badChild = Trpd
           testNs
           mempty
           mempty
@@ -279,7 +279,7 @@ spec = do
             ConstChange Nothing [someWv WtString "boo"])
           mempty
           mempty
-        goodChild = TrpDigest
+        goodChild = Trpd
           testNs
           mempty
           mempty
@@ -287,7 +287,7 @@ spec = do
             ConstChange Nothing [someWv WtInt32 3])
           mempty
           mempty
-        removeGoodChild = TrpDigest
+        removeGoodChild = Trpd
           testNs
           mempty
           mempty
@@ -305,7 +305,7 @@ spec = do
         rootDef = redefTestRoot
           (alInsert [segq|unfilled|] $ Tagged [segq|version|])
           testValuespace
-        missingChild = TrpDigest
+        missingChild = Trpd
           testNs
           mempty
           (Map.singleton (Tagged $ unNamespace testNs) $ OpDefine rootDef)
@@ -317,7 +317,7 @@ spec = do
       let
         emptyS = [segq|empty|]
         arrS = [segq|arr|]
-        emptyNest = TrpDigest
+        emptyNest = Trpd
             (Namespace emptyS)
             mempty
             (Map.fromList
@@ -327,7 +327,7 @@ spec = do
             alEmpty
             mempty
             mempty
-        addToNestedStruct = TrpDigest
+        addToNestedStruct = Trpd
             (Namespace emptyS)
             mempty
             mempty
@@ -340,7 +340,7 @@ spec = do
     it "Allows contops in array declaring digest" $
       let
         codS = [segq|cod|]
-        codb = TrpDigest
+        codb = Trpd
             (Namespace codS)
             mempty
             (Map.singleton (Tagged codS) $ OpDefine $ arrayDef "fishy" Nothing (Tagged codS) ReadOnly)
@@ -351,7 +351,7 @@ spec = do
     it "Rejects recursive struct" $
       let
         rS = [segq|r|]
-        rDef = TrpDigest
+        rDef = Trpd
             (Namespace rS)
             mempty
             (Map.singleton (Tagged rS) $ OpDefine $ structDef "r4eva" $ alSingleton rS (Tagged rS, ReadOnly))
