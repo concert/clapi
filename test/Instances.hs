@@ -13,6 +13,7 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 import Clapi.Internal.Valuespace
 import Clapi.PerClientProto (ServerEvent(..))
+import Clapi.Serialisation (FrDigestType(..))
 import Clapi.Tree
 import Clapi.Types
 import Clapi.Types.SequenceOps (SequenceOp(..))
@@ -33,16 +34,30 @@ instance Eq SomeDefinition where
     Just Refl -> d1 == d2
     Nothing -> False
 
+deriving instance Eq FrDigestType
 
-deriving instance Eq FrDigest
--- deriving instance Eq FrcRootDigest
--- deriving instance Eq FrcSubDigest
-deriving instance Eq FrcUpdateDigest
--- deriving instance Eq FrpDigest
--- deriving instance Eq FrpErrorDigest
+deriving instance Eq (TrDigest r a)
+deriving instance Eq (FrDigest r a)
 
-deriving instance Eq TrDigest
-deriving instance Eq TrpDigest
+instance Eq SomeTrDigest where
+  SomeTrDigest d1 == SomeTrDigest d2 = go d1 d2
+    where
+      go (Trpd {}) (Trpd {}) = d1 == d2
+      go (Trprd {}) (Trprd {}) = d1 == d2
+      go (Trcsd {}) (Trcsd {}) = d1 == d2
+      go (Trcud {}) (Trcud {}) = d1 == d2
+      go _ _ = False
+
+instance Eq SomeFrDigest where
+  SomeFrDigest d1 == SomeFrDigest d2 = go d1 d2
+    where
+      go (Frpd {}) (Frpd {}) = d1 == d2
+      go (Frped {}) (Frped {}) = d1 == d2
+      go (Frcrd {}) (Frcrd {}) = d1 == d2
+      go (Frcsd {}) (Frcsd {}) = d1 == d2
+      go (Frcud {}) (Frcud {}) = d1 == d2
+      go _ _ = False
+
 
 deriving instance Eq RoseTreeNodeType
 deriving instance Eq ValidationErr
@@ -105,16 +120,37 @@ instance Ord SomeDefinition where
     Nothing -> compare (typeEnumOf d1) (typeEnumOf d2)
 
 
-deriving instance Ord FrDigest
-deriving instance Ord FrcRootDigest
-deriving instance Ord FrcSubDigest
-deriving instance Ord FrcUpdateDigest
-deriving instance Ord FrpDigest
-deriving instance Ord FrpErrorDigest
-
 deriving instance Ord CreateOp
 deriving instance Ord DataChange
 deriving instance Ord a => Ord (DefOp a)
 deriving instance Ord TimeSeriesDataOp
 
 deriving instance Ord a => Ord (SequenceOp a)
+
+
+deriving instance Ord FrDigestType
+
+instance Ord (FrDigest r a) where
+  compare (Frpd ns1 dat1 cr1 cops1) (Frpd ns2 dat2 cr2 cops2) =
+    compare ns1 ns2 <> compare dat1 dat2 <> compare cr1 cr2
+    <> compare cops1 cops2
+  compare (Frped errs1) (Frped errs2) = compare errs1 errs2
+  compare (Frcrd cops1) (Frcrd cops2) = compare cops1 cops2
+  compare (Frcsd errs1 pt1 ty1 dat1) (Frcsd errs2 pt2 ty2 dat2) =
+    compare errs1 errs2 <> compare pt1 pt2 <> compare ty1 ty2
+    <> compare dat1 dat2
+  compare
+      (Frcud ns1 pd1 d1 tyas1 dat1 cops1 errs1)
+      (Frcud ns2 pd2 d2 tyas2 dat2 cops2 errs2) =
+    compare ns1 ns2 <> compare pd1 pd2 <> compare d1 d2 <> compare tyas1 tyas2
+    <> compare dat1 dat2 <> compare cops1 cops2 <> compare errs1 errs2
+
+instance Ord SomeFrDigest where
+  compare sd1@(SomeFrDigest d1) sd2@(SomeFrDigest d2) = go d1 d2
+    where
+      go (Frpd {}) (Frpd {}) = compare d1 d2
+      go (Frped {}) (Frped {}) = compare d1 d2
+      go (Frcrd {}) (Frcrd {}) = compare d1 d2
+      go (Frcsd {}) (Frcsd {}) = compare d1 d2
+      go (Frcud {}) (Frcud {}) = compare d1 d2
+      go _ _ = compare (typeEnumOf sd1) (typeEnumOf sd2)

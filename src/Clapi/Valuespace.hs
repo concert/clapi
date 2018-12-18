@@ -55,7 +55,8 @@ import Clapi.Types.Definitions
   , DefName, childEditableFor, childTypeFor)
 import Clapi.Types.Digests
   ( TpId, DefOp(..), isUndef, ContOps, DataChange(..), isRemove, DataDigest
-  , TrpDigest(..), trpdRemovedPaths, TrcUpdateDigest(..), CreateOp(..), Creates
+  , TrDigest(..)
+  , TrpDigest, trpdRemovedPaths, TrcUpdateDigest, CreateOp(..), Creates
   , DataErrorIndex(..))
 import Clapi.Types.Path
   (Seg, Path, pattern (:/), pattern Root, Placeholder, childPaths)
@@ -340,14 +341,14 @@ processToRelayProviderDigest trpd vs =
     tas = foldl removeTamSubtree (vsTyAssns vs) $ trpdRemovedPaths trpd
     getPathsWithType s = Dependencies.lookupRev s tas
     redefdPaths = mconcat $
-      fmap getPathsWithType $ Map.keys $ trpdDefinitions trpd
+      fmap getPathsWithType $ Map.keys $ trpdDefs trpd
     updatedPaths = opsTouched (trpdContOps trpd) $ trpdData trpd
     tpRemovals :: DataChange -> Set TpId
     tpRemovals (ConstChange {})= mempty
     tpRemovals (TimeChange m) = Map.keysSet $ Map.filter (isRemove . snd) m
     xrefs' = Map.foldlWithKey' (\x r ts -> removeXrefsTps r ts x) (vsXrefs vs) $
       fmap tpRemovals $ alToMap $ trpdData trpd
-    defs' = updateNsDefs (trpdDefinitions trpd) $ vsTyDefs vs
+    defs' = updateNsDefs (trpdDefs trpd) $ vsTyDefs vs
     postDefs' = updateNsDefs (trpdPostDefs trpd) $ vsPostDefs vs
     (updateErrs, tree') = Tree.updateTreeWithDigest
         (trpdContOps trpd) (trpdData trpd) (vsTree vs)

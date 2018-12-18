@@ -13,7 +13,7 @@ import qualified Data.Map.Mol as Mol
 
 import Instances ()
 
-import Clapi.Types (FrDigest(..), FrpErrorDigest(..), DataErrorIndex(..))
+import Clapi.Types (FrDigest(..), SomeFrDigest(..), DataErrorIndex(..))
 import Clapi.Protocol
   ((<<->), sendRev, sendFwd, waitThenFwdOnly, waitThenRevOnly, runEffect)
 import Clapi.Serialisation ()
@@ -23,8 +23,7 @@ spec :: Spec
 spec = it "Packetised round trip" $
     runEffect $ chunkyEcho <<-> serialiser <<-> test
   where
-    msg :: FrDigest
-    msg = Frped $ FrpErrorDigest $ Mol.singleton GlobalError "part of test"
+    msg = SomeFrDigest $ Frped $ Mol.singleton GlobalError "part of test"
     chunkyEcho = forever $ waitThenRevOnly $ \c ->
       let (c0, c1) = B.splitAt (B.length c `div` 2) c in
         sendFwd c0 >> sendFwd c1

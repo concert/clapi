@@ -1,6 +1,11 @@
 {-# LANGUAGE
-    FlexibleInstances
+    DataKinds
+  , FlexibleInstances
+  , KindSignatures
+  , GADTs
   , LambdaCase
+  , RankNTypes
+  , StandaloneDeriving
   , TypeSynonymInstances
 #-}
 
@@ -18,7 +23,7 @@ import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
-import Clapi.Types.AssocList (AssocList, alNull, alEmpty)
+import Clapi.Types.AssocList (AssocList, alEmpty)
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
@@ -94,20 +99,127 @@ type ContOps after = Map Path (Map Seg (Maybe Attributee, SequenceOp after))
 data PostOp
   = OpPost {opPath :: Path, opArgs :: Map Seg SomeWireValue} deriving (Show, Eq)
 
-data TrpDigest = TrpDigest
-  { trpdNamespace :: Namespace
-  , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
-  , trpdDefinitions :: Map DefName (DefOp SomeDefinition)
-  , trpdData :: DataDigest
-  , trpdContOps :: ContOps Seg
-  -- FIXME: should errors come in a different digest to data updates? At the
-  -- moment we just check a TrpDigest isn't null when processing namespace
-  -- claims...
-  , trpdErrors :: Mol DataErrorIndex Text
-  } deriving Show
+data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq, Enum, Bounded)
+
+isSub :: SubOp -> Bool
+isSub OpSubscribe = True
+isSub _ = False
+
+data OriginatorRole = Provider | Consumer
+data DigestAction = Update | Subscribe | Error | Relinquish | RootUpdate
+
+data TrDigest (r :: OriginatorRole) (a :: DigestAction) where
+  Trpd ::
+    { trpdNs :: Namespace
+    , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
+    , trpdDefs :: Map DefName (DefOp SomeDefinition)
+    , trpdData :: DataDigest
+    , trpdContOps :: ContOps Seg
+    -- FIXME: should errors come in a different digest to data updates? At the
+    -- moment we just check a TrpDigest isn't null when processing namespace
+    -- claims...
+    , trpdErrors :: Mol DataErrorIndex Text
+    } -> TrDigest 'Provider 'Update
+  Trprd ::
+    { trprdNs :: Namespace
+    } -> TrDigest 'Provider 'Relinquish
+
+  Trcsd ::
+    { trcsdPostTys :: Map (Namespace, PostDefName) SubOp
+    , trcsdTys :: Map (Namespace, DefName) SubOp
+    , trcsdData :: Map (Namespace, Path) SubOp
+    } -> TrDigest 'Consumer 'Subscribe
+  Trcud ::
+    { trcudNs :: Namespace
+    , trcudData :: DataDigest
+    , trcudCreates :: Creates
+    , trcudContOps :: ContOps (Either Placeholder Seg)
+    } -> TrDigest 'Consumer 'Update
+
+deriving instance Show (TrDigest o a)
+
+
+data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
+  Frpd ::
+    { frpdNs :: Namespace
+    , frpdData :: DataDigest
+    , frpdCreates :: Creates
+    , frpdContOps :: ContOps (Either Placeholder Seg)
+    } -> FrDigest 'Provider 'Update
+  Frped ::
+    { frpedErrors :: Mol DataErrorIndex Text
+    } -> FrDigest 'Provider 'Error
+
+  Frcrd ::
+    { frcrdContOps :: RootContOps
+    } -> FrDigest 'Consumer 'RootUpdate
+  Frcsd ::
+    -- FIXME: really this is a Mol:
+    { frcsdErrors :: Map SubErrorIndex [Text]
+    , frcsdPostTypeUnsubs :: Mos Namespace PostDefName
+    , frcsdTypeUnsubs :: Mos Namespace DefName
+    , frcsdDataUnsubs :: Mos Namespace Path
+    } -> FrDigest 'Consumer 'Subscribe
+  Frcud ::
+    { frcudNs :: Namespace
+    , frcudPostDefs :: Map PostDefName (DefOp PostDefinition)
+    , frcudDefs :: Map DefName (DefOp SomeDefinition)
+    , frcudTyAssigns :: Map Path (DefName, Editability)
+    , frcudData :: DataDigest
+    , frcudContOps :: ContOps Seg
+    , frcudErrors :: Mol DataErrorIndex Text
+    } -> FrDigest 'Consumer 'Update
+
+deriving instance Show (FrDigest o a)
+
+type TrpDigest = TrDigest 'Provider 'Update
+type TrprDigest = TrDigest 'Provider 'Relinquish
+type TrcSubDigest = TrDigest 'Consumer 'Subscribe
+type TrcUpdateDigest = TrDigest 'Consumer 'Update
+
+type FrpDigest = FrDigest 'Provider 'Update
+type FrpErrorDigest = FrDigest 'Provider 'Error
+type FrcRootDigest = FrDigest 'Consumer 'RootUpdate
+type FrcSubDigest = FrDigest 'Consumer 'Subscribe
+type FrcUpdateDigest = FrDigest 'Consumer 'Update
+
+
+data SomeTrDigest where
+  SomeTrDigest :: TrDigest o a -> SomeTrDigest
+
+deriving instance Show SomeTrDigest
+
+withTrDigest :: (forall o a. TrDigest o a -> r) -> SomeTrDigest -> r
+withTrDigest f (SomeTrDigest d) = f d
+
+
+data SomeFrDigest where
+  SomeFrDigest :: FrDigest o a -> SomeFrDigest
+
+deriving instance Show SomeFrDigest
+
+withFrDigest :: (forall o a. FrDigest o a -> r) -> SomeFrDigest -> r
+withFrDigest f (SomeFrDigest d) = f d
+
+trDigestNull :: TrDigest o a -> Bool
+trDigestNull = \case
+  Trpd _ pds ds dat cops errs ->
+    null pds && null ds && null dat && null cops && null errs
+  Trprd _ -> False
+  Trcsd ptys tys dat -> null ptys && null tys && null dat
+  Trcud _ dat crs cops -> null dat && null crs && null cops
+
+frDigestNull :: FrDigest o a -> Bool
+frDigestNull = \case
+  Frpd _ dat crs cops -> null dat && null crs && null cops
+  Frped errs -> null errs
+  Frcrd cops -> null cops
+  Frcsd errs ptys tys dat -> null errs && null ptys && null tys && null dat
+  Frcud _ pds ds tys dat cops errs ->
+    null pds && null ds && null tys && null dat && null cops && null errs
 
 trpdEmpty :: Namespace -> TrpDigest
-trpdEmpty ns = TrpDigest ns mempty mempty alEmpty mempty mempty
+trpdEmpty ns = Trpd ns mempty mempty alEmpty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
@@ -116,54 +228,21 @@ trpdRemovedPaths trpd =
     f acc p segMap = acc ++
       (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
 
-trpdNull :: TrpDigest -> Bool
-trpdNull (TrpDigest _ns postDefs defs dd cops errs) =
-  null postDefs && null defs && alNull dd && null cops && null errs
-
-data FrpDigest = FrpDigest
-  { frpdNamespace :: Namespace
-  , frpdData :: DataDigest
-  , frpdCreates :: Creates
-  , frpdContOps :: ContOps (Either Placeholder Seg)
-  } deriving (Show, Eq)
-
 frpdEmpty :: Namespace -> FrpDigest
-frpdEmpty ns = FrpDigest ns mempty mempty mempty
-
-frpdNull :: FrpDigest -> Bool
-frpdNull (FrpDigest _ dd creates cops) = null dd && null creates && null cops
-
-newtype FrpErrorDigest = FrpErrorDigest
-  { frpedErrors :: Mol DataErrorIndex Text
-  } deriving (Show, Eq)
-
-frpedNull :: FrpErrorDigest -> Bool
-frpedNull = null . frpedErrors
-
-data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq, Enum, Bounded)
-
-isSub :: SubOp -> Bool
-isSub OpSubscribe = True
-isSub _ = False
-
-data TrcSubDigest = TrcSubDigest
-  { trcsdPostTypes :: Map (Namespace, PostDefName) SubOp
-  , trcsdTypes :: Map (Namespace, DefName) SubOp
-  , trcsdData :: Map (Namespace, Path) SubOp
-  } deriving (Show, Eq)
+frpdEmpty ns = Frpd ns mempty mempty mempty
 
 trcsdEmpty :: TrcSubDigest
 trcsdEmpty = mempty
 
 instance Semigroup TrcSubDigest where
-  TrcSubDigest p1 t1 d1 <> TrcSubDigest p2 t2 d2 = TrcSubDigest
+  Trcsd p1 t1 d1 <> Trcsd p2 t2 d2 = Trcsd
       (p2 <> p1) (t2 <> t1) (d2 <> d1)
 
 instance Monoid TrcSubDigest where
-  mempty = TrcSubDigest mempty mempty mempty
+  mempty = Trcsd mempty mempty mempty
 
 trcsdNamespaces :: TrcSubDigest -> Set Namespace
-trcsdNamespaces (TrcSubDigest p t d) =
+trcsdNamespaces (Trcsd p t d) =
   let f = Set.mapMonotonic fst . Map.keysSet in mconcat [f p, f t, f d]
 
 data ClientRegs
@@ -196,7 +275,7 @@ crIntersection (ClientRegs p1 t1 d1) (ClientRegs p2 t2 d2) = ClientRegs
   (Mos.intersection d1 d2)
 
 trcsdClientRegs :: TrcSubDigest -> (ClientRegs, ClientRegs)
-trcsdClientRegs (TrcSubDigest p t d) =
+trcsdClientRegs (Trcsd p t d) =
   let
     f :: Ord x => Map (Namespace, x) SubOp -> (Mos Namespace x, Mos Namespace x)
     f = bimap mosify mosify . Map.partition isSub
@@ -208,88 +287,21 @@ trcsdClientRegs (TrcSubDigest p t d) =
   in
     (ClientRegs pSub tSub dSub, ClientRegs pUnsub tUnsub dUnsub)
 
-data TrcUpdateDigest = TrcUpdateDigest
-  { trcudNamespace :: Namespace
-  , trcudData :: DataDigest
-  , trcudCreates :: Creates
-  , trcudContOps :: ContOps (Either Placeholder Seg)
-  } deriving (Show, Eq)
-
 trcudEmpty :: Namespace -> TrcUpdateDigest
-trcudEmpty ns = TrcUpdateDigest ns mempty mempty mempty
-
-newtype FrcRootDigest = FrcRootDigest
-  { frcrdContOps :: RootContOps
-  } deriving (Show, Eq)
-
-frcrdNull :: FrcRootDigest -> Bool
-frcrdNull = null . frcrdContOps
-
-data FrcSubDigest = FrcSubDigest
-  -- FIXME: really this is a Mol:
-  { frcsdErrors :: Map SubErrorIndex [Text]
-  , frcsdPostTypeUnsubs :: Mos Namespace PostDefName
-  , frcsdTypeUnsubs :: Mos Namespace DefName
-  , frcsdDataUnsubs :: Mos Namespace Path
-  } deriving (Show, Eq)
-
-frcsdNull :: FrcSubDigest -> Bool
-frcsdNull (FrcSubDigest errs ptUnsubs tUnsubs dUnsubs) =
-  null errs && null ptUnsubs && null tUnsubs && null dUnsubs
+trcudEmpty ns = Trcud ns mempty mempty mempty
 
 instance Semigroup FrcSubDigest where
-  (FrcSubDigest e1 pt1 t1 d1) <> (FrcSubDigest e2 pt2 t2 d2) =
-    FrcSubDigest (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
+  (Frcsd e1 pt1 t1 d1) <> (Frcsd e2 pt2 t2 d2) =
+    Frcsd (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
 
 instance Monoid FrcSubDigest where
-  mempty = FrcSubDigest mempty mempty mempty mempty
+  mempty = Frcsd mempty mempty mempty mempty
 
 frcsdEmpty :: FrcSubDigest
 frcsdEmpty = mempty
 
 frcsdFromClientRegs :: ClientRegs -> FrcSubDigest
-frcsdFromClientRegs (ClientRegs p t d) = FrcSubDigest mempty p t d
-
-data FrcUpdateDigest = FrcUpdateDigest
-  { frcudNamespace :: Namespace
-  , frcudPostDefs :: Map PostDefName (DefOp PostDefinition)
-  , frcudDefinitions :: Map DefName (DefOp SomeDefinition)
-  , frcudTypeAssignments :: Map Path (DefName, Editability)
-  , frcudData :: DataDigest
-  , frcudContOps :: ContOps Seg
-  , frcudErrors :: Mol DataErrorIndex Text
-  } deriving Show
+frcsdFromClientRegs (ClientRegs p t d) = Frcsd mempty p t d
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
-frcudEmpty ns = FrcUpdateDigest ns mempty mempty mempty alEmpty mempty mempty
-
-frcudNull :: FrcUpdateDigest -> Bool
-frcudNull (FrcUpdateDigest _ postDefs defs tas dd cops errs) =
-  null postDefs && null defs && null tas && null dd && null cops && null errs
-
-newtype TrprDigest
-  = TrprDigest {trprdNamespace :: Namespace}
-  deriving (Show, Eq)
-
-data TrDigest
-  = Trpd TrpDigest
-  | Trprd TrprDigest
-  | Trcsd TrcSubDigest
-  | Trcud TrcUpdateDigest
-  deriving Show
-
-data FrDigest
-  = Frpd FrpDigest
-  | Frped FrpErrorDigest
-  | Frcrd FrcRootDigest
-  | Frcsd FrcSubDigest
-  | Frcud FrcUpdateDigest
-  deriving Show
-
-frNull :: FrDigest -> Bool
-frNull = \case
-  Frpd d -> frpdNull d
-  Frped d -> frpedNull d
-  Frcrd d -> frcrdNull d
-  Frcsd d -> frcsdNull d
-  Frcud d -> frcudNull d
+frcudEmpty ns = Frcud ns mempty mempty mempty alEmpty mempty mempty

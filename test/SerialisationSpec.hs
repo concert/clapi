@@ -17,7 +17,7 @@ import Test.QuickCheck (property, Property, counterexample)
 import Blaze.ByteString.Builder (toByteString)
 import Data.Attoparsec.ByteString (parseOnly, endOfInput)
 
-import Clapi.Types (TrDigest(..), FrDigest(..))
+import Clapi.Types (SomeTrDigest(..), SomeFrDigest(..))
 import Clapi.Serialisation (Encodable(..), Decodable(..))
 
 import Arbitrary ()
@@ -52,8 +52,8 @@ spec :: Spec
 spec = do
   describe "ToRelayDigest" $
     it "should survive a round trip via binary" $ property $
-      \(b :: TrDigest) -> propDigestRoundTrip b
+      \(b :: SomeTrDigest) -> propDigestRoundTrip b
 
   describe "FromRelayDigest" $
     it "should survive a round trip via binary" $ property $
-      \(b :: FrDigest) -> propDigestRoundTrip b
+      \(b :: SomeFrDigest) -> propDigestRoundTrip b
