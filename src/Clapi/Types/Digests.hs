@@ -293,31 +293,3 @@ frNull = \case
   Frcrd d -> frcrdNull d
   Frcsd d -> frcsdNull d
   Frcud d -> frcudNull d
-
--- | "Split" because kinda like :: Map k1 a -> Map k2 (Map k3 a)
-splitMap :: (Ord a, Ord b) => [(a, (b, c))] -> Map a (Map b c)
-splitMap = foldl mush mempty
-  where
-    mush m (a, bc) = Map.alter (mush' bc) a m
-    mush' (b, c) = Just . Map.insert b c . maybe mempty id
-
--- The following are slightly different (and more internal to the relay), they
--- are not neccessarily intended for a single recipient
-
-type OutboundClientUpdateDigest = FrcUpdateDigest
-type OutboundClientInitialisationDigest = OutboundClientUpdateDigest
-type OutboundClientSubErrsDigest = Map SubErrorIndex [Text]
-type OutboundProviderDigest = FrpDigest
-
-ocsedNull :: OutboundClientSubErrsDigest -> Bool
-ocsedNull = null
-
-data OutboundDigest
-  = Ocrid FrcRootDigest  -- "Outbound client root initialisation digest"
-  | Ocid OutboundClientInitialisationDigest
-  | Ocsed OutboundClientSubErrsDigest
-  | Ocrd FrcRootDigest
-  | Ocud OutboundClientUpdateDigest
-  | Opd OutboundProviderDigest
-  | Ope FrpErrorDigest
-  deriving Show
