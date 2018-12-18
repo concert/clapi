@@ -30,7 +30,6 @@ import Data.Foldable (Foldable, toList)
 import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
 import Data.List.Split (splitOn)
-import Data.Proxy
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
