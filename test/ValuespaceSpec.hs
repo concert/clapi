@@ -47,7 +47,7 @@ import Instances ()
 unsafeValidateVs :: Valuespace -> Valuespace
 unsafeValidateVs vs = either (error . show) snd $ validateVs allTainted vs
   where
-    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $ vsTree vs
+    allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $ _vsTree vs
 
 
 testS :: Seg
@@ -60,14 +60,14 @@ versionS = [segq|version|]
 
 testValuespace :: Valuespace
 testValuespace = unsafeValidateVs $ (baseValuespace (Tagged testS) Editable)
-  { vsTyDefs = Map.fromList
+  { _vsTyDefs = Map.fromList
       [ (Tagged testS, structDef "test root" $ alFromList
           [ (versionS, (Tagged versionS, ReadOnly))
           ])
       , (Tagged versionS, tupleDef
           "versioney" (alSingleton versionS $ ttInt32 unbounded) ILUninterpolated)
       ]
-  , vsTree = RtContainer $ alSingleton versionS
+  , _vsTree = RtContainer $ alSingleton versionS
       (Nothing, RtConstData Nothing [someWv WtInt32 3])
   }
 
@@ -113,7 +113,7 @@ redefTestRoot f vs =
     structDef "Frigged by test" $ (, ReadOnly) <$> f currentKids
   where
     currentKids = fmap fst $ withDefinition grabDefTypes $ fromJust $
-      Map.lookup (Tagged $ unNamespace testNs) $ vsTyDefs vs
+      Map.lookup (Tagged $ unNamespace testNs) $ _vsTyDefs vs
     grabDefTypes :: Definition mt -> AssocList Seg (DefName, Editability)
     grabDefTypes (StructDef { strDefChildTys = tyinfo }) = tyinfo
     grabDefTypes _ = error "Test vs root type not a struct!"
@@ -171,7 +171,7 @@ spec = do
       let
         rawValuespace = baseValuespace (Tagged testS) Editable
         allTainted = Map.fromList $ fmap (,Nothing) $ Tree.paths Root $
-          vsTree rawValuespace
+          _vsTree rawValuespace
       in validateVs allTainted rawValuespace `shouldSatisfy` isLeft
     it "rechecks on data changes" $
       let
@@ -207,9 +207,9 @@ spec = do
       let
         p = [pathq|/api/version|]
         badVs = testValuespace {
-          vsTree = snd $ updateTreeWithDigest mempty
+          _vsTree = snd $ updateTreeWithDigest mempty
             (alSingleton p $ ConstChange Nothing []) $
-            vsTree testValuespace}
+            _vsTree testValuespace}
         invalidatedPaths = Map.singleton p Nothing
       in do
         -- Validation without specifying the change should miss the bad data:

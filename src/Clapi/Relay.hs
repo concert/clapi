@@ -238,9 +238,9 @@ handleTrpd i d = do
       let
         augmentedTyAssns = Map.mapWithKey
            (\p tn -> (tn, either error id $ getEditable p vs')) updatedTyAssns
-        getContOps p = case fromJust $ Tree.lookupNode p $ vsTree vs' of
+        getContOps p = case fromJust $ Tree.lookupNode p $ _vsTree vs' of
           RtnChildren kb ->
-            (p,) <$> mayContDiff (Tree.lookupNode p $ vsTree vs) kb
+            (p,) <$> mayContDiff (Tree.lookupNode p $ _vsTree vs) kb
           _ -> Nothing
         extraCops = Map.fromAscList $
           mapMaybe (\p -> parentPath p >>= getContOps) $ Set.toAscList $

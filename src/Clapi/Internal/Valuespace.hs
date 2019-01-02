@@ -1,8 +1,12 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Clapi.Internal.Valuespace
   ( Valuespace(..)
   , DefMap, TypeAssignmentMap, Referer, Referee, Xrefs
+  , vsTree, vsPostDefs, vsTyDefs, vsTyAssns, vsXrefs, vsRootEditability
   ) where
 
+import Control.Lens (makeLenses)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Tagged (Tagged)
@@ -23,10 +27,12 @@ type Referee = Path
 type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
 
 data Valuespace = Valuespace
-  { vsTree :: RoseTree [SomeWireValue]
-  , vsPostDefs :: DefMap PostDefinition
-  , vsTyDefs :: DefMap SomeDefinition
-  , vsTyAssns :: TypeAssignmentMap
-  , vsXrefs :: Xrefs
-  , vsRootEditability :: Editability
+  { _vsTree :: RoseTree [SomeWireValue]
+  , _vsPostDefs :: DefMap PostDefinition
+  , _vsTyDefs :: DefMap SomeDefinition
+  , _vsTyAssns :: TypeAssignmentMap
+  , _vsXrefs :: Xrefs
+  , _vsRootEditability :: Editability
   } deriving Show
+
+makeLenses ''Valuespace
