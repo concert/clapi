@@ -191,14 +191,21 @@ instance Arbitrary SomeWireType where
 
 mkGetWtConstraint "getArbitrary" $ ConT ''Arbitrary
 
+genWv :: WireType wt -> Gen (WireValue wt)
+genWv wt = WireValue wt <$> go wt
+  where
+    go :: forall wt. WireType wt -> Gen wt
+    go = \case
+      WtMaybe wt1 -> oneof [return Nothing, Just <$> go wt1]
+      WtList wt1 -> smallListOf $ go wt1
+      WtPair wt1 wt2 -> (,) <$> go wt1 <*> go wt2
+      wt1 -> case getArbitrary wt1 of
+        Dict -> arbitrary
+
 instance Arbitrary SomeWireValue where
   arbitrary = do
       SomeWireType wt <- arbitrary
-      case wt of
-        WtList wt1 -> case getArbitrary wt1 of
-          Dict -> someWv wt <$> smallListOf arbitrary
-        _ -> case getArbitrary wt of
-          Dict -> someWv wt <$> arbitrary
+      SomeWireValue <$> genWv wt
   shrink (SomeWireValue (WireValue wt a)) = case getArbitrary wt of
     Dict -> someWv wt <$> shrink a
 
