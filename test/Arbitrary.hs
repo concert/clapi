@@ -19,7 +19,6 @@ import Test.QuickCheck
 
 import Control.Monad (replicateM)
 import Data.Constraint (Dict(..))
-import Data.Int
 import Data.List (inits)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -28,7 +27,6 @@ import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Word
 import Language.Haskell.TH (Type(ConT))
 import System.Random (Random)
 
@@ -179,29 +177,6 @@ instance Arbitrary SomeTreeType where
     TtMaybe tt1 -> ttMaybe <$> shrink (SomeTreeType tt1)
     TtPair tt1 tt2 ->
       uncurry ttPair <$> shrink (SomeTreeType tt1, SomeTreeType tt2)
-
-
--- | An Arbitrary class where we can be more picky about exactly what we
---   generate. Specifically, we want only small lists and text without \NUL
---   characters.
-class Arbitrary a => PickyArbitrary a where
-  pArbitrary :: Gen a
-  pArbitrary = arbitrary
-
-instance PickyArbitrary Time
-instance PickyArbitrary Word8
-instance PickyArbitrary Word32
-instance PickyArbitrary Word64
-instance PickyArbitrary Int32
-instance PickyArbitrary Int64
-instance PickyArbitrary Float
-instance PickyArbitrary Double
-instance PickyArbitrary Text where
-  pArbitrary = arbitraryTextNoNull
-instance PickyArbitrary a => PickyArbitrary [a] where
-  pArbitrary = smallListOf pArbitrary
-instance PickyArbitrary a => PickyArbitrary (Maybe a)
-instance (PickyArbitrary a, PickyArbitrary b) => PickyArbitrary (a, b)
 
 instance Arbitrary SomeWireType where
   arbitrary = oneof
