@@ -87,9 +87,9 @@ baseValuespace rootType rootEditable = Valuespace
     Tree.RtEmpty
     mempty
     mempty
+    rootEditable
     (Dependencies.singleton Root rootType)
     mempty
-    rootEditable
 
 
 class VsLookupDef def where
@@ -137,7 +137,7 @@ valuespaceGet
        , DefName
        , Editability
        , RoseTreeNode [SomeWireValue])
-valuespaceGet p vs@(Valuespace tree _ defs tas _ _) = do
+valuespaceGet p vs@(Valuespace tree _ defs _ tas _) = do
     rtn <- note "Path not found" $ Tree.lookupNode p tree
     ts <- lookupTypeName p tas
     def <- lookupDef ts defs
@@ -356,7 +356,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Mol.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' postDefs' defs' tas xrefs' (_vsRootEditability vs)
+      Valuespace tree' postDefs' defs' (_vsRootEditability vs) tas xrefs'
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))
