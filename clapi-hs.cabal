@@ -54,6 +54,7 @@ library
                      , Clapi.Types.Digests
                      , Clapi.Types.Dkmap
                      , Clapi.Types.EnumVal
+                     , Clapi.Types.Error
                      , Clapi.Types.Nat
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Symbol
@@ -158,6 +159,7 @@ test-suite clapi-hs-test
                      , Data.Map.DependenciesSpec
                      , Data.Map.MosSpec
                      , Arbitrary
+                     , ErrorSpec
                      , Instances
                      , SerialisationProtocolSpec
                      , PathSpec
