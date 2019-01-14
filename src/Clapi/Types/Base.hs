@@ -1,6 +1,7 @@
 {-# LANGUAGE
     DeriveLift
   , GeneralizedNewtypeDeriving
+  , LambdaCase
   , MultiParamTypeClasses
   , FunctionalDependencies
 #-}
@@ -10,7 +11,7 @@ module Clapi.Types.Base
   , Time(..), TimeStamped(..)
   , Attributee(..)
   , InterpolationLimit(..), Interpolation(..)
-  , InterpolationType(..), interpolationType
+  , InterpolationType(..)
   , TypeEnumOf(..)
   ) where
 
@@ -47,11 +48,12 @@ data Interpolation = IConstant | ILinear | IBezier Word32 Word32
 data InterpolationType = ItConstant | ItLinear | ItBezier
   deriving (Show, Eq, Ord, Enum, Bounded)
 
-interpolationType :: Interpolation -> InterpolationType
-interpolationType IConstant = ItConstant
-interpolationType ILinear = ItLinear
-interpolationType (IBezier _ _) = ItBezier
-
 
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
   typeEnumOf :: a -> b
+
+instance TypeEnumOf Interpolation InterpolationType where
+  typeEnumOf = \case
+    IConstant -> ItConstant
+    ILinear -> ItLinear
+    IBezier _ _ -> ItBezier

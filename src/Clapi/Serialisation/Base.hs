@@ -44,7 +44,8 @@ import Clapi.Types.AssocList (AssocList, mkAssocList, unAssocList)
 import Clapi.Types.Base
   ( Attributee(..), Time(..), TimeStamped(..), Tag(..), mkTag
   , InterpolationLimit(..), Interpolation(..), InterpolationType(..)
-  , interpolationType)
+  , typeEnumOf
+  )
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
 
@@ -215,7 +216,7 @@ itToTag it = case it of
     ItBezier -> [btq|b|]
 
 interpolationTaggedData :: TaggedData InterpolationType Interpolation
-interpolationTaggedData = taggedData itToTag interpolationType
+interpolationTaggedData = taggedData itToTag typeEnumOf
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
