@@ -65,6 +65,9 @@ instance MkSubErrIdx Path where
 
 data DefOp def = OpDefine {odDef :: def} | OpUndefine deriving (Show, Eq)
 
+isDef :: DefOp a -> Bool
+isDef = not . isUndef
+
 isUndef :: DefOp a -> Bool
 isUndef OpUndefine = True
 isUndef _ = False

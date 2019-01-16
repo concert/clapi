@@ -24,7 +24,7 @@ import Clapi.Types
   (Time, Interpolation(..), Attributee, SomeWireValue)
 import Clapi.Types.AssocList
   ( AssocList, unAssocList, alEmpty, alFmapWithKey, alSingleton, alAlterF
-  , alKeys, alToMap, alPickFromMap)
+  , alKeys, alToMap, alPickFromMap, alFromList)
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
@@ -116,6 +116,9 @@ insert att p t = alter att (const $ Just t) p
 
 delete :: Path -> RoseTree a -> RoseTree a
 delete p = alter Nothing (const Nothing) p
+
+setDefault :: RoseTree a -> Maybe Attributee -> Path -> RoseTree a -> RoseTree a
+setDefault def att p = alter att (Just . maybe def id) p
 
 adjust
   :: Maybe Attributee -> (RoseTree a -> RoseTree a) -> Path -> RoseTree a
@@ -232,3 +235,34 @@ rtType rt = case rt of
   RtContainer _ -> RtntContainer
   RtConstData _ _ -> RtntConstData
   RtDataSeries _ -> RtntDataSeries
+
+
+constSetAt :: Maybe Attributee -> Path -> a -> RoseTree a -> RoseTree a
+constSetAt att p a = adjust att (constSet att a) p
+
+setTpAt
+  :: MonadFail m
+  => Maybe Attributee -> Path -> TpId -> Time -> a -> Interpolation
+  -> RoseTree a -> m (RoseTree a)
+setTpAt att p tpid t a i = adjustF Nothing (set tpid t a i att) p
+
+removeTpAt
+  :: MonadFail m
+  => Maybe Attributee -> Path -> TpId -> RoseTree a -> m (RoseTree a)
+removeTpAt att p tpid = adjustF Nothing (remove tpid) p
+
+applyReorderingsAt
+  :: MonadFail m
+  => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a
+  -> m (RoseTree a)
+applyReorderingsAt p cOps = adjustF Nothing (applyReorderings cOps) p
+
+childNamesAt :: Path -> RoseTree a -> Maybe [Seg]
+childNamesAt p = fmap childNames . lookup p
+
+-- | Initialise a container with the given keys at the given path if there is
+--   not already a node present.
+initContainerAt :: Path -> [Seg] -> RoseTree a -> RoseTree a
+initContainerAt p childKeys = setDefault
+  (RtContainer $ alFromList $ (,(Nothing, RtEmpty)) <$> childKeys)
+  Nothing p

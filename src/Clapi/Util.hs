@@ -14,7 +14,7 @@ module Clapi.Util
   , bound
   , safeToEnum
   , foldMapM
-  , mapPartitionEither
+  , mapPartitionEither, mapFoldMWithKey, mapFoldMapMWithKey
   , nestMapsByKey
   , flattenNestedMaps, foldlNestedMaps
   , liftRefl, pairRefl
@@ -157,6 +157,20 @@ foldMapM f = foldM (\b a -> (b <>) <$> f a) mempty
 mapPartitionEither :: Map k (Either a b) -> (Map k a, Map k b)
 mapPartitionEither m = let (ls, rs) = Map.partition isLeft m in
   (fromLeft undefined <$> ls, fromRight undefined <$> rs)
+
+mapFoldMWithKey
+  :: forall k a b m. Monad m => (b -> k -> a -> m b) -> b -> Map k a -> m b
+mapFoldMWithKey f b m = Map.foldrWithKey f' return m b
+  where
+    f' :: k -> a -> (b -> m b) -> b -> m b
+    f' k a fm b' = f b' k a >>= fm
+
+mapFoldMapMWithKey
+  :: forall k a b m. (Monoid b, Monad m) => (k -> a -> m b) -> Map k a -> m b
+mapFoldMapMWithKey f = mapFoldMWithKey f' mempty
+  where
+    f' :: b -> k -> a -> m b
+    f' b k a = (b <>) <$> f k a
 
 liftRefl :: a :~: b -> f a :~: f b
 liftRefl Refl = Refl

@@ -9,9 +9,10 @@ module Clapi.Validator where
 
 import Prelude hiding (fail)
 
-import Control.Monad (void, (>=>))
+import Control.Monad (void, (>=>), unless)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Constraint (Dict(..))
+import Data.Either (partitionEithers)
 import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -20,8 +21,9 @@ import Data.Type.Equality ((:~:)(..))
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
-import Clapi.Util (ensureUnique, foldMapM)
+import Clapi.Util (ensureUnique, foldMapM, fmtStrictZipError, strictZipWith)
 import Clapi.TextSerialisation (ttToText)
+import Clapi.Types ()
 import Clapi.Types.Definitions (DefName)
 import Clapi.Types.EnumVal (enumVal)
 import Clapi.Types.Path (Path)
@@ -126,6 +128,15 @@ validate tt (WireValue wt b) = do
 
 validate_ :: MonadFail m => SomeTreeType -> SomeWireValue -> m ()
 validate_ (SomeTreeType tt) (SomeWireValue wv) = void $ validate tt wv
+
+
+validateValues :: [SomeTreeType] -> [SomeWireValue] -> Either [String] ()
+validateValues tts vs = either (Left . pure) collect $
+    fmtStrictZipError "types" "values" $ strictZipWith validate_ tts vs
+  where
+    collect :: [Either String ()] -> Either [String] ()
+    collect es = let (errs, _) = partitionEithers es in
+      unless (null errs) $ Left errs
 
 
 extractTypeAssertions
