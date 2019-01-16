@@ -38,7 +38,7 @@ import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Relay (relay, RelayState(..))
 import Clapi.Types.AssocList
   ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
-import Clapi.Types.Base (InterpolationLimit(..))
+import Clapi.Types.Base (InterpolationLimit)
 import Clapi.Types.Definitions
   ( arrayDef, structDef, tupleDef, DefName, PostDefName
   , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
@@ -456,8 +456,8 @@ spec = do
     verifyNoPdSub o s n i = verifyNoSub @PostDefinition o s n i "changed doc"
 
     intDef = tupleDef'
-      "A single unbounded integer" [(x, ttInt32 unbounded)] ILUninterpolated
-    strDef = tupleDef' "Any string" [(x, ttString "")] ILUninterpolated
+      "A single unbounded integer" [(x, ttInt32 unbounded)] Nothing
+    strDef = tupleDef' "Any string" [(x, ttString "")] Nothing
 
     simpleClaim name =
       ownerSet Root [someWv WtInt32 12] $

@@ -108,7 +108,7 @@ instance Arbitrary a => Arbitrary (Path' a) where
 instance Arbitrary Editability where
     arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary InterpolationLimit where
+instance Arbitrary InterpolationType where
     arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary Time where

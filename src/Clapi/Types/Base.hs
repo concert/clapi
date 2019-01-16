@@ -10,7 +10,7 @@ module Clapi.Types.Base
   ( Tag, unTag, mkTag
   , Time(..), TimeStamped(..)
   , Attributee(..)
-  , InterpolationLimit(..), Interpolation(..)
+  , InterpolationLimit, Interpolation(..)
   , InterpolationType(..)
   , TypeEnumOf(..)
   ) where
@@ -41,13 +41,11 @@ newtype TimeStamped a = TimeStamped (Time, a) deriving (Show, Functor)
 
 newtype Attributee = Attributee {unAttributee :: Text} deriving (Show, Eq)
 
-data InterpolationLimit = ILUninterpolated | ILConstant | ILLinear | ILBezier
-  deriving (Show, Eq, Ord, Enum, Bounded)
 data Interpolation = IConstant | ILinear | IBezier Word32 Word32
   deriving (Show, Eq, Ord)
 data InterpolationType = ItConstant | ItLinear | ItBezier
   deriving (Show, Eq, Ord, Enum, Bounded)
-
+type InterpolationLimit = Maybe InterpolationType
 
 class (Bounded b, Enum b) => TypeEnumOf a b | a -> b where
   typeEnumOf :: a -> b

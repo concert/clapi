@@ -45,7 +45,6 @@ import Clapi.Util (strictZipWith, fmtStrictZipError, mapPartitionEither)
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..), RoseTreeNodeType(..))
 import qualified Clapi.Tree as Tree
 import Clapi.Types (SomeWireValue(..))
-import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.AssocList
   ( alKeysSet, alValues, alEmpty
   , alFmapWithKey, alToMap, alPartitionWithKey, alFilterKey)
@@ -603,7 +602,7 @@ defNodeType def = case def of
     StructDef {} -> RtntContainer
     ArrayDef {} -> RtntContainer
     TupleDef { tupDefILimit = ilimit } -> case ilimit of
-        ILUninterpolated -> RtntConstData
+        Nothing -> RtntConstData
         _ -> RtntDataSeries
 
 validateRoseTreeNode

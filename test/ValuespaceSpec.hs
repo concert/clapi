@@ -24,8 +24,7 @@ import qualified Clapi.Tree as Tree
 import Clapi.Types.AssocList
   ( AssocList, alSingleton, alEmpty, alInsert, alFromList)
 import Clapi.Types
-  ( InterpolationLimit(ILUninterpolated)
-  , someWv, WireType(..), someWireable
+  ( someWv, WireType(..), someWireable
   , ttInt32, ttString, ttRef, unbounded, Editability(..)
   , tupleDef, structDef, arrayDef, DataErrorIndex(..)
   , Definition(..), SomeDefinition, withDefinition, DefName
@@ -65,7 +64,7 @@ testValuespace = unsafeValidateVs $ (baseValuespace (Tagged testS) Editable)
           [ (versionS, (Tagged versionS, ReadOnly))
           ])
       , (Tagged versionS, tupleDef
-          "versioney" (alSingleton versionS $ ttInt32 unbounded) ILUninterpolated)
+          "versioney" (alSingleton versionS $ ttInt32 unbounded) Nothing)
       ]
   , _vsTree = RtContainer $ alSingleton versionS
       (Nothing, RtConstData Nothing [someWv WtInt32 3])
@@ -87,7 +86,7 @@ validVersionTypeChange vs =
   let
     svd = tupleDef
       "Stringy" (alSingleton [segq|vstr|] $ ttString "pear")
-      ILUninterpolated
+      Nothing
     rootDef = redefTestRoot
       (alInsert versionS $ Tagged [segq|stringVersion|]) vs
   in Trpd
@@ -140,7 +139,7 @@ vsWithXRef =
       "for test"
       -- FIXME: Should the ref seg be tagged?:
       (alSingleton [segq|daRef|] $ ttRef versionS)
-      ILUninterpolated
+      Nothing
     newVal = ConstChange Nothing
       [someWireable $ Path.toText Path.unSeg [pathq|/version|]]
   in extendedVs newNodeDef refSeg newVal
@@ -187,7 +186,7 @@ spec = do
           newDef = tupleDef
             "for test"
             (alSingleton [segq|versionString|] $ ttString "apple")
-            ILUninterpolated
+            Nothing
           d = Trpd
             testNs mempty
             (Map.singleton (Tagged versionS) $ OpDefine newDef)
@@ -262,7 +261,7 @@ spec = do
             mempty
             (Map.fromList
               [ (Tagged xS, OpDefine $ arrayDef "kriss" Nothing (Tagged aS) ReadOnly)
-              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ ttInt32 unbounded) ILUninterpolated)
+              , (Tagged aS, OpDefine $ tupleDef "ref a" (alSingleton aS $ ttInt32 unbounded) Nothing)
               ])
             (alSingleton [pathq|/ard|] $ ConstChange Nothing [someWv WtInt32 3])
             (Map.singleton [pathq|/|] $ Map.singleton [segq|ard|] (Nothing, SoAbsent))

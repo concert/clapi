@@ -19,7 +19,7 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Data.Maybe.Clapi (note)
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
-import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
+import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (SomeTreeType(..))
 
