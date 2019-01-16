@@ -7,44 +7,59 @@ module Clapi.Types.Error where
 --   state.
 
 import Control.Lens (Lens', use, assign)
-import Control.Monad.Except
+import Control.Monad.Except as Except
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Bifunctor (first)
+import Data.Functor.Identity
 
-type ErrsM s e = ExceptT e (WriterT e (State s))
+type ErrsT s e m = ExceptT e (WriterT e (StateT s m))
+type ErrsM s e = ErrsT s e Identity
+
+runErrsT
+  :: (Monoid (f e), Foldable f, Functor m)
+  => ErrsT s (f e) m a -> s -> m (Either (f e) a, s)
+runErrsT = runStateT . errsStateT
 
 runErrsM
-  :: (Monoid (t e), Foldable t) => ErrsM s (t e) a -> s -> (Either (t e) a, s)
-runErrsM m = first smush. runState (runWriterT $ runExceptT m)
+  :: (Monoid (f e), Foldable f) => ErrsM s (f e) a -> s -> (Either (f e) a, s)
+runErrsM = runState . errsStateT
+
+errsStateT
+  :: (Monoid (f e), Foldable f, Functor m)
+  => ErrsT s (f e) m a -> StateT s m (Either (f e) a)
+errsStateT = fmap smush . runWriterT . runExceptT
   where
     smush (eea, e1) = case eea of
       Left e2 -> Left $ e1 <> e2
       Right a -> if null e1 then Right a else Left e1
 
-soften :: Monoid e => ErrsM s e a -> ErrsM s e (Maybe a)
+soften :: (Monoid e, Monad m) => ErrsT s e m a -> ErrsT s e m (Maybe a)
 soften m = lift (runExceptT m) >>= eitherTell
 
-harden :: (Foldable t, Monoid (t e)) => ErrsM s (t e) a -> ErrsM s (t e) a
+harden
+  :: (Foldable f, Monoid (f e), Monad m)
+  => ErrsT s (f e) m a -> ErrsT s (f e) m a
 harden m = do
   (a, es) <- listen m
   if null es then return a else throwError mempty
 
-collect :: (Traversable t, Monoid e) => t (ErrsM s e a) -> ErrsM s e (t a)
+collect
+  :: (Traversable f, Monoid e, Monad m)
+  => f (ErrsT s e m a) -> ErrsT s e m (f a)
 collect t = mapM soften t >>= maybe (throwError mempty) return . sequence
 
-eitherTell :: Monoid e => Either e a -> ErrsM s e (Maybe a)
+eitherTell :: MonadWriter e m => Either e a -> m (Maybe a)
 eitherTell = handleEither tell
 
-eitherThrow :: Monoid e => Either e a -> ErrsM s e a
-eitherThrow = either throwError return
+eitherThrow :: MonadError e m => Either e a -> m a
+eitherThrow = Except.liftEither
 
-handleEither
-  :: Monoid e2 => (e1 -> ErrsM s e2 ()) -> Either e1 a -> ErrsM s e2 (Maybe a)
+handleEither :: Monad m => (e -> m ()) -> Either e a -> m (Maybe a)
 handleEither f = either (\e1 -> f e1 >> return Nothing) (return . Just)
 
 castErrs
-  :: (Monoid e1, Monoid e2) => (e1 -> e2) -> ErrsM s e1 a -> ErrsM s e2 a
+  :: (Monoid e1, Monoid e2, Monad m)
+  => (e1 -> e2) -> ErrsT s e1 m a -> ErrsT s e2 m a
 castErrs f m = do
   (ee1a, e1) <- lift $ lift $ runWriterT $ runExceptT m
   case ee1a of
@@ -55,8 +70,8 @@ castErrs f m = do
 -- | This is like Control.Lens.modifying except that the update can fail
 eitherModifying
   :: (MonadState s m, MonadError e m) => Lens' s a -> (a -> Either e a) -> m ()
-eitherModifying lens f = use lens >>= either throwError (assign lens) . f
+eitherModifying lens f = modifying lens $ either throwError return . f
 
--- | This is like Control.Lens.modifying but cast into ErrsM
-modifying :: Monoid e => Lens' s a -> (a -> ErrsM s e a) -> ErrsM s e ()
+-- | This is like Control.Lens.modifying but compatible with ErrsT/ErrsM
+modifying :: (MonadState s m, MonadError e m) => Lens' s a -> (a -> m a) -> m ()
 modifying lens f = use lens >>= f >>= assign lens
