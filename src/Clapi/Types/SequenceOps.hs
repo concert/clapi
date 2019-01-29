@@ -7,7 +7,7 @@
 
 module Clapi.Types.SequenceOps
   ( SequenceOp(..), isSoAbsent
-  , updateUniqList
+  , updateUniqList, fullOrderOps
   ) where
 
 import Prelude hiding (fail)
@@ -45,6 +45,12 @@ updateUniqList ops ul = do
     bar acc i op = case op of
       SoAfter mi -> Map.insert i mi acc
       SoAbsent -> acc
+
+fullOrderOps :: Ord i => [i] -> Map i (SequenceOp i)
+fullOrderOps = go Nothing
+  where
+    go prev [] = mempty
+    go prev (i:is) = Map.singleton i (SoAfter prev) <> go (Just i) is
 
 getChainStarts ::
     Ord i => Map i (Maybe i) -> ([(i, Maybe i)], Map i (Maybe i))
