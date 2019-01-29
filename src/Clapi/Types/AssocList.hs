@@ -9,7 +9,7 @@ module Clapi.Types.AssocList
   , alEmpty, alSingleton, alFromKeys, alFromList, alFromMap, alPickFromMap
   , alToMap, alFromZip
   , alCons, alLookup, alInsert, alSetDefault, alDelete
-  , alKeys, alKeysSet, alValues
+  , alKeys, alKeys_, alKeysSet, alValues
   , alPartitionWithKey
   , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
   , alAlterF, alAlter, alAdjust
@@ -95,6 +95,9 @@ alDelete k = alAlter (const Nothing) k
 
 alKeys :: AssocList a b -> UniqList a
 alKeys = unsafeMkUniqList . fmap fst . unAssocList
+
+alKeys_ :: AssocList a b -> [a]
+alKeys_ = unUniqList . alKeys
 
 alKeysSet :: Ord a => AssocList a b -> Set a
 alKeysSet = Set.fromList . fmap fst . unAssocList
