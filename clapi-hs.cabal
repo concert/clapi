@@ -69,6 +69,7 @@ library
                      , Clapi.Validator
                      , Clapi.Valuespace
                      , Clapi.Valuespace2
+                     , Clapi.Valuespace2.Xrefs
                      , Clapi.Util
   other-modules:       Data.Maybe.Clapi
   build-depends:       base >= 4.7 && < 5
@@ -145,6 +146,7 @@ test-suite clapi-hs-test
                      , either
                      , hspec
                      , hspec-expectations
+                     , lens
                      , mtl
                      , multiset
                      , network

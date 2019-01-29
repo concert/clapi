@@ -18,6 +18,7 @@ import Clapi.Tree
 import Clapi.Types
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace
+import Clapi.Valuespace2.Xrefs
 
 
 deriving instance Eq FrDigestType
@@ -45,6 +46,7 @@ instance Eq SomeFrDigest where
       go _ _ = False
 
 
+deriving instance Eq TypeAssertionCache
 deriving instance Eq RoseTreeNodeType
 deriving instance Eq ValidationErr
 deriving instance Eq Valuespace

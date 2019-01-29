@@ -64,6 +64,7 @@ import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Tree (SomeTreeType(..))
 import Clapi.Validator (validate_, extractTypeAssertions_)
 import qualified Clapi.Types.Dkmap as Dkmap
+import qualified Clapi.Valuespace2.Xrefs as Vs2Xrefs
 
 import Clapi.Internal.Valuespace
   (Valuespace(..), DefMap, TypeAssignmentMap, Referer, Referee, Xrefs)
@@ -90,6 +91,7 @@ baseValuespace rootName rootEditable = Valuespace
     rootEditable
     (Dependencies.singleton Root rootName)
     mempty
+    Vs2Xrefs.emptyTac
 
 
 class VsLookupDef def where
@@ -137,7 +139,7 @@ valuespaceGet
        , DefName
        , Editability
        , RoseTreeNode [SomeWireValue])
-valuespaceGet p vs@(Valuespace tree _ defs _ _ tas _) = do
+valuespaceGet p vs@(Valuespace tree _ defs _ _ tas _ _) = do
     rtn <- note "Path not found" $ Tree.lookupNode p tree
     ts <- lookupTypeName p tas
     def <- lookupDef ts defs
@@ -356,7 +358,7 @@ processToRelayProviderDigest trpd vs =
     unless (null updateErrs) $ Left $ Mol.mapKeys PathError updateErrs
     (updatedTypes, vs') <- first (fmap $ Text.pack . show) $ validateVs
       (Map.fromSet (const Nothing) redefdPaths <> updatedPaths) $
-      Valuespace tree' postDefs' defs' (_vsRootDefName vs) (_vsRootEditability vs) tas xrefs'
+      Valuespace tree' postDefs' defs' (_vsRootDefName vs) (_vsRootEditability vs) tas xrefs' Vs2Xrefs.emptyTac
     return (updatedTypes, vs')
 
 validatePath :: Valuespace -> Path -> Maybe (Set TpId) -> Either [ValidationErr] (Either RefTypeClaims (Map TpId RefTypeClaims))

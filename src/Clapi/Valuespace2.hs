@@ -12,14 +12,15 @@ module Clapi.Valuespace2
   , processTrpd
   ) where
 
-import Control.Lens (_1, _2, _3, modifying, use)
+import Control.Lens (_1, _2, _3, assign, modifying, use)
 import Control.Monad (unless, void, when)
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.Except (MonadError, ExceptT, runExceptT, throwError)
-import Control.Monad.State (State, execState, StateT)
+import Control.Monad.State (State, execState, StateT, get, put)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (tell)
 import Data.Bifunctor (first, bimap)
+import Data.Either (isLeft)
 import Data.Foldable (fold, toList)
 import Data.List (intercalate)
 import Data.Map (Map)
@@ -38,12 +39,14 @@ import Text.Printf (printf)
 import qualified Data.Map.Dependencies as Dependencies
 import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
+import Data.Map.Mos (Mos)
+import qualified Data.Map.Mos as Mos
 
-import Clapi.Internal.Valuespace
-import Clapi.Tree (RoseTree(..), RoseTreeNode(..))
+import Clapi.Internal.Valuespace hiding (Referer, Referee)
+import Clapi.Tree (RoseTree(..), RoseTreeNode(..), TimePoint, Attributed)
 import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
-import Clapi.Types.Base (InterpolationType(..), Attributee, TypeEnumOf(..))
+import Clapi.Types.Base (Time, InterpolationType(..), Attributee, TypeEnumOf(..))
 import Clapi.Types.Definitions
   ( MetaType(..), SomeDefinition(..), Definition(..), PostDefinition(..)
   , Editability
@@ -53,8 +56,8 @@ import Clapi.Types.Definitions
   , getTyInfoForSeg
   )
 import Clapi.Types.Digests
-  ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..), TimeSeriesDataOp(..)
-  , TpId
+  ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..), isRemove
+  , TimeSeriesDataOp(..), TpId
   , TrDigest(..), FrDigest(..), TrpDigest, FrcUpdateDigest)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Error
@@ -63,13 +66,12 @@ import qualified Clapi.Types.Error as Error
 import Clapi.Types.Path
   (Path, Seg, pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
 import Clapi.Types.UniqList (unUniqList)
 import Clapi.Types.Wire (SomeWireValue)
-import Clapi.Util (mapFoldMapMWithKey)
-import Clapi.Validator (validateValues)
-
-import Debug.Trace
+import Clapi.Util (mapFoldMapMWithKey, foldMapM)
+import Clapi.Validator (TypeAssertion(..), validateValues)
+import qualified Clapi.Valuespace2.Xrefs as Vs2Xrefs
 
 
 -- FIXME: I think there will end up being ProviderErrors that we make when we
@@ -82,7 +84,7 @@ data ProviderError
   | CircularStructDefinitions [DefName]
   | ExpectedArrayDefinition
   | ArrayDoesNotSupportCreates
-  | NoDataForNewNode
+  | MissingNodeData
   | UnexpectedNodeType
   | BadChildKeys [Seg] [Seg]
   | TsChangeOnConst | ConstChangeOnTs
@@ -91,6 +93,9 @@ data ProviderError
   -- type level, the interpolation type we were expecting is technically
   -- optional:
   | BadInterpolationType InterpolationType (Maybe InterpolationType)
+  | XRefError DefName DefName
+  | XRefError2 DefName DefName
+  | RemovedWhileReferencedBy (Set (Vs2Xrefs.Referer, Maybe TpId))
   | ValidationError String
   | ErrorString String
 
@@ -103,7 +108,7 @@ errText = Text.pack . \case
     "Circular struct definitions: " ++ intercalate " -> " (show . untag <$> dns)
   ExpectedArrayDefinition -> "Expected array definition"
   ArrayDoesNotSupportCreates -> "Array does not support creates"
-  NoDataForNewNode -> "No data for new node"
+  MissingNodeData -> "Missing node data"
   UnexpectedNodeType -> "Unexpected node type"
   BadChildKeys ac ex -> printf
     "Bad child keys: %s (expected %s)" (show ac) (show ex)
@@ -111,6 +116,11 @@ errText = Text.pack . \case
   ConstChangeOnTs -> "Constant data change on time series data node"
   BadInterpolationType actual expected -> printf
     "Bad interpolation type %s. Expected <= %s" (show actual) (show expected)
+  XRefError expDn actDn -> printf
+    "Bad xref target type. Expected %s, got %s" (show expDn) (show actDn)
+  XRefError2 _ _ -> "debug"
+  RemovedWhileReferencedBy referers -> printf "Removed path referenced by %s"
+    (show referers)
   ValidationError s -> "ValidationError: " ++ s
   ErrorString s -> s
 
@@ -178,27 +188,25 @@ pathPostDef path = do
       (throwError ArrayDoesNotSupportCreates) lookupPostDef mpd
     _ -> throwError ExpectedArrayDefinition
 
+pathDefName :: Monad m => Path -> VsM m DefName
+pathDefName path = fst <$> pathTyInfo path
+
 pathEditability :: Monad m => Path -> VsM m Editability
 pathEditability path = snd <$> pathTyInfo path
 
 pathNode :: Monad m => Path -> VsM m (RoseTreeNode [SomeWireValue])
-pathNode path = use vsTree >>= note NodeNotFound . Tree.lookupNode path
+pathNode path = use vsTree >>= guard . Tree.lookupNode path
+  where
+    guard Nothing = throwError NodeNotFound
+    guard (Just n) = case n of
+      -- FIXME: More evidence for getting rid of RtnEmpty?
+      RtnEmpty -> throwError NodeNotFound
+      _ -> return n
 
 pathChildren :: Monad m => Path -> VsM m [Seg]
 pathChildren path = pathNode path >>= return . \case
   RtnChildren al -> unUniqList $ AL.alKeys al
   _ -> mempty
-
--- -- | Just like `pathNode`, except that we infer the presence of empty container
--- --   nodes for arrays by looking at the definition.
--- normalisedPathNode
---   :: Monad m => Definition mt -> Path -> VsM m (RoseTreeNode [SomeWireValue])
--- normalisedPathNode def path =
---     use vsTree >>= note NodeNotFound . norm def . Tree.lookupNode path
---   where
---     norm :: Definition mt -> Maybe (RoseTreeNode a) -> Maybe (RoseTreeNode a)
---     norm (ArrayDef {}) Nothing = Just $ RtnChildren mempty
---     norm _ mRtn = mRtn
 
 
 baseValuespace :: DefName -> Editability -> Valuespace
@@ -210,6 +218,7 @@ baseValuespace rootDn rootEd = Valuespace
     rootEd
     (Dependencies.singleton Root rootDn)
     mempty
+    Vs2Xrefs.emptyTac
   where
     emptyStructDef = structDef "Empty namespace" AL.alEmpty
 
@@ -218,7 +227,11 @@ processTrpd
   :: Monad m
   => TrpDigest
   -> StateT Valuespace m (Either (Mol DataErrorIndex Text) FrcUpdateDigest)
-processTrpd trpd = fmap (first $ fmap errText) $ errsStateT $ processTrpd_ trpd
+processTrpd trpd = fmap (first $ fmap errText) $ do
+  initState <- get
+  e <- errsStateT $ processTrpd_ trpd
+  when (isLeft e) $ put initState
+  return e
 
 processTrpd_ :: Monad m => TrpDigest -> VsM' m FrcUpdateDigest
 processTrpd_ trpd =
@@ -246,6 +259,9 @@ processTrpd_ trpd =
     -- types has a material effect on what the types of the tree nodes are:
     collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
 
+    -- tac <- use vsTac
+    -- traceShow tac $ return ()
+
     -- The tree should now be correct, so long as the provider has not made a
     -- mistake. So, next we need to check that is the case.
     roughImpls <- flip possibleImpls defChanges <$> use vsTyAssns
@@ -256,7 +272,7 @@ processTrpd_ trpd =
     -- We add back any implications from the roughImpls that haven't been
     -- superceded by the recursive type implications:
     let allImpls = extendedImpls <> roughImpls
-    collect $ Map.mapWithKey handleImpl allImpls
+    collect $ uncurry handleImpl <$> Map.toDescList allImpls
 
     -- Finally, spit out the changes in a form that will be useful to the
     -- clients:
@@ -271,7 +287,7 @@ processTrpd_ trpd =
       (trpdContOps trpd)
       (trpdErrors trpd)
 
-    generateTyAsn :: Path -> PathImpl -> Map Path (DefName, Editability)
+    generateTyAsn :: Path -> TypeImpl -> Map Path (DefName, Editability)
     generateTyAsn p = \case
       -- FIXME: Do we want to track editability changes through implications
       -- too?
@@ -296,7 +312,7 @@ type DefDiff =
   , Set DefName)
 
 -- | Things that changes in the valuespace definitions can imply about a path
-data PathImpl
+data TypeImpl
   = TypeRedefined DefName SomeDefinition SomeDefinition
   -- NB only new editability:
   -- FIXME: only need new def?
@@ -304,7 +320,7 @@ data PathImpl
   | NewlyAssigned DefName SomeDefinition Editability
   | ImplicitlyRemoved
 
-instance Show PathImpl where
+instance Show TypeImpl where
   show = \case
     TypeRedefined dn _ _ -> printf "<TypeRedefined %s>" (show $ untag dn)
     TypeReassigned dn1 dn2 _ _ ed2 -> printf "<TypeReassigned %s %s %s>"
@@ -336,7 +352,6 @@ partitionDefChanges = flip execState mempty . sequence . Map.mapWithKey f
     f :: DefName -> DefChange -> State DefDiff ()
     f dn = \case
       NewDef def -> modifying _1 $ Map.insert dn def
-      -- FIXME: do we need to preserve the oldDef?
       Redef oldDef newDef -> modifying _2 $ Map.insert dn (oldDef, newDef)
       Undef -> modifying _3 $ Set.insert dn
 
@@ -354,8 +369,9 @@ updatePathData p dc = do
     applyConstChange tdef = \case
       TimeChange {} -> pathError p $ throwError TsChangeOnConst
       ConstChange att wvs -> pathErrors p $ do
-        validateTupleValues tdef wvs
+        tyAsserts <- validateTupleValues tdef wvs
         modifying vsTree $ Tree.constSetAt att p wvs
+        modifying vsTac $ Vs2Xrefs.updateConstTas (Vs2Xrefs.Referer p) tyAsserts
 
     applyTsChanges :: Monad m => Definition 'Tuple -> DataChange -> VsM' m ()
     applyTsChanges tdef = \case
@@ -370,11 +386,15 @@ updatePathData p dc = do
       OpSet t wvs i -> do
         unless (Just (typeEnumOf i) <= tupDefILimit tdef) $
           throwError [BadInterpolationType (typeEnumOf i) (tupDefILimit tdef)]
-        validateTupleValues tdef wvs
+        tyAsserts <- validateTupleValues tdef wvs
         eitherModifying vsTree $
           first (\s -> [ErrorString s]) . Tree.setTpAt att p tpid t wvs i
-      OpRemove -> eitherModifying vsTree $
+        modifying vsTac $
+          Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
+      OpRemove -> do
+        eitherModifying vsTree $
           first (\s -> [ErrorString s]) . Tree.removeTpAt att p tpid
+        modifying vsTac $ Vs2Xrefs.removeTpTas (Vs2Xrefs.Referer p) tpid
 
 updateContainer
   :: Monad m => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> VsM' m ()
@@ -402,10 +422,10 @@ guardRecusiveStructs = go mempty []
           go (processed <> Set.fromList structChainDns) [] dn'
 
 
-possibleImpls :: TypeAssignmentMap -> Map DefName DefChange -> Map Path PathImpl
+possibleImpls :: TypeAssignmentMap -> Map DefName DefChange -> Map Path TypeImpl
 possibleImpls tyAssns = Map.foldMapWithKey f
   where
-    f :: DefName -> DefChange -> Map Path PathImpl
+    f :: DefName -> DefChange -> Map Path TypeImpl
     f dn dc = case dc of
       NewDef _def -> mempty
       Redef oldDef newDef -> depPs dn $ TypeRedefined dn oldDef newDef
@@ -413,7 +433,7 @@ possibleImpls tyAssns = Map.foldMapWithKey f
     depPs dn x = Map.fromSet (const x) $ Dependencies.lookupRev dn tyAssns
 
 extendImpls
-  :: Monad m => RoseTree a -> Map Path PathImpl -> VsM' m (Map Path PathImpl)
+  :: Monad m => RoseTree a -> Map Path TypeImpl -> VsM' m (Map Path TypeImpl)
 extendImpls oldTree initialImpls
   | Map.null initialImpls = return mempty
   | otherwise = do
@@ -424,7 +444,7 @@ extendImpls oldTree initialImpls
     -- | Given something that happened to a path, what things happened directly
     --   below it?
     directChildImpls
-      :: Monad m => Path -> PathImpl -> VsM' m (Map Path PathImpl)
+      :: Monad m => Path -> TypeImpl -> VsM' m (Map Path TypeImpl)
     directChildImpls p = \case
       TypeRedefined _ def1 def2 -> redefinitionDcImpls p def1 def2
       TypeReassigned _ _ def1 def2 _ -> redefinitionDcImpls p def1 def2
@@ -433,7 +453,7 @@ extendImpls oldTree initialImpls
 
     redefinitionDcImpls
       :: Monad m
-      => Path -> SomeDefinition -> SomeDefinition -> VsM' m (Map Path PathImpl)
+      => Path -> SomeDefinition -> SomeDefinition -> VsM' m (Map Path TypeImpl)
     redefinitionDcImpls p (SomeDefinition oldDef) (SomeDefinition newDef) =
       let
         oldTyInfo = getChildTyInfo p oldDef oldTree
@@ -442,7 +462,7 @@ extendImpls oldTree initialImpls
         tyInfoDiffDcImpls p oldTyInfo newTyInfo
 
     newDefDcImpls
-      :: Monad m => Path -> SomeDefinition -> VsM' m (Map Path PathImpl)
+      :: Monad m => Path -> SomeDefinition -> VsM' m (Map Path TypeImpl)
     newDefDcImpls p (SomeDefinition def) = do
       newTyInfo <- getChildTyInfo p def <$> use vsTree
       tyInfoDiffDcImpls p mempty newTyInfo
@@ -450,7 +470,7 @@ extendImpls oldTree initialImpls
     tyInfoDiffDcImpls
       :: Monad m
       => Path -> Map Seg (DefName, Editability)
-      -> Map Seg (DefName, Editability) -> VsM' m (Map Path PathImpl)
+      -> Map Seg (DefName, Editability) -> VsM' m (Map Path TypeImpl)
     tyInfoDiffDcImpls p oldTyInfo newTyInfo = fold <$>
         mergeA (traverseMissing f) (traverseMissing g) (zipWithAMatched h)
         oldTyInfo newTyInfo
@@ -479,83 +499,106 @@ getChildTyInfo p def = go . maybe RtnEmpty id . Tree.lookupNode p
         RtnChildren al -> const (dn, ed) <$> AL.alToMap al
         _ -> mempty
 
--- | Handles structural changes (e.g. node deletions, implicit collection
---   creation) and dependency tracking updates implied by the changes to the
---   type definitions:
-restructure :: Monad m => Map Path PathImpl -> VsM' m ()
-restructure = void . collect . Map.mapWithKey go
-  where
-    go = undefined
 
-revalidate :: Monad m => Map Path PathImpl -> VsM' m ()
-revalidate = void . collect . Map.mapWithKey go
-  where
-    go = undefined
-
-handleImpl :: Monad m => Path -> PathImpl -> VsM' m ()
+handleImpl :: Monad m => Path -> TypeImpl -> VsM' m ()
 handleImpl p = \case
-    TypeRedefined _ _ (SomeDefinition def2) ->
+    TypeRedefined _ _ (SomeDefinition def2) -> do
+      inferContainer def2
       -- Revalidate the path according to def2
       -- FIXME: this is wasteful if the data has already been updated
       revalidatePath def2 p
     TypeReassigned _ dn2 _ (SomeDefinition def2) _ -> do
       -- Revalidate the path according to def2
-      -- FIXME: this is wasteful if the data has already been updated
+      inferContainer def2
       modifying vsTyAssns $ Dependencies.insert p dn2
+      -- FIXME: this is wasteful if the data has already been updated
       revalidatePath def2 p
+      typeAssertions <- Vs2Xrefs.lookup (Vs2Xrefs.Referee p) <$> use vsTac
+      revalidateXrefs dn2 typeAssertions
     NewlyAssigned dn (SomeDefinition def) _ -> do
-      newlyAssigned def
+      inferContainer def
       modifying vsTyAssns $ Dependencies.insert p dn
     ImplicitlyRemoved -> do
       modifying vsTree $ Tree.delete p
       modifying vsTyAssns $ Dependencies.delDependency p
+      tac <- use vsTac
+      let typeAssertions = Vs2Xrefs.lookup (Vs2Xrefs.Referee p) tac
+      if null typeAssertions
+        then assign vsTac $
+          Vs2Xrefs.removeTas (Vs2Xrefs.Referer p) tac
+        else
+          pathError p $ throwError $ RemovedWhileReferencedBy $
+            Vs2Xrefs.referers (Vs2Xrefs.Referee p) tac
   where
-    -- We need to break this out to help the type inference :-(
-    newlyAssigned :: Monad m => Definition mt -> VsM' m ()
-    newlyAssigned = \case
-      -- All the new data will have already been validated, so checking the node
-      -- is not empty will suffice:
+    inferContainer :: Monad m => Definition mt -> VsM' m ()
+    inferContainer = \case
       TupleDef {} -> do
         node <- pathError p $ pathNode p
         case node of
-          RtnEmpty -> pathError p $ throwError $ NoDataForNewNode
+          RtnEmpty -> pathError p $ throwError MissingNodeData
           _ -> return ()
       -- The tree at this path should be a container, so we can infer that if
       -- the provider has not set it explicitly:
-      StructDef { strDefChildTys = tyInfo} ->
-        modifying vsTree $ Tree.initContainerAt p $
-        untag . fst <$> toList tyInfo
-      ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p []
+      StructDef { strDefChildTys = tyInfo } -> do
+        modifying vsTree $ Tree.initContainerAt p
+        pathError p $ eitherModifying vsTree $ Tree.applyReorderingsAt p $
+          (Nothing,) <$> fullOrderOps (AL.alKeys_ tyInfo)
+      ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p
 
 
 validateTupleValues
   :: Monad m
   => Definition 'Tuple -> [SomeWireValue]
-  -> ErrsT Valuespace [ProviderError] m ()
-validateTupleValues tdef =
-    eitherThrow
-  . first (fmap ValidationError)
-  . validateValues (toList $ tupDefTys tdef)
+  -> ErrsT Valuespace [ProviderError] m Vs2Xrefs.TypeAssertions
+validateTupleValues tdef wvs = do
+  tas <- eitherThrow
+    $ first (fmap ValidationError)
+    $ validateValues (toList $ tupDefTys tdef) wvs
+  checkTypeAssertions tas
+
+checkTypeAssertions
+  :: Monad m
+  => Set TypeAssertion
+  -> ErrsT Valuespace [ProviderError] m Vs2Xrefs.TypeAssertions
+checkTypeAssertions tas = mapM_ checkTypeAssertion tas
+  >> return (Vs2Xrefs.toTypeAssertions tas)
+
+-- FIXME: naming is confusing between this one that grabs the actDn and the
+-- actual check which takes actDn:
+checkTypeAssertion
+  :: Monad m => TypeAssertion -> ErrsT Valuespace [ProviderError] m ()
+checkTypeAssertion (TypeAssertion path expDn) = casty $ do
+    actDn <- pathDefName path
+    unless (actDn == expDn) $ throwError $ XRefError expDn actDn
+  where
+    casty
+      :: Monad m
+      => ExceptT ProviderError (StateT Valuespace m) ()
+      -> ErrsT Valuespace [ProviderError] m ()
+    casty m = (lift $ lift $ runExceptT m) >>= either (throwError . pure) return
+
 
 
 revalidatePath :: Monad m => Definition mt -> Path -> VsM' m ()
-revalidatePath def = case def of
-  TupleDef {} -> revalidatePathData def
-  StructDef {} -> revalidateContainerKeys def
-  ArrayDef {} -> revalidateContainerKeys def
+revalidatePath def path = case def of
+  TupleDef {} -> revalidatePathData def path
+  -- Container keys are guaranteed to be correct by the type inference:
+  _ -> return ()
+  -- StructDef {} -> revalidateContainerKeys def
+  -- ArrayDef {} -> revalidateContainerKeys def
 
-revalidateContainerKeys :: Monad m => Definition mt -> Path -> VsM' m ()
-revalidateContainerKeys def path = pathError path $ do
-  node <- pathNode path
-  case node of
-    RtnChildren al -> case def of
-      StructDef { strDefChildTys = tyInfo } ->
-        let expected = AL.alKeys tyInfo; actual = AL.alKeys al in
-        unless (actual == expected) $
-          throwError $ BadChildKeys (unUniqList actual) (unUniqList expected)
-      ArrayDef {} -> return ()
-      TupleDef {} -> error "Should not call with TupleDef"
-    _ -> throwError UnexpectedNodeType
+-- revalidateContainerKeys :: Monad m => Definition mt -> Path -> VsM' m ()
+-- revalidateContainerKeys def path = pathError path $ do
+--   node <- pathNode path
+--   case node of
+--     RtnChildren al -> case def of
+--       StructDef { strDefChildTys = tyInfo } ->
+--         let expected = AL.alKeys tyInfo; actual = AL.alKeys al in
+--         unless (actual == expected) $
+--           throwError $ BadChildKeys (unUniqList actual) (unUniqList expected)
+--       ArrayDef {} -> return ()
+--       TupleDef {} -> error "Should not call with TupleDef"
+--     _ -> throwError UnexpectedNodeType
 
 revalidatePathData :: Monad m => Definition 'Tuple -> Path -> VsM' m ()
 revalidatePathData def@(TupleDef {tupDefILimit = ilimit}) p = case ilimit of
@@ -564,6 +607,8 @@ revalidatePathData def@(TupleDef {tupDefILimit = ilimit}) p = case ilimit of
   where
     -- FIXME: This is currently modifying the tree because my previous stab had
     -- the valuespace holding a RoseTree containing TreeValues:
+    -- FIXME: It would be nice not to lose container attribution just because we
+    -- want to recheck some of the data!
     goRevalidate f = Error.modifying vsTree $ Tree.alterF Nothing (atNode f) p
     atNode f = \case
       Just rtn -> Just <$> f rtn
@@ -574,8 +619,10 @@ revalidateConstData
   => Definition 'Tuple -> Path -> RoseTree [SomeWireValue]
   -> VsM' m (RoseTree [SomeWireValue])
 revalidateConstData tdef p = \case
-  rt@(RtConstData _att wvs) ->
-    pathErrors p (validateTupleValues tdef wvs) >> return rt
+  rt@(RtConstData _att wvs) -> do
+    tyAsserts <- pathErrors p (validateTupleValues tdef wvs)
+    modifying vsTac $ Vs2Xrefs.updateConstTas (Vs2Xrefs.Referer p) tyAsserts
+    return rt
   _ -> pathError p $ throwError UnexpectedNodeType
 
 revalidateTsData
@@ -583,9 +630,27 @@ revalidateTsData
   => Definition 'Tuple -> Path -> RoseTree [SomeWireValue]
   -> VsM' m (RoseTree [SomeWireValue])
 revalidateTsData tdef p = \case
-  rt@(RtDataSeries ts) -> collect (Dkmap.mapWithKeys
-    (\tpid _ tp -> traverse
-      (traverse $ tpErrors p tpid . validateTupleValues tdef)
-      tp)
-    ts) >> return rt
-  _ -> pathError p $ throwError UnexpectedNodeType
+    rt@(RtDataSeries ts) -> collect (Dkmap.mapWithKeys atTp ts) >> return rt
+    _ -> pathError p $ throwError UnexpectedNodeType
+  where
+    atTp
+        :: Monad m
+        => TpId -> Time -> Attributed (TimePoint [SomeWireValue])
+        -> VsM' m ()
+    atTp tpid _ (_, (_, wvs)) = do
+      tyAsserts <- tpErrors p tpid $ validateTupleValues tdef wvs
+      modifying vsTac $ Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
+
+
+-- FIXME: these are names incorrectly and should be something to do with
+-- checking type assertions without clashing with anything checkTypeAssertiony
+-- above!
+revalidateXrefs
+  :: Monad m => DefName -> Map Vs2Xrefs.Referer TypeAssertion -> VsM' m ()
+revalidateXrefs actDn = void . collect . Map.mapWithKey (revalidateXref actDn)
+
+revalidateXref
+  :: Monad m => DefName -> Vs2Xrefs.Referer -> TypeAssertion -> VsM' m ()
+revalidateXref actDn referer (TypeAssertion _ expDn) =
+  pathError (Vs2Xrefs.unReferer referer) $
+    unless (actDn == expDn) $ throwError $ XRefError2 expDn actDn

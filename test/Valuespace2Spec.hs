@@ -7,7 +7,7 @@ module Valuespace2Spec where
 
 import Test.Hspec
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.State (StateT, liftIO, evalStateT)
 import Data.Either (isRight)
@@ -44,6 +44,7 @@ spec =
   describe "processTrpd" $ do
     it "validates baseValuespace with no changes" $ go $
        processTrpd (trpdEmpty ns) >>= (`succeedsWith` frcudEmpty ns)
+
     it "validates constant data changes" $ go $ do
        res <- processTrpd $ (trpdEmpty ns)
          { trpdDefs = Map.singleton rootDn $ OpDefine $ boundedW32Tup 3 5
@@ -60,6 +61,7 @@ spec =
             [someWv WtWord32 7]
          }
        liftIO $ errorsOn Root res'
+
     describe "time series changes" $
       let
         mkTpSet i =
@@ -83,6 +85,7 @@ spec =
                 (Nothing, OpSet (Time 0 1) [someWv WtWord32 7] IConstant)
             }
           liftIO $ errorsOnTp Root 1 res
+
         it "validates interpolation" $ go $ do
           setup
           res <- processTrpd $ (trpdEmpty ns)
@@ -90,6 +93,7 @@ spec =
                 (Nothing, OpSet (Time 0 2) [someWv WtWord32 2] $ IBezier 0 0)
             }
           liftIO $ errorsOnTp Root 2 res
+
         it "catches overlapping time points" $ go $ do
           setup
           res <- processTrpd $ (trpdEmpty ns)
@@ -97,6 +101,7 @@ spec =
                 (Nothing, OpSet (Time 0 1) [someWv WtWord32 2] $ IConstant)
             }
           liftIO $ errorsOnTp Root 0 res
+
     it "(re)validates on type changes" $ go $ do
       let trpd = (trpdEmpty ns)
             {trpdDefs = Map.singleton rootDn $ OpDefine w32Tup}
@@ -116,6 +121,7 @@ spec =
         { frcudDefs = Map.singleton rootDn $ OpDefine w32Tup
         , frcudData = change
         }
+
     it "Errors on struct with missing child" $ go $
       let
         w32Tn = Tagged [segq|w32|]
@@ -130,18 +136,15 @@ spec =
           }
       in do
         res <- processTrpd trpd
-        errorsOn Root res
+        noErrorsOn Root res
         errorsOn [pathq|/foo|] res
         errorsOn [pathq|/bar|] res
 
         res' <- processTrpd $ trpd
           { trpdData = alSingleton [pathq|/foo|] $
               ConstChange Nothing [someWv WtWord32 17] }
-        errorsOn Root res'
-        -- FIXME: There's a change in behaviour from when the struct node is not
-        -- there at all. We should consistently either output either just errors
-        -- on the parent path or errors on missing child paths too:
-        -- errorsOn [pathq|/bar|] res'
+        noErrorsOn Root res'
+        errorsOn [pathq|/bar|] res'
 
         res'' <- processTrpd $ trpd
           { trpdData = alFromList
@@ -150,6 +153,13 @@ spec =
             ]
           }
         succeeds res''
+
+    it "Errors with extra data" $ go $ do
+      res <- processTrpd $ (trpdEmpty ns)
+        { trpdData = alSingleton [pathq|/foo|] $ ConstChange Nothing []
+        }
+      errorsOn [pathq|/foo|] res
+
     describe "Recursive struct definitions" $ let r = [segq|r|] in do
       it "rejected in a direct loop" $ timeLimit 1 $ go $ do
         res <- processTrpd $ (trpdEmpty ns)
@@ -157,6 +167,7 @@ spec =
               structDef "Recursive!" $ alSingleton r (rootDn, ReadOnly)
           }
         errors GlobalError res
+
       it "rejected in an indirect loop" $ timeLimit 1 $ go $ do
         res <- processTrpd $ (trpdEmpty ns)
           { trpdDefs = Map.fromList
@@ -167,6 +178,7 @@ spec =
               ]
           }
         errors GlobalError res
+
       it "rejected below an array" $ timeLimit 1 $ go $ do
         res <- processTrpd $ (trpdEmpty ns)
          { trpdDefs = Map.fromList
@@ -177,6 +189,7 @@ spec =
              ]
          }
         errors GlobalError res
+
       it "accepted if mediated by an array" $ timeLimit 1 $ go $ do
         res <- processTrpd $ (trpdEmpty ns)
           { trpdDefs = Map.fromList
@@ -190,33 +203,94 @@ spec =
               ]
           }
         succeeds res
+
     describe "Cross reference validation" $
       let
         referer = [segq|referer|]
-        referee = [segq|referee|]
+        referee1 = [segq|referee1|]
+        referee2 = [segq|referee2|]
         setup = do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "root" $ alFromList
-                    [ ([segq|referer|], (Tagged referer, ReadOnly))
-                    , ([segq|referee|], (Tagged referee, ReadOnly))
+                    [ (referer, (Tagged referer, ReadOnly))
+                    , (referee1, (Tagged referee1, ReadOnly))
+                    , (referee2, (Tagged referee2, ReadOnly))
                     ])
                 , (Tagged referer, OpDefine $ tupleDef "referer"
-                    (alSingleton [segq|r|] $ ttRef referee)
+                    (alSingleton [segq|r|] $ ttRef referee1)
                     Nothing)
-                , (Tagged referee, OpDefine w32Tup)
+                , (Tagged referee1, OpDefine w32Tup)
+                , (Tagged referee2, OpDefine w32Tup)
                 ]
             , trpdData = alFromList
-                [ (Root :/ referee, ConstChange Nothing [someWv WtWord32 11])
-                , (Root :/ referer, ConstChange Nothing [someWv WtString "/referee"])
+                [ (Root :/ referee1,
+                     ConstChange Nothing [someWv WtWord32 11])
+                , (Root :/ referee2,
+                     ConstChange Nothing [someWv WtWord32 12])
+                , (Root :/ referer,
+                     ConstChange Nothing [someWv WtString "/referee1"])
                 ]
             }
           succeeds res
       in do
-        it "catches referer type changes" $ go $ do
+        -- FIXME: we need to do all this again for time series ;-)
+        it "catches reference to invalid paths" $ go $ do
           setup
-        it "catches referee type changes" $ go $ return ()
-        it "does not hold on to old references" $ go $ return ()
+          res <- processTrpd $ (trpdEmpty ns)
+            { trpdData = alSingleton (Root :/ referer) $
+                ConstChange Nothing [someWv WtString "/bad"]
+            }
+          errorsOn (Root :/ referer) res
+
+        it "catches references to invalid types" $ go $ do
+          setup
+          res <- processTrpd $ (trpdEmpty ns)
+            { trpdData = alSingleton (Root :/ referer) $
+                ConstChange Nothing [someWv WtString "/referee2"]
+            }
+          errorsOn (Root :/ referer) res
+
+        it "catches referer type change" $ go $
+          let
+            trpd = (trpdEmpty ns)
+              { trpdDefs = Map.singleton (Tagged referer) $
+                  OpDefine $ tupleDef "referer"
+                    (alSingleton [segq|r|] $ ttRef referee2)
+                    Nothing
+              }
+          in do
+            setup
+            res <- processTrpd trpd
+            errorsOn (Root :/ referer) res
+
+            res' <- processTrpd $ trpd
+              { trpdData = alSingleton (Root :/ referer) $
+                  ConstChange Nothing [someWv WtString "/referee2"]
+              }
+            succeeds res'
+
+        it "catches referee type changes" $ go $
+          let
+            defs = Map.singleton rootDn $
+                  OpDefine $ structDef "root" $ alFromList
+                    [ (referer, (Tagged referer, ReadOnly))
+                    , (referee1, (Tagged referee2, ReadOnly))
+                    , (referee2, (Tagged referee2, ReadOnly))
+                    ]
+            trpd = (trpdEmpty ns) { trpdDefs = defs }
+          in do
+            setup
+            res <- processTrpd trpd
+            errorsOn (Root :/ referer) res
+
+            res' <- processTrpd trpd
+              { trpdDefs = defs <> (Map.singleton (Tagged referer) $
+                  OpDefine $ tupleDef "referer"
+                    (alSingleton [segq|r|] $ ttRef referee2)
+                    Nothing)
+              }
+            succeeds res'
   where
     go :: StateT Valuespace IO a -> IO a
     go = flip evalStateT bvs
@@ -227,7 +301,7 @@ errors
 errors idx = liftIO . \case
   Left m -> unless (idx `Set.member` Mol.keysSet m) $ expectationFailure $
     printf "No error on %s. Errors: %s" (show idx) (show m)
-  Right _ -> expectationFailure "Did not error"
+  Right _ -> expectationFailure $ printf "Did not error with (%s)" (show idx)
 
 errorsOn
   :: (Show x1, MonadIO m) => Path -> Either (Mol DataErrorIndex x1) x2 -> m ()
@@ -237,6 +311,14 @@ errorsOnTp
   :: (Show x1, MonadIO m)
   => Path -> TpId -> Either (Mol DataErrorIndex x1) x2 -> m ()
 errorsOnTp p tpid = errors (TimePointError p tpid)
+
+noErrorsOn
+  :: (Show x1, MonadIO m) => Path -> Either (Mol DataErrorIndex x1) x2 -> m ()
+noErrorsOn p = liftIO . \case
+  Left m -> when (PathError p `Set.member` Mol.keysSet m) $ expectationFailure $
+    printf "Unexpected errors on %s (%s)" (show p)
+    (show $ Mol.lookup (PathError p) m)
+  Right _ -> return ()
 
 succeeds :: (Show e, Show a, MonadIO m) => Either e a -> m ()
 succeeds ea = liftIO $ ea `shouldSatisfy` isRight

@@ -4,7 +4,7 @@ module Clapi.Internal.Valuespace
   ( Valuespace(..)
   , DefMap, TypeAssignmentMap, Referer, Referee, Xrefs
   , vsTree, vsPostDefs, vsTyDefs, vsRootDefName, vsRootEditability
-  , vsTyAssns, vsXrefs
+  , vsTyAssns, vsXrefs, vsTac
   ) where
 
 import Control.Lens (makeLenses)
@@ -20,6 +20,8 @@ import Clapi.Types.Definitions
 import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Wire (SomeWireValue)
+-- FIXME: These modules are becoming a bit of a messy tangle
+import qualified Clapi.Valuespace2.Xrefs as Vs2Xrefs
 
 type DefMap def = Map (Tagged def Seg) def
 type TypeAssignmentMap = Dependencies Path DefName
@@ -36,6 +38,7 @@ data Valuespace = Valuespace
   -- These are just caches that help us do reverse lookups:
   , _vsTyAssns :: TypeAssignmentMap
   , _vsXrefs :: Xrefs
+  , _vsTac :: Vs2Xrefs.TypeAssertionCache
   } deriving Show
 
 makeLenses ''Valuespace
