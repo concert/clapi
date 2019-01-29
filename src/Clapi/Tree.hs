@@ -1,8 +1,7 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
-  , TemplateHaskell
-  , TypeFamilies
+  , LambdaCase
 #-}
 
 module Clapi.Tree where
@@ -24,7 +23,7 @@ import Clapi.Types
   (Time, Interpolation(..), Attributee, SomeWireValue)
 import Clapi.Types.AssocList
   ( AssocList, unAssocList, alEmpty, alFmapWithKey, alSingleton, alAlterF
-  , alKeys, alToMap, alPickFromMap, alFromList)
+  , alKeys, alToMap, alPickFromMap)
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
@@ -116,9 +115,6 @@ insert att p t = alter att (const $ Just t) p
 
 delete :: Path -> RoseTree a -> RoseTree a
 delete p = alter Nothing (const Nothing) p
-
-setDefault :: RoseTree a -> Maybe Attributee -> Path -> RoseTree a -> RoseTree a
-setDefault def att p = alter att (Just . maybe def id) p
 
 adjust
   :: Maybe Attributee -> (RoseTree a -> RoseTree a) -> Path -> RoseTree a
@@ -260,9 +256,10 @@ applyReorderingsAt p cOps = adjustF Nothing (applyReorderings cOps) p
 childNamesAt :: Path -> RoseTree a -> Maybe [Seg]
 childNamesAt p = fmap childNames . lookup p
 
--- | Initialise a container with the given keys at the given path if there is
---   not already a node present.
-initContainerAt :: Path -> [Seg] -> RoseTree a -> RoseTree a
-initContainerAt p childKeys = setDefault
-  (RtContainer $ alFromList $ (,(Nothing, RtEmpty)) <$> childKeys)
-  Nothing p
+-- | Initialise a container at the given path if it is not already a container.
+initContainerAt :: Path -> RoseTree a -> RoseTree a
+initContainerAt = alter Nothing $ Just . maybe (RtContainer mempty)
+  (\case
+    t@(RtContainer {}) -> t
+    _ -> RtContainer mempty
+  )
