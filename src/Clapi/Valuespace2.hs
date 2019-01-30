@@ -223,6 +223,7 @@ baseValuespace rootDn rootEd = Valuespace
     emptyStructDef = structDef "Empty namespace" AL.alEmpty
 
 
+-- FIXME: Perhaps this should return the Frped directly?
 processTrpd
   :: Monad m
   => TrpDigest
@@ -259,14 +260,28 @@ processTrpd_ trpd =
     -- types has a material effect on what the types of the tree nodes are:
     collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
 
-    -- tac <- use vsTac
-    -- traceShow tac $ return ()
-
     -- The tree should now be correct, so long as the provider has not made a
     -- mistake. So, next we need to check that is the case.
+
+    -- Firstly we find all the type change implications that are a direct
+    -- consequence of definition changes sent from the provider:
     roughImpls <- flip possibleImpls defChanges <$> use vsTyAssns
-    -- These are the top-level type change implications that we _know_ will need
-    -- to be checked:
+
+    -- Then we find the root changes for all the subtrees with changed
+    -- types. For example, given the following tree where nodes with changed
+    -- type are marked with ', we want to find only nodes /a/b and /a/c/f,
+    -- marked with []:
+    --
+    --   a
+    --   +-- [b']
+    --   |   + -- d
+    --   |   |     + -- g'
+    --   |   |
+    --   |   + -- e'
+    --   |
+    --   +-- c
+    --       + -- [f']
+    --
     let initialImpls = Path.prefixesMap roughImpls
     extendedImpls <- (initialImpls <>) <$> extendImpls oldTree initialImpls
     -- We add back any implications from the roughImpls that haven't been
