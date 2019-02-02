@@ -1,5 +1,6 @@
 {-# LANGUAGE
     DefaultSignatures
+  , FlexibleContexts
   , FlexibleInstances
   , GADTs
   , MultiParamTypeClasses
@@ -22,20 +23,23 @@ module Clapi.Util
   , flattenNestedMaps, foldlNestedMaps
   , liftRefl, pairRefl
   , Mappable(..)
+  , Filterable(..), filterMaybe, justs, lefts, rights
   ) where
 
-import Prelude hiding (fail, map)
+import Prelude hiding (fail, filter, map)
 
 import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
-import Data.Either (isLeft, fromLeft, fromRight)
+import Data.Either (isLeft, isRight, fromLeft, fromRight)
 import Data.Foldable (Foldable, toList)
 import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
+import qualified Data.List as List
 import Data.List.Split (splitOn)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromJust, isJust)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Type.Equality ((:~:)(..))
@@ -190,3 +194,31 @@ class Mappable t a b where
 instance {-# OVERLAPPABLE #-} Functor t => Mappable t a b
 instance Ord b => Mappable Set a b where
   map = Set.map
+
+class Filterable t where
+  filter :: (a -> Bool) -> t a -> t a
+
+instance Filterable [] where
+  filter = List.filter
+instance Filterable (Map k) where
+  filter = Map.filter
+instance Filterable Set where
+  filter = Set.filter
+
+filterMaybe
+  :: (Filterable t, Mappable t a (Maybe b), Mappable t (Maybe b) b)
+  => (a -> Maybe b) -> t a -> t b
+filterMaybe f = justs . map f
+
+justs
+  :: (Filterable t, Mappable t (Maybe a) a)
+  => t (Maybe a) -> t a
+justs = map fromJust . filter isJust
+
+-- | A more polymorphic version of Either.lefts
+lefts :: (Filterable t, Mappable t (Either a b) a) => t (Either a b) -> t a
+lefts = map (fromLeft $ error "impossible") . filter isLeft
+
+-- | A more polymorphic version of Either.rights
+rights :: (Filterable t, Mappable t (Either a b) b)  => t (Either a b) -> t b
+rights = map (fromRight $ error "impossible") . filter isRight

@@ -5,7 +5,8 @@ import Test.Hspec
 import Prelude hiding (map)
 import qualified Data.Set as Set
 
-import Clapi.Util (Mappable(..), duplicates, strictZip)
+import Clapi.Util
+  (Mappable(..), duplicates, strictZip, filterMaybe, justs, rights, lefts)
 
 spec :: Spec
 spec = do
@@ -29,3 +30,22 @@ spec = do
         map succ "abc" `shouldBe` "bcd"
       it "can map over `Set`s" $
         map succ (Set.fromList "abc") `shouldBe` Set.fromList "bcd"
+
+    describe "filterMaybe" $
+      it "Transforms elements and drops `Nothing`s" $
+        filterMaybe
+            (\x -> if x == 'b' then Nothing else Just $ succ $ succ x)
+            (Set.fromList "abc")
+        `shouldBe` Set.fromList "ce"
+
+    describe "justs" $
+      it "Drops `Nothing`s" $
+        justs [Just 'a', Nothing, Just 'b'] `shouldBe` ['a', 'b']
+
+    describe "lefts" $
+      it "Drops `Right`s" $
+        lefts [Left 'a', Right 'b', Left 'c'] `shouldBe` ['a', 'c']
+
+    describe "rights" $
+      it "Drops `Left`s" $
+        rights [Left 'a', Right 'b', Left 'c'] `shouldBe` ['b']
