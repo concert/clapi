@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    RankNTypes
+    FlexibleContexts
+  , RankNTypes
 #-}
 module Clapi.Types.Error where
 
@@ -11,6 +12,8 @@ import Control.Monad.Except as Except
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Functor.Identity
+
+import Clapi.Util (Mappable(..), Filterable(..), justs)
 
 type ErrsT s e m = ExceptT e (WriterT e (StateT s m))
 type ErrsM s e = ErrsT s e Identity
@@ -47,6 +50,11 @@ collect
   :: (Traversable f, Monoid e, Monad m)
   => f (ErrsT s e m a) -> ErrsT s e m (f a)
 collect t = mapM soften t >>= maybe (throwError mempty) return . sequence
+
+filterErrs
+  :: (Traversable f, Filterable f, Mappable f (Maybe a) a, Monoid e, Monad m)
+  => f (ErrsT s e m a) -> ErrsT s e m (f a)
+filterErrs t = justs <$> mapM soften t
 
 eitherTell :: MonadWriter e m => Either e a -> m (Maybe a)
 eitherTell = handleEither tell
