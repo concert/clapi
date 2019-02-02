@@ -1,5 +1,8 @@
 {-# LANGUAGE
-    GADTs
+    DefaultSignatures
+  , FlexibleInstances
+  , GADTs
+  , MultiParamTypeClasses
   , PolyKinds
   , TypeOperators
 #-}
@@ -18,9 +21,10 @@ module Clapi.Util
   , nestMapsByKey
   , flattenNestedMaps, foldlNestedMaps
   , liftRefl, pairRefl
+  , Mappable(..)
   ) where
 
-import Prelude hiding (fail)
+import Prelude hiding (fail, map)
 
 import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
@@ -98,7 +102,7 @@ uncamel (c:cs) = toLower c : uncamel' cs where
         | otherwise = c' : uncamel' cs'
 
 camel :: String -> String
-camel = (foldl (++) "") . (map initCap) . (splitOn "_") where
+camel = (foldl (++) "") . (fmap initCap) . (splitOn "_") where
     initCap [] = []
     initCap (c:cs) = toUpper c : cs
 
@@ -177,3 +181,12 @@ liftRefl Refl = Refl
 
 pairRefl :: a :~: b -> c :~: d -> (a, c) :~: (b, d)
 pairRefl Refl Refl = Refl
+
+class Mappable t a b where
+  map :: (a -> b) -> t a -> t b
+  default map :: Functor t => (a -> b) -> t a -> t b
+  map = fmap
+
+instance {-# OVERLAPPABLE #-} Functor t => Mappable t a b
+instance Ord b => Mappable Set a b where
+  map = Set.map
