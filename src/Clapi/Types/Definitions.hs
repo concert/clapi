@@ -123,6 +123,6 @@ getTyInfoForSeg
 getTyInfoForSeg childName = \case
   TupleDef {} -> fail "Tuples do not have children"
   StructDef { strDefChildTys = tyInfo } ->
-    maybe (fail $ "Invalid structuchild") return
+    maybe (fail $ "Invalid struct child") return
     $ alLookup childName tyInfo
   ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> return (dn, ed)
