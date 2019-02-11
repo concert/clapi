@@ -1,0 +1,17 @@
+image: haskell:8.6.3
+
+build:
+  before_script:
+    - apt-get update && apt-get install -y libpcre3-dev
+    - mkdir -p .stack-root .stack-work
+  script:
+    >- 
+      stack
+      --no-terminal
+      --stack-root ${CI_PROJECT_DIR}/.stack-root
+      --work-dir .stack-work
+      test --coverage
+  cache:
+    paths:
+      - .stack-root
+      - .stack-work
