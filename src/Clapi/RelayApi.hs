@@ -169,7 +169,9 @@ relayApiProto selfAddr =
               case d of
                 Frcud {} ->
                   sendRev $ ServerData cAddr $ SomeFrDigest
-                  $ d {frcudData = viewAs cAddr $ frcudData d}
+                  $ d {frcudData = if frcudNs d == rns
+                    then viewAs cAddr $ frcudData d
+                    else frcudData d}
                 Frcrd {} -> void $ sequence $ Map.mapWithKey
                   (\addr _ -> sendRev $ ServerData addr sd) timingMap
                 Frpd {} -> if frpdNs d == rns
@@ -199,8 +201,8 @@ relayApiProto selfAddr =
               ConstChange att $ pure $ someWireable $ subtract theirTime t
             alterTime _ = error "Weird data back out of VS"
             fiddleDataChanges p dc
-              | p `Path.isChildOf` [pathq|/relay/clients|] = alterTime dc
-              | p == [pathq|/relay/self|] = toSetRefOp theirSeg
+              | p `Path.isChildOf` [pathq|/clients|] = alterTime dc
+              | p == [pathq|/self|] = toSetRefOp theirSeg
               | otherwise = dc
           in
             alFmapWithKey fiddleDataChanges dd
