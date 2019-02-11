@@ -11,20 +11,25 @@ build:
       --stack-root ${CI_PROJECT_DIR}/.stack-root
       --work-dir .stack-work
       test --coverage
+  after_script:
+    - mkdir -p coverage bin
+    - mv $(stack path --local-hpc-root) coverage
+    - mv $(stack path --local-install-root)/bin bin
   cache:
     paths:
       - .stack-root
       - .stack-work
   artifacts:
     paths:
-      - .stack-work/install/x86_64-linux/lts-12.11/8.4.3/hpc
+      - coverage
+      - bin
 
 pages:
   stage: deploy
   dependencies:
     - build
   script:
-    mv .stack-work/install/x86_64-linux/lts-12.11/8.4.3/hpc/ public/
+    mv coverage/ public/
   artifacts:
     paths:
       - public
