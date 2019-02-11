@@ -1,20 +1,21 @@
 image: haskell:8.6.3
 
 build:
-  before_script:
-    - apt-get update && apt-get install -y libpcre3-dev
-    - mkdir -p .stack-root .stack-work
-  script:
-    >- 
+  variables:
+    STACK: >-
       stack
       --no-terminal
       --stack-root ${CI_PROJECT_DIR}/.stack-root
       --work-dir .stack-work
-      test --coverage
+  before_script:
+    - apt-get update && apt-get install -y libpcre3-dev
+    - mkdir -p .stack-root .stack-work
+  script:
+    - ${STACK} test --coverage
   after_script:
     - mkdir -p coverage bin
-    - mv $(stack path --local-hpc-root) coverage
-    - mv $(stack path --local-install-root)/bin bin
+    - mv `${STACK} path --local-hpc-root`/* coverage
+    - mv `${STACK} path --local-install-root`/bin/* bin
   cache:
     paths:
       - .stack-root
