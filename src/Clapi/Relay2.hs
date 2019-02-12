@@ -61,7 +61,6 @@ data RelayState i
   = RelayState
   { _rsVsMap :: Map Namespace (i, Valuespace)
   , _rsRegs :: Map i ClientRegs
-  , _rsClients :: Set i
   }
 
 makeLenses ''RelayState
@@ -126,11 +125,10 @@ relay = evalStateT (forever $ liftedWaitThen dispatch absurd)
 
 handleConnect :: (Queries i m, Ord i) => i -> m ()
 handleConnect i = do
-  modifying rsClients $ Set.insert i
+  modifying rsRegs $ Map.insert i mempty
 
 handleDisconnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleDisconnect i = do
-  modifying rsClients $ Set.delete i
   modifying rsRegs $ Map.delete i
   nss <- Map.keysSet . Map.filter ((== i) . fst) <$> use rsVsMap
   mapM_ relinquish nss
@@ -208,7 +206,7 @@ multicast :: Sends i m => Map i (FrDigest r a) -> m ()
 multicast = tell . SemigroupMap . fmap bufferDigest
 
 broadcast :: (Queries i m, Sends i m) => FrDigest r a -> m ()
-broadcast d = use rsClients >>= multicast . Map.fromSet (const d)
+broadcast d = use rsRegs >>= multicast . fmap (const d)
 
 doSend :: Monad m => SemigroupMap i (MessageBuffer i) -> RelayProtocol i m ()
 doSend = void . Map.traverseWithKey
