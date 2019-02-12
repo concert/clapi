@@ -194,8 +194,6 @@ handleTrpd i d = do
       Map.insertLookupWithKey (\_ v _ -> v) ns i . view rsOwners <$> get
     result <- runExceptT $ case existingOwner of
       Nothing -> do
-        -- NB: as long as we make sure the initial claim defines something we
-        -- can never subsequently have an empty valuespace:
         when (definesNothing d) $ throwError $
           Mol.singleton (NamespaceError ns) "Empty namespace claim"
         frcud <- tryVsUpdate

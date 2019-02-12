@@ -170,6 +170,9 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , frcudTyAssigns :: Map Path (DefName, Editability)
     , frcudData :: DataDigest
     , frcudContOps :: ContOps Seg
+    -- FIXME: This could just be for errors that come from providers. Although
+    -- we currently send Relay errors here, if we do so we never send any of the
+    -- other fields. I.e. we could add an additional Frced type...
     , frcudErrors :: Mol DataErrorIndex Text
     } -> FrDigest 'Consumer 'Update
 
