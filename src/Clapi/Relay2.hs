@@ -2,6 +2,7 @@
     ConstraintKinds
   , DataKinds
   , FlexibleContexts
+  , FlexibleInstances
   , GADTs
   , LambdaCase
   , OverloadedStrings
@@ -33,6 +34,7 @@ import qualified Data.Map.Mol as Mol
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, liftedWaitThen, sendRev)
+import Clapi.Types.Definitions (PostDefName, DefName)
 import Clapi.Types.Digests
   ( ClientRegs(..), crNull, crDeleteLookupNs
   , DataErrorIndex(..)
@@ -43,7 +45,7 @@ import Clapi.Types.Digests
   , FrpDigest, FrpErrorDigest, FrcRootDigest, FrcSubDigest, FrcUpdateDigest
   , frDigestNull
   )
-import Clapi.Types.Path (Namespace)
+import Clapi.Types.Path (Namespace, Path)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace2 (Valuespace)
 
@@ -157,7 +159,9 @@ handleTrcsd i d = do
       . Map.filter ((== i) . fst)
       . flip Map.restrictKeys (trcsdNamespaces d)
     <$> use rsVsMap
-  undefined
+  if null ownedAndSubd
+    then undefined
+    else undefined
 
 handleTrcud :: i -> TrDigest 'Consumer 'Update -> m ()
 handleTrcud = undefined
@@ -189,6 +193,27 @@ unsubscribeNs ns = do
     multicast $ mkFrcsd . fst <$> partitionedRegs
   where
     mkFrcsd (ClientRegs p t d) = Frcsd mempty p t d
+
+
+class Subscribable a where
+  subscribe :: (Queries i m, Sends i m) => i -> Namespace -> a -> m ()
+  unsubscribe :: (Queries i m, Sends i m) => i -> Namespace -> a -> m ()
+
+instance Subscribable PostDefName where
+  subscribe = undefined
+  unsubscribe = undefined
+
+instance Subscribable DefName where
+  subscribe i ns dn = do
+    use (rsVsMap . at ns) >>= \case
+      Nothing -> error "Namespace doesn't exist."
+      Just (ownerI, vs) -> return ()
+    undefined
+  unsubscribe = undefined
+
+instance Subscribable Path where
+  subscribe = undefined
+  unsubscribe = undefined
 
 
 {- The idea with the MonadWriter here is that the logic handling bits of the
