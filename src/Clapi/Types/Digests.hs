@@ -11,7 +11,7 @@
 
 module Clapi.Types.Digests where
 
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -276,6 +276,17 @@ crIntersection (ClientRegs p1 t1 d1) (ClientRegs p2 t2 d2) = ClientRegs
   (Mos.intersection p1 p2)
   (Mos.intersection t1 t2)
   (Mos.intersection d1 d2)
+
+crDeleteLookupNs :: Namespace -> ClientRegs -> (ClientRegs, ClientRegs)
+crDeleteLookupNs ns (ClientRegs p t d) =
+  let
+    f :: Ord a => Mos Namespace a -> (Mos Namespace a, Mos Namespace a)
+    f = first (Mos.singletonSet ns) . Mos.deleteLookupSet ns
+    (loseP, keepP) = f p
+    (loseT, keepT) = f t
+    (loseD, keepD) = f d
+  in
+    (ClientRegs loseP loseT loseD, ClientRegs keepP keepT keepD)
 
 trcsdClientRegs :: TrcSubDigest -> (ClientRegs, ClientRegs)
 trcsdClientRegs (Trcsd p t d) =
