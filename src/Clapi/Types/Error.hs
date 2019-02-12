@@ -36,24 +36,27 @@ errsStateT = fmap smush . runWriterT . runExceptT
       Left e2 -> Left $ e1 <> e2
       Right a -> if null e1 then Right a else Left e1
 
-soften :: (Monoid e, Monad m) => ErrsT s e m a -> ErrsT s e m (Maybe a)
-soften m = lift (runExceptT m) >>= eitherTell
+soften :: (MonadError e m, MonadWriter e m) => m a -> m (Maybe a)
+soften m = catchError (Just <$> m) (\e -> tell e >> return Nothing)
 
-harden
-  :: (Foldable f, Monoid (f e), Monad m)
-  => ErrsT s (f e) m a -> ErrsT s (f e) m a
+harden :: (Foldable f, MonadWriter (f e) m, MonadError (f e) m) => m a -> m a
 harden m = do
   (a, es) <- listen m
   if null es then return a else throwError mempty
 
 collect
-  :: (Traversable f, Monoid e, Monad m)
-  => f (ErrsT s e m a) -> ErrsT s e m (f a)
+  :: (Traversable t, MonadError e m, MonadWriter e m)
+  => t (m a) -> m (t a)
 collect t = mapM soften t >>= maybe (throwError mempty) return . sequence
 
 filterErrs
-  :: (Traversable f, Filterable f, Mappable f (Maybe a) a, Monoid e, Monad m)
-  => f (ErrsT s e m a) -> ErrsT s e m (f a)
+  :: ( Traversable t
+     , MonadError e m
+     , MonadWriter e m
+     , Filterable t
+     , Mappable t (Maybe a) a
+     )
+  => t (m a) -> m (t a)
 filterErrs t = justs <$> mapM soften t
 
 eitherTell :: MonadWriter e m => Either e a -> m (Maybe a)
