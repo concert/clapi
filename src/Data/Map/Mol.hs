@@ -32,7 +32,7 @@ fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
 
 fromSet :: (k -> [a]) -> Set k -> Mol k a
-fromSet f = Mol . Map.fromSet f
+fromSet f = Mol . Map.filter (not . null) . Map.fromSet f
 
 toList :: (Ord k) => Mol k a -> [(k, a)]
 toList (Mol m) = mconcat $ sequence <$> Map.toList m
