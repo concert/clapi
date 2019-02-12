@@ -73,22 +73,38 @@ type RelayProtocol i m = Protocol
   (Either (Map Namespace i) (ServerEvent i SomeFrDigest)) Void
   m
 
-type MessageBuffer i =
-  ( Map Namespace FrpDigest
-  , FrpErrorDigest
-  , FrcRootDigest
-  , FrcSubDigest
-  , Map Namespace FrcUpdateDigest
-  , Last (Map Namespace i)
-  )
+data MessageBuffer i
+  = MessageBuffer
+  { _mbFrpds :: Map Namespace FrpDigest
+  , _mbFrped :: FrpErrorDigest
+  , _mbFrcrd :: FrcRootDigest
+  , _mbFrcsd :: FrcSubDigest
+  , _mbFrcuds :: Map Namespace FrcUpdateDigest
+  , _mbOwners :: Last (Map Namespace i)
+  }
 
+makeLenses ''MessageBuffer
+
+instance Semigroup (MessageBuffer i) where
+  MessageBuffer frpds1 frped1 frcrd1 frcsd1 frcuds1 o1
+    <> MessageBuffer frpds2 frped2 frcrd2 frcsd2 frcuds2 o2 =
+      MessageBuffer
+        (frpds2 <> frpds1)
+        (frped1 <> frped2)
+        (frcrd1 <> frcrd2)
+        (frcsd1 <> frcsd2)
+        (frcuds2 <> frcuds1)
+        (o1 <> o2)
+
+instance Monoid (MessageBuffer i) where
+  mempty = MessageBuffer mempty mempty mempty mempty mempty mempty
 
 type Sends i m =
   (Monoid (MessageBuffer i), MonadWriter (SemigroupMap i (MessageBuffer i)) m)
 type Queries i = MonadState (RelayState i)
 
 relay
-  :: (Monoid (MessageBuffer i), Ord i, Monad m)
+  :: (Ord i, Monad m)
   => RelayState i -> RelayProtocol i m ()
 relay = evalStateT (forever $ liftedWaitThen dispatch absurd)
   where
@@ -200,16 +216,16 @@ doSend = void . Map.traverseWithKey
   . unSemigroupMap
 
 bufferDigest
-  :: forall r a i. Monoid (MessageBuffer i) => FrDigest r a -> MessageBuffer i
+  :: forall r a i. FrDigest r a -> MessageBuffer i
 bufferDigest d = mempty @(MessageBuffer i) & case d of
-    Frpd {} -> set _1 $ Map.singleton (frpdNs d) d
-    Frped {} -> set _2 d
-    Frcrd {} -> set _3 d
-    Frcsd {} -> set _4 d
-    Frcud {} -> set _5 $ Map.singleton (frcudNs d) d
+    Frpd {} -> set mbFrpds $ Map.singleton (frpdNs d) d
+    Frped {} -> set mbFrped d
+    Frcrd {} -> set mbFrcrd d
+    Frcsd {} -> set mbFrcsd d
+    Frcud {} -> set mbFrcuds $ Map.singleton (frcudNs d) d
 
 toDigests :: MessageBuffer i -> [Either (Map Namespace i) SomeFrDigest]
-toDigests (frpds, frped, frcrd, frcsd, frcuds, Last owners) =
+toDigests (MessageBuffer frpds frped frcrd frcsd frcuds (Last owners)) =
   (Right <$>
      (SomeFrDigest <$> Map.elems frpds)
   ++ if frDigestNull frped then [] else [SomeFrDigest frped]
