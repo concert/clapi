@@ -293,8 +293,20 @@ trcsdClientRegs (Trcsd p t d) =
 trcudEmpty :: Namespace -> TrcUpdateDigest
 trcudEmpty ns = Trcud ns mempty mempty mempty
 
+instance Semigroup FrpErrorDigest where
+  Frped e1 <> Frped e2 = Frped $ e1 <> e2
+
+instance Monoid FrpErrorDigest where
+  mempty = Frped mempty
+
+instance Semigroup FrcRootDigest where
+  Frcrd cops1 <> Frcrd cops2 = Frcrd $ cops2 <> cops1
+
+instance Monoid FrcRootDigest where
+  mempty = Frcrd mempty
+
 instance Semigroup FrcSubDigest where
-  (Frcsd e1 pt1 t1 d1) <> (Frcsd e2 pt2 t2 d2) =
+  Frcsd e1 pt1 t1 d1 <> Frcsd e2 pt2 t2 d2 =
     Frcsd (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
 
 instance Monoid FrcSubDigest where
