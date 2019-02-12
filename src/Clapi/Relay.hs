@@ -5,6 +5,7 @@
   , LambdaCase
   , OverloadedStrings
   , PartialTypeSignatures
+  , RankNTypes
   , TemplateHaskell
 #-}
 
@@ -12,6 +13,7 @@ module Clapi.Relay where
 
 import Control.Lens
   (makeLenses, view, over, set, at, assign, modifying, use, _2)
+import qualified Control.Lens as Lens
 import Control.Monad (unless, when, forever, void)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Writer (Writer, runWriter, tell)
@@ -66,6 +68,7 @@ import Clapi.Valuespace
 import Clapi.Protocol (Protocol, sendRev, liftedWaitThen)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Util (partitionDifference, flattenNestedMaps)
+import Clapi.Valuespace2 (processTrpd)
 
 oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
 oppifyTimeSeries ts = TimeChange $
@@ -185,6 +188,15 @@ handleConnect i = do
 definesNothing :: TrpDigest -> Bool
 definesNothing trpd = Map.notMember
     (Tagged $ unNamespace $ trpdNs trpd) $ trpdDefs trpd
+
+-- This feels like it should exist in a library somewhere...
+-- ... and that place is Control.Lens.Zoom
+projectStateT :: Monad m => Lens.Lens' s2 s1 -> StateT s1 m r -> StateT s2 m r
+projectStateT project m = do
+  s1 <- use project
+  (r, s1') <- lift $ runStateT m s1
+  assign project s1'
+  return r
 
 handleTrpd
   :: (Ord i, Monad m)
