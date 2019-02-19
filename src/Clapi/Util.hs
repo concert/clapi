@@ -32,7 +32,7 @@ import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail, fail)
 import Data.Char (isUpper, toLower, toUpper)
 import Data.Either (isLeft, isRight, fromLeft, fromRight)
-import Data.Foldable (Foldable, toList)
+import Data.Foldable (Foldable, toList, foldl')
 import qualified Data.Foldable as Foldable
 import Data.List (intercalate)
 import qualified Data.List as List
@@ -49,9 +49,9 @@ import Text.Printf (printf)
 duplicates :: forall f a. (Foldable f, Ord a) => f a -> Set a
 duplicates as = Map.keysSet $ Map.filter (>1) theMap
   where
-    count a m = Map.insertWith (const (+1)) a 1 m
+    count m a = Map.insertWith (const (+1)) a 1 m
     theMap :: Map.Map a Int
-    theMap = foldr count mempty as
+    theMap = foldl' count mempty as
 
 ensureUnique :: (Ord a, Show a, MonadFail m) => String -> [a] -> m [a]
 ensureUnique name as =
