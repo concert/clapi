@@ -5,6 +5,7 @@
   , GADTs
   , LambdaCase
   , OverloadedStrings
+  , PartialTypeSignatures
 #-}
 
 module Clapi.Valuespace2
@@ -16,7 +17,7 @@ import Control.Lens (_1, _2, _3, assign, modifying, use)
 import Control.Monad (join, unless, void, when, (>=>))
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
-import Control.Monad.State (State, execState, StateT, get, put)
+import Control.Monad.State (MonadState(..), State, execState, StateT, get, put)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter(..))
 import Data.Bifunctor (first, bimap)
@@ -204,31 +205,40 @@ tpErrors p tpid = castErrs $ Mol.singletonList $ TimePointError p tpid
 note :: MonadError e m => e -> Maybe a -> m a
 note err = maybe (throwError err) return
 
-lookupDef :: Monad m => DefName -> VsM m SomeDefinition
+lookupDef
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => DefName -> m SomeDefinition
 lookupDef dn = use vsTyDefs >>= note (DefNotFound dn) . Map.lookup dn
 
-lookupPostDef :: Monad m => PostDefName -> VsM m PostDefinition
+lookupPostDef
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => PostDefName -> m PostDefinition
 lookupPostDef dn = use vsPostDefs >>= note (PostDefNotFound dn) . Map.lookup dn
 
-pathTyInfo :: Monad m => Path -> VsM m (DefName, Editability)
+pathTyInfo
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m (DefName, Editability)
 pathTyInfo path = do
     dn <- use vsRootDefName
     ed <- use vsRootEditability
     go path (dn, ed)
   where
     go
-      :: Monad m
-      => Path -> (DefName, Editability) -> VsM m (DefName, Editability)
+      :: _ => Path -> (DefName, Editability) -> m (DefName, Editability)
     go (s :</ p) (dn, _) = do
       SomeDefinition def <- lookupDef dn
       r <- eitherThrow $ getTyInfoForSeg s def
       go p r
     go _ r = return r
 
-pathDef :: Monad m => Path -> VsM m SomeDefinition
+pathDef
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m SomeDefinition
 pathDef path = pathTyInfo path >>= lookupDef . fst
 
-pathPostDef :: Monad m => Path -> VsM m PostDefinition
+pathPostDef
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m PostDefinition
 pathPostDef path = do
   SomeDefinition def <- pathDef path
   case def of
@@ -237,13 +247,19 @@ pathPostDef path = do
     -- FIXME: Might be better to have have a more specific error type here...
     _ -> throwError ExpectedArrayDefinition
 
-pathDefName :: Monad m => Path -> VsM m DefName
+pathDefName
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m DefName
 pathDefName path = fst <$> pathTyInfo path
 
-pathEditability :: Monad m => Path -> VsM m Editability
+pathEditability
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m Editability
 pathEditability path = snd <$> pathTyInfo path
 
-pathNode :: Monad m => Path -> VsM m (RoseTreeNode [SomeWireValue])
+pathNode
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m (RoseTreeNode [SomeWireValue])
 pathNode path = use vsTree >>= guard . Tree.lookupNode path
   where
     guard Nothing = throwError NodeNotFound
@@ -252,14 +268,18 @@ pathNode path = use vsTree >>= guard . Tree.lookupNode path
       RtnEmpty -> throwError NodeNotFound
       _ -> return n
 
-pathExists :: Monad m => Path -> VsM m Bool
+pathExists
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m Bool
 pathExists path = use vsTree >>= return . go . Tree.lookupNode path
   where
     go Nothing = False
     go (Just RtnEmpty) = False
     go _ = True
 
-pathChildren :: Monad m => Path -> VsM m [Seg]
+pathChildren
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m [Seg]
 pathChildren path = pathNode path >>= return . \case
   RtnChildren al -> unUniqList $ AL.alKeys al
   _ -> mempty
