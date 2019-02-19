@@ -15,8 +15,6 @@ module Clapi.Util
   , camel
   , uncamel
   , showItems
-  , bound
-  , safeToEnum
   , foldMapM
   , mapPartitionEither, mapFoldMWithKey, mapFoldMapMWithKey
   , nestMapsByKey
@@ -112,28 +110,6 @@ camel = (foldl (++) "") . (fmap initCap) . (splitOn "_") where
 
 showItems :: (Foldable f, Show a) => f a -> String
 showItems = intercalate ", " . fmap show . toList
-
-bound :: forall a b m. (Enum a, Enum b, Bounded b, MonadFail m) => a -> m b
-bound i =
-  let
-    low = fromEnum (minBound :: b)
-    high = fromEnum (maxBound :: b)
-    v = fromEnum i
-  in
-    if low <= v && v <= high
-      then return $ toEnum v
-      else fail "out of bounds"
-
--- http://stackoverflow.com/questions/2743858/safe-and-polymorphic-toenum
-safeToEnum :: (MonadFail m, Enum a, Bounded a) => Int -> m a
-safeToEnum i =
-  let
-    r = toEnum i
-    theMax = maxBound `asTypeOf` r
-    theMin = minBound `asTypeOf` r
-  in if fromEnum theMin <= i && i <= fromEnum theMax
-  then return r
-  else fail "enum value out of range"
 
 nestMapsByKey
   :: (Ord k, Ord k0, Ord k1)
