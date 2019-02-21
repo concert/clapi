@@ -12,6 +12,7 @@ module Clapi.Types.AssocList
   , alKeys, alKeys_, alKeysSet, alValues
   , alPartitionWithKey
   , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
+  , alRestrictKeys
   , alAlterF, alAlter, alAdjust
   ) where
 
@@ -127,6 +128,9 @@ alFilterWithKey f = AssocList . filter (uncurry f) . unAssocList
 
 alFilterKey :: (k -> Bool) -> AssocList k b -> AssocList k b
 alFilterKey f = alFilterWithKey $ \k _ -> f k
+
+alRestrictKeys :: Ord k => AssocList k a -> Set k -> AssocList k a
+alRestrictKeys al s = alFilterWithKey (\k _ -> k `Set.member` s) al
 
 alAlterF
   :: (Eq k, Functor f) => (Maybe b -> f (Maybe b)) -> k -> AssocList k b
