@@ -7,10 +7,12 @@
   , RankNTypes
   , StandaloneDeriving
   , TypeSynonymInstances
+  , TemplateHaskell
 #-}
 
 module Clapi.Types.Digests where
 
+import Control.Lens (makeLenses)
 import Data.Bifunctor (bimap, first)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -253,10 +255,12 @@ trcsdNamespaces (Trcsd p t d) =
 
 data ClientRegs
   = ClientRegs
-  { crPostTypeRegs :: Mos Namespace PostDefName
-  , crTypeRegs :: Mos Namespace DefName
-  , crDataRegs :: Mos Namespace Path
+  { _crPostTypeRegs :: Mos Namespace PostDefName
+  , _crTypeRegs :: Mos Namespace DefName
+  , _crDataRegs :: Mos Namespace Path
   } deriving (Show)
+
+makeLenses 'ClientRegs
 
 instance Semigroup ClientRegs where
   (ClientRegs pt1 t1 d1) <> (ClientRegs pt2 t2 d2) =

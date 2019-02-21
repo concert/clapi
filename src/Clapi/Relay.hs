@@ -53,6 +53,7 @@ import Clapi.Types.Digests
   , DataDigest, ContOps
   , FrDigest(..), TrDigest(..), isUndef
   , ClientRegs(..), crNull, crDifference, crIntersection
+  , crPostTypeRegs, crTypeRegs, crDataRegs
   , trcsdClientRegs, frcsdFromClientRegs)
 import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
 import Clapi.Types.Definitions
@@ -479,7 +480,7 @@ doInitSub
 doInitSub trcsd currentSubs vsm = runWriter $ do
     let (requestedSubs, requestedUnsubs) = trcsdClientRegs trcsd
     let newRequestedSubs = requestedSubs `crDifference` currentSubs
-    let newDataSubs = crDataRegs newRequestedSubs
+    let newDataSubs = view crDataRegs newRequestedSubs
     treeData <- h (rGet vsm) newDataSubs
     let sucDataSubs = successful treeData newDataSubs
     -- The treeData contains type name info for each path, which we use to
@@ -488,12 +489,12 @@ doInitSub trcsd currentSubs vsm = runWriter $ do
     let autoTySubs = Mos.fromList $ Map.toList $ Map.mapKeysMonotonic fst $
           view _2 <$> treeData
     -- NB: so that clients can choose never to hear about an auto-sub type:
-    let autoTySubs' = autoTySubs `Mos.difference` crTypeRegs requestedUnsubs
-    let newTySubs = crTypeRegs newRequestedSubs <> autoTySubs'
+    let autoTySubs' = autoTySubs `Mos.difference` view crTypeRegs requestedUnsubs
+    let newTySubs = view crTypeRegs newRequestedSubs <> autoTySubs'
     tyDefs <- h (rLookupDef vsm) newTySubs
     let sucTySubs = successful tyDefs newTySubs
     -- FIXME: perhaps want to auto-sub PostDefinitions too?
-    let newPostTySubs = crPostTypeRegs newRequestedSubs
+    let newPostTySubs = view crPostTypeRegs newRequestedSubs
     postDefs <- h (rLookupDef vsm) newPostTySubs
     let sucPostTySubs = successful postDefs newPostTySubs
 
