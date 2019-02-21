@@ -83,6 +83,7 @@ eitherModifying
   :: (MonadState s m, MonadError e m) => Lens' s a -> (a -> Either e a) -> m ()
 eitherModifying lens f = modifying lens $ either throwError return . f
 
+-- FIXME: this doesn't really belong in here any more
 -- | This is like Control.Lens.modifying but compatible with ErrsT/ErrsM
-modifying :: (MonadState s m, MonadError e m) => Lens' s a -> (a -> m a) -> m ()
+modifying :: MonadState s m => Lens' s a -> (a -> m a) -> m ()
 modifying lens f = use lens >>= f >>= assign lens

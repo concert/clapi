@@ -11,6 +11,9 @@
 module Clapi.Valuespace2
   ( Valuespace, baseValuespace
   , processTrpd, processTrcud
+
+  , ProviderError
+  , lookupPostDef, lookupDef, pathNode, pathTyInfo
   ) where
 
 import Control.Lens (_1, _2, _3, assign, modifying, use)
