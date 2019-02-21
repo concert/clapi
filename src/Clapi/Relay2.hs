@@ -20,7 +20,8 @@ import Control.Lens
 import qualified Control.Lens as Lens
 import Control.Monad (forever, unless, void)
 import Control.Monad.Except (MonadError(..), runExceptT)
-import Control.Monad.State (MonadState(..), StateT, evalStateT, evalState)
+import Control.Monad.State
+  ( MonadState(..), StateT, evalStateT, evalState, runStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter(..), WriterT, execWriterT)
 import Data.Bifunctor (second)
@@ -30,6 +31,7 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Last(..))
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Void (Void, absurd)
 
@@ -44,7 +46,7 @@ import Clapi.Tree (RoseTreeNode(..), TimeSeries)
 import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Definitions
-  (PostDefinition, SomeDefinition, PostDefName, DefName, Editability)
+  (PostDefinition, SomeDefinition, PostDefName, DefName, Editability(..))
 import Clapi.Types.Digests
   ( ClientRegs(..)
   , crNull, crDeleteLookupNs, crDifference, crIntersection
@@ -59,11 +61,13 @@ import Clapi.Types.Digests
   )
 import qualified Clapi.Types.Dkmap as Dkmap
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.Path (Namespace, Path)
+import Clapi.Types.Path (Namespace(..), Path)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace2
-  (Valuespace, ProviderError, lookupPostDef, lookupDef, pathNode, pathTyInfo)
+  ( Valuespace, ProviderError, baseValuespace
+  , lookupPostDef, lookupDef, pathNode, pathTyInfo
+  , processTrpd)
 
 
 newtype SemigroupMap k v = SemigroupMap {unSemigroupMap :: Map k v}
@@ -149,8 +153,49 @@ handleDisconnect i = do
   mapM_ relinquish nss
 
 
-handleTrpd :: i -> TrDigest 'Provider 'Update -> m ()
-handleTrpd = undefined
+handleTrpd
+  :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Provider 'Update -> m ()
+handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
+    Nothing -> go bvs
+    Just x@(ownerI, vs) ->
+      if i == ownerI
+        then go vs
+        else stop >> return (Just x)
+  where
+    ns = trpdNs trpd
+    bvs = baseValuespace (Tagged $ unNamespace ns) Editable
+    go vs = do
+      (res, vs') <- runStateT (processTrpd trpd) vs
+      case res of
+        Left errs -> throwOutProvider' i errs
+        Right frcud -> do
+          regMap <- use rsRegs
+          multicast $ filterFrcud frcud <$> regMap
+      return $ Just (i, vs)
+
+    stop = throwOutProvider i ns "Already owned by another provider"
+
+    filterFrcud frcud regs =
+      let
+        dns = Mos.lookup ns $ view crTypeRegs regs
+        pdns = Mos.lookup ns $ view crPostTypeRegs regs
+        paths = Mos.lookup ns $ view crDataRegs regs
+        keepErrIdx = \case
+          GlobalError -> True
+          NamespaceError errNs -> ns == errNs
+          PathError p -> p `Set.member` paths
+          TimePointError p _ -> p `Set.member` paths
+
+      in
+        frcud
+          { frcudPostDefs = Map.restrictKeys (frcudPostDefs frcud) pdns
+          , frcudDefs = Map.restrictKeys (frcudDefs frcud) dns
+          , frcudTyAssigns = Map.restrictKeys (frcudTyAssigns frcud) paths
+          , frcudData = AL.alRestrictKeys (frcudData frcud) paths
+          , frcudContOps = Map.restrictKeys (frcudContOps frcud) paths
+          , frcudErrors = Mol.filterWithKey (\dei _ -> keepErrIdx dei)
+              $ frcudErrors frcud
+          }
 
 handleTrprd
   :: (Queries i m, Sends i m, Ord i)
@@ -228,12 +273,17 @@ unsubscribeNs ns = do
   where
     mkFrcsd (ClientRegs p t d) = Frcsd mempty p t d
 
-throwOutProvider
-  :: (Ord i, Sends i m, Queries i m) => i -> Namespace -> Text -> m ()
-throwOutProvider i ns reason = do
-  collectFrd i $ Frped $ Mol.singleton (NamespaceError ns) reason
+throwOutProvider'
+  :: (Ord i, Sends i m, Queries i m) => i -> Mol DataErrorIndex Text -> m ()
+throwOutProvider' i mol = do
+  collectFrd i $ Frped mol
   disconnect i
   handleDisconnect i
+
+throwOutProvider
+  :: (Ord i, Sends i m, Queries i m) => i -> Namespace -> Text -> m ()
+throwOutProvider i ns reason =
+  throwOutProvider' i $ Mol.singleton (NamespaceError ns) reason
 
 subscribe
   :: (Ord a, Ord i, Subscribable a, Sends i m, Queries i m)
