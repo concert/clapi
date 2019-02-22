@@ -1,8 +1,7 @@
 Concert Lightweight API (CLAPI)
 ===============================
 
-[![Build Status](https://travis-ci.org/concert/clapi.svg?branch=master)](
-    https://travis-ci.org/concert/clapi)
-
-[![Coverage Status](https://coveralls.io/repos/github/concert/clapi/badge.svg)](
-    https://coveralls.io/github/concert/clapi)
+[![pipeline status](https://gitlab.com/concert/clapi/badges/master/pipeline.svg)](
+    https://gitlab.com/concert/clapi/commits/master)
+[![coverage report](https://gitlab.com/concert/clapi/badges/master/coverage.svg)](
+    https://gitlab.com/concert/clapi/commits/master)
