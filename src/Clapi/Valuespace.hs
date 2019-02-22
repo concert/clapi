@@ -874,21 +874,6 @@ revalidatePath def path = case def of
   TupleDef {} -> revalidatePathData def path
   -- Container keys are guaranteed to be correct by the type inference:
   _ -> return ()
-  -- StructDef {} -> revalidateContainerKeys def
-  -- ArrayDef {} -> revalidateContainerKeys def
-
--- revalidateContainerKeys :: Monad m => Definition mt -> Path -> VsM' m ()
--- revalidateContainerKeys def path = pathError path $ do
---   node <- pathNode path
---   case node of
---     RtnChildren al -> case def of
---       StructDef { strDefChildTys = tyInfo } ->
---         let expected = AL.alKeys tyInfo; actual = AL.alKeys al in
---         unless (actual == expected) $
---           throwError $ BadChildKeys (unUniqList actual) (unUniqList expected)
---       ArrayDef {} -> return ()
---       TupleDef {} -> error "Should not call with TupleDef"
---     _ -> throwError UnexpectedNodeType
 
 revalidatePathData :: Monad m => Definition 'Tuple -> Path -> VsM' m ()
 revalidatePathData def@(TupleDef {tupDefILimit = ilimit}) p = case ilimit of
