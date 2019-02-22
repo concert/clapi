@@ -35,7 +35,7 @@ import Clapi.TH
 import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Relay (relay, RelayState(..))
+import Clapi.Relay2 (relay, RelayState(..))
 import Clapi.Types.AssocList
   ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
 import Clapi.Types.Base (InterpolationLimit)
@@ -74,12 +74,6 @@ spec = do
       sendFwd $ ClientDisconnect "owner"
       expectSet $ nsCease fooNs <$> ["observer", "newcomer"]
 
-    it "rejects empty claims" $ testRelay mempty $ do
-      sendFwd $ ClientConnect "Owner" "owner"
-      expect [emptyRootDig "owner"]
-      sendFwd $ ClientData "owner" $ SomeTrDigest $ trpdEmpty fooNs
-      expectFrped "owner" [(NamespaceError fooNs, "Empty namespace claim")]
-
     it "does not reject empty owner updates" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
       sendFwd $ ClientData "owner" $ SomeTrDigest $ simpleClaim foo
@@ -111,9 +105,9 @@ spec = do
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect $ [emptyRootDig "sub"]
         subscribe fooNs (Tagged @SomeDefinition foo) "sub"
-        expect $ [ServerData "sub" $ SomeFrDigest $ frcsdEmpty {
-          frcsdErrors = Map.singleton (NamespaceSubError fooNs)
-            ["Namespace not found"] }]
+        expect $ [ServerData "sub" $ SomeFrDigest $ frcsdEmpty
+          { frcsdTypeUnsubs = Mos.singleton fooNs (Tagged @SomeDefinition foo)
+          }]
         sendFwd $ ClientDisconnect "sub"
 
         sendFwd $ ClientData "owner2" $ SomeTrDigest $ simpleClaim foo
@@ -149,18 +143,11 @@ spec = do
                      ]
 
     it "rejects subscriptions to non-existent entities" $ testRelay mempty $
-      -- FIXME: perhaps subscriptions to non-existent entities should just
-      -- result in unsubscription notices, just like the resource going away,
-      -- because it could have gone away between the client trying to subscribe
-      -- and the message arriving at the relay?
       let
-        badSub
-          :: Subscribe entity => EntityId entity -> SubErrorIndex -> Text
-          -> TestProtocol ()
-        badSub id_ ei msg = do
+        badSub :: (Subscribe entity) => EntityId entity -> TestProtocol ()
+        badSub id_ = do
           subscribe fooNs id_ "sub"
-          expect [ServerData "sub" $ SomeFrDigest $
-            frcsdEmpty {frcsdErrors = Map.singleton ei [msg]}]
+          expect [ServerData "sub" $ SomeFrDigest $ mkFrcsd fooNs id_]
         pd = postDef' "fooy" [(x, ttInt64 unbounded)]
         bar1 = [segq|bar1|]
       in do
@@ -168,7 +155,7 @@ spec = do
         expect [emptyRootDig "sub"]
 
         -- Invalid NS:
-        badSub root (NamespaceSubError fooNs) "Namespace not found"
+        badSub root
 
         sendFwd $ ClientConnect "Owner" "owner"
         expect [emptyRootDig "owner"]
@@ -180,7 +167,7 @@ spec = do
           trpdEmpty fooNs
         expectSet $ nsExists fooNs <$> ["owner", "sub"]
 
-        badSub (root :/ bar1) (PathSubError fooNs $ root :/ bar1) "Path not found"
+        badSub (root :/ bar1)
 
         sendFwd $ ClientData "owner" $ SomeTrDigest $
           ownerSet (root :/ bar1) [someWv WtInt32 1] $
@@ -191,8 +178,8 @@ spec = do
         verifyNoDataSub "owner" "sub" fooNs (root :/ bar1) [someWv WtInt32 16]
 
         -- Invalid PostDefinition and Definition IDs:
-        badSub bazPdn (PostTypeSubError fooNs bazPdn) "Missing post def"
-        badSub bazTn (TypeSubError fooNs bazTn) "Missing def"
+        badSub bazPdn
+        badSub bazTn
 
         -- And again check that once the owner does define these, we haven't got
         -- registered subscriptions already:
@@ -381,11 +368,11 @@ spec = do
           subSet (Root :/ foo) [someWv WtString "hello"] $
           subSet (Root :/ bar) [someWv WtInt32 3, someWv WtInt32 4] $
           trcudEmpty fooNs
-        expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
         expect [ServerData "owner" $ SomeFrDigest $ (frpdEmpty fooNs)
           { frpdData = alSingleton (Root :/ foo) $
             ConstChange Nothing [someWv WtString "hello"]
           }]
+        expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
 
     it "validates owner claims" $ testRelay mempty $ do
       sendFwd $ ClientConnect "Owner" "owner"
@@ -411,7 +398,7 @@ spec = do
       expect [emptyRootDig "owner"]
       sendFwd $ ClientData "owner" $ SomeTrDigest $
         ownerSet (Root :/ baz) [someWv WtString "Orphan"] $ structClaim foo
-      expectFrped "owner" [(PathError Root, "ExtraChild baz")]
+      expectFrped "owner" [(PathError (Root :/ baz), "Invalid struct child")]
 
   where
     rootDig client = ServerData client . SomeFrDigest . Frcrd
