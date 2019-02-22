@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# LANGUAGE
     DataKinds
   , FlexibleContexts
@@ -54,13 +55,12 @@ import Clapi.Types.Base (Time, InterpolationType(..), Attributee, TypeEnumOf(..)
 import Clapi.Types.Definitions
   ( MetaType(..), SomeDefinition(..), Definition(..), PostDefinition(..)
   , Editability(..)
-  , withDefinition
   , structDef
   , DefName, PostDefName
   , getTyInfoForSeg
   )
 import Clapi.Types.Digests
-  ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..), isRemove
+  ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..)
   , TimeSeriesDataOp(..), TpId, Creates, CreateOp(..), ContOps, DataDigest
   , TrDigest(..), FrDigest(..)
   , TrpDigest, FrcUpdateDigest
@@ -76,8 +76,7 @@ import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
 import Clapi.Types.UniqList (unUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Util
-  ( mapFoldMWithKey, mapFoldMapMWithKey, foldMapM, justs, lefts
-  , strictZipWith, fmtStrictZipError)
+  ( mapFoldMapMWithKey, justs, lefts, strictZipWith, fmtStrictZipError)
 import Clapi.Validator (TypeAssertion(..), validateValues)
 import qualified Clapi.Valuespace.Xrefs as Vs2Xrefs
 
@@ -189,9 +188,6 @@ castSingleErr m =
 
 pathError :: Monad m => Path -> VsM m a -> VsM' m a
 pathError p = castVsMError $ PathError p
-
-tpError :: Monad m => Path -> TpId -> VsM m a -> VsM' m a
-tpError p tpid = castVsMError $ TimePointError p tpid
 
 pathErrors
   :: Monad m
@@ -334,10 +330,10 @@ processTrpd_ trpd =
 
     -- Let's update the rest of the primary state:
     modifying vsPostDefs $ Map.union pTyDefs . flip Map.withoutKeys pTyUndefs
-    collect $ AL.alFmapWithKey updatePathData $ trpdData trpd
+    _ <- collect $ AL.alFmapWithKey updatePathData $ trpdData trpd
     -- FIXME: The container updates might need to happen later, if changing the
     -- types has a material effect on what the types of the tree nodes are:
-    collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
+    _ <- collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
 
     -- The tree should now be correct, so long as the provider has not made a
     -- mistake. So, next we need to check that is the case.
@@ -366,7 +362,7 @@ processTrpd_ trpd =
     -- We add back any implications from the roughImpls that haven't been
     -- superceded by the recursive type implications:
     let allImpls = extendedImpls <> roughImpls
-    collect $ uncurry handleImpl <$> Map.toDescList allImpls
+    _ <- collect $ uncurry handleImpl <$> Map.toDescList allImpls
 
     -- Finally, spit out the changes in a form that will be useful to the
     -- clients:
@@ -460,7 +456,7 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
     validateCop
       :: MonadError [ProviderError] m
       => Set Seg -> Set Placeholder -> Seg -> (x, SequenceOp EPS) -> m ()
-    validateCop kids phs kidToChange (x, so) = do
+    validateCop kids phs kidToChange (_, so) = do
       unless (kidToChange `Set.member` kids) $
         -- FIXME: Don't know if we should fail on missing kids with SoAbsent
         throwError [SeqOpMovedMissingChild kidToChange]
@@ -787,7 +783,7 @@ sortOutAfterDeps existingKids =
         duplicates = Map.filter ((> 1) . Set.size) $ unMos $
           Mos.invertMap $ ocAfter . snd <$> pCrs
       in do
-        sequence $ Map.mapWithKey
+        _ <- sequence $ Map.mapWithKey
           (\targ phs -> tell [MultipleCreatesReferencedTarget phs targ])
           duplicates
         return $ pCrs `Map.withoutKeys` fold duplicates
@@ -825,7 +821,7 @@ sortOutAfterDeps existingKids =
         (validRoots, invalidRoots) = partitionOnAfter
           (maybe True (either (const False) (`Set.member` existingKids))) roots
       in do
-        sequence $ Map.mapWithKey
+        _ <- sequence $ Map.mapWithKey
           (\ph (_, crop) -> tell $ maybe
             []  -- `Nothing` is always a valid root
             (pure . MissingCreatePositionTarget ph) $
@@ -855,7 +851,7 @@ detectCycles edges =
           -- We union the sets of connected nodes:
           2 -> (Set.singleton (fold matches) <> others, cycles)
           -- This should not happen, but is not harmful:
-          n -> (equivalenceSets, cycles)
+          _n -> (equivalenceSets, cycles)
 
 
 checkTypeAssertions

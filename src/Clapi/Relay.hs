@@ -14,17 +14,14 @@
 
 module Clapi.Relay where
 
-import Control.Lens
-  ( (&), _1, _2, _3, _4, _5, assign, at, makeLenses, modifying, over, set
-  , use, view)
+import Control.Lens ((&), assign, at, makeLenses, modifying, set, use, view)
 import qualified Control.Lens as Lens
-import Control.Monad (forever, unless, void)
+import Control.Monad (forever, void)
 import Control.Monad.Except (MonadError(..), runExceptT)
 import Control.Monad.State
   ( MonadState(..), StateT, evalStateT, evalState, runStateT)
 import Control.Monad.Trans (lift)
-import Control.Monad.Writer (MonadWriter(..), WriterT, execWriterT)
-import Data.Bifunctor (second)
+import Control.Monad.Writer (MonadWriter(..), execWriterT)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
@@ -37,7 +34,7 @@ import Data.Void (Void, absurd)
 
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
-import Data.Map.Mol (Mol, unMol)
+import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -49,8 +46,7 @@ import Clapi.Types.Definitions
   (PostDefinition, SomeDefinition, PostDefName, DefName, Editability(..))
 import Clapi.Types.Digests
   ( ClientRegs(..)
-  , crNull, crDeleteLookupNs, crDifference, crIntersection
-  , crPostTypeRegs, crTypeRegs, crDataRegs
+  , crDeleteLookupNs, crPostTypeRegs, crTypeRegs, crDataRegs
   , DataErrorIndex(..), DataChange(..), TimeSeriesDataOp(..), DefOp(..)
   , OriginatorRole(..), DigestAction(..)
   , TrDigest(..), SomeTrDigest(..)
@@ -314,9 +310,9 @@ unsubscribeNs :: (Ord i, Queries i m, Sends i m) => Namespace -> m ()
 unsubscribeNs ns = do
     partitionedRegs <- fmap (crDeleteLookupNs ns) <$> use rsRegs
     assign rsRegs $ snd <$> partitionedRegs
-    multicast $ mkFrcsd . fst <$> partitionedRegs
+    multicast $ toFrcsd . fst <$> partitionedRegs
   where
-    mkFrcsd (ClientRegs p t d) = Frcsd mempty p t d
+    toFrcsd (ClientRegs p t d) = Frcsd mempty p t d
 
 throwOutProvider'
   :: (Ord i, Sends i m, Queries i m) => i -> Mol DataErrorIndex Text -> m ()
@@ -395,11 +391,10 @@ instance Subscribable Path where
   mkFrcsd ns p = Frcsd mempty mempty mempty $ Mos.singleton ns p
   vsGet p = (,) <$> pathNode p <*> pathTyInfo p
   mkFrcud ns p (node, tyInfo) =
-      (explainNode ns p node){ frcudTyAssigns = Map.singleton p tyInfo }
+      (explainNode node){ frcudTyAssigns = Map.singleton p tyInfo }
     where
-      explainNode
-        :: Namespace -> Path -> RoseTreeNode [SomeWireValue] -> FrcUpdateDigest
-      explainNode ns p = \case
+      explainNode :: RoseTreeNode [SomeWireValue] -> FrcUpdateDigest
+      explainNode = \case
         RtnEmpty -> undefined  -- FIXME: want to get rid of RtnEmpty
         RtnChildren kids -> (frcudEmpty ns)
           { frcudContOps = Map.singleton p $ oppifySequence kids }
