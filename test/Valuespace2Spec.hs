@@ -792,7 +792,9 @@ spec =
       :: Monad m
       => TrcUpdateDigest
       -> StateT Valuespace m (Either (Mol DataErrorIndex Text) FrpDigest)
-    processTrcud' trcud = get >>= processTrcud trcud
+    processTrcud' trcud = get >>= processTrcud trcud >>= \(errs, frpd) ->
+      -- FIXME: Might not want to cast this pair to an Either in the end
+      return $ if null errs then Right frpd else Left errs
 
     rootChildrenShouldBe expected = do
       children <- Tree.childNames <$> use vsTree

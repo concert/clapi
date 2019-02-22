@@ -64,7 +64,7 @@ import Clapi.Types.Digests
   , TimeSeriesDataOp(..), TpId, Creates, CreateOp(..), ContOps, DataDigest
   , TrDigest(..), FrDigest(..)
   , TrpDigest, FrcUpdateDigest
-  , TrcUpdateDigest, FrpDigest)
+  , TrcUpdateDigest, FrpDigest, frpdEmpty)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Error
   (ErrsT, errsStateT, castErrs, collect, eitherThrow, eitherModifying)
@@ -397,9 +397,9 @@ processTrpd_ trpd =
 processTrcud
   :: Monad m
   => TrcUpdateDigest -> Valuespace
-  -> m (Either (Mol DataErrorIndex Text) FrpDigest)
+  -> m (Mol DataErrorIndex Text, FrpDigest)
 processTrcud trcud vs = first (fmap errText) . fst
-  <$> Error.runErrsT (processTrcud_ trcud) vs
+  <$> Error.softRunErrsT (frpdEmpty $ trcudNs trcud) (processTrcud_ trcud) vs
 
 processTrcud_ :: Monad m => TrcUpdateDigest -> VsM' m FrpDigest
 processTrcud_ (Trcud ns dat crs cops) = do
@@ -411,7 +411,7 @@ processTrcud_ (Trcud ns dat crs cops) = do
 type PathCreates = Map Placeholder (Maybe Attributee, CreateOp)
 
 guardCreates :: Monad m => Creates -> VsM' m (Mos Path Placeholder, Creates)
-guardCreates = fmap output . collect . Map.mapWithKey perPath
+guardCreates = fmap output . Error.filterErrs . Map.mapWithKey perPath
   where
     perPath :: Monad m => Path -> PathCreates -> VsM' m PathCreates
     perPath p m = do
@@ -427,7 +427,7 @@ guardReadOnly roErr p = pathError p $ pathEditability p >>= \case
   Editable -> return ()
 
 guardClientUpdates :: Monad m => DataDigest -> VsM' m DataDigest
-guardClientUpdates = collect . AL.alFmapWithKey atPath
+guardClientUpdates = Error.filterErrs . AL.alFmapWithKey atPath
   where
     atPath :: Monad m => Path -> DataChange -> VsM' m DataChange
     atPath p dc = do
