@@ -67,7 +67,7 @@ import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace2
   ( Valuespace, ProviderError, baseValuespace
   , lookupPostDef, lookupDef, pathNode, pathTyInfo
-  , processTrpd)
+  , processTrpd, processTrcud)
 
 
 newtype SemigroupMap k v = SemigroupMap {unSemigroupMap :: Map k v}
@@ -78,6 +78,14 @@ instance (Ord k, Semigroup v) => Semigroup (SemigroupMap k v) where
 instance (Ord k, Semigroup v) => Monoid (SemigroupMap k v) where
   mempty = SemigroupMap mempty
 
+type instance Lens.Index (SemigroupMap k a) = k
+type instance Lens.IxValue (SemigroupMap k a) = a
+
+instance Ord k => Lens.Ixed (SemigroupMap k a)
+
+instance Ord k => Lens.At (SemigroupMap k a) where
+  at k f m = fmap SemigroupMap $ Map.alterF f k $ unSemigroupMap m
+
 
 data RelayState i
   = RelayState
@@ -86,6 +94,15 @@ data RelayState i
   }
 
 makeLenses ''RelayState
+
+-- FIXME: RelayState semigroup and monoid instances should be for testing only,
+-- so move there?
+instance Ord i => Semigroup (RelayState i) where
+  RelayState vss1 regs1 <> RelayState vss2 regs2
+    = RelayState (vss1 <> vss2) (regs1 <> regs2)
+
+instance Ord i => Monoid (RelayState i) where
+  mempty = RelayState mempty mempty
 
 -- FIXME: eventually we want to remove the strange transmission back up the
 -- pipeline of namespace owner changes!
@@ -96,27 +113,37 @@ type RelayProtocol i m = Protocol
 
 data MessageBuffer
   = MessageBuffer
-  { _mbFrpds :: Map Namespace FrpDigest
+  { _mbFrpds :: SemigroupMap Namespace FrpDigest
   , _mbFrped :: FrpErrorDigest
-  , _mbFrcrd :: FrcRootDigest
   , _mbFrcsd :: FrcSubDigest
-  , _mbFrcuds :: Map Namespace FrcUpdateDigest
+  , _mbFrcuds :: SemigroupMap Namespace FrcUpdateDigest
   }
 
 makeLenses ''MessageBuffer
 
 instance Semigroup MessageBuffer where
-  MessageBuffer frpds1 frped1 frcrd1 frcsd1 frcuds1
-    <> MessageBuffer frpds2 frped2 frcrd2 frcsd2 frcuds2 =
+  MessageBuffer frpds1 frped1 frcsd1 frcuds1
+    <> MessageBuffer frpds2 frped2 frcsd2 frcuds2 =
       MessageBuffer
         (frpds2 <> frpds1)
         (frped1 <> frped2)
-        (frcrd1 <> frcrd2)
         (frcsd1 <> frcsd2)
         (frcuds2 <> frcuds1)
 
 instance Monoid MessageBuffer where
-  mempty = MessageBuffer mempty mempty mempty mempty mempty
+  mempty = MessageBuffer mempty mempty mempty mempty
+
+-- FIXME: MessageBuffer was supposed to be the only message caching state thing,
+-- but we ended up needing this too and it got a bit messy:
+data Buffer i
+  = Buffer
+  { _bMsgs :: SemigroupMap i MessageBuffer
+  , _bFrcrds :: Map i FrcRootDigest
+  , _bOwners :: Last (Map Namespace i)
+  , _bDisconnected :: Set i
+  }
+
+makeLenses ''Buffer
 
 type Sends i m = MonadWriter (Buffer i) m
 type Queries i = MonadState (RelayState i)
@@ -142,9 +169,12 @@ relay = evalStateT (forever $ liftedWaitThen dispatch absurd)
       lift $ doSend msgs
 
 
-handleConnect :: (Queries i m, Ord i) => i -> m ()
+handleConnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleConnect i = do
   modifying rsRegs $ Map.insert i mempty
+  vsMap <- use rsVsMap
+  collectFrd i $ Frcrd $ const (SoAfter Nothing) <$> vsMap
+
 
 handleDisconnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleDisconnect i = do
@@ -156,22 +186,24 @@ handleDisconnect i = do
 handleTrpd
   :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Provider 'Update -> m ()
 handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
-    Nothing -> go bvs
+    Nothing -> go bvs $
+      broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
     Just x@(ownerI, vs) ->
       if i == ownerI
-        then go vs
+        then go vs $ return ()
         else stop >> return (Just x)
   where
     ns = trpdNs trpd
     bvs = baseValuespace (Tagged $ unNamespace ns) Editable
-    go vs = do
+    go vs onSuccess = do
       (res, vs') <- runStateT (processTrpd trpd) vs
       case res of
         Left errs -> throwOutProvider' i errs
         Right frcud -> do
           regMap <- use rsRegs
           multicast $ filterFrcud frcud <$> regMap
-      return $ Just (i, vs)
+          onSuccess
+      return $ Just (i, vs')
 
     stop = throwOutProvider i ns "Already owned by another provider"
 
@@ -240,8 +272,21 @@ handleTrcsd i d = do
         Nothing -> return ()
         Just (_node, (dn, _ed)) -> void $ subscribe i ns dn
 
-handleTrcud :: i -> TrDigest 'Consumer 'Update -> m ()
-handleTrcud = undefined
+handleTrcud
+  :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Consumer 'Update -> m ()
+handleTrcud i trcud = use (rsVsMap . at ns) >>= \case
+    Nothing -> sendBackErrors $
+        Mol.singleton (NamespaceError ns) "Namespace does not exist"
+    Just (ownerI, vs) ->
+      if i == ownerI
+        then throwOutProvider i ns "Acted as client on own namespace"
+        else do
+          (errs, frpd) <- processTrcud trcud vs
+          sendBackErrors errs
+          collectFrd ownerI frpd
+  where
+    ns = trcudNs trcud
+    sendBackErrors errs = collectFrd i $ (frcudEmpty ns) { frcudErrors = errs }
 
 updateLookup
   :: (Ord k, MonadState s m)
@@ -290,9 +335,9 @@ subscribe
   => i -> Namespace -> a -> m (Maybe (SubData a))
 subscribe i ns a =
   use (rsVsMap . at ns) >>= \case
-    Nothing -> unsubscribe i ns a >> return Nothing
+    Nothing -> sendUnsubscribe i ns a >> return Nothing
     Just (_ownerI, vs) -> case evalState (runExceptT $ vsGet a) vs of
-      Left _ -> unsubscribe i ns a >> return Nothing
+      Left _ -> sendUnsubscribe i ns a >> return Nothing
       Right sd -> do
         Error.modifying (rsRegs . at i . defaulting mempty . crLens)
           $ \mos -> if Mos.contains ns a mos
@@ -304,6 +349,10 @@ subscribe i ns a =
         -- subscription:
         return $ Just sd
 
+sendUnsubscribe
+  :: (Ord i, Subscribable a, Sends i m) => i -> Namespace -> a -> m ()
+sendUnsubscribe i ns a = collectFrd i $ mkFrcsd ns a
+
 unsubscribe
   :: (Ord i, Ord a, Subscribable a, Queries i m, Sends i m)
   => i -> Namespace -> a -> m ()
@@ -311,7 +360,7 @@ unsubscribe i ns a =
   Error.modifying (rsRegs . at i . defaulting mempty . crLens) $ \mos ->
     if Mos.contains ns a mos
       then do
-        collectFrd i $ mkFrcsd ns a
+        sendUnsubscribe i ns a
         return $ Mos.delete ns a mos
       else return mos
 
@@ -379,52 +428,48 @@ When we are done processing the digest that came in, we can look at the list of
 digests for each client and condense it down to the minimal set.
 -}
 
-data Buffer i
-  = Buffer
-  { _bMessages :: SemigroupMap i MessageBuffer
-  , _bOwners :: Last (Map Namespace i)
-  , _bDisconnected :: Set i
-  }
-
-bufferMsg :: Ord i => Map i MessageBuffer -> Buffer i
-bufferMsg m = Buffer (SemigroupMap m) mempty mempty
-
 instance Ord i => Semigroup (Buffer i) where
-  Buffer m1 o1 d1 <> Buffer m2 o2 d2 = Buffer (m1 <> m2) (o1 <> o2) (d1 <> d2)
+  Buffer m1 frcrds1 o1 d1 <> Buffer m2 frcrds2 o2 d2 =
+    Buffer (m1 <> m2) (frcrds1 <> frcrds2) (o1 <> o2) (d1 <> d2)
 
 instance Ord i => Monoid (Buffer i) where
-  mempty = Buffer mempty mempty mempty
+  mempty = Buffer mempty mempty mempty mempty
 
 collectFrd :: (Ord i, Sends i m) => i -> FrDigest r a -> m ()
-collectFrd i = tell . bufferMsg . Map.singleton i . bufferDigest
+collectFrd i = tell . bufferDigest i
 
 multicast :: (Ord i, Sends i m) => Map i (FrDigest r a) -> m ()
-multicast = tell . bufferMsg . fmap bufferDigest
+multicast = mapM_ (uncurry collectFrd) . Map.toList
 
 broadcast :: (Ord i, Queries i m, Sends i m) => FrDigest r a -> m ()
 broadcast d = use rsRegs >>= multicast . fmap (const d)
 
 disconnect :: (Ord i, Sends i m) => i -> m ()
-disconnect = tell . Buffer mempty mempty . Set.singleton
+disconnect = tell . Buffer mempty mempty mempty . Set.singleton
 
 doSend :: Monad m => Buffer i -> RelayProtocol i m ()
 doSend = mapM_ sendRev . toServerEvents
-  -- (\i mb -> mapM_ (sendRev . second (ServerData i)) $ toServerEvents mb)
 
-bufferDigest :: FrDigest r a -> MessageBuffer
-bufferDigest d = mempty @MessageBuffer & case d of
-    Frpd {} -> set mbFrpds $ Map.singleton (frpdNs d) d
-    Frped {} -> set mbFrped d
-    Frcrd {} -> set mbFrcrd d
-    Frcsd {} -> set mbFrcsd d
-    Frcud {} -> set mbFrcuds $ Map.singleton (frcudNs d) d
+bufferDigest :: forall i r a. Ord i => i -> FrDigest r a -> Buffer i
+bufferDigest i d = mempty @(Buffer i) & case d of
+    Frpd {} -> set (bMsgs . at i . defaulting mempty . mbFrpds)
+      $ SemigroupMap $ Map.singleton (frpdNs d) d
+    Frped {} -> set (bMsgs . at i . defaulting mempty . mbFrped) d
+    Frcrd {} -> set (bFrcrds . at i) $ Just d
+    Frcsd {} -> set (bMsgs . at i . defaulting mempty . mbFrcsd) d
+    Frcud {} -> set (bMsgs . at i . defaulting mempty . mbFrcuds)
+      $ SemigroupMap $ Map.singleton (frcudNs d) d
 
 toServerEvents
   :: Buffer i -> [Either (Map Namespace i) (ServerEvent i SomeFrDigest)]
-toServerEvents (Buffer (SemigroupMap msgBuffers) (Last owners) disconnected) =
+toServerEvents
+  (Buffer (SemigroupMap msgBuffers) frcrds (Last owners) disconnected) =
     (Map.foldMapWithKey
       (\i mb -> Right . ServerData i <$> toDigests mb)
       msgBuffers)
+    ++ (
+      Right . (\(i, frcrd) -> ServerData i $ SomeFrDigest frcrd)
+      <$> Map.toList frcrds)
     ++ (Right . ServerDisconnect <$> Set.toList disconnected)
     ++ case owners of
          -- No updates:
@@ -433,9 +478,11 @@ toServerEvents (Buffer (SemigroupMap msgBuffers) (Last owners) disconnected) =
          Just ownerMap -> [Left ownerMap]
 
 toDigests :: MessageBuffer -> [SomeFrDigest]
-toDigests (MessageBuffer frpds frped frcrd frcsd frcuds) =
-  (SomeFrDigest <$> Map.elems frpds)
-  ++ if frDigestNull frped then [] else [SomeFrDigest frped]
-  ++ if frDigestNull frcrd then [] else [SomeFrDigest frcrd]
-  ++ if frDigestNull frcsd then [] else [SomeFrDigest frcsd]
-  ++ (SomeFrDigest <$> Map.elems frcuds)
+toDigests (MessageBuffer frpds frped frcsd frcuds) =
+  (SomeFrDigest
+     <$> filter (not . frDigestNull) (Map.elems $ unSemigroupMap frpds))
+  ++ (if frDigestNull frped then [] else [SomeFrDigest frped])
+  ++ (if frDigestNull frcsd then [] else [SomeFrDigest frcsd])
+  ++
+  (SomeFrDigest
+     <$> filter (not . frDigestNull) (Map.elems $ unSemigroupMap frcuds))
