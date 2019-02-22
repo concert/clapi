@@ -454,14 +454,15 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
     validateCop
       :: MonadError [ProviderError] m
       => Set Seg -> Set Placeholder -> Seg -> (x, SequenceOp EPS) -> m ()
-    validateCop kids phs kidToChange (_, so) = do
-      unless (kidToChange `Set.member` kids) $
-        -- FIXME: Don't know if we should fail on missing kids with SoAbsent
-        throwError [SeqOpMovedMissingChild kidToChange]
+    validateCop kids phs kidToChange (_, so) =
       case so of
-        SoAfter (Just t) ->
+        SoAfter (Just t) -> do
+          unless (kidToChange `Set.member` kids) $
+            throwError [SeqOpMovedMissingChild kidToChange]
           unless (either (`Set.member` phs) (`Set.member` kids) t) $
             throwError [SeqOpTargetMissing kidToChange t]
+        -- It doesn't matter if the client removed something that's already
+        -- gone:
         _ -> return ()
 
 
