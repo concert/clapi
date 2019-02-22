@@ -51,7 +51,8 @@ import Clapi.Internal.Valuespace hiding (Referer, Referee)
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..), TimePoint, Attributed)
 import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
-import Clapi.Types.Base (Time, InterpolationType(..), Attributee, TypeEnumOf(..))
+import Clapi.Types.Base
+  (TpId, Time, InterpolationType(..), Attributee, TypeEnumOf(..))
 import Clapi.Types.Definitions
   ( MetaType(..), SomeDefinition(..), Definition(..), PostDefinition(..)
   , Editability(..)
@@ -61,7 +62,7 @@ import Clapi.Types.Definitions
   )
 import Clapi.Types.Digests
   ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..)
-  , TimeSeriesDataOp(..), TpId, Creates, CreateOp(..), ContOps, DataDigest
+  , TimeSeriesDataOp(..), Creates, CreateOp(..), ContOps, DataDigest
   , TrDigest(..), FrDigest(..)
   , TrpDigest, FrcUpdateDigest
   , TrcUpdateDigest, FrpDigest, frpdEmpty)
