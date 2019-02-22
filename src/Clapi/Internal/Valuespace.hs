@@ -21,7 +21,7 @@ import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
-import qualified Clapi.Valuespace2.Xrefs as Vs2Xrefs
+import qualified Clapi.Valuespace.Xrefs as VsXrefs
 
 type DefMap def = Map (Tagged def Seg) def
 type TypeAssignmentMap = Dependencies Path DefName
@@ -38,7 +38,7 @@ data Valuespace = Valuespace
   -- These are just caches that help us do reverse lookups:
   , _vsTyAssns :: TypeAssignmentMap
   , _vsXrefs :: Xrefs
-  , _vsTac :: Vs2Xrefs.TypeAssertionCache
+  , _vsTac :: VsXrefs.TypeAssertionCache
   } deriving Show
 
 makeLenses ''Valuespace

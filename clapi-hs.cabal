@@ -68,8 +68,7 @@ library
                      , Clapi.Tree
                      , Clapi.Validator
                      , Clapi.Valuespace
-                     , Clapi.Valuespace2
-                     , Clapi.Valuespace2.Xrefs
+                     , Clapi.Valuespace.Xrefs
                      , Clapi.Util
   other-modules:       Data.Maybe.Clapi
   build-depends:       base >= 4.7 && < 5
@@ -175,7 +174,6 @@ test-suite clapi-hs-test
                      , UtilSpec
                      , ValidatorSpec
                      , ValuespaceSpec
-                     , Valuespace2Spec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 

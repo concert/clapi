@@ -64,7 +64,7 @@ import qualified Clapi.Types.Error as Error
 import Clapi.Types.Path (Namespace(..), Path)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Wire (SomeWireValue)
-import Clapi.Valuespace2
+import Clapi.Valuespace
   ( Valuespace, ProviderError, baseValuespace
   , lookupPostDef, lookupDef, pathNode, pathTyInfo
   , processTrpd, processTrcud)

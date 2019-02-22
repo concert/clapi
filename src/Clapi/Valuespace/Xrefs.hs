@@ -2,7 +2,7 @@
     LambdaCase
 #-}
 
-module Clapi.Valuespace2.Xrefs
+module Clapi.Valuespace.Xrefs
   -- ( References(..), getReferees
   -- , Xrefs, xrefsFwd, xrefsRev, empty
   -- , update, updateLookup, lookupFwd, lookupRev
