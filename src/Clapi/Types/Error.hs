@@ -23,6 +23,15 @@ runErrsT
   => ErrsT s (f e) m a -> s -> m (Either (f e) a, s)
 runErrsT = runStateT . errsStateT
 
+softRunErrsT
+  :: (Monoid (f e), Foldable f, Functor m)
+  => a -> ErrsT s (f e) m a -> s -> m ((f e, a), s)
+softRunErrsT def = runStateT . fmap smush . runWriterT . runExceptT
+  where
+    smush (eea, e1) = case eea of
+      Left e2 -> (e1 <> e2, def)
+      Right a -> if null e1 then (mempty, a) else (e1, a)
+
 runErrsM
   :: (Monoid (f e), Foldable f) => ErrsM s (f e) a -> s -> (Either (f e) a, s)
 runErrsM = runState . errsStateT
