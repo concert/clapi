@@ -733,7 +733,7 @@ validateCreateValues
   -> ErrsT Valuespace [ProviderError] m ()
 validateCreateValues pdef cr = do
     tas <- eitherThrow $ first (fmap ValidationError) $ combine
-      $ fmtStrictZipError "post def arg tpes" "list of wire values"
+      $ fmtStrictZipError "post def arg types" "list of wire values"
       $ strictZipWith validateValues (toList $ postDefArgs pdef) (ocArgs cr)
     void $ checkTypeAssertions tas
   where
@@ -915,7 +915,7 @@ revalidateTsData tdef p = \case
       modifying vsTac $ Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
 
 
--- FIXME: these are names incorrectly and should be something to do with
+-- FIXME: these are named incorrectly and should be something to do with
 -- checking type assertions without clashing with anything checkTypeAssertiony
 -- above!
 revalidateXrefs
