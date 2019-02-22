@@ -68,11 +68,8 @@ instance MkSubErrIdx Path where
 data DefOp def = OpDefine {odDef :: def} | OpUndefine deriving (Show, Eq)
 
 isDef :: DefOp a -> Bool
-isDef = not . isUndef
-
-isUndef :: DefOp a -> Bool
-isUndef OpUndefine = True
-isUndef _ = False
+isDef (OpDefine _) = True
+isDef _ = False
 
 data TimeSeriesDataOp =
   OpSet Time [SomeWireValue] Interpolation | OpRemove deriving (Show, Eq)
