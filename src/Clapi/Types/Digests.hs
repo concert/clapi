@@ -26,7 +26,7 @@ import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList, alEmpty)
-import Clapi.Types.Base (Attributee, Time, Interpolation)
+import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
 import Clapi.Types.Path
@@ -34,8 +34,6 @@ import Clapi.Types.Path
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (SomeWireValue)
 
-
-type TpId = Word32
 
 data DataErrorIndex
   = GlobalError

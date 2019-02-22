@@ -21,6 +21,7 @@ import qualified Data.Map.Mol as Mol
 
 import Clapi.Types
   (Time, Interpolation(..), Attributee, SomeWireValue)
+import Clapi.Types.Base (TpId)
 import Clapi.Types.AssocList
   ( AssocList, unAssocList, alEmpty, alFmapWithKey, alSingleton, alAlterF
   , alKeys, alToMap, alPickFromMap)
@@ -29,7 +30,7 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
-  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..), TpId)
+  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
 
 type TimePoint a = (Interpolation, a)

@@ -17,7 +17,7 @@ import Data.Map.Dependencies (Dependencies)
 import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
   (SomeDefinition, PostDefinition, Editability, DefName)
-import Clapi.Types.Digests (TpId)
+import Clapi.Types.Base (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
