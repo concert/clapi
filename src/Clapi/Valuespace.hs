@@ -104,7 +104,6 @@ data ProviderError
   -- optional:
   | BadInterpolationType InterpolationType (Maybe InterpolationType)
   | XRefError DefName DefName
-  | XRefError2 DefName DefName
   | RemovedWhileReferencedBy (Set (Vs2Xrefs.Referer, Maybe TpId))
   -- FIXME: ValidationError is a wrapper for MonadFail stuff that comes out of
   -- validation. It would be better to have a whole type for validation errors
@@ -146,7 +145,6 @@ errText = Text.pack . \case
     "Bad interpolation type %s. Expected <= %s" (show actual) (show expected)
   XRefError expDn actDn -> printf
     "Bad xref target type. Expected %s, got %s" (show expDn) (show actDn)
-  XRefError2 _ _ -> "debug"
   RemovedWhileReferencedBy referers -> printf "Removed path referenced by %s"
     (show referers)
   ValidationError s -> "ValidationError: " ++ s
@@ -928,4 +926,4 @@ revalidateXref
   :: Monad m => DefName -> Vs2Xrefs.Referer -> TypeAssertion -> VsM' m ()
 revalidateXref actDn referer (TypeAssertion _ expDn) =
   pathError (Vs2Xrefs.unReferer referer) $
-    unless (actDn == expDn) $ throwError $ XRefError2 expDn actDn
+    unless (actDn == expDn) $ throwError $ XRefError expDn actDn
