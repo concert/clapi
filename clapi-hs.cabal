@@ -2,7 +2,7 @@ name:                clapi-hs
 version:             0.1.0.0
 synopsis:            Concert API stuff
 description:         Please see README.md
-homepage:            https://github.com/concert/clapi#readme
+homepage:            https://gitlab.com/concert/clapi#readme
 license:             GPL-3
 license-file:        LICENSE
 author:              Paul Weaver
@@ -175,4 +175,4 @@ test-suite clapi-hs-test
 
 source-repository head
   type:     git
-  location: https://github.com/ch3pjw/clapi-hs.git
+  location: https://gitlab.com/concert/clapi-hs.git
