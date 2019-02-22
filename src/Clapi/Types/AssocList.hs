@@ -16,7 +16,7 @@ module Clapi.Types.AssocList
   , alAlterF, alAlter, alAdjust
   ) where
 
-import Prelude hiding (fail)
+import Prelude hiding (fail, filter)
 import Control.Monad.Fail (MonadFail(..))
 import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
@@ -28,7 +28,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Clapi.Types.UniqList (UniqList, unUniqList, unsafeMkUniqList)
-import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
+import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError, Filterable(..))
 
 newtype AssocList a b
   = AssocList {unAssocList :: [(a, b)]}
@@ -147,3 +147,7 @@ alAlter f k = runIdentity . alAlterF (Identity . f) k
 
 alAdjust :: Eq k => (b -> b) -> k -> AssocList k b -> AssocList k b
 alAdjust f k = alAlter (fmap f) k
+
+
+instance Filterable (AssocList k) where
+  filter f = alFilterWithKey (const f)
