@@ -230,10 +230,20 @@ pathTyInfo path = do
       go p r
     go _ r = return r
 
+pathDefName
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m DefName
+pathDefName path = fst <$> pathTyInfo path
+
+pathEditability
+  :: (MonadState Valuespace m, MonadError ProviderError m)
+  => Path -> m Editability
+pathEditability path = snd <$> pathTyInfo path
+
 pathDef
   :: (MonadState Valuespace m, MonadError ProviderError m)
   => Path -> m SomeDefinition
-pathDef path = pathTyInfo path >>= lookupDef . fst
+pathDef path = pathDefName path >>= lookupDef
 
 pathPostDef
   :: (MonadState Valuespace m, MonadError ProviderError m)
@@ -245,16 +255,6 @@ pathPostDef path = do
       (throwError ArrayDoesNotSupportCreates) lookupPostDef mpd
     -- FIXME: Might be better to have have a more specific error type here...
     _ -> throwError ExpectedArrayDefinition
-
-pathDefName
-  :: (MonadState Valuespace m, MonadError ProviderError m)
-  => Path -> m DefName
-pathDefName path = fst <$> pathTyInfo path
-
-pathEditability
-  :: (MonadState Valuespace m, MonadError ProviderError m)
-  => Path -> m Editability
-pathEditability path = snd <$> pathTyInfo path
 
 pathNode
   :: (MonadState Valuespace m, MonadError ProviderError m)
