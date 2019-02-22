@@ -35,7 +35,7 @@ import Clapi.TH
 import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Relay2 (relay, RelayState(..))
+import Clapi.Relay (relay, RelayState(..))
 import Clapi.Types.AssocList
   ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
 import Clapi.Types.Base (InterpolationLimit)

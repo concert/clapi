@@ -1,592 +1,488 @@
-{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# LANGUAGE
-    FlexibleContexts
+    ConstraintKinds
+  , DataKinds
+  , FlexibleContexts
+  , FlexibleInstances
   , GADTs
   , LambdaCase
   , OverloadedStrings
-  , PartialTypeSignatures
   , RankNTypes
   , TemplateHaskell
+  , TypeFamilies
+  , TypeFamilyDependencies
 #-}
 
 module Clapi.Relay where
 
 import Control.Lens
-  (makeLenses, view, over, set, at, assign, modifying, use, _2)
+  ( (&), _1, _2, _3, _4, _5, assign, at, makeLenses, modifying, over, set
+  , use, view)
 import qualified Control.Lens as Lens
-import Control.Monad (unless, when, forever, void)
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
-import Control.Monad.Writer (Writer, runWriter, tell)
-import Control.Monad.State (StateT(..), evalStateT, get, modify)
+import Control.Monad (forever, unless, void)
+import Control.Monad.Except (MonadError(..), runExceptT)
+import Control.Monad.State
+  ( MonadState(..), StateT, evalStateT, evalState, runStateT)
 import Control.Monad.Trans (lift)
-import Data.Bifunctor (first, second, bimap)
-import Data.Either (partitionEithers)
+import Control.Monad.Writer (MonadWriter(..), WriterT, execWriterT)
+import Data.Bifunctor (second)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Map.Merge.Strict (merge, preserveMissing, mapMissing, zipWithMaybeMatched)
-import qualified Data.Set as Set
-import Data.Maybe (fromJust, mapMaybe, fromMaybe)
+import Data.Maybe (fromMaybe)
+import Data.Monoid (Last(..))
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
-import qualified Data.Text as Text
 import Data.Void (Void, absurd)
 
-import Data.Map.Mol (Mol(..))
-import qualified Data.Map.Mol as Mol
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
+import Data.Map.Mol (Mol, unMol)
+import qualified Data.Map.Mol as Mol
 
-import Clapi.Types.Base (Attributee)
-import qualified Clapi.Types.Dkmap as Dkmap
-import Clapi.Types.AssocList
-  ( AssocList, alSingleton, unAssocList , alFoldlWithKey, alFilterKey)
-import Clapi.Types.Digests
-  ( DataErrorIndex(..), SubErrorIndex(..), MkSubErrIdx(..)
-  , SomeTrDigest(..), SomeFrDigest(..)
-  , TrpDigest, TrprDigest, TrcUpdateDigest, TrcSubDigest
-  , trcsdNamespaces
-  , FrcSubDigest, FrcUpdateDigest, FrcRootDigest
-  , frDigestNull, frcsdEmpty, frcudEmpty
-  , DataChange(..)
-  , TimeSeriesDataOp(..), DefOp(..)
-  , DataDigest, ContOps
-  , FrDigest(..), TrDigest(..), isUndef
-  , ClientRegs(..), crNull, crDifference, crIntersection
-  , crPostTypeRegs, crTypeRegs, crDataRegs
-  , trcsdClientRegs, frcsdFromClientRegs)
-import Clapi.Types.Path (Seg, Path, parentPath, Namespace(..), pattern (:/))
-import Clapi.Types.Definitions
-  (Editability(..), SomeDefinition, PostDefinition, DefName, PostDefName)
-import Clapi.Types.Wire (SomeWireValue)
-import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
-import Clapi.Tree (RoseTreeNode(..), TimeSeries)
-import qualified Clapi.Tree as Tree
-import Clapi.Valuespace
-  ( Valuespace(..), baseValuespace, vsLookupDef
-  , processToRelayProviderDigest, processTrcUpdateDigest, valuespaceGet
-  , getEditable, ProtoFrpDigest(..), VsLookupDef(..))
-import Clapi.Protocol (Protocol, sendRev, liftedWaitThen)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Util (partitionDifference, flattenNestedMaps)
-import Clapi.Valuespace2 (processTrpd)
-
-oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
-oppifyTimeSeries ts = TimeChange $
-  Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
-
--- FIXME: return type might make more sense swapped...
-oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
-oppifySequence al =
-  let (alKs, alVs) = unzip $ unAssocList al in
-    Map.fromList $ zipWith3
-      (\k afterK v -> (k, (v, SoAfter afterK)))
-      alKs (Nothing : (Just <$> alKs)) alVs
-
-
--- | A datatype for collecting together all the parts to make up a full
---   _namespaced_ FrcUpdateDigest, but without the actual namespace so that we
---   can make a monoid instance. Namespaces must be tracked separately!
---   This may or may not be a good idea *shrug*
-data ProtoFrcUpdateDigest = ProtoFrcUpdateDigest
-  { pfrcudPostDefs :: Map PostDefName (DefOp PostDefinition)
-  , pfrcudDefinitions :: Map DefName (DefOp SomeDefinition)
-  , pfrcudTypeAssignments :: Map Path (DefName, Editability)
-  , pfrcudData :: DataDigest
-  , pfrcudContOps :: ContOps Seg
-  , pfrcudErrors :: Mol DataErrorIndex Text
-  }
-
-instance Semigroup ProtoFrcUpdateDigest where
-  ProtoFrcUpdateDigest pd1 defs1 ta1 d1 co1 err1
-      <> ProtoFrcUpdateDigest pd2 defs2 ta2 d2 co2 err2 =
-    ProtoFrcUpdateDigest
-      (pd1 <> pd2) (defs1 <> defs2) (ta1 <> ta2) (d1 <> d2) (co1 <> co2)
-      (err1 <> err2)
-instance Monoid ProtoFrcUpdateDigest where
-  mempty = ProtoFrcUpdateDigest mempty mempty mempty mempty mempty mempty
-  mappend = (<>)
-
-toFrcud :: Namespace -> ProtoFrcUpdateDigest -> FrcUpdateDigest
-toFrcud ns (ProtoFrcUpdateDigest defs pdefs tas dat cops errs) =
-  Frcud ns defs pdefs tas dat cops errs
-
-vsmLookupVs
-  :: Namespace -> Map Namespace Valuespace
-  -> Either (SubErrorIndex, String) Valuespace
-vsmLookupVs ns vsm = maybe
-  (Left $ (NamespaceSubError ns, "Namespace not found")) return $
-  Map.lookup ns vsm
+import Clapi.Protocol (Protocol, liftedWaitThen, sendRev)
+import Clapi.Tree (RoseTreeNode(..), TimeSeries)
+import Clapi.Types.AssocList (AssocList)
+import qualified Clapi.Types.AssocList as AL
+import Clapi.Types.Definitions
+  (PostDefinition, SomeDefinition, PostDefName, DefName, Editability(..))
+import Clapi.Types.Digests
+  ( ClientRegs(..)
+  , crNull, crDeleteLookupNs, crDifference, crIntersection
+  , crPostTypeRegs, crTypeRegs, crDataRegs
+  , DataErrorIndex(..), DataChange(..), TimeSeriesDataOp(..), DefOp(..)
+  , OriginatorRole(..), DigestAction(..)
+  , TrDigest(..), SomeTrDigest(..)
+  , trcsdNamespaces, trcsdClientRegs
+  , FrDigest(..), SomeFrDigest(..)
+  , FrpDigest, FrpErrorDigest, FrcRootDigest, FrcSubDigest, FrcUpdateDigest
+  , frDigestNull, frcudEmpty
+  )
+import qualified Clapi.Types.Dkmap as Dkmap
+import qualified Clapi.Types.Error as Error
+import Clapi.Types.Path (Namespace(..), Path)
+import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.Wire (SomeWireValue)
+import Clapi.Valuespace2
+  ( Valuespace, ProviderError, baseValuespace
+  , lookupPostDef, lookupDef, pathNode, pathTyInfo
+  , processTrpd, processTrcud)
 
 
-contDiff
-  :: AssocList Seg (Maybe Attributee) -> AssocList Seg (Maybe Attributee)
-  -> Map Seg (Maybe Attributee, SequenceOp Seg)
-contDiff a b = merge
-    asAbsent preserveMissing dropMatched (aftersFor a) (aftersFor b)
-  where
-    asAfter (acc, prev) k ma = ((k, (ma, SoAfter prev)) : acc, Just k)
-    aftersFor = Map.fromList . fst . alFoldlWithKey asAfter ([], Nothing)
-    dropMatched = zipWithMaybeMatched $ const $ const $ const Nothing
-    asAbsent = mapMissing $ \_ (ma, _) -> (ma, SoAbsent)
+newtype SemigroupMap k v = SemigroupMap {unSemigroupMap :: Map k v}
 
-mayContDiff
-  :: Maybe (RoseTreeNode a) -> AssocList Seg (Maybe Attributee)
-  -> Maybe (Map Seg (Maybe Attributee, SequenceOp Seg))
-mayContDiff ma kb = case ma of
-    Just (RtnChildren ka) -> if ka == kb
-        then Nothing
-        else Just $ contDiff ka kb
-    _ -> Nothing
+instance (Ord k, Semigroup v) => Semigroup (SemigroupMap k v) where
+  SemigroupMap m1 <> SemigroupMap m2  = SemigroupMap $ Map.unionWith (<>) m1 m2
+
+instance (Ord k, Semigroup v) => Monoid (SemigroupMap k v) where
+  mempty = SemigroupMap mempty
+
+type instance Lens.Index (SemigroupMap k a) = k
+type instance Lens.IxValue (SemigroupMap k a) = a
+
+instance Ord k => Lens.Ixed (SemigroupMap k a)
+
+instance Ord k => Lens.At (SemigroupMap k a) where
+  at k f m = fmap SemigroupMap $ Map.alterF f k $ unSemigroupMap m
+
 
 data RelayState i
   = RelayState
-  { _rsVsMap :: Map Namespace Valuespace
-  , _rsOwners :: Map Namespace i
+  { _rsVsMap :: Map Namespace (i, Valuespace)
   , _rsRegs :: Map i ClientRegs
-  , _rsAllClients :: Set i
-  } deriving (Show)
+  }
 
 makeLenses ''RelayState
 
+-- FIXME: RelayState semigroup and monoid instances should be for testing only,
+-- so move there?
 instance Ord i => Semigroup (RelayState i) where
-  (RelayState vsm1 o1 r1 c1) <> (RelayState vsm2 o2 r2 c2) =
-    RelayState (vsm1 <> vsm2) (o1 <> o2) (r1 <> r2) (c1 <> c2)
+  RelayState vss1 regs1 <> RelayState vss2 regs2
+    = RelayState (vss1 <> vss2) (regs1 <> regs2)
 
 instance Ord i => Monoid (RelayState i) where
-  mempty = RelayState mempty mempty mempty mempty
+  mempty = RelayState mempty mempty
 
+-- FIXME: eventually we want to remove the strange transmission back up the
+-- pipeline of namespace owner changes!
 type RelayProtocol i m = Protocol
-    (ClientEvent i SomeTrDigest) Void
-    (Either (Map Namespace i) (ServerEvent i SomeFrDigest)) Void
-    m
+  (ClientEvent i SomeTrDigest) Void
+  (Either (Map Namespace i) (ServerEvent i SomeFrDigest)) Void
+  m
+
+data MessageBuffer
+  = MessageBuffer
+  { _mbFrpds :: SemigroupMap Namespace FrpDigest
+  , _mbFrped :: FrpErrorDigest
+  , _mbFrcsd :: FrcSubDigest
+  , _mbFrcuds :: SemigroupMap Namespace FrcUpdateDigest
+  }
+
+makeLenses ''MessageBuffer
+
+instance Semigroup MessageBuffer where
+  MessageBuffer frpds1 frped1 frcsd1 frcuds1
+    <> MessageBuffer frpds2 frped2 frcsd2 frcuds2 =
+      MessageBuffer
+        (frpds2 <> frpds1)
+        (frped1 <> frped2)
+        (frcsd1 <> frcsd2)
+        (frcuds2 <> frcuds1)
+
+instance Monoid MessageBuffer where
+  mempty = MessageBuffer mempty mempty mempty mempty
+
+-- FIXME: MessageBuffer was supposed to be the only message caching state thing,
+-- but we ended up needing this too and it got a bit messy:
+data Buffer i
+  = Buffer
+  { _bMsgs :: SemigroupMap i MessageBuffer
+  , _bFrcrds :: Map i FrcRootDigest
+  , _bOwners :: Last (Map Namespace i)
+  , _bDisconnected :: Set i
+  }
+
+makeLenses ''Buffer
+
+type Sends i m = MonadWriter (Buffer i) m
+type Queries i = MonadState (RelayState i)
 
 relay
-  :: (Ord i, Monad m) => RelayState i -> RelayProtocol i m ()
-relay = evalStateT relay_
-
-relay_
   :: (Ord i, Monad m)
-  => StateT (RelayState i) (RelayProtocol i m) ()
-relay_ = forever $ liftedWaitThen fwd absurd
+  => RelayState i -> RelayProtocol i m ()
+relay = evalStateT (forever $ liftedWaitThen dispatch absurd)
   where
-    fwd (ClientConnect _ i) = handleConnect i
-    fwd (ClientData i (SomeTrDigest d)) = case d of
-      Trpd {} -> handleTrpd i d
-      Trprd {} -> handleTrprd i d
-      Trcsd {} -> handleTrcsd i d
-      Trcud {} -> handleTrcud i d
-    fwd (ClientDisconnect i) = handleDisconnect i
+    dispatch
+      :: (Ord i, Monad m)
+      => ClientEvent i SomeTrDigest
+      -> StateT (RelayState i) (RelayProtocol i m) ()
+    dispatch event = do
+      msgs <- execWriterT $ case event of
+        ClientConnect _ i -> handleConnect i
+        ClientData i (SomeTrDigest d) -> case d of
+          Trpd {} -> handleTrpd i d
+          Trprd {} -> handleTrprd i d
+          Trcsd {} -> handleTrcsd i d
+          Trcud {} -> handleTrcud i d
+        ClientDisconnect i -> handleDisconnect i
+      lift $ doSend msgs
 
-handleConnect
-  :: (Ord i, Monad m) => i -> StateT (RelayState i) (RelayProtocol i m) ()
+
+handleConnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleConnect i = do
-  modify $ over rsAllClients $ Set.insert i
-  vsm <- view rsVsMap <$> get
-  sendData' i $ Frcrd $ Map.fromSet
-    (const $ SoAfter Nothing) $ Map.keysSet vsm
+  modifying rsRegs $ Map.insert i mempty
+  vsMap <- use rsVsMap
+  collectFrd i $ Frcrd $ const (SoAfter Nothing) <$> vsMap
 
-definesNothing :: TrpDigest -> Bool
-definesNothing trpd = Map.notMember
-    (Tagged $ unNamespace $ trpdNs trpd) $ trpdDefs trpd
 
--- This feels like it should exist in a library somewhere...
--- ... and that place is Control.Lens.Zoom
-projectStateT :: Monad m => Lens.Lens' s2 s1 -> StateT s1 m r -> StateT s2 m r
-projectStateT project m = do
-  s1 <- use project
-  (r, s1') <- lift $ runStateT m s1
-  assign project s1'
-  return r
+handleDisconnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
+handleDisconnect i = do
+  modifying rsRegs $ Map.delete i
+  nss <- Map.keysSet . Map.filter ((== i) . fst) <$> use rsVsMap
+  mapM_ relinquish nss
+
 
 handleTrpd
-  :: (Ord i, Monad m)
-  => i -> TrpDigest -> StateT (RelayState i) (RelayProtocol i m) ()
-handleTrpd i d = do
-    (existingOwner, newOwners) <-
-      Map.insertLookupWithKey (\_ v _ -> v) ns i . view rsOwners <$> get
-    result <- runExceptT $ case existingOwner of
-      Nothing -> do
-        when (definesNothing d) $ throwError $
-          Mol.singleton (NamespaceError ns) "Empty namespace claim"
-        frcud <- tryVsUpdate
-        lift $ updateOwners newOwners
-        -- FIXME: would be nice if we didn't have to track ourselves that we'd
-        -- added a new Namespace to the Valuespace Map...
-        lift $ broadcast $ Frcrd $ Map.singleton ns $
-          SoAfter Nothing
-        return frcud
-      (Just i') -> if (i' == i)
-        then tryVsUpdate -- no owner map change
-        else throwError $ Mol.singleton (NamespaceError ns)
-          "Already owned by another provider"
-    either
-      (\errMap -> do
-        sendData' i $ Frped errMap
-        -- FIXME: want to use throwOutProvider, but it does making of
-        -- NamespaceErrors at the moment...
-        lift $ sendRev $ Right $ ServerDisconnect i
-        handleDisconnect i
-      )
-      (\frcud -> do
-         generateClientDigests frcud >>= lift . multicast
-         unsubscribeFromDeleted frcud >>= lift . multicast
-      )
-      result
+  :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Provider 'Update -> m ()
+handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
+    Nothing -> go bvs $
+      broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
+    Just x@(ownerI, vs) ->
+      if i == ownerI
+        then go vs $ return ()
+        else stop >> return (Just x)
   where
-    ns = trpdNs d
+    ns = trpdNs trpd
     bvs = baseValuespace (Tagged $ unNamespace ns) Editable
-    tryVsUpdate :: (Ord i, Monad m) => ExceptT _ (StateT (RelayState i) m) _
-    tryVsUpdate = do
-        vs <- maybe bvs id <$> use (rsVsMap . at ns)
-        let result = processToRelayProviderDigest d vs
-        case result of
-          Left errMap -> throwError errMap
-          Right (updatedTyAssns, vs') -> do
-            assign (rsVsMap . at ns) (Just vs')
-            return $ produceFrcud vs vs' updatedTyAssns
-    produceFrcud vs vs' updatedTyAssns =
+    go vs onSuccess = do
+      (res, vs') <- runStateT (processTrpd trpd) vs
+      case res of
+        Left errs -> throwOutProvider' i errs
+        Right frcud -> do
+          regMap <- use rsRegs
+          multicast $ filterFrcud frcud <$> regMap
+          onSuccess
+      return $ Just (i, vs')
+
+    stop = throwOutProvider i ns "Already owned by another provider"
+
+    filterFrcud frcud regs =
       let
-        augmentedTyAssns = Map.mapWithKey
-           (\p tn -> (tn, either error id $ getEditable p vs')) updatedTyAssns
-        getContOps p = case fromJust $ Tree.lookupNode p $ _vsTree vs' of
-          RtnChildren kb ->
-            (p,) <$> mayContDiff (Tree.lookupNode p $ _vsTree vs) kb
-          _ -> Nothing
-        extraCops = Map.fromAscList $
-          mapMaybe (\p -> parentPath p >>= getContOps) $ Set.toAscList $
-          Map.keysSet updatedTyAssns
-        contOps = extraCops <> vsMinimiseContOps (trpdContOps d) vs
+        dns = Mos.lookup ns $ view crTypeRegs regs
+        pdns = Mos.lookup ns $ view crPostTypeRegs regs
+        paths = Mos.lookup ns $ view crDataRegs regs
+        keepErrIdx = \case
+          GlobalError -> True
+          NamespaceError errNs -> ns == errNs
+          PathError p -> p `Set.member` paths
+          TimePointError p _ -> p `Set.member` paths
+
       in
-        Frcud ns
-          (vsMinimiseDefinitions (trpdPostDefs d) vs)
-          (vsMinimiseDefinitions (trpdDefs d) vs)
-          augmentedTyAssns
-          (vsMinimiseDataDigest (trpdData d) vs)
-          contOps
-          (trpdErrors d)
+        frcud
+          { frcudPostDefs = Map.restrictKeys (frcudPostDefs frcud) pdns
+          , frcudDefs = Map.restrictKeys (frcudDefs frcud) dns
+          , frcudTyAssigns = Map.restrictKeys (frcudTyAssigns frcud) paths
+          , frcudData = AL.alRestrictKeys (frcudData frcud) paths
+          , frcudContOps = Map.restrictKeys (frcudContOps frcud) paths
+          , frcudErrors = Mol.filterWithKey (\dei _ -> keepErrIdx dei)
+              $ frcudErrors frcud
+          }
 
 handleTrprd
-  :: (Eq i, Ord i, Monad m)
-  => i -> TrprDigest -> StateT (RelayState i) (RelayProtocol i m) ()
-handleTrprd i d = runExceptT dropNamespace >>= either
-    (throwOutProvider i (Set.singleton ns))
-    return
+  :: (Queries i m, Sends i m, Ord i)
+  => i -> TrDigest 'Provider 'Relinquish -> m ()
+handleTrprd i d = use (rsVsMap . at ns) >>= doRelinquish . fmap fst
   where
     ns = trprdNs d
-    dropNamespace = do
-      (existing, owners') <- Map.updateLookupWithKey (\_ _ -> Nothing)  ns
-        . view rsOwners <$> get
-      if (existing == Just i)
-        then lift $ do
-          updateOwners owners'
-          modifying rsVsMap $ Map.delete ns
-          unsubscribeFromNs (Set.singleton ns) >>= lift . multicast
-          broadcast $ Frcrd $ Map.singleton ns SoAbsent
-        else throwError "You're not the owner"
+    doRelinquish (Just ownerI) | i == ownerI = relinquish ns
+    doRelinquish _ = do
+      collectFrd i $ Frped $
+        Mol.singleton (NamespaceError ns) "You're not the owner"
+      handleDisconnect i
+
+defaulting :: Functor f => a -> (a -> f a) -> Maybe a -> f (Maybe a)
+defaulting def f = fmap Just . f . fromMaybe def
 
 handleTrcsd
-  :: (Eq i, Ord i, Monad m)
-  => i -> TrcSubDigest -> StateT (RelayState i) (RelayProtocol i m) ()
-handleTrcsd i d = runExceptT go >>= either
-    (uncurry $ throwOutProvider i)
-    return
-  where
-    go = do
-      ownedAndSubd <- Map.keysSet
-        . Map.filter (== i)
+  :: (Queries i m, Sends i m, Ord i)
+  => i -> TrDigest 'Consumer 'Subscribe -> m ()
+handleTrcsd i d = do
+    ownedAndSubd <- Map.keysSet
+        . Map.filter ((== i) . fst)
         . flip Map.restrictKeys (trcsdNamespaces d)
-        . view rsOwners <$> get
-      unless (null ownedAndSubd) $
-        throwError (ownedAndSubd, "Acted as client on own namespace")
-      currentSubs <- fromMaybe mempty <$> use (rsRegs . at i)
-      ((frcuds, addSubs, dropSubs), errMap) <-
-        doInitSub d currentSubs <$> use rsVsMap
-      let subs' = mappend addSubs $ currentSubs `crDifference` dropSubs
-      assign (rsRegs . at i) $ if (crNull subs') then Nothing else Just subs'
+      <$> use rsVsMap
+    if null ownedAndSubd
+      then do
+        manageSub subscribeWithAuto crDataRegs requestedSubs
+        manageSub (subscribe i) crTypeRegs requestedSubs
+        manageSub (subscribe i) crPostTypeRegs requestedSubs
 
-      unless (crNull dropSubs) $ lift $ sendData' i $
-        frcsdFromClientRegs dropSubs
-      unless (null errMap) $ lift $ sendData' i $
-        frcsdEmpty { frcsdErrors = unMol errMap }
-      mapM_ (lift . sendData' i) frcuds
+        manageSub (unsubscribe i) crDataRegs requestedUnsubs
+        manageSub (unsubscribe i) crTypeRegs requestedUnsubs
+        manageSub (unsubscribe i) crPostTypeRegs requestedUnsubs
+      else mapM_
+        (\ns -> throwOutProvider i ns "Acted as client on own namespace")
+        ownedAndSubd
+  where
+    (requestedSubs, requestedUnsubs) = trcsdClientRegs d
+    manageSub f lens subs = mapM_ (uncurry f) $ Mos.toList $ view lens subs
+    subscribeWithAuto ns p = do
+      subscribe i ns p >>= \case
+        Nothing -> return ()
+        Just (_node, (dn, _ed)) -> void $ subscribe i ns dn
 
 handleTrcud
-  :: (Eq i, Ord i, Monad m)
-  => i -> TrcUpdateDigest -> StateT (RelayState i) (RelayProtocol i m) ()
-handleTrcud i d = runExceptT go >>= either
-    (throwOutProvider i $ Set.singleton ns)
-    return
+  :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Consumer 'Update -> m ()
+handleTrcud i trcud = use (rsVsMap . at ns) >>= \case
+    Nothing -> sendBackErrors $
+        Mol.singleton (NamespaceError ns) "Namespace does not exist"
+    Just (ownerI, vs) ->
+      if i == ownerI
+        then throwOutProvider i ns "Acted as client on own namespace"
+        else do
+          (errs, frpd) <- processTrcud trcud vs
+          sendBackErrors errs
+          collectFrd ownerI frpd
   where
-    ns = trcudNs d
-    go = do
-      -- FIXME: this is where vs and owner being tied together might be
-      -- useful...
-      owner <- use (rsOwners . at ns)
-      when (owner == Just i) $ throwError "Acted as client on own namespace"
-      use (rsVsMap . at ns) >>= \case
-        Nothing -> lift $ sendData' i $ (frcudEmpty ns)
-          { frcudErrors =
-            Mol.singleton (NamespaceError ns) "Namespace does not exist"}
-        Just vs ->
-          let
-            (errMap, ProtoFrpDigest dat cr cont) = processTrcUpdateDigest vs d
-            frpd = Frpd ns dat cr cont
-          in do
-            unless (null errMap) $ lift $ sendData' i $
-              (frcudEmpty ns) {frcudErrors = Text.pack . show <$> errMap}
-            case owner of
-              Nothing -> error "Namespace doesn't have owner, apparently"
-              Just oi -> unless (frDigestNull frpd) $ lift $ sendData' oi frpd
+    ns = trcudNs trcud
+    sendBackErrors errs = collectFrd i $ (frcudEmpty ns) { frcudErrors = errs }
 
-handleDisconnect
-  :: (Ord i, Monad m) => i -> StateT (RelayState i) (RelayProtocol i m) ()
-handleDisconnect i = do
-  modifying rsAllClients $ Set.delete i
-  modifying rsRegs $ Map.delete i
-  (removed, remaining) <- Map.partition (== i) . view rsOwners
-    <$> get
-  modify $ over rsVsMap $ flip Map.withoutKeys (Map.keysSet removed)
-  unsubscribeFromNs (Map.keysSet removed) >>= lift . multicast
-  unless (null removed) $ do
-    updateOwners remaining
-    broadcast $ Frcrd $ fmap (const SoAbsent) removed
+updateLookup
+  :: (Ord k, MonadState s m)
+  => Lens.Lens' s (Map k a) -> (Maybe a -> Maybe a) -> k -> m (Maybe a)
+updateLookup lens f k = do
+  m <- use lens
+  -- NB. could replace with `at k (\a -> (a, f a)) m` and make polymorphic, but
+  -- it makes the type harder to grok:
+  let (a, m') = Map.alterF (\a -> (a, f a)) k m
+  assign lens m'
+  return a
 
-sendData :: Monad m => i -> FrDigest r a -> RelayProtocol i m ()
-sendData i = sendData_ i . SomeFrDigest
+relinquish :: (Ord i, Queries i m, Sends i m) => Namespace -> m ()
+relinquish ns = do
+  ma <- updateLookup rsVsMap (const Nothing) ns
+  case ma of
+    Nothing -> return ()
+    Just (i, vs) -> do
+      -- FIXME: This doesn't check that the namespace is owned by the
+      -- reqlinquisher
+      broadcast $ Frcrd $ Map.singleton ns SoAbsent
+  unsubscribeNs ns
 
-sendData_ :: Monad m => i -> SomeFrDigest -> RelayProtocol i m ()
-sendData_ i = sendRev . Right . ServerData i
-
-sendData'
-  :: Monad m
-  => i -> FrDigest r a -> StateT (RelayState i) (RelayProtocol i m) ()
-sendData' i = lift . sendData i
-
-sendData'_
-  :: Monad m
-  => i -> SomeFrDigest -> StateT (RelayState i) (RelayProtocol i m) ()
-sendData'_ i = lift . sendData_ i
-
-multicast :: Monad m => Map i (FrDigest r a) -> RelayProtocol i m ()
-multicast = void . sequence . Map.mapWithKey sendData
-
-broadcast
-  :: Monad m => FrDigest r a -> StateT (RelayState i) (RelayProtocol i m) ()
-broadcast d = get
-  >>= lift . multicast . Map.fromSet (const d) . view rsAllClients
-
-unsubscribe
-  :: Monad m
-  => (ClientRegs -> (ClientRegs, ClientRegs))
-  -> StateT (RelayState i) m (Map i FrcSubDigest)
-unsubscribe partitionRegs = do
-    partdRegs <- fmap partitionRegs . view rsRegs <$> get
-    modify $ set rsRegs $ snd <$> partdRegs
-    pure $ Map.filter (not . frDigestNull) $ mkFrcsd . fst <$> partdRegs
+unsubscribeNs :: (Ord i, Queries i m, Sends i m) => Namespace -> m ()
+unsubscribeNs ns = do
+    partitionedRegs <- fmap (crDeleteLookupNs ns) <$> use rsRegs
+    assign rsRegs $ snd <$> partitionedRegs
+    multicast $ mkFrcsd . fst <$> partitionedRegs
   where
-    mkFrcsd (ClientRegs goneP goneT goneD) =
-      Frcsd mempty goneP goneT goneD
+    mkFrcsd (ClientRegs p t d) = Frcsd mempty p t d
 
-unsubscribeFromNs
-  :: Monad m => Set Namespace -> StateT (RelayState i) m (Map i FrcSubDigest)
-unsubscribeFromNs nss = unsubscribe partitionRegs
-  where
-    partitionRegs :: ClientRegs -> (ClientRegs, ClientRegs)
-    partitionRegs (ClientRegs p t d) =
-      let
-        part :: Mos Namespace a -> (Mos Namespace a, Mos Namespace a)
-        part = Mos.partitionKey (`Set.member` nss)
-        (goneP, keepP) = part p
-        (goneT, keepT) = part t
-        (goneD, keepD) = part d
-      in
-        (ClientRegs goneP goneT goneD, ClientRegs keepP keepT keepD)
-
-unsubscribeFromDeleted
-  :: Monad m => FrcUpdateDigest -> StateT (RelayState i) m (Map i FrcSubDigest)
-unsubscribeFromDeleted frcud = unsubscribe partitionRegs
-  where
-    ns = frcudNs frcud
-    undefs = Map.keysSet . Map.filter isUndef
-    allUndefPTys = undefs $ frcudPostDefs frcud
-    allUndefTys = undefs $ frcudDefs frcud
-    allDeletePaths = Map.keysSet $ flattenNestedMaps (:/) $
-      Map.filter isSoAbsent . fmap snd <$> frcudContOps frcud
-
-    partitionRegs (ClientRegs p t d) =
-      let
-        f :: Ord a => Set a -> Mos Namespace a -> (Mos Namespace a, Mos Namespace a)
-        f s mos = bimap (Mos.singletonSet ns) (\s' -> Mos.replaceSet ns s' mos)
-          $ Set.partition (`Set.member` s) $ Mos.lookup ns mos
-        (goneP, keepP) = f allUndefPTys p
-        (goneT, keepT) = f allUndefTys t
-        (goneD, keepD) = f allDeletePaths d
-      in
-        (ClientRegs goneP goneT goneD, ClientRegs keepP keepT keepD)
-
-generateClientDigests
-  :: Monad m
-  => FrcUpdateDigest -> StateT (RelayState i) m (Map i FrcUpdateDigest)
-generateClientDigests (Frcud ns ptds tds tas dat cops errs) =
-    Map.filter (not . frDigestNull) . fmap filterFrcud . view rsRegs <$> get
-  where
-    filterFrcud :: ClientRegs -> FrcUpdateDigest
-    filterFrcud (ClientRegs pt t d) =
-      let
-        nsPs = Mos.lookup ns pt
-        nsTs = Mos.lookup ns t
-        nsDs = Mos.lookup ns d
-      in
-        Frcud ns
-          (Map.restrictKeys ptds nsPs)
-          (Map.restrictKeys tds nsTs)
-          (Map.restrictKeys tas nsDs)
-          (alFilterKey (`Set.member` nsDs) dat)
-          (Map.restrictKeys cops nsDs)
-          (Mol.filterWithKey (\dei _ -> case dei of
-            GlobalError -> True
-            NamespaceError errNs ->
-                 (pt `Mos.hasKey` errNs)
-              || (t `Mos.hasKey` errNs)
-              || (d `Mos.hasKey` errNs)
-            PathError p -> p `Set.member` nsDs
-            TimePointError p _ -> p `Set.member` nsDs)
-            errs)
-
-
-throwOutProvider
-  :: (Ord i, Monad m) => i -> Set Namespace -> String
-  -> StateT (RelayState i) (RelayProtocol i m) ()
-throwOutProvider i nss msg = do
-  -- FIXME: I'm quite sure that we should be taking namespaces...
-  lift $ sendRev $ Right $ ServerData i $ SomeFrDigest $ Frped $
-    Mol.fromSetSingle (const $ Text.pack msg) $ Set.map NamespaceError nss
-  lift $ sendRev $ Right $ ServerDisconnect i
+throwOutProvider'
+  :: (Ord i, Sends i m, Queries i m) => i -> Mol DataErrorIndex Text -> m ()
+throwOutProvider' i mol = do
+  collectFrd i $ Frped mol
+  disconnect i
   handleDisconnect i
 
--- | A helper function to make sure we broadcast sneaky sideways updates
---   whenever we change the owners map.
-updateOwners
-  :: Monad m
-  => Map Namespace i -> StateT (RelayState i) (RelayProtocol i m) ()
-updateOwners owners = do
-  modify $ set rsOwners owners
-  lift $ sendRev $ Left owners
+throwOutProvider
+  :: (Ord i, Sends i m, Queries i m) => i -> Namespace -> Text -> m ()
+throwOutProvider i ns reason =
+  throwOutProvider' i $ Mol.singleton (NamespaceError ns) reason
 
-doInitSub
-  :: TrcSubDigest -> ClientRegs -> Map Namespace Valuespace
-  -> (([FrcUpdateDigest], ClientRegs, ClientRegs), Mol SubErrorIndex Text)
-doInitSub trcsd currentSubs vsm = runWriter $ do
-    let (requestedSubs, requestedUnsubs) = trcsdClientRegs trcsd
-    let newRequestedSubs = requestedSubs `crDifference` currentSubs
-    let newDataSubs = view crDataRegs newRequestedSubs
-    treeData <- h (rGet vsm) newDataSubs
-    let sucDataSubs = successful treeData newDataSubs
-    -- The treeData contains type name info for each path, which we use to
-    -- auto-subscribe clients to the types they need for the paths they've asked
-    -- about:
-    let autoTySubs = Mos.fromList $ Map.toList $ Map.mapKeysMonotonic fst $
-          view _2 <$> treeData
-    -- NB: so that clients can choose never to hear about an auto-sub type:
-    let autoTySubs' = autoTySubs `Mos.difference` view crTypeRegs requestedUnsubs
-    let newTySubs = view crTypeRegs newRequestedSubs <> autoTySubs'
-    tyDefs <- h (rLookupDef vsm) newTySubs
-    let sucTySubs = successful tyDefs newTySubs
-    -- FIXME: perhaps want to auto-sub PostDefinitions too?
-    let newPostTySubs = view crPostTypeRegs newRequestedSubs
-    postDefs <- h (rLookupDef vsm) newPostTySubs
-    let sucPostTySubs = successful postDefs newPostTySubs
+subscribe
+  :: (Ord a, Ord i, Subscribable a, Sends i m, Queries i m)
+  => i -> Namespace -> a -> m (Maybe (SubData a))
+subscribe i ns a =
+  use (rsVsMap . at ns) >>= \case
+    Nothing -> sendUnsubscribe i ns a >> return Nothing
+    Just (_ownerI, vs) -> case evalState (runExceptT $ vsGet a) vs of
+      Left _ -> sendUnsubscribe i ns a >> return Nothing
+      Right sd -> do
+        Error.modifying (rsRegs . at i . defaulting mempty . crLens)
+          $ \mos -> if Mos.contains ns a mos
+              then return mos
+              else do
+                collectFrd i $ mkFrcud ns a sd
+                return $ Mos.insert ns a mos
+        -- FIXME: we might want only to return you the data if this is a new
+        -- subscription:
+        return $ Just sd
 
-    let frcuds = Map.elems $ Map.mapWithKey toFrcud $ Map.unionsWith (<>)
-          [ i (toDefPfrcud setPostDefs) postDefs
-          , i (toDefPfrcud setTyDefs) tyDefs
-          , i (toDatPfrcud newTySubs) treeData
-          ]
+sendUnsubscribe
+  :: (Ord i, Subscribable a, Sends i m) => i -> Namespace -> a -> m ()
+sendUnsubscribe i ns a = collectFrd i $ mkFrcsd ns a
 
-    return ( frcuds
-           , ClientRegs sucPostTySubs sucTySubs sucDataSubs
-           , requestedUnsubs `crIntersection` currentSubs
-           )
-  where
-    g :: (a -> b -> Either c d) -> (a, b) -> Either c ((a, b), d)
-    g f x@(a, b) = second (x,) $ f a b
+unsubscribe
+  :: (Ord i, Ord a, Subscribable a, Queries i m, Sends i m)
+  => i -> Namespace -> a -> m ()
+unsubscribe i ns a =
+  Error.modifying (rsRegs . at i . defaulting mempty . crLens) $ \mos ->
+    if Mos.contains ns a mos
+      then do
+        sendUnsubscribe i ns a
+        return $ Mos.delete ns a mos
+      else return mos
 
-    h :: (Ord b, MkSubErrIdx b)
-      => (Namespace -> b -> Either (SubErrorIndex, String) d)
-      -> Mos Namespace b
-      -> Writer (Mol SubErrorIndex Text) (Map (Namespace, b) d)
-    h f m = let (errs, results) = partitionEithers $ g f <$> Mos.toList m in do
-      tell (Mol.fromList $ fmap Text.pack <$> errs)
-      return (Map.fromList results)
+class Subscribable a where
+  type SubData a = r | r -> a
+  crLens :: Lens.Lens' ClientRegs (Mos Namespace a)
+  mkFrcsd :: Namespace -> a -> FrcSubDigest
+  vsGet
+    :: (MonadState Valuespace m, MonadError ProviderError m)
+    => a -> m (SubData a)
+  mkFrcud :: Namespace -> a -> SubData a -> FrcUpdateDigest
 
-    i :: (a -> b -> c -> d) -> Map (a, b) c -> Map a d
-    i f = Map.mapKeysMonotonic fst . Map.mapWithKey (uncurry f)
+instance Subscribable PostDefName where
+  type SubData PostDefName = PostDefinition
+  crLens = crPostTypeRegs
+  mkFrcsd ns dn = Frcsd mempty (Mos.singleton ns dn) mempty mempty
+  vsGet = lookupPostDef
+  mkFrcud ns dn pd = (frcudEmpty ns)
+    { frcudPostDefs = Map.singleton dn $ OpDefine pd }
 
-    successful
-      :: Ord b => Map (Namespace, b) d -> Mos Namespace b -> Mos Namespace b
-    successful lookedUp =
-      Mos.filterWithKey (\ns b -> (ns, b) `Map.member` lookedUp)
+instance Subscribable DefName where
+  type SubData DefName = SomeDefinition
+  crLens = crTypeRegs
+  mkFrcsd ns dn = Frcsd mempty mempty (Mos.singleton ns dn) mempty
+  vsGet = lookupDef
+  mkFrcud ns dn d = (frcudEmpty ns)
+    { frcudDefs = Map.singleton dn $ OpDefine d }
 
-    toDatPfrcud wantedTns ns path (def, tn, ed, treeNode) =
-      let
-        pfrcud = mempty
-          { pfrcudDefinitions = if Mos.contains ns tn wantedTns
-              then Map.singleton tn (OpDefine def)
-              else mempty
-          , pfrcudTypeAssignments = Map.singleton path (tn, ed)
-          }
-      in
-        case treeNode of
-          RtnEmpty -> undefined -- FIXME: might want to get rid of RtnEmpty
-          RtnChildren kids -> pfrcud
-            { pfrcudContOps = Map.singleton path (oppifySequence kids) }
-          RtnConstData att vals -> pfrcud
-            { pfrcudData = alSingleton path (ConstChange att vals) }
-          RtnDataSeries ts -> pfrcud
-            { pfrcudData = alSingleton path (oppifyTimeSeries ts) }
+instance Subscribable Path where
+  type SubData Path = (RoseTreeNode [SomeWireValue], (DefName, Editability))
+  crLens = crDataRegs
+  mkFrcsd ns p = Frcsd mempty mempty mempty $ Mos.singleton ns p
+  vsGet p = (,) <$> pathNode p <*> pathTyInfo p
+  mkFrcud ns p (node, tyInfo) =
+      (explainNode ns p node){ frcudTyAssigns = Map.singleton p tyInfo }
+    where
+      explainNode
+        :: Namespace -> Path -> RoseTreeNode [SomeWireValue] -> FrcUpdateDigest
+      explainNode ns p = \case
+        RtnEmpty -> undefined  -- FIXME: want to get rid of RtnEmpty
+        RtnChildren kids -> (frcudEmpty ns)
+          { frcudContOps = Map.singleton p $ oppifySequence kids }
+        RtnConstData att vals -> (frcudEmpty ns)
+          { frcudData = AL.alSingleton p (ConstChange att vals) }
+        RtnDataSeries ts -> (frcudEmpty ns)
+          { frcudData = AL.alSingleton p $ oppifyTimeSeries ts}
 
-    toDefPfrcud setter _ns tn def = setter $ Map.singleton tn $ OpDefine def
-    setPostDefs x = mempty { pfrcudPostDefs = x }
-    setTyDefs x = mempty { pfrcudDefinitions = x }
+      oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
+      oppifyTimeSeries ts = TimeChange $
+        Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
 
-rLookupDef
-  :: (VsLookupDef def, MkSubErrIdx (Tagged def Seg))
-  => Map Namespace Valuespace -> Namespace -> Tagged def Seg
-  -> Either (SubErrorIndex, String) def
-rLookupDef vsm ns s =
-    vsmLookupVs ns vsm >>= first (mkSubErrIdx ns s,) . vsLookupDef s
+      oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
+      oppifySequence al =
+        let (alKs, alVs) = unzip $ AL.unAssocList al in
+          Map.fromList $ zipWith3
+            (\k afterK v -> (k, (v, SoAfter afterK)))
+            alKs (Nothing : (Just <$> alKs)) alVs
 
-rGet
-  :: Map Namespace Valuespace -> Namespace -> Path
-  -> Either
-       (SubErrorIndex, String)
-       (SomeDefinition, DefName, Editability, RoseTreeNode [SomeWireValue])
-rGet vsm ns p =
-    vsmLookupVs ns vsm >>= first (mkSubErrIdx ns p,) . valuespaceGet p
 
--- FIXME: Worst case implementation
-vsMinimiseDefinitions
-  :: Map (Tagged def Seg) (DefOp def)
-  -> Valuespace
-  -> Map (Tagged def Seg) (DefOp def)
-vsMinimiseDefinitions defs _ = defs
+{- The idea with the MonadWriter here is that the logic handling bits of the
+Relay code can emit messages as and when they please without worrying about how
+to keep them condensed into the smallest number of digests for the clients.
 
--- FIXME: Worst case implementation
-vsMinimiseDataDigest :: DataDigest -> Valuespace -> DataDigest
-vsMinimiseDataDigest dd _ = dd
+When we are done processing the digest that came in, we can look at the list of
+digests for each client and condense it down to the minimal set.
+-}
 
--- FIXME: Worst case implementation
-vsMinimiseContOps :: ContOps k -> Valuespace -> ContOps k
-vsMinimiseContOps contOps _ = contOps
+instance Ord i => Semigroup (Buffer i) where
+  Buffer m1 frcrds1 o1 d1 <> Buffer m2 frcrds2 o2 d2 =
+    Buffer (m1 <> m2) (frcrds1 <> frcrds2) (o1 <> o2) (d1 <> d2)
 
-generateRootUpdates
-  :: Map Namespace Valuespace -> Map Namespace Valuespace -> FrcRootDigest
-generateRootUpdates vsm vsm' =
-  let
-    (addedRootNames, removedRootNames) = partitionDifference
-      (Map.keysSet vsm') (Map.keysSet vsm)
-    addedRcos = Map.fromSet (const $ SoAfter Nothing) addedRootNames
-    removedRcos = Map.fromSet (const SoAbsent) removedRootNames
-  in
-    Frcrd $ addedRcos <> removedRcos
+instance Ord i => Monoid (Buffer i) where
+  mempty = Buffer mempty mempty mempty mempty
+
+collectFrd :: (Ord i, Sends i m) => i -> FrDigest r a -> m ()
+collectFrd i = tell . bufferDigest i
+
+multicast :: (Ord i, Sends i m) => Map i (FrDigest r a) -> m ()
+multicast = mapM_ (uncurry collectFrd) . Map.toList
+
+broadcast :: (Ord i, Queries i m, Sends i m) => FrDigest r a -> m ()
+broadcast d = use rsRegs >>= multicast . fmap (const d)
+
+disconnect :: (Ord i, Sends i m) => i -> m ()
+disconnect = tell . Buffer mempty mempty mempty . Set.singleton
+
+doSend :: Monad m => Buffer i -> RelayProtocol i m ()
+doSend = mapM_ sendRev . toServerEvents
+
+bufferDigest :: forall i r a. Ord i => i -> FrDigest r a -> Buffer i
+bufferDigest i d = mempty @(Buffer i) & case d of
+    Frpd {} -> set (bMsgs . at i . defaulting mempty . mbFrpds)
+      $ SemigroupMap $ Map.singleton (frpdNs d) d
+    Frped {} -> set (bMsgs . at i . defaulting mempty . mbFrped) d
+    Frcrd {} -> set (bFrcrds . at i) $ Just d
+    Frcsd {} -> set (bMsgs . at i . defaulting mempty . mbFrcsd) d
+    Frcud {} -> set (bMsgs . at i . defaulting mempty . mbFrcuds)
+      $ SemigroupMap $ Map.singleton (frcudNs d) d
+
+toServerEvents
+  :: Buffer i -> [Either (Map Namespace i) (ServerEvent i SomeFrDigest)]
+toServerEvents
+  (Buffer (SemigroupMap msgBuffers) frcrds (Last owners) disconnected) =
+    (Map.foldMapWithKey
+      (\i mb -> Right . ServerData i <$> toDigests mb)
+      msgBuffers)
+    ++ (
+      Right . (\(i, frcrd) -> ServerData i $ SomeFrDigest frcrd)
+      <$> Map.toList frcrds)
+    ++ (Right . ServerDisconnect <$> Set.toList disconnected)
+    ++ case owners of
+         -- No updates:
+         Nothing -> []
+         -- Changes:
+         Just ownerMap -> [Left ownerMap]
+
+toDigests :: MessageBuffer -> [SomeFrDigest]
+toDigests (MessageBuffer frpds frped frcsd frcuds) =
+  (SomeFrDigest
+     <$> filter (not . frDigestNull) (Map.elems $ unSemigroupMap frpds))
+  ++ (if frDigestNull frped then [] else [SomeFrDigest frped])
+  ++ (if frDigestNull frcsd then [] else [SomeFrDigest frcsd])
+  ++
+  (SomeFrDigest
+     <$> filter (not . frDigestNull) (Map.elems $ unSemigroupMap frcuds))

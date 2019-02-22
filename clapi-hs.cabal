@@ -35,7 +35,6 @@ library
                      , Clapi.Protocol
                      , Clapi.PerClientProto
                      , Clapi.Relay
-                     , Clapi.Relay2
                      , Clapi.RelayApi
                      , Clapi.Serialisation
                      , Clapi.Serialisation.Base
