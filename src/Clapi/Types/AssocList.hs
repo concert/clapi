@@ -9,13 +9,14 @@ module Clapi.Types.AssocList
   , alEmpty, alSingleton, alFromKeys, alFromList, alFromMap, alPickFromMap
   , alToMap, alFromZip
   , alCons, alLookup, alInsert, alSetDefault, alDelete
-  , alKeys, alKeysSet, alValues
+  , alKeys, alKeys_, alKeysSet, alValues
   , alPartitionWithKey
   , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
+  , alRestrictKeys
   , alAlterF, alAlter, alAdjust
   ) where
 
-import Prelude hiding (fail)
+import Prelude hiding (fail, filter)
 import Control.Monad.Fail (MonadFail(..))
 import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
@@ -27,7 +28,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Clapi.Types.UniqList (UniqList, unUniqList, unsafeMkUniqList)
-import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError)
+import Clapi.Util (ensureUnique, strictZip, fmtStrictZipError, Filterable(..))
 
 newtype AssocList a b
   = AssocList {unAssocList :: [(a, b)]}
@@ -96,6 +97,9 @@ alDelete k = alAlter (const Nothing) k
 alKeys :: AssocList a b -> UniqList a
 alKeys = unsafeMkUniqList . fmap fst . unAssocList
 
+alKeys_ :: AssocList a b -> [a]
+alKeys_ = unUniqList . alKeys
+
 alKeysSet :: Ord a => AssocList a b -> Set a
 alKeysSet = Set.fromList . fmap fst . unAssocList
 
@@ -125,6 +129,9 @@ alFilterWithKey f = AssocList . filter (uncurry f) . unAssocList
 alFilterKey :: (k -> Bool) -> AssocList k b -> AssocList k b
 alFilterKey f = alFilterWithKey $ \k _ -> f k
 
+alRestrictKeys :: Ord k => AssocList k a -> Set k -> AssocList k a
+alRestrictKeys al s = alFilterWithKey (\k _ -> k `Set.member` s) al
+
 alAlterF
   :: (Eq k, Functor f) => (Maybe b -> f (Maybe b)) -> k -> AssocList k b
   -> f (AssocList k b)
@@ -140,3 +147,7 @@ alAlter f k = runIdentity . alAlterF (Identity . f) k
 
 alAdjust :: Eq k => (b -> b) -> k -> AssocList k b -> AssocList k b
 alAdjust f k = alAlter (fmap f) k
+
+
+instance Filterable (AssocList k) where
+  filter f = alFilterWithKey (const f)

@@ -5,6 +5,7 @@
 #-}
 module Data.Map.Mol where
 
+import Control.Monad (foldM, void)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -32,13 +33,16 @@ fromList :: (Ord k) => [(k, a)] -> Mol k a
 fromList = foldr (uncurry cons) mempty
 
 fromSet :: (k -> [a]) -> Set k -> Mol k a
-fromSet f = Mol . Map.fromSet f
+fromSet f = Mol . Map.filter (not . null) . Map.fromSet f
 
 toList :: (Ord k) => Mol k a -> [(k, a)]
 toList (Mol m) = mconcat $ sequence <$> Map.toList m
 
 fromMap :: Map k [a] -> Mol k a
 fromMap = Mol . Map.filter (not . null)
+
+fromMapSingle :: Map k a -> Mol k a
+fromMapSingle = Mol . fmap pure
 
 fromSetSingle :: (k -> a) -> Set k -> Mol k a
 fromSetSingle f = fromSet (pure . f)
@@ -78,3 +82,15 @@ mapKeysMonotonic f = Mol . Map.mapKeysMonotonic f . unMol
 
 filterWithKey :: (k -> a -> Bool) -> Mol k a -> Mol k a
 filterWithKey p = fromMap . Map.mapWithKey (\k as -> filter (p k) as) . unMol
+
+foldMWithKey :: (Ord k, Monad m) => (b -> k -> a -> m b) -> b -> Mol k a -> m b
+foldMWithKey f acc = foldM (\acc' (k, a) -> f acc' k a) acc . toList
+
+traverseWithKey :: Applicative m => (k -> a -> m b) -> Mol k a -> m (Mol k b)
+traverseWithKey f =
+    fmap Mol
+  . Map.traverseWithKey (\k -> traverse $ f k)
+  . unMol
+
+mapMWithKey_ :: Applicative m => (k -> a -> m b) -> Mol k a -> m ()
+mapMWithKey_ f = void . traverseWithKey f

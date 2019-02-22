@@ -9,7 +9,8 @@ module Data.Map.Mos
   , keysSet, hasKey, member, contains
   , invert
   , toList, toSet, valueSet
-  , insert, insertSet, replaceSet, delete, deleteSet, remove, removeSet
+  , insert, insertSet, replaceSet, delete, deleteSet, deleteLookupSet
+  , remove, removeSet
   , lookup
   , difference, intersection, union
   , filter, filterWithKey, filterKey
@@ -21,6 +22,7 @@ import Prelude hiding (lookup, map, filter)
 
 import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
+import Data.Maybe (fromMaybe)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Map.Merge.Strict (
@@ -107,6 +109,13 @@ delete k a = Mos . Map.update f k . unMos
 
 deleteSet :: Ord k => k -> Mos k a -> Mos k a
 deleteSet k = Mos . Map.delete k . unMos
+
+deleteLookupSet :: (Ord k, Ord a) => k -> Mos k a -> (Set a, Mos k a)
+deleteLookupSet k (Mos m) =
+  let
+    (s, m') = Map.updateLookupWithKey (\_ _ -> Nothing) k m
+  in
+    (fromMaybe mempty s, Mos m')
 
 remove :: (Ord k, Ord a) => a -> Mos k a -> Mos k a
 remove a = Mos . Map.mapMaybe (Maybe.fromFoldable . (Set.delete a)) . unMos

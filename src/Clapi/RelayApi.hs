@@ -17,7 +17,6 @@ import qualified Data.Text as Text
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (WireValue(..), TimeStamped(..), Editability(..))
 import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
-import Clapi.Types.Base (InterpolationLimit(ILUninterpolated))
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   ( TrDigest(..), FrDigest(..), SomeTrDigest(..), SomeFrDigest(..)
@@ -56,15 +55,15 @@ relayApiProto selfAddr =
       (Map.fromList $ bimap Tagged OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
              (alSingleton [segq|commit_hash|] $ ttString "banana")
-             ILUninterpolated)
+             Nothing)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
              (alSingleton [segq|seconds|] $ ttFloat unbounded)
-             ILUninterpolated)
+             Nothing)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
              (alSingleton [segq|name|] $ ttString "")
-             ILUninterpolated)
+             Nothing)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
              [ (dn, (Tagged dn, Editable))
@@ -76,12 +75,12 @@ relayApiProto selfAddr =
              (alSingleton [segq|owner|]
                -- FIXME: want to make Ref's Seg tagged...
                $ ttRef [segq|client_info|])
-             ILUninterpolated)
+             Nothing)
         , ([segq|owners|], arrayDef "ownersdoc"
              Nothing (Tagged [segq|owner_info|]) ReadOnly)
         , ([segq|self|], tupleDef "Which client you are"
              (alSingleton [segq|info|] $ ttRef [segq|client_info|])
-             ILUninterpolated)
+             Nothing)
         , ([segq|relay|], structDef "topdoc" $ staticAl
           [ ([segq|build|], (Tagged [segq|build|], ReadOnly))
           , ([segq|clients|], (Tagged [segq|clients|], ReadOnly))

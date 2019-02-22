@@ -9,9 +9,11 @@ module Clapi.Validator where
 
 import Prelude hiding (fail)
 
-import Control.Monad (void, (>=>))
+import Control.Monad ((>=>))
 import Control.Monad.Fail (MonadFail(..))
 import Data.Constraint (Dict(..))
+import Data.Either (partitionEithers)
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tagged (Tagged(..))
 import Data.Text (Text)
@@ -20,14 +22,15 @@ import Data.Type.Equality ((:~:)(..))
 import Text.Regex.PCRE ((=~~))
 import Text.Printf (printf, PrintfArg)
 
-import Clapi.Util (ensureUnique, foldMapM)
+import Clapi.Util (ensureUnique, foldMapM, fmtStrictZipError, strictZipWith)
 import Clapi.TextSerialisation (ttToText)
+import Clapi.Types ()
 import Clapi.Types.Definitions (DefName)
 import Clapi.Types.EnumVal (enumVal)
 import Clapi.Types.Path (Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
-import Clapi.Types.UniqList (mkUniqList)
+import Clapi.Types.UniqList (mkUniqList, unUniqList)
 import Clapi.Types.Wire
 
 
@@ -50,23 +53,37 @@ checkString r t = maybe
   (const $ return t)
   (Text.unpack t =~~ Text.unpack r :: Maybe ())
 
-validateValue :: MonadFail m => TreeType a -> a -> m ()
+data TypeAssertion
+  = TypeAssertion
+  -- FIXME: This should be a Referee rather than just a naked Path
+  { taPath :: Path
+  , taDefName :: DefName
+  } deriving (Show, Eq, Ord)
+
+validateValue :: MonadFail m => TreeType a -> a -> m (Set TypeAssertion)
 validateValue = \case
-  TtTime -> void . return
-  TtEnum _ -> void . return
-  TtWord32 b -> void . inBounds b
-  TtWord64 b -> void . inBounds b
-  TtInt32 b -> void . inBounds b
-  TtInt64 b -> void . inBounds b
-  TtFloat b -> void . inBounds b
-  TtDouble b -> void . inBounds b
-  TtString pat -> void . checkString pat
-  TtRef _ -> void . return
-  TtList tt -> mapM_ $ validateValue tt
-  TtSet tt ->  mapM_ $ validateValue tt
-  TtOrdSet tt -> mapM_ $ validateValue tt
-  TtMaybe tt -> mapM_ $ validateValue tt
-  TtPair tt1 tt2 -> \(a, b) -> validateValue tt1 a >> validateValue tt2 b
+    TtTime -> none . return
+    TtEnum _ -> none . return
+    TtWord32 b -> none . inBounds b
+    TtWord64 b -> none . inBounds b
+    TtInt32 b -> none . inBounds b
+    TtInt64 b -> none . inBounds b
+    TtFloat b -> none . inBounds b
+    TtDouble b -> none . inBounds b
+    TtString pat -> none . checkString pat
+    TtRef dn -> return . Set.singleton . flip TypeAssertion (Tagged dn)
+    TtList tt -> subValidate tt
+    TtSet tt -> subValidate tt . Set.toList
+    TtOrdSet tt -> subValidate tt . unUniqList
+    TtMaybe tt -> subValidate tt . maybe [] pure
+    TtPair tt1 tt2 -> \(a, b) ->
+      (<>) <$> validateValue tt1 a <*> validateValue tt2 b
+  where
+    none :: (Monoid b, Functor m) => m a -> m b
+    none = fmap (const mempty)
+
+    subValidate :: MonadFail m => TreeType a -> [a] -> m (Set TypeAssertion)
+    subValidate tt = fmap mconcat . mapM (validateValue tt)
 
 typeValid :: MonadFail m => WireType a -> TreeType b -> m (a :~: WireTypeOf b)
 typeValid WtTime TtTime = return Refl
@@ -117,15 +134,26 @@ inflateValue = \case
   TtPair tt1 tt2 -> \(a, b) ->
     (,) <$> inflateValue tt1 a <*> inflateValue tt2 b
 
-validate :: MonadFail m => TreeType a -> WireValue b -> m a
+validate :: MonadFail m => TreeType a -> WireValue b -> m (Set TypeAssertion, a)
 validate tt (WireValue wt b) = do
   Refl <- typeValid wt tt
   a <- inflateValue tt b
-  validateValue tt a
-  return a
+  tas <- validateValue tt a
+  return (tas, a)
 
-validate_ :: MonadFail m => SomeTreeType -> SomeWireValue -> m ()
-validate_ (SomeTreeType tt) (SomeWireValue wv) = void $ validate tt wv
+validate_
+  :: MonadFail m => SomeTreeType -> SomeWireValue -> m (Set TypeAssertion)
+validate_ (SomeTreeType tt) (SomeWireValue wv) = fst <$> validate tt wv
+
+
+validateValues
+  :: [SomeTreeType] -> [SomeWireValue] -> Either [String] (Set TypeAssertion)
+validateValues tts vs = either (Left . pure) collect $
+    fmtStrictZipError "types" "values" $ strictZipWith validate_ tts vs
+  where
+    collect :: Monoid b => [Either a b] -> Either [a] b
+    collect es = let (errs, b) = partitionEithers es in
+      if (null errs) then return $ mconcat b else Left errs
 
 
 extractTypeAssertions

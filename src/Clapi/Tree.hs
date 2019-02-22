@@ -1,8 +1,7 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
-  , TemplateHaskell
-  , TypeFamilies
+  , LambdaCase
 #-}
 
 module Clapi.Tree where
@@ -232,3 +231,35 @@ rtType rt = case rt of
   RtContainer _ -> RtntContainer
   RtConstData _ _ -> RtntConstData
   RtDataSeries _ -> RtntDataSeries
+
+
+constSetAt :: Maybe Attributee -> Path -> a -> RoseTree a -> RoseTree a
+constSetAt att p a = adjust att (constSet att a) p
+
+setTpAt
+  :: MonadFail m
+  => Maybe Attributee -> Path -> TpId -> Time -> a -> Interpolation
+  -> RoseTree a -> m (RoseTree a)
+setTpAt att p tpid t a i = adjustF Nothing (set tpid t a i att) p
+
+removeTpAt
+  :: MonadFail m
+  => Maybe Attributee -> Path -> TpId -> RoseTree a -> m (RoseTree a)
+removeTpAt att p tpid = adjustF Nothing (remove tpid) p
+
+applyReorderingsAt
+  :: MonadFail m
+  => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> RoseTree a
+  -> m (RoseTree a)
+applyReorderingsAt p cOps = adjustF Nothing (applyReorderings cOps) p
+
+childNamesAt :: Path -> RoseTree a -> Maybe [Seg]
+childNamesAt p = fmap childNames . lookup p
+
+-- | Initialise a container at the given path if it is not already a container.
+initContainerAt :: Path -> RoseTree a -> RoseTree a
+initContainerAt = alter Nothing $ Just . maybe (RtContainer mempty)
+  (\case
+    t@(RtContainer {}) -> t
+    _ -> RtContainer mempty
+  )

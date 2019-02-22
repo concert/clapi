@@ -7,11 +7,13 @@
   , RankNTypes
   , StandaloneDeriving
   , TypeSynonymInstances
+  , TemplateHaskell
 #-}
 
 module Clapi.Types.Digests where
 
-import Data.Bifunctor (bimap)
+import Control.Lens (makeLenses)
+import Data.Bifunctor (bimap, first)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -64,6 +66,9 @@ instance MkSubErrIdx Path where
   mkSubErrIdx = PathSubError
 
 data DefOp def = OpDefine {odDef :: def} | OpUndefine deriving (Show, Eq)
+
+isDef :: DefOp a -> Bool
+isDef = not . isUndef
 
 isUndef :: DefOp a -> Bool
 isUndef OpUndefine = True
@@ -167,6 +172,9 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , frcudTyAssigns :: Map Path (DefName, Editability)
     , frcudData :: DataDigest
     , frcudContOps :: ContOps Seg
+    -- FIXME: This could just be for errors that come from providers. Although
+    -- we currently send Relay errors here, if we do so we never send any of the
+    -- other fields. I.e. we could add an additional Frced type...
     , frcudErrors :: Mol DataErrorIndex Text
     } -> FrDigest 'Consumer 'Update
 
@@ -247,10 +255,12 @@ trcsdNamespaces (Trcsd p t d) =
 
 data ClientRegs
   = ClientRegs
-  { crPostTypeRegs :: Mos Namespace PostDefName
-  , crTypeRegs :: Mos Namespace DefName
-  , crDataRegs :: Mos Namespace Path
+  { _crPostTypeRegs :: Mos Namespace PostDefName
+  , _crTypeRegs :: Mos Namespace DefName
+  , _crDataRegs :: Mos Namespace Path
   } deriving (Show)
+
+makeLenses 'ClientRegs
 
 instance Semigroup ClientRegs where
   (ClientRegs pt1 t1 d1) <> (ClientRegs pt2 t2 d2) =
@@ -274,6 +284,17 @@ crIntersection (ClientRegs p1 t1 d1) (ClientRegs p2 t2 d2) = ClientRegs
   (Mos.intersection t1 t2)
   (Mos.intersection d1 d2)
 
+crDeleteLookupNs :: Namespace -> ClientRegs -> (ClientRegs, ClientRegs)
+crDeleteLookupNs ns (ClientRegs p t d) =
+  let
+    f :: Ord a => Mos Namespace a -> (Mos Namespace a, Mos Namespace a)
+    f = first (Mos.singletonSet ns) . Mos.deleteLookupSet ns
+    (loseP, keepP) = f p
+    (loseT, keepT) = f t
+    (loseD, keepD) = f d
+  in
+    (ClientRegs loseP loseT loseD, ClientRegs keepP keepT keepD)
+
 trcsdClientRegs :: TrcSubDigest -> (ClientRegs, ClientRegs)
 trcsdClientRegs (Trcsd p t d) =
   let
@@ -290,12 +311,34 @@ trcsdClientRegs (Trcsd p t d) =
 trcudEmpty :: Namespace -> TrcUpdateDigest
 trcudEmpty ns = Trcud ns mempty mempty mempty
 
+instance Semigroup FrpDigest where
+  Frpd _ dat1 cr1 cops1 <> Frpd ns dat2 cr2 cops2 =
+    Frpd ns (dat1 <> dat2) (cr2 <> cr1) (cops2 <> cops1)
+
+instance Semigroup FrpErrorDigest where
+  Frped e1 <> Frped e2 = Frped $ e1 <> e2
+
+instance Monoid FrpErrorDigest where
+  mempty = Frped mempty
+
+instance Semigroup FrcRootDigest where
+  Frcrd cops1 <> Frcrd cops2 = Frcrd $ cops2 <> cops1
+
+instance Monoid FrcRootDigest where
+  mempty = Frcrd mempty
+
 instance Semigroup FrcSubDigest where
-  (Frcsd e1 pt1 t1 d1) <> (Frcsd e2 pt2 t2 d2) =
+  Frcsd e1 pt1 t1 d1 <> Frcsd e2 pt2 t2 d2 =
     Frcsd (e1 <> e2) (pt1 <> pt2) (t1 <> t2) (d1 <> d2)
 
 instance Monoid FrcSubDigest where
   mempty = Frcsd mempty mempty mempty mempty
+
+instance Semigroup FrcUpdateDigest where
+  Frcud _ pds1 ds1 tys1 dat1 cops1 errs1
+    <> Frcud ns pds2 ds2 tys2 dat2 cops2 errs2 =
+      Frcud ns (pds2 <> pds1) (ds2 <> ds1) (tys2 <> tys1) (dat1 <> dat2)
+      (cops2 <> cops1) (errs1 <> errs2)
 
 frcsdEmpty :: FrcSubDigest
 frcsdEmpty = mempty

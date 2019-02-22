@@ -12,14 +12,15 @@ module Clapi.Types.Definitions where
 
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
+import Data.Foldable (toList)
 import Data.Tagged (Tagged)
 import Data.Text (Text)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.Types.AssocList (AssocList, unAssocList)
-import Clapi.Types.Base (InterpolationLimit(..), TypeEnumOf(..))
+import Clapi.Types.AssocList (AssocList, unAssocList, alLookup)
+import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (SomeTreeType(..))
 
@@ -96,6 +97,13 @@ instance TypeEnumOf (Definition mt) MetaType where
 instance TypeEnumOf SomeDefinition MetaType where
   typeEnumOf = withDefinition typeEnumOf
 
+
+refersTo :: Definition mt -> [DefName]
+refersTo = \case
+  TupleDef {} -> mempty
+  StructDef { strDefChildTys = tyInfo } -> fst <$> toList tyInfo
+  ArrayDef { arrDefChildTy = dn } -> pure dn
+
 childTypeFor :: Seg -> Definition mt -> Maybe DefName
 childTypeFor seg = \case
   TupleDef {} -> Nothing
@@ -105,7 +113,16 @@ childTypeFor seg = \case
 
 childEditableFor :: MonadFail m => Seg -> Definition mt -> m Editability
 childEditableFor seg = \case
-  TupleDef {} -> fail "Tuples have not children"
+  TupleDef {} -> fail "Tuples have no children"
   StructDef { strDefChildTys = tyinfo } -> note "No such child" $
     snd <$> lookup seg (unAssocList tyinfo)
   ArrayDef { arrDefChildEd = ed } -> return ed
+
+getTyInfoForSeg
+  :: MonadFail m => Seg -> Definition mt -> m (DefName, Editability)
+getTyInfoForSeg childName = \case
+  TupleDef {} -> fail "Tuples do not have children"
+  StructDef { strDefChildTys = tyInfo } ->
+    maybe (fail $ "Invalid struct child") return
+    $ alLookup childName tyInfo
+  ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> return (dn, ed)

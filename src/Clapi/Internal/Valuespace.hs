@@ -1,8 +1,13 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Clapi.Internal.Valuespace
   ( Valuespace(..)
   , DefMap, TypeAssignmentMap, Referer, Referee, Xrefs
+  , vsTree, vsPostDefs, vsTyDefs, vsRootDefName, vsRootEditability
+  , vsTyAssns, vsXrefs, vsTac
   ) where
 
+import Control.Lens (makeLenses)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Tagged (Tagged)
@@ -15,6 +20,8 @@ import Clapi.Types.Definitions
 import Clapi.Types.Digests (TpId)
 import Clapi.Types.Path (Seg, Path)
 import Clapi.Types.Wire (SomeWireValue)
+-- FIXME: These modules are becoming a bit of a messy tangle
+import qualified Clapi.Valuespace.Xrefs as VsXrefs
 
 type DefMap def = Map (Tagged def Seg) def
 type TypeAssignmentMap = Dependencies Path DefName
@@ -23,10 +30,15 @@ type Referee = Path
 type Xrefs = Map Referee (Map Referer (Maybe (Set TpId)))
 
 data Valuespace = Valuespace
-  { vsTree :: RoseTree [SomeWireValue]
-  , vsPostDefs :: DefMap PostDefinition
-  , vsTyDefs :: DefMap SomeDefinition
-  , vsTyAssns :: TypeAssignmentMap
-  , vsXrefs :: Xrefs
-  , vsRootEditability :: Editability
+  { _vsTree :: RoseTree [SomeWireValue]
+  , _vsPostDefs :: DefMap PostDefinition
+  , _vsTyDefs :: DefMap SomeDefinition
+  , _vsRootDefName :: DefName
+  , _vsRootEditability :: Editability
+  -- These are just caches that help us do reverse lookups:
+  , _vsTyAssns :: TypeAssignmentMap
+  , _vsXrefs :: Xrefs
+  , _vsTac :: VsXrefs.TypeAssertionCache
   } deriving Show
+
+makeLenses ''Valuespace

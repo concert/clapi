@@ -43,8 +43,9 @@ import Clapi.TaggedData
 import Clapi.Types.AssocList (AssocList, mkAssocList, unAssocList)
 import Clapi.Types.Base
   ( Attributee(..), Time(..), TimeStamped(..), Tag(..), mkTag
-  , InterpolationLimit(..), Interpolation(..), InterpolationType(..)
-  , interpolationType)
+  , Interpolation(..), InterpolationType(..)
+  , typeEnumOf
+  )
 import Clapi.Types.UniqList (UniqList, mkUniqList, unUniqList)
 import Clapi.TH (btq)
 
@@ -192,30 +193,22 @@ tdTaggedBuilder
   :: MonadFail m => TaggedData e a -> (a -> m Builder) -> a -> m Builder
 tdTaggedBuilder td bdr a = builder (tdInstanceToTag td $ a) <<>> bdr a
 
-
-ilToTag :: InterpolationLimit -> Tag
-ilToTag il = case il of
-    ILUninterpolated -> [btq|U|]
-    ILConstant -> [btq|C|]
-    ILLinear -> [btq|L|]
-    ILBezier -> [btq|B|]
-
-ilTaggedData :: TaggedData InterpolationLimit InterpolationLimit
-ilTaggedData = taggedData ilToTag id
-
-instance Encodable InterpolationLimit where
-  builder = tdTaggedBuilder ilTaggedData $ const $ return mempty
-instance Decodable InterpolationLimit where
-  parser = tdTaggedParser ilTaggedData return
-
 itToTag :: InterpolationType -> Tag
 itToTag it = case it of
     ItConstant -> [btq|c|]
     ItLinear -> [btq|l|]
     ItBezier -> [btq|b|]
 
+itTaggedData :: TaggedData InterpolationType InterpolationType
+itTaggedData = taggedData itToTag id
+
+instance Encodable InterpolationType where
+  builder = tdTaggedBuilder itTaggedData $ const $ return mempty
+instance Decodable InterpolationType where
+  parser = tdTaggedParser itTaggedData return
+
 interpolationTaggedData :: TaggedData InterpolationType Interpolation
-interpolationTaggedData = taggedData itToTag interpolationType
+interpolationTaggedData = taggedData itToTag typeEnumOf
 
 instance Encodable Interpolation where
     builder = tdTaggedBuilder interpolationTaggedData $ \i -> return $ case i of
