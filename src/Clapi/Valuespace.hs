@@ -326,7 +326,7 @@ processTrpd_ trpd =
       . flip Map.withoutKeys tyUndefs
 
     when (not $ null $ trpdDefs trpd) $
-      use vsRootDefName >>= guardRecusiveStructs
+      use vsRootDefName >>= guardRecursiveStructs
 
     -- Let's update the rest of the primary state:
     modifying vsPostDefs $ Map.union pTyDefs . flip Map.withoutKeys pTyUndefs
@@ -577,8 +577,8 @@ updateContainer p cOps = pathError p $ do
 
 -- | Protects against the case where a struct definition refers to itself
 --   _without_ an intermediary array, which would result in an infinite tree.
-guardRecusiveStructs :: Monad m => DefName -> VsM' m ()
-guardRecusiveStructs = go mempty []
+guardRecursiveStructs :: Monad m => DefName -> VsM' m ()
+guardRecursiveStructs = go mempty []
   where
     go :: Monad m => Set DefName -> [DefName] -> DefName -> VsM' m ()
     go processed structChainDns dn = unless (dn `Set.member` processed) $ do
