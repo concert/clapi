@@ -52,10 +52,10 @@ data TypeAssertionCache
 empty :: TypeAssertionCache
 empty = TypeAssertionCache mempty mempty mempty
 
-gubbins
+updateDataPoint
   :: Referer -> Maybe TpId -> TypeAssertions -> TypeAssertionCache
   -> TypeAssertionCache
-gubbins referer mtpid newTas tac =
+updateDataPoint referer mtpid newTas tac =
   let
     (tasToRemove, rtas') = Map.alterF thingAtTra referer
       $ tacRefererTypeAssertions tac
@@ -106,7 +106,7 @@ gubbins referer mtpid newTas tac =
 
 updateConst
   :: Referer -> TypeAssertions -> TypeAssertionCache -> TypeAssertionCache
-updateConst referer newTas tac = gubbins referer Nothing newTas tac
+updateConst referer newTas tac = updateDataPoint referer Nothing newTas tac
 
 removeConst :: Referer -> TypeAssertionCache -> TypeAssertionCache
 removeConst referer tac = updateConst referer mempty tac
@@ -114,7 +114,8 @@ removeConst referer tac = updateConst referer mempty tac
 updateTp
   :: Referer -> TpId -> TypeAssertions -> TypeAssertionCache
   -> TypeAssertionCache
-updateTp referer tpid newTas tac = gubbins referer (Just tpid) newTas tac
+updateTp referer tpid newTas tac =
+  updateDataPoint referer (Just tpid) newTas tac
 
 removeTp :: Referer -> TpId -> TypeAssertionCache -> TypeAssertionCache
 removeTp referer tpid tac = updateTp referer tpid mempty tac
