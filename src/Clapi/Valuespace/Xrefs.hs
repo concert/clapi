@@ -6,8 +6,8 @@ module Clapi.Valuespace.Xrefs
   ( Referer(..), Referee(..)
   -- FIXME: Might want TypeAssertionCache to be internal so that just the tests
   -- can get at the constructors
-  , TypeAssertions, toTypeAssertions, TypeAssertionCache(..), emptyTac
-  , updateConstTas, updateTpTas, removeTpTas, removeTas
+  , TypeAssertions, toTypeAssertions, TypeAssertionCache(..), empty
+  , updateConst, updateTp, removeConst, removeTp
   , lookup, referers
   ) where
 
@@ -49,8 +49,8 @@ data TypeAssertionCache
   } deriving Show
 
 
-emptyTac :: TypeAssertionCache
-emptyTac = TypeAssertionCache mempty mempty mempty
+empty :: TypeAssertionCache
+empty = TypeAssertionCache mempty mempty mempty
 
 gubbins
   :: Referer -> Maybe TpId -> TypeAssertions -> TypeAssertionCache
@@ -104,20 +104,20 @@ gubbins referer mtpid newTas tac =
     deleteOldTas mtpid' = flip $ Map.foldlWithKey
         (\acc referee _dn -> Mos.delete referee (referer, mtpid') acc)
 
-updateConstTas
+updateConst
   :: Referer -> TypeAssertions -> TypeAssertionCache -> TypeAssertionCache
-updateConstTas referer newTas tac = gubbins referer Nothing newTas tac
+updateConst referer newTas tac = gubbins referer Nothing newTas tac
 
-removeTas :: Referer -> TypeAssertionCache -> TypeAssertionCache
-removeTas referer tac = updateConstTas referer mempty tac
+removeConst :: Referer -> TypeAssertionCache -> TypeAssertionCache
+removeConst referer tac = updateConst referer mempty tac
 
-updateTpTas
+updateTp
   :: Referer -> TpId -> TypeAssertions -> TypeAssertionCache
   -> TypeAssertionCache
-updateTpTas referer tpid newTas tac = gubbins referer (Just tpid) newTas tac
+updateTp referer tpid newTas tac = gubbins referer (Just tpid) newTas tac
 
-removeTpTas :: Referer -> TpId -> TypeAssertionCache -> TypeAssertionCache
-removeTpTas referer tpid tac = updateTpTas referer tpid mempty tac
+removeTp :: Referer -> TpId -> TypeAssertionCache -> TypeAssertionCache
+removeTp referer tpid tac = updateTp referer tpid mempty tac
 
 lookup :: Referee -> TypeAssertionCache -> Map Referer TypeAssertion
 lookup referee (TypeAssertionCache _ trrs trds) =
