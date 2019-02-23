@@ -10,8 +10,17 @@ module Clapi.Valuespace.Xrefs
   where
 
 
-import Data.Bifunctor (bimap, first)
-import Data.Foldable (foldl', toList)
+  ( Referer(..), Referee(..)
+  -- FIXME: Might want TypeAssertionCache to be internal so that just the tests
+  -- can get at the constructors
+  , TypeAssertions, toTypeAssertions, TypeAssertionCache(..), emptyTac
+  , updateConstTas, updateTpTas, removeTpTas, removeTas
+  , lookup, referers
+  ) where
+
+
+import Data.Bifunctor (bimap)
+import Data.Foldable (toList)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -28,73 +37,6 @@ import Clapi.Validator (TypeAssertion(..))
 
 newtype Referer = Referer {unReferer :: Path} deriving (Show, Eq, Ord)
 newtype Referee = Referee {unReferee :: Path} deriving (Show, Eq, Ord)
-
-data References
-  = NoReferences
-  | ConstReferences (Set Referee)
-  | TsReferences (Mos TpId Referee)
-  deriving Show
-
-getReferees :: References -> [(Maybe TpId, Referee)]
-getReferees = \case
-  NoReferences -> []
-  ConstReferences referees -> (Nothing,) <$> Set.toList referees
-  TsReferences referees -> first Just <$> Mos.toList referees
-
-toReferences :: Maybe (Either (Set Referee) (Mos TpId Referee)) -> References
-toReferences = maybe NoReferences $ either ConstReferences TsReferences
-
-
-data Xrefs
-  = Xrefs
-  { xrefsFwd :: Map Referer (Either (Set Referee) (Mos TpId Referee))
-  , xrefsRev :: Mos Referee (Maybe TpId, Referer)
-  } deriving Show
-
-
-empty :: Xrefs
-empty = Xrefs mempty mempty
-
-updateLookup :: Referer -> References -> Xrefs -> (References, Xrefs)
-updateLookup referer newReferences (Xrefs fwd rev) =
-  let
-    (oldReferences, fwd') = first toReferences $ Map.alterF
-      (\mr -> (mr, case newReferences of
-          NoReferences -> Nothing
-          ConstReferences referees -> Just (Left referees)
-          TsReferences referees -> Just (Right referees)))
-      referer fwd
-    rev' =
-      foldMos Mos.insert mempty newReferences <>
-      foldMos Mos.delete rev oldReferences
-  in
-    (oldReferences, Xrefs fwd' rev')
-  where
-    foldMos
-      :: (Referee -> (Maybe TpId, Referer) -> c -> c) -> c -> References -> c
-    foldMos f mos =
-      foldl' (\acc (mtpid, referee) -> f referee (mtpid, referer) acc) mos
-      . getReferees
-
-update :: Referer -> References -> Xrefs -> Xrefs
-update referer newReferences = snd . updateLookup referer newReferences
-
-updateConst :: Referer -> Set Referee -> Xrefs -> Xrefs
-updateConst = undefined
-
-updateTs :: Referer -> TpId -> Set Referee -> Xrefs -> Xrefs
-updateTs = undefined
-
-rmTp :: Referer -> TpId -> Xrefs -> Xrefs
-rmTp = undefined
-
-lookupFwd :: Referer -> Xrefs -> References
-lookupFwd referer (Xrefs fwd _) = toReferences $ Map.lookup referer fwd
-
-lookupRev :: Referee -> Xrefs -> Set (Maybe TpId, Referer)
-lookupRev referee (Xrefs _ rev) = Mos.lookup referee rev
-
--- Attempt Number4(!):
 
 type TypeAssertions = Map Referee DefName
 
