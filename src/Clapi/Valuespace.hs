@@ -293,7 +293,6 @@ baseValuespace rootDn rootEd = Valuespace
     rootDn
     rootEd
     (Dependencies.singleton Root rootDn)
-    mempty
     Vs2Xrefs.emptyTac
   where
     emptyStructDef = structDef "Empty namespace" AL.alEmpty
