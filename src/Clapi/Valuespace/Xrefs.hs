@@ -3,13 +3,6 @@
 #-}
 
 module Clapi.Valuespace.Xrefs
-  -- ( References(..), getReferees
-  -- , Xrefs, xrefsFwd, xrefsRev, empty
-  -- , update, updateLookup, lookupFwd, lookupRev
-  -- ) where
-  where
-
-
   ( Referer(..), Referee(..)
   -- FIXME: Might want TypeAssertionCache to be internal so that just the tests
   -- can get at the constructors
@@ -19,6 +12,7 @@ module Clapi.Valuespace.Xrefs
   ) where
 
 
+import Prelude hiding (lookup)
 import Data.Bifunctor (bimap)
 import Data.Foldable (toList)
 import Data.Map (Map)
