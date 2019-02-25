@@ -403,16 +403,17 @@ instance Subscribable Path where
         RtnDataSeries ts -> (frcudEmpty ns)
           { frcudData = AL.alSingleton p $ oppifyTimeSeries ts}
 
-      oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
-      oppifyTimeSeries ts = TimeChange $
-        Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
-
       oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
       oppifySequence al =
         let (alKs, alVs) = unzip $ AL.unAssocList al in
           Map.fromList $ zipWith3
             (\k afterK v -> (k, (v, SoAfter afterK)))
             alKs (Nothing : (Just <$> alKs)) alVs
+
+-- Used by Cape to publish initial time series:
+oppifyTimeSeries :: TimeSeries [SomeWireValue] -> DataChange
+oppifyTimeSeries ts = TimeChange $
+    Dkmap.flatten (\t (att, (i, wvs)) -> (att, OpSet t wvs i)) ts
 
 
 {- The idea with the MonadWriter here is that the logic handling bits of the
