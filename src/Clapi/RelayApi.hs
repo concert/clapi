@@ -4,7 +4,7 @@
   , OverloadedStrings
 #-}
 
-module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
+module Clapi.RelayApi (relayApiProto, PathNameable(..)) where
 
 import Control.Monad (void)
 import Control.Monad.Trans (lift)
@@ -31,14 +31,14 @@ import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, nameq)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 
-class PathSegable a where
-    pathNameFor :: a -> Seg
+class PathNameable a where
+    pathNameFor :: a -> Name
 
 dn :: Name
 dn = [nameq|display_name|]
 
 relayApiProto ::
-    forall i. (Ord i, PathSegable i) =>
+    forall i. (Ord i, PathNameable i) =>
     i ->
     Protocol
         (ClientEvent i (TimeStamped SomeTrDigest))

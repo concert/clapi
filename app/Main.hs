@@ -21,7 +21,7 @@ import Clapi.SerialisationProtocol (serialiser)
 import Clapi.Serialisation ()
 import Clapi.Relay (relay)
 import Clapi.Attributor (attributor)
-import Clapi.RelayApi (relayApiProto, PathSegable(..))
+import Clapi.RelayApi (relayApiProto, PathNameable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Types (Attributee(..))
 import Clapi.Types.Path (mkSeg)
@@ -35,7 +35,7 @@ shower tag = forever $ waitThen (s " -> " sendFwd) (s " <- " sendRev)
 -- FIXME: This is owned by something unsendable and we should reflect that
 internalAddr = SockAddrCan 12
 
-instance PathSegable SockAddr where
+instance PathNameable SockAddr where
     pathNameFor (SockAddrCan _) = [nameq|relay|]
     -- NOTE: Do not persist this as it depends on the form of show
     pathNameFor clientAddr = fromJust $ mkSeg $ T.pack $ take 8
