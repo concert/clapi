@@ -23,7 +23,7 @@ import Clapi.Types.Digests
   , trpdEmpty, OriginatorRole(..), DigestAction(..)
   , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Name, pattern Root, pattern (:/), Namespace(..))
+import Clapi.Types.Path (Name(..), pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
