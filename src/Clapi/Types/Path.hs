@@ -32,8 +32,8 @@ newtype Name = Name {unName :: Text} deriving (Eq, Ord, Lift)
 instance Show Name where
     show = Text.unpack . unName
 
-isValidSegChar :: Char -> Bool
-isValidSegChar c = isLetter c || isDigit c || c == '_'
+isValidNameChar :: Char -> Bool
+isValidNameChar c = isLetter c || isDigit c || c == '_'
 
 nameP :: Parser Name
 nameP = fmap (Name . Text.pack) $ DAT.many1 $ DAT.satisfy isValidNameChar

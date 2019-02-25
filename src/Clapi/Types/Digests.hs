@@ -229,8 +229,8 @@ trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
     Map.foldlWithKey f [] (trpdContOps trpd)
   where
-    f acc p segMap = acc ++
-      (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
+    f acc p nameMap = acc ++
+      (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd nameMap)
 
 frpdEmpty :: Namespace -> FrpDigest
 frpdEmpty ns = Frpd ns mempty mempty mempty

@@ -58,7 +58,7 @@ import Clapi.Types.Definitions
   , Editability(..)
   , structDef
   , DefName, PostDefName
-  , getTyInfoForSeg
+  , getTyInfoForName
   )
 import Clapi.Types.Digests
   ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..)
@@ -225,7 +225,7 @@ pathTyInfo path = do
       :: _ => Path -> (DefName, Editability) -> m (DefName, Editability)
     go (s :</ p) (dn, _) = do
       SomeDefinition def <- lookupDef dn
-      r <- eitherThrow $ getTyInfoForSeg s def
+      r <- eitherThrow $ getTyInfoForName s def
       go p r
     go _ r = return r
 

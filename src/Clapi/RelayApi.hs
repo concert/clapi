@@ -192,7 +192,7 @@ relayApiProto selfAddr =
           Root :/ [nameq|clients|] :/ ns]
         viewAs i dd =
           let
-            theirSeg = pathNameFor i
+            theirName = pathNameFor i
             theirTime = unTimeDelta $ Map.findWithDefault
               (error "Can't rewrite message for unconnected client") i
               timingMap
