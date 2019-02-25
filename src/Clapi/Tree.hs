@@ -21,6 +21,7 @@ import qualified Data.Map.Mol as Mol
 
 import Clapi.Types
   (Time, Interpolation(..), Attributee, SomeWireValue)
+import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
@@ -36,7 +37,7 @@ type TimeSeries a = Dkmap TpId Time (Attributed (TimePoint a))
 
 data RoseTree a
   = RtEmpty
-  | RtContainer (AL.AssocList Seg (Maybe Attributee, RoseTree a))
+  | RtContainer (AssocList Seg (Maybe Attributee, RoseTree a))
   | RtConstData (Maybe Attributee) a
   | RtDataSeries (TimeSeries a)
   deriving (Show, Eq, Functor, Foldable)
@@ -49,7 +50,7 @@ missing = inner Root
       mconcat $ (\(s, (_, rt)) -> inner (p :/ s) rt) <$> AL.unAssocList al
     inner _ _ = []
 
-children :: RoseTree a -> AL.AssocList Seg (RoseTree a)
+children :: RoseTree a -> AssocList Seg (RoseTree a)
 children t = case t of
     RtContainer al -> snd <$> al
     _ -> AL.empty
@@ -198,7 +199,7 @@ updateTreeWithDigest contOps dd = runState $ do
 
 data RoseTreeNode a
   = RtnEmpty
-  | RtnChildren (AL.AssocList Seg (Maybe Attributee))
+  | RtnChildren (AssocList Seg (Maybe Attributee))
   | RtnConstData (Maybe Attributee) a
   | RtnDataSeries (TimeSeries a)
   deriving (Show, Eq)

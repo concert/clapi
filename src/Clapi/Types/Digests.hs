@@ -25,6 +25,7 @@ import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
+import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions
@@ -85,7 +86,7 @@ data DataChange
   = ConstChange (Maybe Attributee) [SomeWireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))
   deriving (Show, Eq)
-type DataDigest = AL.AssocList Path DataChange
+type DataDigest = AssocList Path DataChange
 
 data CreateOp
   = OpCreate

@@ -16,7 +16,7 @@ import Clapi.PerClientProto (ServerEvent(..))
 import Clapi.Serialisation (FrDigestType(..))
 import Clapi.Tree
 import Clapi.Types
-import qualified Clapi.Types.SymbolList as SL
+import Clapi.Types.SymbolList
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace.Xrefs
 
@@ -68,7 +68,7 @@ instance Ord SomeWireValue where
 instance Ord (TreeType a) where
   compare TtTime TtTime = EQ
   compare (TtEnum sl1) (TtEnum sl2) =
-    compare (SL.SomeSymbolList sl1) (SL.SomeSymbolList sl2)
+    compare (SomeSymbolList sl1) (SomeSymbolList sl2)
   compare (TtWord32 b1) (TtWord32 b2) = compare b1 b2
   compare (TtWord64 b1) (TtWord64 b2) = compare b1 b2
   compare (TtInt32 b1) (TtInt32 b2) = compare b1 b2
