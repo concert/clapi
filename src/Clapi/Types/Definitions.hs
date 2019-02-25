@@ -107,7 +107,7 @@ childTypeFor :: Name -> Definition mt -> Maybe DefName
 childTypeFor name = \case
   TupleDef {} -> Nothing
   StructDef { strDefChildTys = tyinfo } ->
-    fst <$> lookup seg (unAssocList tyinfo)
+    fst <$> lookup name (unAssocList tyinfo)
   ArrayDef { arrDefChildTy = tn } -> Just tn
 
 

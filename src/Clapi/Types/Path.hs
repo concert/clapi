@@ -68,7 +68,7 @@ pattern Root = Path' []
 
 splitHead :: Path' a -> Maybe (a, Path' a)
 splitHead (Path' []) = Nothing
-splitHead (Path' (seg:segs)) = Just (seg, Path' segs)
+splitHead (Path' (name:names)) = Just (name, Path' names)
 
 pattern (:</) :: a -> Path' a -> Path' a
 pattern a :</ path <- (splitHead -> Just (a, path)) where

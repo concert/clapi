@@ -165,9 +165,9 @@ errText = Text.pack . \case
   SeqOpsOnNonArray -> "Array rearrangement operation on non-array"
   SeqOpMovedMissingChild kid -> printf
     "Array rearrangment attempted to move missing member %s" (show kid)
-  SeqOpTargetMissing seg eps -> printf
+  SeqOpTargetMissing name eps -> printf
     "Array rearrangment attempt to move member %s after non-existent target %s"
-    (show seg) (show eps)
+    (show name) (show eps)
 
 instance MonadFail (Either ProviderError) where
   fail = Left . ErrorString

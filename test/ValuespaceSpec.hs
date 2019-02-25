@@ -696,7 +696,7 @@ spec =
                 }
               errorsOn Root res'
 
-          it "catches missing child seg creation targets" $ go $
+          it "catches missing child name creation targets" $ go $
             let
               ei = [nameq|existingItem|]
               doCreate = processTrcud' $ (trcudEmpty ns)
