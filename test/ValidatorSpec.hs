@@ -54,7 +54,7 @@ spec = describe "validation" $ do
   describeTreeType (TtString "b[an]*") $ do
     successCase (someWv WtString "banana")
     failureCase (someWv WtString "apple")
-  describeTreeType (TtRef [nameq|a|]) $ do
+  describeTreeType (TtRef [n|a|]) $ do
     successCase (someWv WtString "/x/y")
     failureCase (someWv WtString "not a path")
   describeTreeType (TtList $ TtString "hello") $ do

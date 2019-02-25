@@ -28,14 +28,14 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.TH (pathq, nameq)
+import Clapi.TH (pathq, n)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 
 class PathNameable a where
     pathNameFor :: a -> Name
 
 dn :: Name
-dn = [nameq|display_name|]
+dn = [n|display_name|]
 
 relayApiProto ::
     forall i. (Ord i, PathNameable i) =>
@@ -53,39 +53,39 @@ relayApiProto selfAddr =
       rns
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
-        [ ([nameq|build|], tupleDef "builddoc"
-             (AL.singleton [nameq|commit_hash|] $ ttString "banana")
+        [ ([n|build|], tupleDef "builddoc"
+             (AL.singleton [n|commit_hash|] $ ttString "banana")
              Nothing)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (AL.singleton [nameq|seconds|] $ ttFloat unbounded)
+             (AL.singleton [n|seconds|] $ ttFloat unbounded)
              Nothing)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
-             (AL.singleton [nameq|name|] $ ttString "")
+             (AL.singleton [n|name|] $ ttString "")
              Nothing)
-        , ([nameq|client_info|], structDef
+        , ([n|client_info|], structDef
              "Info about a single connected client" $ staticAl
              [ (dn, (Tagged dn, Editable))
              , (clock_diff, (Tagged clock_diff, ReadOnly))
              ])
-        , ([nameq|clients|], arrayDef "Info about the connected clients"
-             Nothing (Tagged [nameq|client_info|]) ReadOnly)
-        , ([nameq|owner_info|], tupleDef "owner info"
-             (AL.singleton [nameq|owner|]
+        , ([n|clients|], arrayDef "Info about the connected clients"
+             Nothing (Tagged [n|client_info|]) ReadOnly)
+        , ([n|owner_info|], tupleDef "owner info"
+             (AL.singleton [n|owner|]
                -- FIXME: want to make Ref's Name tagged...
-               $ ttRef [nameq|client_info|])
+               $ ttRef [n|client_info|])
              Nothing)
-        , ([nameq|owners|], arrayDef "ownersdoc"
-             Nothing (Tagged [nameq|owner_info|]) ReadOnly)
-        , ([nameq|self|], tupleDef "Which client you are"
-             (AL.singleton [nameq|info|] $ ttRef [nameq|client_info|])
+        , ([n|owners|], arrayDef "ownersdoc"
+             Nothing (Tagged [n|owner_info|]) ReadOnly)
+        , ([n|self|], tupleDef "Which client you are"
+             (AL.singleton [n|info|] $ ttRef [n|client_info|])
              Nothing)
-        , ([nameq|relay|], structDef "topdoc" $ staticAl
-          [ ([nameq|build|], (Tagged [nameq|build|], ReadOnly))
-          , ([nameq|clients|], (Tagged [nameq|clients|], ReadOnly))
-          , ([nameq|owners|], (Tagged [nameq|owners|], ReadOnly))
-          , ([nameq|self|], (Tagged [nameq|self|], ReadOnly))])
+        , ([n|relay|], structDef "topdoc" $ staticAl
+          [ ([n|build|], (Tagged [n|build|], ReadOnly))
+          , ([n|clients|], (Tagged [n|clients|], ReadOnly))
+          , ([n|owners|], (Tagged [n|owners|], ReadOnly))
+          , ([n|self|], (Tagged [n|self|], ReadOnly))])
         ])
       (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
@@ -98,10 +98,10 @@ relayApiProto selfAddr =
         ])
       mempty
       mempty
-    rns = Namespace [nameq|relay|]
-    clock_diff = [nameq|clock_diff|]
+    rns = Namespace [n|relay|]
+    clock_diff = [n|clock_diff|]
     selfName = pathNameFor selfAddr
-    selfClientPath = Root :/ [nameq|clients|] :/ selfName
+    selfClientPath = Root :/ [n|clients|] :/ selfName
     staticAl = AL.fromMap . Map.fromList
     steadyState
       :: Map i TimeDelta -> Map Namespace Name -> Protocol
@@ -189,7 +189,7 @@ relayApiProto selfAddr =
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
           someWireable $ Path.toText Path.unName $
-          Root :/ [nameq|clients|] :/ ns]
+          Root :/ [n|clients|] :/ ns]
         viewAs i dd =
           let
             theirName = pathNameFor i
