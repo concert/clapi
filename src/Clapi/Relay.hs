@@ -40,7 +40,7 @@ import qualified Data.Map.Mol as Mol
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, liftedWaitThen, sendRev)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
-import Clapi.Types.AssocList (AssocList)
+import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Definitions
   (PostDefinition, SomeDefinition, PostDefName, DefName, Editability(..))
@@ -409,7 +409,7 @@ instance Subscribable Path where
 
       oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
       oppifySequence al =
-        let (alKs, alVs) = unzip $ AL.unAssocList al in
+        let (alKs, alVs) = unzip $ unAssocList al in
           Map.fromList $ zipWith3
             (\k afterK v -> (k, (v, SoAfter afterK)))
             alKs (Nothing : (Just <$> alKs)) alVs

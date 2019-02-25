@@ -21,7 +21,7 @@ import qualified Data.Map.Mol as Mol
 
 import Clapi.Types
   (Time, Interpolation(..), Attributee, SomeWireValue)
-import Clapi.Types.AssocList (AssocList)
+import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
@@ -47,7 +47,7 @@ missing = inner Root
   where
     inner p RtEmpty = [p]
     inner p (RtContainer al) =
-      mconcat $ (\(s, (_, rt)) -> inner (p :/ s) rt) <$> AL.unAssocList al
+      mconcat $ (\(s, (_, rt)) -> inner (p :/ s) rt) <$> unAssocList al
     inner _ _ = []
 
 children :: RoseTree a -> AssocList Seg (RoseTree a)
@@ -56,7 +56,7 @@ children t = case t of
     _ -> AL.empty
 
 childNames :: RoseTree a -> [Seg]
-childNames = fmap fst . AL.unAssocList . children
+childNames = fmap fst . unAssocList . children
 
 -- FIXME: define in terms of treeChildren (if even used)
 paths :: Path -> RoseTree a -> [Path]
@@ -65,7 +65,7 @@ paths p t = case t of
   RtConstData _ _ -> [p]
   RtDataSeries _ -> [p]
   RtContainer al ->
-    p : (mconcat $ (\(s, (_, t')) -> paths (p :/ s) t') <$> AL.unAssocList al)
+    p : (mconcat $ (\(s, (_, t')) -> paths (p :/ s) t') <$> unAssocList al)
 
 applyReorderings
   :: MonadFail m
