@@ -105,7 +105,6 @@ data ProviderError
   -- optional:
   | BadInterpolationType InterpolationType (Maybe InterpolationType)
   | XRefError DefName DefName
-  | XRefError2 DefName DefName
   | RemovedWhileReferencedBy (Set (Vs2Xrefs.Referer, Maybe TpId))
   -- FIXME: ValidationError is a wrapper for MonadFail stuff that comes out of
   -- validation. It would be better to have a whole type for validation errors
@@ -147,7 +146,6 @@ errText = Text.pack . \case
     "Bad interpolation type %s. Expected <= %s" (show actual) (show expected)
   XRefError expDn actDn -> printf
     "Bad xref target type. Expected %s, got %s" (show expDn) (show actDn)
-  XRefError2 _ _ -> "debug"
   RemovedWhileReferencedBy referers -> printf "Removed path referenced by %s"
     (show referers)
   ValidationError s -> "ValidationError: " ++ s
@@ -457,14 +455,15 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
     validateCop
       :: MonadError [ProviderError] m
       => Set Seg -> Set Placeholder -> Seg -> (x, SequenceOp EPS) -> m ()
-    validateCop kids phs kidToChange (_, so) = do
-      unless (kidToChange `Set.member` kids) $
-        -- FIXME: Don't know if we should fail on missing kids with SoAbsent
-        throwError [SeqOpMovedMissingChild kidToChange]
+    validateCop kids phs kidToChange (_, so) =
       case so of
-        SoAfter (Just t) ->
+        SoAfter (Just t) -> do
+          unless (kidToChange `Set.member` kids) $
+            throwError [SeqOpMovedMissingChild kidToChange]
           unless (either (`Set.member` phs) (`Set.member` kids) t) $
             throwError [SeqOpTargetMissing kidToChange t]
+        -- It doesn't matter if the client removed something that's already
+        -- gone:
         _ -> return ()
 
 
@@ -736,7 +735,7 @@ validateCreateValues
   -> ErrsT Valuespace [ProviderError] m ()
 validateCreateValues pdef cr = do
     tas <- eitherThrow $ first (fmap ValidationError) $ combine
-      $ fmtStrictZipError "post def arg tpes" "list of wire values"
+      $ fmtStrictZipError "post def arg types" "list of wire values"
       $ strictZipWith validateValues (toList $ postDefArgs pdef) (ocArgs cr)
     void $ checkTypeAssertions tas
   where
@@ -875,21 +874,6 @@ revalidatePath def path = case def of
   TupleDef {} -> revalidatePathData def path
   -- Container keys are guaranteed to be correct by the type inference:
   _ -> return ()
-  -- StructDef {} -> revalidateContainerKeys def
-  -- ArrayDef {} -> revalidateContainerKeys def
-
--- revalidateContainerKeys :: Monad m => Definition mt -> Path -> VsM' m ()
--- revalidateContainerKeys def path = pathError path $ do
---   node <- pathNode path
---   case node of
---     RtnChildren al -> case def of
---       StructDef { strDefChildTys = tyInfo } ->
---         let expected = AL.alKeys tyInfo; actual = AL.alKeys al in
---         unless (actual == expected) $
---           throwError $ BadChildKeys (unUniqList actual) (unUniqList expected)
---       ArrayDef {} -> return ()
---       TupleDef {} -> error "Should not call with TupleDef"
---     _ -> throwError UnexpectedNodeType
 
 revalidatePathData :: Monad m => Definition 'Tuple -> Path -> VsM' m ()
 revalidatePathData def@(TupleDef {tupDefILimit = ilimit}) p = case ilimit of
@@ -933,7 +917,7 @@ revalidateTsData tdef p = \case
       modifying vsTac $ Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
 
 
--- FIXME: these are names incorrectly and should be something to do with
+-- FIXME: these are named incorrectly and should be something to do with
 -- checking type assertions without clashing with anything checkTypeAssertiony
 -- above!
 revalidateXrefs
@@ -944,4 +928,4 @@ revalidateXref
   :: Monad m => DefName -> Vs2Xrefs.Referer -> TypeAssertion -> VsM' m ()
 revalidateXref actDn referer (TypeAssertion _ expDn) =
   pathError (Vs2Xrefs.unReferer referer) $
-    unless (actDn == expDn) $ throwError $ XRefError2 expDn actDn
+    unless (actDn == expDn) $ throwError $ XRefError expDn actDn
