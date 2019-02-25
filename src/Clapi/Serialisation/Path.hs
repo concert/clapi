@@ -9,21 +9,21 @@
 module Clapi.Serialisation.Path where
 
 import Clapi.Serialisation.Base (Encodable(..), Decodable(..))
-import Clapi.Types.Path (Path, Seg, Placeholder, Namespace)
+import Clapi.Types.Path (Path, Name, Placeholder, Namespace)
 import qualified Clapi.Types.Path as Path
 
-instance Encodable Seg where
-  builder = builder . Path.unSeg
-instance Decodable Seg where
-  parser = parser >>= Path.mkSeg
+instance Encodable Name where
+  builder = builder . Path.unName
+instance Decodable Name where
+  parser = parser >>= Path.mkName
 
 deriving instance Encodable Placeholder
 deriving instance Decodable Placeholder
 
 instance Encodable Path where
-  builder = builder . Path.toText Path.unSeg
+  builder = builder . Path.toText Path.unName
 instance Decodable Path where
-  parser = parser >>= Path.fromText Path.segP
+  parser = parser >>= Path.fromText Path.nameP
 
 deriving instance Encodable Namespace
 deriving instance Decodable Namespace

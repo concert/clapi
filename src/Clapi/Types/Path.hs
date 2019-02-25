@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveLift #-}
 
 module Clapi.Types.Path
-  ( Seg, mkSeg, unSeg, segP, Placeholder(..), Namespace(..)
+  ( Name, mkName, unName, nameP, Placeholder(..), Namespace(..)
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
@@ -27,29 +27,29 @@ import Control.Monad.Fail (MonadFail, fail)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Lift (Lift)
 
-newtype Seg = Seg {unSeg :: Text} deriving (Eq, Ord, Lift)
+newtype Name = Name {unName :: Text} deriving (Eq, Ord, Lift)
 
-instance Show Seg where
-    show = Text.unpack . unSeg
+instance Show Name where
+    show = Text.unpack . unName
 
-isValidSegChar :: Char -> Bool
-isValidSegChar c = isLetter c || isDigit c || c == '_'
+isValidNameChar :: Char -> Bool
+isValidNameChar c = isLetter c || isDigit c || c == '_'
 
-segP :: Parser Seg
-segP = fmap (Seg . Text.pack) $ DAT.many1 $ DAT.satisfy isValidSegChar
+nameP :: Parser Name
+nameP = fmap (Name . Text.pack) $ DAT.many1 $ DAT.satisfy isValidNameChar
 
-mkSeg :: MonadFail m => Text -> m Seg
-mkSeg = either fail return . DAT.parseOnly (segP <* DAT.endOfInput)
+mkName :: MonadFail m => Text -> m Name
+mkName = either fail return . DAT.parseOnly (nameP <* DAT.endOfInput)
 
-instance Semigroup Seg where
-  (Seg t1) <> (Seg t2) = Seg (t1 <> Text.singleton '_' <> t2)
+instance Semigroup Name where
+  (Name t1) <> (Name t2) = Name (t1 <> Text.singleton '_' <> t2)
 
-newtype Namespace = Namespace {unNamespace :: Seg} deriving (Show, Eq, Ord)
+newtype Namespace = Namespace {unNamespace :: Name} deriving (Show, Eq, Ord)
 newtype Placeholder
-  = Placeholder { unPlaceholder :: Seg } deriving (Eq, Ord, Show)
+  = Placeholder { unPlaceholder :: Name } deriving (Eq, Ord, Show)
 
 newtype Path' a = Path' {unPath :: [a]} deriving (Eq, Ord, Lift)
-type Path = Path' Seg
+type Path = Path' Name
 
 sepChar :: Char
 sepChar = '/'
@@ -68,7 +68,7 @@ pattern Root = Path' []
 
 splitHead :: Path' a -> Maybe (a, Path' a)
 splitHead (Path' []) = Nothing
-splitHead (Path' (seg:segs)) = Just (seg, Path' segs)
+splitHead (Path' (name:names)) = Just (name, Path' names)
 
 pattern (:</) :: a -> Path' a -> Path' a
 pattern a :</ path <- (splitHead -> Just (a, path)) where

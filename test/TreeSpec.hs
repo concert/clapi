@@ -10,19 +10,19 @@ import qualified Data.Map as Map
 import Clapi.TH
 import qualified Clapi.Types.AssocList as AL
 import qualified Clapi.Types.Dkmap as Dkmap
-import Clapi.Types.Path (Seg, pattern Root, pattern (:/))
+import Clapi.Types.Path (Name, pattern Root, pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(SoAfter))
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..))
 import qualified Clapi.Tree as Tree
 
 import Instances ()
 
-s0, s1, s2, s3, s4 :: Seg
-s0 = [segq|t0|]
-s1 = [segq|t1|]
-s2 = [segq|t2|]
-s3 = [segq|t3|]
-s4 = [segq|t4|]
+s0, s1, s2, s3, s4 :: Name
+s0 = [n|t0|]
+s1 = [n|t1|]
+s2 = [n|t2|]
+s3 = [n|t3|]
+s4 = [n|t4|]
 
 t0, t1, t2, t3, t4 :: RoseTree Char
 t0 = RtEmpty
@@ -72,8 +72,8 @@ spec = do
       let
         att = Just "bob"
         t = Tree.insert att ([pathq|/will/bo|]) t0 t1
-        expectedT = RtContainer $ AL.singleton [segq|will|]
-          (att, RtContainer $ AL.singleton [segq|bo|] (att, t0))
+        expectedT = RtContainer $ AL.singleton [n|will|]
+          (att, RtContainer $ AL.singleton [n|bo|] (att, t0))
       in
         t `shouldBe` expectedT
 

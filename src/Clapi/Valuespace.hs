@@ -58,7 +58,7 @@ import Clapi.Types.Definitions
   , Editability(..)
   , structDef
   , DefName, PostDefName
-  , getTyInfoForSeg
+  , getTyInfoForName
   )
 import Clapi.Types.Digests
   ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..)
@@ -71,7 +71,7 @@ import Clapi.Types.Error
   (ErrsT, errsStateT, castErrs, collect, eitherThrow, eitherModifying)
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.Path
-  (Path, Seg, Placeholder,  pattern Root, pattern (:/), pattern (:</))
+  (Path, Name, Placeholder,  pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
 import Clapi.Types.UniqList (unUniqList)
@@ -97,7 +97,7 @@ data ProviderError
   | ArrayDoesNotSupportCreates
   | MissingNodeData
   | UnexpectedNodeType
-  | BadChildKeys [Seg] [Seg]
+  | BadChildKeys [Name] [Name]
   | TsChangeOnConst | ConstChangeOnTs
   -- FIXME: this really should contain two InterpolationType values, but because
   -- we currently don't distinguish between TS tuples and const tuples at the
@@ -123,8 +123,8 @@ data ProviderError
   | CyclicReferencesInCreates [Placeholder]
   | MissingCreatePositionTarget Placeholder EPS
   | SeqOpsOnNonArray
-  | SeqOpMovedMissingChild Seg
-  | SeqOpTargetMissing Seg EPS
+  | SeqOpMovedMissingChild Name
+  | SeqOpTargetMissing Name EPS
   -- ---------------------------------------------------------------------------
 
 errText :: ProviderError -> Text
@@ -158,16 +158,16 @@ errText = Text.pack . \case
   CyclicReferencesInCreates targs ->
     "Several create operations formed a loop with their position targets: "
     ++ intercalate " -> "
-    (Text.unpack . Path.unSeg . Path.unPlaceholder <$> targs)
+    (Text.unpack . Path.unName . Path.unPlaceholder <$> targs)
   MissingCreatePositionTarget ph eps -> printf
     "Create for %s references missing position target %s"
     (show ph) (show eps)
   SeqOpsOnNonArray -> "Array rearrangement operation on non-array"
   SeqOpMovedMissingChild kid -> printf
     "Array rearrangment attempted to move missing member %s" (show kid)
-  SeqOpTargetMissing seg eps -> printf
+  SeqOpTargetMissing name eps -> printf
     "Array rearrangment attempt to move member %s after non-existent target %s"
-    (show seg) (show eps)
+    (show name) (show eps)
 
 instance MonadFail (Either ProviderError) where
   fail = Left . ErrorString
@@ -225,7 +225,7 @@ pathTyInfo path = do
       :: _ => Path -> (DefName, Editability) -> m (DefName, Editability)
     go (s :</ p) (dn, _) = do
       SomeDefinition def <- lookupDef dn
-      r <- eitherThrow $ getTyInfoForSeg s def
+      r <- eitherThrow $ getTyInfoForName s def
       go p r
     go _ r = return r
 
@@ -277,7 +277,7 @@ pathExists path = use vsTree >>= return . go . Tree.lookupNode path
 
 pathChildren
   :: (MonadState Valuespace m, MonadError ProviderError m)
-  => Path -> m [Seg]
+  => Path -> m [Name]
 pathChildren path = pathNode path >>= return . \case
   RtnChildren al -> unUniqList $ AL.keys al
   _ -> mempty
@@ -432,7 +432,7 @@ guardClientUpdates = Error.filterErrs . AL.fmapWithKey atPath
         else pathError p $ throwError NodeNotFound
       return dc
 
-type EPS = Either Placeholder Seg
+type EPS = Either Placeholder Name
 
 guardClientCops
   :: Monad m => Mos Path Placeholder -> ContOps EPS -> VsM' m (ContOps EPS)
@@ -440,8 +440,8 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
   where
     perPath
       :: Monad m
-      => Path -> Map Seg (x, SequenceOp EPS)
-      -> VsM' m (Map Seg (x, SequenceOp EPS))
+      => Path -> Map Name (x, SequenceOp EPS)
+      -> VsM' m (Map Name (x, SequenceOp EPS))
     perPath p m = do
       guardReadOnly ReadOnlySeqOps p
       SomeDefinition def <- pathError p $ pathDef p
@@ -453,7 +453,7 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
 
     validateCop
       :: MonadError [ProviderError] m
-      => Set Seg -> Set Placeholder -> Seg -> (x, SequenceOp EPS) -> m ()
+      => Set Name -> Set Placeholder -> Name -> (x, SequenceOp EPS) -> m ()
     validateCop kids phs kidToChange (_, so) =
       case so of
         SoAfter (Just t) -> do
@@ -565,7 +565,7 @@ updatePathData p dc = do
         modifying vsTac $ Vs2Xrefs.removeTp (Vs2Xrefs.Referer p) tpid
 
 updateContainer
-  :: Monad m => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> VsM' m ()
+  :: Monad m => Path -> Map Name (Maybe Attributee, SequenceOp Name) -> VsM' m ()
 updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
@@ -642,8 +642,8 @@ extendImpls oldTree initialImpls
 
     tyInfoDiffDcImpls
       :: Monad m
-      => Path -> Map Seg (DefName, Editability)
-      -> Map Seg (DefName, Editability) -> VsM' m (Map Path TypeImpl)
+      => Path -> Map Name (DefName, Editability)
+      -> Map Name (DefName, Editability) -> VsM' m (Map Path TypeImpl)
     tyInfoDiffDcImpls p oldTyInfo newTyInfo = fold <$>
         mergeA (traverseMissing f) (traverseMissing g) (zipWithAMatched h)
         oldTyInfo newTyInfo
@@ -662,7 +662,7 @@ extendImpls oldTree initialImpls
 
 
 getChildTyInfo
-  :: Path -> Definition mt -> RoseTree a -> Map Seg (DefName, Editability)
+  :: Path -> Definition mt -> RoseTree a -> Map Name (DefName, Editability)
 getChildTyInfo p def = go . maybe RtnEmpty id . Tree.lookupNode p
   where
     go node = case def of
@@ -770,7 +770,7 @@ doFilter f = Error.filterErrs . Map.mapWithKey (\k a -> f k a >> return a)
 -- FIXME: Rename?
 sortOutAfterDeps
   :: Monad m
-  => Set Seg -> PathCreates -> ErrsT s [ProviderError] m PathCreates
+  => Set Name -> PathCreates -> ErrsT s [ProviderError] m PathCreates
 sortOutAfterDeps existingKids =
       filterDuplicateTargets >=> filterCycles >=> filterMissingNames
   where

@@ -95,10 +95,10 @@ instance Arbitrary Text where
   shrink = fmap Text.pack . shrink . Text.unpack
 
 
-name :: Gen Seg
-name = fromJust . mkSeg . Text.pack <$> smallListOf1 (elements ['a'..'z'])
+name :: Gen Name
+name = fromJust . mkName . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 
-instance Arbitrary Seg where
+instance Arbitrary Name where
   arbitrary = name
 
 deriving instance Arbitrary Attributee
@@ -150,7 +150,7 @@ arbitraryRegex =
 instance Arbitrary SomeTreeType where
   arbitrary = oneof
     [ return ttTime
-    , ttEnum . fmap (Text.unpack . unSeg) <$> arbitrary
+    , ttEnum . fmap (Text.unpack . unName) <$> arbitrary
     , ttWord32 <$> arbitrary, ttWord64 <$> arbitrary
     , ttInt32 <$> arbitrary, ttInt64 <$> arbitrary
     , ttFloat <$> arbitrary, ttDouble <$> arbitrary

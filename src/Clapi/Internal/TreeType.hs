@@ -10,11 +10,11 @@ import Data.Int
 import Data.Word
 import Data.Set (Set)
 import Data.Text (Text)
-import Language.Haskell.TH
+import Language.Haskell.TH hiding (Name)
 
 import Clapi.Types.Base (Time(..))
 import Clapi.Types.EnumVal (EnumVal)
-import Clapi.Types.Path (Seg, Path)
+import Clapi.Types.Path (Name, Path)
 import Clapi.Types.SymbolList (SymbolList)
 import Clapi.Types.UniqList (UniqList)
 
@@ -37,7 +37,7 @@ data TreeType a where
   TtString :: Text -> TreeType Text
   -- FIXME: kinda want this to be `TtRef DefName`, but that creates an import
   -- loop:
-  TtRef :: Seg -> TreeType Path
+  TtRef :: Name -> TreeType Path
   TtList :: TreeType a -> TreeType [a]
   TtSet :: TreeType a -> TreeType (Set a)
   TtOrdSet :: TreeType a -> TreeType (UniqList a)

@@ -123,7 +123,7 @@ inflateValue = \case
   TtFloat _ -> return
   TtDouble _ -> return
   TtString _ -> return
-  TtRef _ -> Path.fromText Path.segP
+  TtRef _ -> Path.fromText Path.nameP
   TtList tt -> mapM $ inflateValue tt
   TtSet tt -> case (getTtShow tt, getTtOrd tt) of
     (Dict, Dict) -> mapM (inflateValue tt) >=> ensureUnique "items"
@@ -160,7 +160,7 @@ extractTypeAssertions
   :: MonadFail m
   => TreeType a -> WireTypeOf a -> m [(DefName, Path)]
 extractTypeAssertions = \case
-    TtRef tn -> Path.fromText Path.segP >=> return . pure . (Tagged tn,)
+    TtRef tn -> Path.fromText Path.nameP >=> return . pure . (Tagged tn,)
     TtList tt -> recurse tt
     TtSet tt -> recurse tt
     TtOrdSet tt -> recurse tt

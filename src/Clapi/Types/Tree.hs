@@ -36,7 +36,7 @@ import Language.Haskell.TH (Type(ConT))
 import Clapi.Internal.TreeType (Bounds(..), TreeType(..))
 import Clapi.Types.Base (Time, TypeEnumOf(..))
 import Clapi.Types.EnumVal (EnumVal)
-import Clapi.Types.Path (Seg, Path)
+import Clapi.Types.Path (Name, Path)
 import Clapi.Types.SymbolList (withSymbolListFromStrings)
 import Clapi.Types.TreeTH (mkGetTtConstraint)
 import Clapi.Types.UniqList (UniqList)
@@ -124,7 +124,7 @@ ttDouble = SomeTreeType . TtDouble
 ttString :: Text -> SomeTreeType
 ttString = SomeTreeType . TtString
 
-ttRef :: Seg -> SomeTreeType
+ttRef :: Name -> SomeTreeType
 ttRef = SomeTreeType . TtRef
 
 ttList :: SomeTreeType -> SomeTreeType
