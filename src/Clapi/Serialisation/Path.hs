@@ -23,7 +23,7 @@ deriving instance Decodable Placeholder
 instance Encodable Path where
   builder = builder . Path.toText Path.unName
 instance Decodable Path where
-  parser = parser >>= Path.fromText Path.segP
+  parser = parser >>= Path.fromText Path.nameP
 
 deriving instance Encodable Namespace
 deriving instance Decodable Namespace

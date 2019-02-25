@@ -85,6 +85,6 @@ spec = do
           \(s :: Set Path) -> let result = prefixes s in
             all (not . flip isStrictChildOfAny result) result
   where
-    shouldBeGoodPath t p = (fromText segP t :: CanFail Path) `shouldBe` Right p
-    shouldBeBadPath t = (fromText segP t :: CanFail Path) `shouldSatisfy` isLeft
-    rt p = (toText unSeg <$> fromText segP p :: CanFail Text) `shouldBe` Right p
+    shouldBeGoodPath t p = (fromText nameP t :: CanFail Path) `shouldBe` Right p
+    shouldBeBadPath t = (fromText nameP t :: CanFail Path) `shouldSatisfy` isLeft
+    rt p = (toText unName <$> fromText nameP p :: CanFail Text) `shouldBe` Right p

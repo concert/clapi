@@ -22,7 +22,7 @@ nameq = QuasiQuoter {
 
 pathq :: QuasiQuoter
 pathq = QuasiQuoter {
-    quoteExp = fromText segP . pack >=> lift,
+    quoteExp = fromText nameP . pack >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}
