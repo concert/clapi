@@ -158,7 +158,7 @@ errText = Text.pack . \case
   CyclicReferencesInCreates targs ->
     "Several create operations formed a loop with their position targets: "
     ++ intercalate " -> "
-    (Text.unpack . Path.unSeg . Path.unPlaceholder <$> targs)
+    (Text.unpack . Path.unName . Path.unPlaceholder <$> targs)
   MissingCreatePositionTarget ph eps -> printf
     "Create for %s references missing position target %s"
     (show ph) (show eps)

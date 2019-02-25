@@ -90,7 +90,7 @@ relayApiProto selfAddr =
       (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             someWireable $ Path.toText Path.unSeg selfClientPath])
+             someWireable $ Path.toText Path.unName selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [someWv WtFloat 0.0])
         , ( selfClientPath :/ dn

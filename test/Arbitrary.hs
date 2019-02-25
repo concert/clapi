@@ -150,7 +150,7 @@ arbitraryRegex =
 instance Arbitrary SomeTreeType where
   arbitrary = oneof
     [ return ttTime
-    , ttEnum . fmap (Text.unpack . unSeg) <$> arbitrary
+    , ttEnum . fmap (Text.unpack . unName) <$> arbitrary
     , ttWord32 <$> arbitrary, ttWord64 <$> arbitrary
     , ttInt32 <$> arbitrary, ttInt64 <$> arbitrary
     , ttFloat <$> arbitrary, ttDouble <$> arbitrary
