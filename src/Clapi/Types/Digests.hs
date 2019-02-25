@@ -25,7 +25,8 @@ import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
-import Clapi.Types.AssocList (AssocList, alEmpty)
+import Clapi.Types.AssocList (AssocList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
@@ -222,7 +223,7 @@ frDigestNull = \case
     null pds && null ds && null tys && null dat && null cops && null errs
 
 trpdEmpty :: Namespace -> TrpDigest
-trpdEmpty ns = Trpd ns mempty mempty alEmpty mempty mempty
+trpdEmpty ns = Trpd ns mempty mempty mempty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
@@ -342,4 +343,4 @@ frcsdFromClientRegs :: ClientRegs -> FrcSubDigest
 frcsdFromClientRegs (ClientRegs p t d) = Frcsd mempty p t d
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
-frcudEmpty ns = Frcud ns mempty mempty mempty alEmpty mempty mempty
+frcudEmpty ns = Frcud ns mempty mempty mempty mempty mempty mempty

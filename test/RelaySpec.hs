@@ -36,8 +36,7 @@ import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Relay (relay, RelayState(..))
-import Clapi.Types.AssocList
-  ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit)
 import Clapi.Types.Definitions
   ( arrayDef, structDef, tupleDef, DefName, PostDefName
@@ -205,7 +204,7 @@ spec = do
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
           { frcudDefs = Map.singleton fooTn $ OpDefine intDef
           , frcudTyAssigns = Map.singleton Root (fooTn, Editable)
-          , frcudData = alSingleton Root $ ConstChange Nothing [someWv WtInt32 12]
+          , frcudData = AL.singleton Root $ ConstChange Nothing [someWv WtInt32 12]
           }]
         verifyDataSub "owner" "sub" fooNs Root [someWv WtInt32 13]
         verifyTySub "owner" "sub" fooNs fooTn
@@ -296,7 +295,7 @@ spec = do
           expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
             { frcudDefs = Map.singleton fooTn $ OpDefine intDef
             , frcudTyAssigns = Map.singleton Root (fooTn, Editable)
-            , frcudData = alSingleton Root $
+            , frcudData = AL.singleton Root $
               ConstChange Nothing [someWv WtInt32 12]
             }]
         checkAlreadyUnsub root
@@ -369,7 +368,7 @@ spec = do
           subSet (Root :/ bar) [someWv WtInt32 3, someWv WtInt32 4] $
           trcudEmpty fooNs
         expect [ServerData "owner" $ SomeFrDigest $ (frpdEmpty fooNs)
-          { frpdData = alSingleton (Root :/ foo) $
+          { frpdData = AL.singleton (Root :/ foo) $
             ConstChange Nothing [someWv WtString "hello"]
           }]
         expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
@@ -643,11 +642,11 @@ instance Subscribe [SomeWireValue] where
   mkTrcsd ns path op = mempty {trcsdData = Map.singleton (ns, path) op}
   mkFrcsd ns path = mempty {frcsdDataUnsubs = Mos.singleton ns path}
   mkTrpd ns name ent = (trpdEmpty ns)
-    { trpdData = alSingleton name $ ConstChange Nothing ent }
+    { trpdData = AL.singleton name $ ConstChange Nothing ent }
   mkFrcud ns name ent = (frcudEmpty ns)
-    {frcudData = alSingleton name $ ConstChange Nothing ent }
+    {frcudData = AL.singleton name $ ConstChange Nothing ent }
   _repr _ = "data"
-  extractEntity name = alLookup name . frcudData >=> unConstChange
+  extractEntity name = AL.lookup name . frcudData >=> unConstChange
   type Mutator [SomeWireValue] = [SomeWireValue]
   mutate wvs _ = wvs
 
@@ -697,11 +696,11 @@ postDefine name def trpd = trpd
 
 ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
 ownerSet path values trpd = trpd
-  { trpdData = alInsert path (ConstChange Nothing values) $ trpdData trpd }
+  { trpdData = AL.insert path (ConstChange Nothing values) $ trpdData trpd }
 
 subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
-  { trcudData = alInsert path (ConstChange Nothing values) $ trcudData trcud }
+  { trcudData = AL.insert path (ConstChange Nothing values) $ trcudData trcud }
 
 foo, bar, baz, x:: Seg
 foo = [segq|foo|]; bar = [segq|bar|]; baz = [segq|baz|]; x = [segq|x|]
@@ -723,15 +722,15 @@ arrayDef' :: Text -> Seg -> Editability -> SomeDefinition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
 
 structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition
-structDef' doc tys = structDef doc $ unsafeMkAssocList $
+structDef' doc tys = structDef doc $ AL.unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
 tupleDef'
   :: Text -> [(Seg, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
-tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il
+tupleDef' doc tys il = tupleDef doc (AL.unsafeMkAssocList tys) il
 
 postDef' :: Text -> [(Seg, SomeTreeType)] -> PostDefinition
-postDef' doc tys = PostDefinition doc (unsafeMkAssocList $ fmap pure <$> tys)
+postDef' doc tys = PostDefinition doc (AL.unsafeMkAssocList $ fmap pure <$> tys)
 
 defMap :: [(Seg, def)] -> DefMap def
 defMap = Map.mapKeysMonotonic Tagged . Map.fromList

@@ -5,18 +5,18 @@
 #-}
 
 module Clapi.Types.AssocList
-  ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList, alNull
-  , alEmpty, alSingleton, alFromKeys, alFromList, alFromMap, alPickFromMap
-  , alToMap, alFromZip
-  , alCons, alLookup, alInsert, alSetDefault, alDelete
-  , alKeys, alKeys_, alKeysSet, alValues
-  , alPartitionWithKey
-  , alFmapWithKey, alMapKeys, alFilterWithKey, alFoldlWithKey,  alFilterKey
-  , alRestrictKeys
-  , alAlterF, alAlter, alAdjust
+  ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList, null
+  , empty, singleton, fromKeys, fromList, fromMap, pickFromMap
+  , toMap, fromZip
+  , cons, lookup, insert, setDefault, delete
+  , keys, keys_, keysSet, values
+  , partitionWithKey
+  , fmapWithKey, mapKeys, filterWithKey, foldlWithKey,  filterKey
+  , restrictKeys
+  , alterF, alter, adjust
   ) where
 
-import Prelude hiding (fail, filter)
+import Prelude hiding (fail, filter, null, lookup)
 import Control.Monad.Fail (MonadFail(..))
 import qualified Data.Foldable as Foldable
 import Data.Functor.Identity (Identity(..))
@@ -34,8 +34,8 @@ newtype AssocList a b
   = AssocList {unAssocList :: [(a, b)]}
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
-alNull :: AssocList a b -> Bool
-alNull (AssocList l) = null l
+null :: AssocList a b -> Bool
+null (AssocList l) = List.null l
 
 mkAssocList :: (MonadFail m, Ord a, Show a) => [(a, b)] -> m (AssocList a b)
 mkAssocList abPairs = ensureUnique "keys" (fmap fst abPairs) >> return (AssocList abPairs)
@@ -44,110 +44,110 @@ unsafeMkAssocList :: [(a, b)] -> AssocList a b
 unsafeMkAssocList = AssocList
 
 instance Eq a => Semigroup (AssocList a b) where
-  al1 <> AssocList l2 = Foldable.foldl' (\acc (a, b) -> alInsert a b acc) al1 l2
+  al1 <> AssocList l2 = Foldable.foldl' (\acc (a, b) -> insert a b acc) al1 l2
 instance Eq a => Monoid (AssocList a b) where
   mempty = AssocList []
   mappend = (<>)
 
 -- FIXME: remove at some point now we have defined a monoid instance?
-alEmpty :: AssocList a b
-alEmpty = AssocList []
+empty :: AssocList a b
+empty = AssocList []
 
-alSingleton :: a -> b -> AssocList a b
-alSingleton a b = AssocList [(a, b)]
+singleton :: a -> b -> AssocList a b
+singleton a b = AssocList [(a, b)]
 
-alFromKeys :: (a -> b) -> UniqList a -> AssocList a b
-alFromKeys f as = AssocList $ (\a -> (a, f a)) <$> unUniqList as
+fromKeys :: (a -> b) -> UniqList a -> AssocList a b
+fromKeys f as = AssocList $ (\a -> (a, f a)) <$> unUniqList as
 
 -- | Like `Map.fromList`, in that it doesn't fail but takes the final value for
 --   any duplicated key. Use `mkAssocList` to check for uniqueness.
-alFromList :: Eq a => [(a, b)] -> AssocList a b
-alFromList = foldl (\acc (k, a) -> alInsert k a acc) mempty
+fromList :: Eq a => [(a, b)] -> AssocList a b
+fromList = foldl (\acc (k, a) -> insert k a acc) mempty
 
-alFromMap :: Map a b -> AssocList a b
-alFromMap = AssocList . Map.toList
+fromMap :: Map a b -> AssocList a b
+fromMap = AssocList . Map.toList
 
-alPickFromMap :: Ord a => Map a b -> UniqList a -> AssocList a b
-alPickFromMap m ul = AssocList $ catMaybes $
+pickFromMap :: Ord a => Map a b -> UniqList a -> AssocList a b
+pickFromMap m ul = AssocList $ catMaybes $
   (\a -> (a,) <$> Map.lookup a m) <$> unUniqList ul
 
-alToMap :: Ord a => AssocList a b -> Map a b
-alToMap = Map.fromList . unAssocList
+toMap :: Ord a => AssocList a b -> Map a b
+toMap = Map.fromList . unAssocList
 
-alFromZip :: (MonadFail m, Ord a, Show a) => [a] -> [b] -> m (AssocList a b)
-alFromZip as bs = fmtStrictZipError "keys" "values" (strictZip as bs) >>= mkAssocList
+fromZip :: (MonadFail m, Ord a, Show a) => [a] -> [b] -> m (AssocList a b)
+fromZip as bs = fmtStrictZipError "keys" "values" (strictZip as bs) >>= mkAssocList
 
-alCons
+cons
   :: (MonadFail m, Ord a, Show a)
   => a -> b -> AssocList a b -> m (AssocList a b)
-alCons a b = mkAssocList . ((a, b) :) . unAssocList
+cons a b = mkAssocList . ((a, b) :) . unAssocList
 
-alLookup :: (MonadFail m, Eq a, Show a) => a -> AssocList a b -> m b
-alLookup a l = maybe (fail $ "Missing " ++ show a) return $ lookup a $ unAssocList l
+lookup :: (MonadFail m, Eq a, Show a) => a -> AssocList a b -> m b
+lookup a l = maybe (fail $ "Missing " ++ show a) return $ List.lookup a $ unAssocList l
 
-alInsert :: Eq k => k -> a -> AssocList k a -> AssocList k a
-alInsert k a = alAlter (const $ Just a) k
+insert :: Eq k => k -> a -> AssocList k a -> AssocList k a
+insert k a = alter (const $ Just a) k
 
-alSetDefault :: Eq k => k -> a -> AssocList k a -> AssocList k a
-alSetDefault k a = alAlter (Just . maybe a id) k
+setDefault :: Eq k => k -> a -> AssocList k a -> AssocList k a
+setDefault k a = alter (Just . maybe a id) k
 
-alDelete :: Eq k => k -> AssocList k a -> AssocList k a
-alDelete k = alAlter (const Nothing) k
+delete :: Eq k => k -> AssocList k a -> AssocList k a
+delete k = alter (const Nothing) k
 
-alKeys :: AssocList a b -> UniqList a
-alKeys = unsafeMkUniqList . fmap fst . unAssocList
+keys :: AssocList a b -> UniqList a
+keys = unsafeMkUniqList . fmap fst . unAssocList
 
-alKeys_ :: AssocList a b -> [a]
-alKeys_ = unUniqList . alKeys
+keys_ :: AssocList a b -> [a]
+keys_ = unUniqList . keys
 
-alKeysSet :: Ord a => AssocList a b -> Set a
-alKeysSet = Set.fromList . fmap fst . unAssocList
+keysSet :: Ord a => AssocList a b -> Set a
+keysSet = Set.fromList . fmap fst . unAssocList
 
-alValues :: AssocList a b -> [b]
-alValues = fmap snd . unAssocList
+values :: AssocList a b -> [b]
+values = fmap snd . unAssocList
 
-alFmapWithKey :: (k -> b -> c) -> AssocList k b -> AssocList k c
-alFmapWithKey f (AssocList kbs) = AssocList $ (\(k, b) -> (k, f k b)) <$> kbs
+fmapWithKey :: (k -> b -> c) -> AssocList k b -> AssocList k c
+fmapWithKey f (AssocList kbs) = AssocList $ (\(k, b) -> (k, f k b)) <$> kbs
 
-alMapKeys
+mapKeys
   :: (Ord k1, Show k1, MonadFail m)
   => (k0 -> k1) -> AssocList k0 b -> m (AssocList k1 b)
-alMapKeys f = mkAssocList . fmap (\(a, b) -> (f a, b)) . unAssocList
+mapKeys f = mkAssocList . fmap (\(a, b) -> (f a, b)) . unAssocList
 
-alFoldlWithKey :: (acc -> k -> b -> acc) -> acc -> AssocList k b -> acc
-alFoldlWithKey f acc = foldl (\acc' (k, b) -> f acc' k b) acc . unAssocList
+foldlWithKey :: (acc -> k -> b -> acc) -> acc -> AssocList k b -> acc
+foldlWithKey f acc = foldl (\acc' (k, b) -> f acc' k b) acc . unAssocList
 
-alPartitionWithKey
+partitionWithKey
   :: (k -> v -> Bool) -> AssocList k v -> (AssocList k v, AssocList k v)
-alPartitionWithKey f al =
+partitionWithKey f al =
   let (ys, ns) = List.partition (uncurry f) $ unAssocList al in
     (AssocList ys, AssocList ns)
 
-alFilterWithKey :: (k -> b -> Bool) -> AssocList k b -> AssocList k b
-alFilterWithKey f = AssocList . filter (uncurry f) . unAssocList
+filterWithKey :: (k -> b -> Bool) -> AssocList k b -> AssocList k b
+filterWithKey f = AssocList . filter (uncurry f) . unAssocList
 
-alFilterKey :: (k -> Bool) -> AssocList k b -> AssocList k b
-alFilterKey f = alFilterWithKey $ \k _ -> f k
+filterKey :: (k -> Bool) -> AssocList k b -> AssocList k b
+filterKey f = filterWithKey $ \k _ -> f k
 
-alRestrictKeys :: Ord k => AssocList k a -> Set k -> AssocList k a
-alRestrictKeys al s = alFilterWithKey (\k _ -> k `Set.member` s) al
+restrictKeys :: Ord k => AssocList k a -> Set k -> AssocList k a
+restrictKeys al s = filterWithKey (\k _ -> k `Set.member` s) al
 
-alAlterF
+alterF
   :: (Eq k, Functor f) => (Maybe b -> f (Maybe b)) -> k -> AssocList k b
   -> f (AssocList k b)
-alAlterF f k (AssocList theKbs) = AssocList <$> alterF theKbs
+alterF f k (AssocList theKbs) = AssocList <$> alterF' theKbs
   where
-    alterF [] = Foldable.toList . fmap (k,) <$> f Nothing
-    alterF (p@(k', b):kbs)
+    alterF' [] = Foldable.toList . fmap (k,) <$> f Nothing
+    alterF' (p@(k', b):kbs)
       | k' == k = maybe kbs (\b' -> (k, b') : kbs) <$> f (Just b)
-      | otherwise = (p:) <$> alterF kbs
+      | otherwise = (p:) <$> alterF' kbs
 
-alAlter :: Eq k => (Maybe b -> Maybe b) -> k -> AssocList k b -> AssocList k b
-alAlter f k = runIdentity . alAlterF (Identity . f) k
+alter :: Eq k => (Maybe b -> Maybe b) -> k -> AssocList k b -> AssocList k b
+alter f k = runIdentity . alterF (Identity . f) k
 
-alAdjust :: Eq k => (b -> b) -> k -> AssocList k b -> AssocList k b
-alAdjust f k = alAlter (fmap f) k
+adjust :: Eq k => (b -> b) -> k -> AssocList k b -> AssocList k b
+adjust f k = alter (fmap f) k
 
 
 instance Filterable (AssocList k) where
-  filter f = alFilterWithKey (const f)
+  filter f = filterWithKey (const f)

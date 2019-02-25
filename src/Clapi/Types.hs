@@ -9,7 +9,6 @@ module Clapi.Types
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail, fail)
 
-import Clapi.Types.AssocList as X
 import Clapi.Types.Base as X
 import Clapi.Types.Definitions as X
 import Clapi.Types.Digests as X
@@ -18,7 +17,6 @@ import Clapi.Types.Path as X
 import Clapi.Types.UniqList as X
 import Clapi.Types.Wire as X
 import Clapi.Types.Symbol as X
-import Clapi.Types.SymbolList as X
 import Clapi.Types.Tree as X
 
 type CanFail a = Either String a

@@ -17,7 +17,8 @@ import Data.Tagged (Tagged)
 import Data.Text (Text)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
-import Clapi.Types.AssocList (AssocList, unAssocList, alLookup)
+import Clapi.Types.AssocList (AssocList(..))
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (SomeTreeType(..))
@@ -116,5 +117,5 @@ getTyInfoForSeg childName = \case
   TupleDef {} -> fail "Tuples do not have children"
   StructDef { strDefChildTys = tyInfo } ->
     maybe (fail $ "Invalid struct child") return
-    $ alLookup childName tyInfo
+    $ AL.lookup childName tyInfo
   ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> return (dn, ed)

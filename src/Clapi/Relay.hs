@@ -40,7 +40,7 @@ import qualified Data.Map.Mol as Mol
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Protocol (Protocol, liftedWaitThen, sendRev)
 import Clapi.Tree (RoseTreeNode(..), TimeSeries)
-import Clapi.Types.AssocList (AssocList)
+import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Definitions
   (PostDefinition, SomeDefinition, PostDefName, DefName, Editability(..))
@@ -219,7 +219,7 @@ handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
           { frcudPostDefs = Map.restrictKeys (frcudPostDefs frcud) pdns
           , frcudDefs = Map.restrictKeys (frcudDefs frcud) dns
           , frcudTyAssigns = Map.restrictKeys (frcudTyAssigns frcud) paths
-          , frcudData = AL.alRestrictKeys (frcudData frcud) paths
+          , frcudData = AL.restrictKeys (frcudData frcud) paths
           , frcudContOps = Map.restrictKeys (frcudContOps frcud) paths
           , frcudErrors = Mol.filterWithKey (\dei _ -> keepErrIdx dei)
               $ frcudErrors frcud
@@ -399,13 +399,13 @@ instance Subscribable Path where
         RtnChildren kids -> (frcudEmpty ns)
           { frcudContOps = Map.singleton p $ oppifySequence kids }
         RtnConstData att vals -> (frcudEmpty ns)
-          { frcudData = AL.alSingleton p (ConstChange att vals) }
+          { frcudData = AL.singleton p (ConstChange att vals) }
         RtnDataSeries ts -> (frcudEmpty ns)
-          { frcudData = AL.alSingleton p $ oppifyTimeSeries ts}
+          { frcudData = AL.singleton p $ oppifyTimeSeries ts}
 
       oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
       oppifySequence al =
-        let (alKs, alVs) = unzip $ AL.unAssocList al in
+        let (alKs, alVs) = unzip $ unAssocList al in
           Map.fromList $ zipWith3
             (\k afterK v -> (k, (v, SoAfter afterK)))
             alKs (Nothing : (Just <$> alKs)) alVs
