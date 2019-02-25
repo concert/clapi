@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveLift #-}
 
 module Clapi.Types.Path
-  ( Seg, mkSeg, unSeg, segP, Placeholder(..), Namespace(..)
+  ( Name, mkName, unName, nameP, Placeholder(..), Namespace(..)
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
@@ -38,8 +38,8 @@ isValidSegChar c = isLetter c || isDigit c || c == '_'
 segP :: Parser Seg
 segP = fmap (Seg . Text.pack) $ DAT.many1 $ DAT.satisfy isValidSegChar
 
-mkSeg :: MonadFail m => Text -> m Seg
-mkSeg = either fail return . DAT.parseOnly (segP <* DAT.endOfInput)
+mkName :: MonadFail m => Text -> m Name
+mkName = either fail return . DAT.parseOnly (nameP <* DAT.endOfInput)
 
 instance Semigroup Seg where
   (Seg t1) <> (Seg t2) = Seg (t1 <> Text.singleton '_' <> t2)

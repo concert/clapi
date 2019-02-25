@@ -11,11 +11,11 @@ import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
 import Clapi.Types.Base (mkTag)
-import Clapi.Types.Path (fromText, mkSeg, segP)
+import Clapi.Types.Path (fromText, mkName, nameP)
 
 nameq :: QuasiQuoter
 nameq = QuasiQuoter {
-    quoteExp = mkSeg . pack >=> lift,
+    quoteExp = mkName . pack >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}

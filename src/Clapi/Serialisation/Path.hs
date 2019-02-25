@@ -12,10 +12,10 @@ import Clapi.Serialisation.Base (Encodable(..), Decodable(..))
 import Clapi.Types.Path (Path, Seg, Placeholder, Namespace)
 import qualified Clapi.Types.Path as Path
 
-instance Encodable Seg where
-  builder = builder . Path.unSeg
-instance Decodable Seg where
-  parser = parser >>= Path.mkSeg
+instance Encodable Name where
+  builder = builder . Path.unName
+instance Decodable Name where
+  parser = parser >>= Path.mkName
 
 deriving instance Encodable Placeholder
 deriving instance Decodable Placeholder

@@ -95,8 +95,8 @@ instance Arbitrary Text where
   shrink = fmap Text.pack . shrink . Text.unpack
 
 
-name :: Gen Seg
-name = fromJust . mkSeg . Text.pack <$> smallListOf1 (elements ['a'..'z'])
+name :: Gen Name
+name = fromJust . mkName . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 
 instance Arbitrary Seg where
   arbitrary = name

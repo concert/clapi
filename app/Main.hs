@@ -24,7 +24,7 @@ import Clapi.Attributor (attributor)
 import Clapi.RelayApi (relayApiProto, PathNameable(..))
 import Clapi.Protocol ((<<->), Protocol, waitThen, sendFwd, sendRev)
 import Clapi.Types (Attributee(..))
-import Clapi.Types.Path (mkSeg)
+import Clapi.Types.Path (mkName)
 import Clapi.TH (nameq)
 
 shower :: (Show a, Show b) => String -> Protocol a a b b IO ()
@@ -38,7 +38,7 @@ internalAddr = SockAddrCan 12
 instance PathNameable SockAddr where
     pathNameFor (SockAddrCan _) = [nameq|relay|]
     -- NOTE: Do not persist this as it depends on the form of show
-    pathNameFor clientAddr = fromJust $ mkSeg $ T.pack $ take 8
+    pathNameFor clientAddr = fromJust $ mkName $ T.pack $ take 8
       $ UTF8.toString $ B16.encode $ hash $ UTF8.fromString $ show clientAddr
 
 main :: IO ()
