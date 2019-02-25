@@ -39,6 +39,7 @@ import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types hiding (reverse)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import qualified Clapi.Types.SymbolList as SL
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.WireTH (mkGetWtConstraint)
 
 
@@ -76,12 +77,12 @@ instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
   shrink = fmap Mol.fromMap . traverse shrink . Mol.unMol
 
 
-assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
-assocListOf gk gv = alFromMap <$> smallMapOf gk gv
+assocListOf :: Ord k => Gen k -> Gen v -> Gen (AL.AssocList k v)
+assocListOf gk gv = AL.fromMap <$> smallMapOf gk gv
 
-instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
+instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AL.AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
-  shrink = fmap unsafeMkAssocList . shrink . unAssocList
+  shrink = fmap AL.unsafeMkAssocList . shrink . AL.unAssocList
 
 
 arbitraryTextNoNull :: Gen Text

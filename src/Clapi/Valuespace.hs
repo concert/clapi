@@ -280,13 +280,13 @@ pathChildren
   :: (MonadState Valuespace m, MonadError ProviderError m)
   => Path -> m [Seg]
 pathChildren path = pathNode path >>= return . \case
-  RtnChildren al -> unUniqList $ AL.alKeys al
+  RtnChildren al -> unUniqList $ AL.keys al
   _ -> mempty
 
 
 baseValuespace :: DefName -> Editability -> Valuespace
 baseValuespace rootDn rootEd = Valuespace
-    (Tree.RtContainer AL.alEmpty)
+    (Tree.RtContainer AL.empty)
     mempty
     (Map.singleton rootDn emptyStructDef)
     rootDn
@@ -295,7 +295,7 @@ baseValuespace rootDn rootEd = Valuespace
     mempty
     Vs2Xrefs.emptyTac
   where
-    emptyStructDef = structDef "Empty namespace" AL.alEmpty
+    emptyStructDef = structDef "Empty namespace" AL.empty
 
 
 -- FIXME: Perhaps this should return the Frped directly?
@@ -330,7 +330,7 @@ processTrpd_ trpd =
 
     -- Let's update the rest of the primary state:
     modifying vsPostDefs $ Map.union pTyDefs . flip Map.withoutKeys pTyUndefs
-    _ <- collect $ AL.alFmapWithKey updatePathData $ trpdData trpd
+    _ <- collect $ AL.fmapWithKey updatePathData $ trpdData trpd
     -- FIXME: The container updates might need to happen later, if changing the
     -- types has a material effect on what the types of the tree nodes are:
     _ <- collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
@@ -423,7 +423,7 @@ guardReadOnly roErr p = pathError p $ pathEditability p >>= \case
   Editable -> return ()
 
 guardClientUpdates :: Monad m => DataDigest -> VsM' m DataDigest
-guardClientUpdates = Error.filterErrs . AL.alFmapWithKey atPath
+guardClientUpdates = Error.filterErrs . AL.fmapWithKey atPath
   where
     atPath :: Monad m => Path -> DataChange -> VsM' m DataChange
     atPath p dc = do
@@ -668,9 +668,9 @@ getChildTyInfo p def = go . maybe RtnEmpty id . Tree.lookupNode p
   where
     go node = case def of
       TupleDef {} -> mempty
-      StructDef { strDefChildTys = tyInfo } -> AL.alToMap tyInfo
+      StructDef { strDefChildTys = tyInfo } -> AL.toMap tyInfo
       ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> case node of
-        RtnChildren al -> const (dn, ed) <$> AL.alToMap al
+        RtnChildren al -> const (dn, ed) <$> AL.toMap al
         _ -> mempty
 
 
@@ -716,7 +716,7 @@ handleImpl p = \case
       StructDef { strDefChildTys = tyInfo } -> do
         modifying vsTree $ Tree.initContainerAt p
         pathError p $ eitherModifying vsTree $ Tree.applyReorderingsAt p $
-          (Nothing,) <$> fullOrderOps (AL.alKeys_ tyInfo)
+          (Nothing,) <$> fullOrderOps (AL.keys_ tyInfo)
       ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p
 
 

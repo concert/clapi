@@ -25,7 +25,7 @@ import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
-import Clapi.Types.AssocList (AssocList, alEmpty)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee, Time, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
@@ -85,7 +85,7 @@ data DataChange
   = ConstChange (Maybe Attributee) [SomeWireValue]
   | TimeChange (Map Word32 (Maybe Attributee, TimeSeriesDataOp))
   deriving (Show, Eq)
-type DataDigest = AssocList Path DataChange
+type DataDigest = AL.AssocList Path DataChange
 
 data CreateOp
   = OpCreate
@@ -227,7 +227,7 @@ frDigestNull = \case
     null pds && null ds && null tys && null dat && null cops && null errs
 
 trpdEmpty :: Namespace -> TrpDigest
-trpdEmpty ns = Trpd ns mempty mempty alEmpty mempty mempty
+trpdEmpty ns = Trpd ns mempty mempty AL.empty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
@@ -347,4 +347,4 @@ frcsdFromClientRegs :: ClientRegs -> FrcSubDigest
 frcsdFromClientRegs (ClientRegs p t d) = Frcsd mempty p t d
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
-frcudEmpty ns = Frcud ns mempty mempty mempty alEmpty mempty mempty
+frcudEmpty ns = Frcud ns mempty mempty mempty AL.empty mempty mempty

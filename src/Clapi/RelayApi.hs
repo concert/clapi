@@ -16,7 +16,7 @@ import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (WireValue(..), TimeStamped(..), Editability(..))
-import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   ( TrDigest(..), FrDigest(..), SomeTrDigest(..), SomeFrDigest(..)
@@ -54,15 +54,15 @@ relayApiProto selfAddr =
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
         [ ([segq|build|], tupleDef "builddoc"
-             (alSingleton [segq|commit_hash|] $ ttString "banana")
+             (AL.singleton [segq|commit_hash|] $ ttString "banana")
              Nothing)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (alSingleton [segq|seconds|] $ ttFloat unbounded)
+             (AL.singleton [segq|seconds|] $ ttFloat unbounded)
              Nothing)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
-             (alSingleton [segq|name|] $ ttString "")
+             (AL.singleton [segq|name|] $ ttString "")
              Nothing)
         , ([segq|client_info|], structDef
              "Info about a single connected client" $ staticAl
@@ -72,14 +72,14 @@ relayApiProto selfAddr =
         , ([segq|clients|], arrayDef "Info about the connected clients"
              Nothing (Tagged [segq|client_info|]) ReadOnly)
         , ([segq|owner_info|], tupleDef "owner info"
-             (alSingleton [segq|owner|]
+             (AL.singleton [segq|owner|]
                -- FIXME: want to make Ref's Seg tagged...
                $ ttRef [segq|client_info|])
              Nothing)
         , ([segq|owners|], arrayDef "ownersdoc"
              Nothing (Tagged [segq|owner_info|]) ReadOnly)
         , ([segq|self|], tupleDef "Which client you are"
-             (alSingleton [segq|info|] $ ttRef [segq|client_info|])
+             (AL.singleton [segq|info|] $ ttRef [segq|client_info|])
              Nothing)
         , ([segq|relay|], structDef "topdoc" $ staticAl
           [ ([segq|build|], (Tagged [segq|build|], ReadOnly))
@@ -87,7 +87,7 @@ relayApiProto selfAddr =
           , ([segq|owners|], (Tagged [segq|owners|], ReadOnly))
           , ([segq|self|], (Tagged [segq|self|], ReadOnly))])
         ])
-      (alFromList
+      (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
         , ([pathq|/self|], ConstChange Nothing [
              someWireable $ Path.toText Path.unSeg selfClientPath])
@@ -102,7 +102,7 @@ relayApiProto selfAddr =
     clock_diff = [segq|clock_diff|]
     selfSeg = pathNameFor selfAddr
     selfClientPath = Root :/ [segq|clients|] :/ selfSeg
-    staticAl = alFromMap . Map.fromList
+    staticAl = AL.fromMap . Map.fromList
     steadyState
       :: Map i TimeDelta -> Map Namespace Seg -> Protocol
             (ClientEvent i (TimeStamped SomeTrDigest))
@@ -119,7 +119,7 @@ relayApiProto selfAddr =
               timingMap' = Map.insert cAddr tdZero timingMap
             in do
               sendFwd (ClientConnect displayName cAddr)
-              pubUpdate (alFromList
+              pubUpdate (AL.fromList
                 [ ( [pathq|/clients|] :/ cSeg :/ clock_diff
                   , ConstChange Nothing [someWireable $ unTimeDelta tdZero])
                 , ( [pathq|/clients|] :/ cSeg :/ dn
@@ -133,7 +133,7 @@ relayApiProto selfAddr =
             -- pipeline, it'd be less jittery and tidy this up
             delta <- lift $ getDelta theirTime
             let timingMap' = Map.insert cAddr delta timingMap
-            pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
+            pubUpdate (AL.singleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
               $ ConstChange Nothing [someWireable $ unTimeDelta delta])
               mempty
             sendFwd $ ClientData cAddr d
@@ -181,7 +181,7 @@ relayApiProto selfAddr =
           steadyState timingMap ownerMap
         ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContOps args)
         ownerChangeInfo ownerMap' =
-            ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
+            ( AL.fromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
                 (const (Nothing, SoAbsent)) <$>
                   Map.mapKeys unNamespace (ownerMap `Map.difference` ownerMap'))
@@ -204,7 +204,7 @@ relayApiProto selfAddr =
               | p == [pathq|/self|] = toSetRefOp theirSeg
               | otherwise = dc
           in
-            alFmapWithKey fiddleDataChanges dd
+            AL.fmapWithKey fiddleDataChanges dd
         -- This function trusts that the valuespace has completely validated the
         -- actions the client can perform (i.e. can only change the display name
         -- of a client)

@@ -19,7 +19,7 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 import Data.Maybe.Clapi (note)
 
-import Clapi.Types.AssocList (AssocList, unAssocList, alLookup)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
 import Clapi.Types.Path (Seg)
 import Clapi.Types.Tree (SomeTreeType(..))
@@ -35,7 +35,7 @@ data PostDefinition = PostDefinition
   { postDefDoc :: Text
   -- FIXME: We really need to stop treating single values as lists of types,
   -- which makes the "top level" special:
-  , postDefArgs :: AssocList Seg [SomeTreeType]
+  , postDefArgs :: AL.AssocList Seg [SomeTreeType]
   } deriving (Show, Eq)
 
 data Definition (mt :: MetaType) where
@@ -43,12 +43,12 @@ data Definition (mt :: MetaType) where
     { tupDefDoc :: Text
   -- FIXME: this should eventually boil down to a single TreeType (NB remove
   -- names too and just write more docstring) now that we have pairs:
-    , tupDefTys :: AssocList Seg SomeTreeType
+    , tupDefTys :: AL.AssocList Seg SomeTreeType
     , tupDefILimit :: InterpolationLimit
     } -> Definition 'Tuple
   StructDef ::
     { strDefDoc :: Text
-    , strDefChildTys :: AssocList Seg (DefName, Editability)
+    , strDefChildTys :: AL.AssocList Seg (DefName, Editability)
     } -> Definition 'Struct
   ArrayDef ::
     { arrDefDoc :: Text
@@ -78,10 +78,10 @@ withDefinition :: (forall mt. Definition mt -> r) -> SomeDefinition -> r
 withDefinition f (SomeDefinition d) = f d
 
 tupleDef
-  :: Text -> AssocList Seg SomeTreeType -> InterpolationLimit -> SomeDefinition
+  :: Text -> AL.AssocList Seg SomeTreeType -> InterpolationLimit -> SomeDefinition
 tupleDef doc tys ilimit = SomeDefinition $ TupleDef doc tys ilimit
 
-structDef :: Text -> AssocList Seg (DefName, Editability) -> SomeDefinition
+structDef :: Text -> AL.AssocList Seg (DefName, Editability) -> SomeDefinition
 structDef doc tyinfo = SomeDefinition $ StructDef doc tyinfo
 
 arrayDef
@@ -108,14 +108,14 @@ childTypeFor :: Seg -> Definition mt -> Maybe DefName
 childTypeFor seg = \case
   TupleDef {} -> Nothing
   StructDef { strDefChildTys = tyinfo } ->
-    fst <$> lookup seg (unAssocList tyinfo)
+    fst <$> lookup seg (AL.unAssocList tyinfo)
   ArrayDef { arrDefChildTy = tn } -> Just tn
 
 childEditableFor :: MonadFail m => Seg -> Definition mt -> m Editability
 childEditableFor seg = \case
   TupleDef {} -> fail "Tuples have no children"
   StructDef { strDefChildTys = tyinfo } -> note "No such child" $
-    snd <$> lookup seg (unAssocList tyinfo)
+    snd <$> lookup seg (AL.unAssocList tyinfo)
   ArrayDef { arrDefChildEd = ed } -> return ed
 
 getTyInfoForSeg
@@ -124,5 +124,5 @@ getTyInfoForSeg childName = \case
   TupleDef {} -> fail "Tuples do not have children"
   StructDef { strDefChildTys = tyInfo } ->
     maybe (fail $ "Invalid struct child") return
-    $ alLookup childName tyInfo
+    $ AL.lookup childName tyInfo
   ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> return (dn, ed)
