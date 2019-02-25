@@ -10,7 +10,7 @@ import Data.Int
 import Data.Word
 import Data.Set (Set)
 import Data.Text (Text)
-import Language.Haskell.TH
+import Language.Haskell.TH hiding (Name)
 
 import Clapi.Types.Base (Time(..))
 import Clapi.Types.EnumVal (EnumVal)
