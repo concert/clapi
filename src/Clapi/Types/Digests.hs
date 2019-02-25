@@ -27,7 +27,7 @@ import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
-import Clapi.Types.Base (Attributee, Time, Interpolation)
+import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
 import Clapi.Types.Path
@@ -35,8 +35,6 @@ import Clapi.Types.Path
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (SomeWireValue)
 
-
-type TpId = Word32
 
 data DataErrorIndex
   = GlobalError
@@ -69,11 +67,8 @@ instance MkSubErrIdx Path where
 data DefOp def = OpDefine {odDef :: def} | OpUndefine deriving (Show, Eq)
 
 isDef :: DefOp a -> Bool
-isDef = not . isUndef
-
-isUndef :: DefOp a -> Bool
-isUndef OpUndefine = True
-isUndef _ = False
+isDef (OpDefine _) = True
+isDef _ = False
 
 data TimeSeriesDataOp =
   OpSet Time [SomeWireValue] Interpolation | OpRemove deriving (Show, Eq)

@@ -8,6 +8,7 @@
 
 module Clapi.Types.Base
   ( Tag, unTag, mkTag
+  , TpId
   , Time(..), TimeStamped(..)
   , Attributee(..)
   , InterpolationLimit, Interpolation(..)
@@ -34,6 +35,7 @@ mkTag :: MonadFail m => Word8 -> m Tag
 mkTag w | minBound <= w && w <= maxBound = return $ Tag w
         | otherwise = fail "Tag not printable!"
 
+type TpId = Word32
 
 data Time = Time Word64 Word32 deriving (Eq, Show, Ord, Bounded)
 

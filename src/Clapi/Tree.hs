@@ -23,12 +23,13 @@ import Clapi.Types
   (Time, Interpolation(..), Attributee, SomeWireValue)
 import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
+import Clapi.Types.Base (TpId)
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
     Seg, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
-  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..), TpId)
+  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
 
 type TimePoint a = (Interpolation, a)

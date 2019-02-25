@@ -27,12 +27,12 @@ import Clapi.TH (segq, pathq)
 import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base
-  (InterpolationType(..), Interpolation(..), Time(..))
+  (InterpolationType(..), Interpolation(..), TpId, Time(..))
 import Clapi.Types.Definitions
   ( Editability(..), DefName, SomeDefinition, PostDefinition(..)
   , tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
-  ( TpId, DefOp(..), DataErrorIndex(..), DataChange(..), TimeSeriesDataOp(..)
+  ( DefOp(..), DataErrorIndex(..), DataChange(..), TimeSeriesDataOp(..)
   , CreateOp(..)
   , TrDigest(..), trpdEmpty, TrcUpdateDigest, trcudEmpty
   , FrDigest(..), frcudEmpty, FrpDigest, frpdEmpty)

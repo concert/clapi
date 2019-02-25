@@ -51,7 +51,8 @@ import Clapi.Internal.Valuespace hiding (Referer, Referee)
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..), TimePoint, Attributed)
 import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
-import Clapi.Types.Base (Time, InterpolationType(..), Attributee, TypeEnumOf(..))
+import Clapi.Types.Base
+  (TpId, Time, InterpolationType(..), Attributee, TypeEnumOf(..))
 import Clapi.Types.Definitions
   ( MetaType(..), SomeDefinition(..), Definition(..), PostDefinition(..)
   , Editability(..)
@@ -61,7 +62,7 @@ import Clapi.Types.Definitions
   )
 import Clapi.Types.Digests
   ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..)
-  , TimeSeriesDataOp(..), TpId, Creates, CreateOp(..), ContOps, DataDigest
+  , TimeSeriesDataOp(..), Creates, CreateOp(..), ContOps, DataDigest
   , TrDigest(..), FrDigest(..)
   , TrpDigest, FrcUpdateDigest
   , TrcUpdateDigest, FrpDigest, frpdEmpty)
@@ -104,7 +105,6 @@ data ProviderError
   -- optional:
   | BadInterpolationType InterpolationType (Maybe InterpolationType)
   | XRefError DefName DefName
-  | XRefError2 DefName DefName
   | RemovedWhileReferencedBy (Set (Vs2Xrefs.Referer, Maybe TpId))
   -- FIXME: ValidationError is a wrapper for MonadFail stuff that comes out of
   -- validation. It would be better to have a whole type for validation errors
@@ -146,7 +146,6 @@ errText = Text.pack . \case
     "Bad interpolation type %s. Expected <= %s" (show actual) (show expected)
   XRefError expDn actDn -> printf
     "Bad xref target type. Expected %s, got %s" (show expDn) (show actDn)
-  XRefError2 _ _ -> "debug"
   RemovedWhileReferencedBy referers -> printf "Removed path referenced by %s"
     (show referers)
   ValidationError s -> "ValidationError: " ++ s
@@ -292,8 +291,7 @@ baseValuespace rootDn rootEd = Valuespace
     rootDn
     rootEd
     (Dependencies.singleton Root rootDn)
-    mempty
-    Vs2Xrefs.emptyTac
+    Vs2Xrefs.empty
   where
     emptyStructDef = structDef "Empty namespace" mempty
 
@@ -456,14 +454,15 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
     validateCop
       :: MonadError [ProviderError] m
       => Set Seg -> Set Placeholder -> Seg -> (x, SequenceOp EPS) -> m ()
-    validateCop kids phs kidToChange (_, so) = do
-      unless (kidToChange `Set.member` kids) $
-        -- FIXME: Don't know if we should fail on missing kids with SoAbsent
-        throwError [SeqOpMovedMissingChild kidToChange]
+    validateCop kids phs kidToChange (_, so) =
       case so of
-        SoAfter (Just t) ->
+        SoAfter (Just t) -> do
+          unless (kidToChange `Set.member` kids) $
+            throwError [SeqOpMovedMissingChild kidToChange]
           unless (either (`Set.member` phs) (`Set.member` kids) t) $
             throwError [SeqOpTargetMissing kidToChange t]
+        -- It doesn't matter if the client removed something that's already
+        -- gone:
         _ -> return ()
 
 
@@ -540,7 +539,7 @@ updatePathData p dc = do
       ConstChange att wvs -> pathErrors p $ do
         tyAsserts <- validateTupleValues tdef wvs
         modifying vsTree $ Tree.constSetAt att p wvs
-        modifying vsTac $ Vs2Xrefs.updateConstTas (Vs2Xrefs.Referer p) tyAsserts
+        modifying vsTac $ Vs2Xrefs.updateConst (Vs2Xrefs.Referer p) tyAsserts
 
     applyTsChanges :: Monad m => Definition 'Tuple -> DataChange -> VsM' m ()
     applyTsChanges tdef = \case
@@ -559,11 +558,11 @@ updatePathData p dc = do
         eitherModifying vsTree $
           first (\s -> [ErrorString s]) . Tree.setTpAt att p tpid t wvs i
         modifying vsTac $
-          Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
+          Vs2Xrefs.updateTp (Vs2Xrefs.Referer p) tpid tyAsserts
       OpRemove -> do
         eitherModifying vsTree $
           first (\s -> [ErrorString s]) . Tree.removeTpAt att p tpid
-        modifying vsTac $ Vs2Xrefs.removeTpTas (Vs2Xrefs.Referer p) tpid
+        modifying vsTac $ Vs2Xrefs.removeTp (Vs2Xrefs.Referer p) tpid
 
 updateContainer
   :: Monad m => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> VsM' m ()
@@ -699,7 +698,7 @@ handleImpl p = \case
       let typeAssertions = Vs2Xrefs.lookup (Vs2Xrefs.Referee p) tac
       if null typeAssertions
         then assign vsTac $
-          Vs2Xrefs.removeTas (Vs2Xrefs.Referer p) tac
+          Vs2Xrefs.removeConst (Vs2Xrefs.Referer p) tac
         else
           pathError p $ throwError $ RemovedWhileReferencedBy $
             Vs2Xrefs.referers (Vs2Xrefs.Referee p) tac
@@ -735,7 +734,7 @@ validateCreateValues
   -> ErrsT Valuespace [ProviderError] m ()
 validateCreateValues pdef cr = do
     tas <- eitherThrow $ first (fmap ValidationError) $ combine
-      $ fmtStrictZipError "post def arg tpes" "list of wire values"
+      $ fmtStrictZipError "post def arg types" "list of wire values"
       $ strictZipWith validateValues (toList $ postDefArgs pdef) (ocArgs cr)
     void $ checkTypeAssertions tas
   where
@@ -874,21 +873,6 @@ revalidatePath def path = case def of
   TupleDef {} -> revalidatePathData def path
   -- Container keys are guaranteed to be correct by the type inference:
   _ -> return ()
-  -- StructDef {} -> revalidateContainerKeys def
-  -- ArrayDef {} -> revalidateContainerKeys def
-
--- revalidateContainerKeys :: Monad m => Definition mt -> Path -> VsM' m ()
--- revalidateContainerKeys def path = pathError path $ do
---   node <- pathNode path
---   case node of
---     RtnChildren al -> case def of
---       StructDef { strDefChildTys = tyInfo } ->
---         let expected = AL.alKeys tyInfo; actual = AL.alKeys al in
---         unless (actual == expected) $
---           throwError $ BadChildKeys (unUniqList actual) (unUniqList expected)
---       ArrayDef {} -> return ()
---       TupleDef {} -> error "Should not call with TupleDef"
---     _ -> throwError UnexpectedNodeType
 
 revalidatePathData :: Monad m => Definition 'Tuple -> Path -> VsM' m ()
 revalidatePathData def@(TupleDef {tupDefILimit = ilimit}) p = case ilimit of
@@ -911,7 +895,7 @@ revalidateConstData
 revalidateConstData tdef p = \case
   rt@(RtConstData _att wvs) -> do
     tyAsserts <- pathErrors p (validateTupleValues tdef wvs)
-    modifying vsTac $ Vs2Xrefs.updateConstTas (Vs2Xrefs.Referer p) tyAsserts
+    modifying vsTac $ Vs2Xrefs.updateConst (Vs2Xrefs.Referer p) tyAsserts
     return rt
   _ -> pathError p $ throwError UnexpectedNodeType
 
@@ -929,10 +913,10 @@ revalidateTsData tdef p = \case
         -> VsM' m ()
     atTp tpid _ (_, (_, wvs)) = do
       tyAsserts <- tpErrors p tpid $ validateTupleValues tdef wvs
-      modifying vsTac $ Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
+      modifying vsTac $ Vs2Xrefs.updateTp (Vs2Xrefs.Referer p) tpid tyAsserts
 
 
--- FIXME: these are names incorrectly and should be something to do with
+-- FIXME: these are named incorrectly and should be something to do with
 -- checking type assertions without clashing with anything checkTypeAssertiony
 -- above!
 revalidateXrefs
@@ -943,4 +927,4 @@ revalidateXref
   :: Monad m => DefName -> Vs2Xrefs.Referer -> TypeAssertion -> VsM' m ()
 revalidateXref actDn referer (TypeAssertion _ expDn) =
   pathError (Vs2Xrefs.unReferer referer) $
-    unless (actDn == expDn) $ throwError $ XRefError2 expDn actDn
+    unless (actDn == expDn) $ throwError $ XRefError expDn actDn

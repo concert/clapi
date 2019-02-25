@@ -17,8 +17,6 @@ import Data.Tagged (Tagged)
 import Data.Text (Text)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
-import Data.Maybe.Clapi (note)
-
 import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
@@ -112,12 +110,6 @@ childTypeFor seg = \case
     fst <$> lookup seg (unAssocList tyinfo)
   ArrayDef { arrDefChildTy = tn } -> Just tn
 
-childEditableFor :: MonadFail m => Seg -> Definition mt -> m Editability
-childEditableFor seg = \case
-  TupleDef {} -> fail "Tuples have no children"
-  StructDef { strDefChildTys = tyinfo } -> note "No such child" $
-    snd <$> lookup seg (unAssocList tyinfo)
-  ArrayDef { arrDefChildEd = ed } -> return ed
 
 getTyInfoForSeg
   :: MonadFail m => Seg -> Definition mt -> m (DefName, Editability)
