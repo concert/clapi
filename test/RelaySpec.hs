@@ -148,7 +148,7 @@ spec = do
           subscribe fooNs id_ "sub"
           expect [ServerData "sub" $ SomeFrDigest $ mkFrcsd fooNs id_]
         pd = postDef' "fooy" [(x, ttInt64 unbounded)]
-        bar1 = [segq|bar1|]
+        bar1 = [nameq|bar1|]
       in do
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect [emptyRootDig "sub"]
@@ -317,7 +317,7 @@ spec = do
       subscribe fooNs fooTn "sub"
       expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
         { frcudDefs = Map.singleton fooTn $ OpDefine $
-          structDef' "test" [(foo, [segq|texty|]), (bar, [segq|inty|])]
+          structDef' "test" [(foo, [nameq|texty|]), (bar, [nameq|inty|])]
         }]
 
       sendFwd $ ClientDisconnect "sub"
@@ -331,7 +331,7 @@ spec = do
       subscribe fooNs fooTn "sub"
       expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
         { frcudDefs = Map.singleton fooTn $ OpDefine $
-          structDef' "test" [(foo, [segq|texty|]), (bar, [segq|inty|])]
+          structDef' "test" [(foo, [nameq|texty|]), (bar, [nameq|inty|])]
         }]
 
       -- We have to trigger a client disconnect by being a bad provider:
@@ -342,7 +342,7 @@ spec = do
 
     it "unsubscribes clients on owner disconnect and disowns" $
       -- Also that the client gets notified of the deletion of the owner's data.
-      testRelay mempty $ let textyTn = Tagged @SomeDefinition [segq|texty|] in do
+      testRelay mempty $ let textyTn = Tagged @SomeDefinition [nameq|texty|] in do
         sub_owner_preamble
         subscribe fooNs textyTn "sub"
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
@@ -454,11 +454,11 @@ spec = do
       ownerSet (Root :/ bar) [someWv WtInt32 2] $
       ownerSet (Root :/ foo) [someWv WtString "one"] $
       define name (structDef' "test"
-        [ (foo, [segq|texty|])
-        , (bar, [segq|inty|])
+        [ (foo, [nameq|texty|])
+        , (bar, [nameq|inty|])
         ]) $
-      define [segq|inty|] intDef $
-      define [segq|texty|] strDef $
+      define [nameq|inty|] intDef $
+      define [nameq|texty|] strDef $
       trpdEmpty $ Namespace name
 
 all' :: [a -> Bool] -> a -> Bool
@@ -703,7 +703,7 @@ subSet path values trcud = trcud
   { trcudData = AL.insert path (ConstChange Nothing values) $ trcudData trcud }
 
 foo, bar, baz, x:: Seg
-foo = [segq|foo|]; bar = [segq|bar|]; baz = [segq|baz|]; x = [segq|x|]
+foo = [nameq|foo|]; bar = [nameq|bar|]; baz = [nameq|baz|]; x = [nameq|x|]
 
 fooNs, barNs, bazNs :: Namespace
 fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz

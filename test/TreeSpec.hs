@@ -18,11 +18,11 @@ import qualified Clapi.Tree as Tree
 import Instances ()
 
 s0, s1, s2, s3, s4 :: Seg
-s0 = [segq|t0|]
-s1 = [segq|t1|]
-s2 = [segq|t2|]
-s3 = [segq|t3|]
-s4 = [segq|t4|]
+s0 = [nameq|t0|]
+s1 = [nameq|t1|]
+s2 = [nameq|t2|]
+s3 = [nameq|t3|]
+s4 = [nameq|t4|]
 
 t0, t1, t2, t3, t4 :: RoseTree Char
 t0 = RtEmpty
@@ -72,8 +72,8 @@ spec = do
       let
         att = Just "bob"
         t = Tree.insert att ([pathq|/will/bo|]) t0 t1
-        expectedT = RtContainer $ AL.singleton [segq|will|]
-          (att, RtContainer $ AL.singleton [segq|bo|] (att, t0))
+        expectedT = RtContainer $ AL.singleton [nameq|will|]
+          (att, RtContainer $ AL.singleton [nameq|bo|] (att, t0))
       in
         t `shouldBe` expectedT
 

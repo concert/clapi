@@ -14,7 +14,7 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Clapi.TH (pathq, segq)
+import Clapi.TH (pathq, nameq)
 import Clapi.Types (CanFail)
 import Clapi.Types.Path
   ( Path'(..), Path, pattern Root, pattern (:/), pattern (:</), fromText, toText
@@ -26,25 +26,25 @@ import Arbitrary ()
 spec :: Spec
 spec = do
     describe "Seg Semigroup instance" $ it "Joins segs as expected" $
-        [segq|yo|] <> [segq|ho|] <> [segq|ahoy|] `shouldBe` [segq|yo_ho_ahoy|]
+        [nameq|yo|] <> [nameq|ho|] <> [nameq|ahoy|] `shouldBe` [nameq|yo_ho_ahoy|]
     describe "Quasiquoter" $ it "Produces expected path" $
-      [pathq|/oi/mate|] `shouldBe` Path' [[segq|oi|], [segq|mate|]]
+      [pathq|/oi/mate|] `shouldBe` Path' [[nameq|oi|], [nameq|mate|]]
     describe ":/" $ do
         it "Splits the end off" $ let (p :/ s) = [pathq|/a/b/c|] in do
             p `shouldBe` [pathq|/a/b|]
-            s `shouldBe` [segq|c|]
-        it "Appends a seg" $ [pathq|/a/b|] :/ [segq|c|] `shouldBe` [pathq|/a/b/c|]
+            s `shouldBe` [nameq|c|]
+        it "Appends a name" $ [pathq|/a/b|] :/ [nameq|c|] `shouldBe` [pathq|/a/b/c|]
     describe ":</" $ do
         it "Splits the start off" $ let (s :</ p) = [pathq|/a/b/c|] in do
-            s `shouldBe` [segq|a|]
+            s `shouldBe` [nameq|a|]
             p `shouldBe` [pathq|/b/c|]
-        it "Prepends a seg" $ [segq|a|] :</ [pathq|/b/c|] `shouldBe` [pathq|/a/b/c|]
+        it "Prepends a name" $ [nameq|a|] :</ [pathq|/b/c|] `shouldBe` [pathq|/a/b/c|]
     describe "From text" $ do
         it "Root" $ "/" `shouldBeGoodPath` Root
-        it "Single segment" $ "/foo" `shouldBeGoodPath` (Root :/ [segq|foo|])
-        it "Multi segment" $ "/foo/bar" `shouldBeGoodPath` (Root :/ [segq|foo|] :/ [segq|bar|])
+        it "Single namement" $ "/foo" `shouldBeGoodPath` (Root :/ [nameq|foo|])
+        it "Multi namement" $ "/foo/bar" `shouldBeGoodPath` (Root :/ [nameq|foo|] :/ [nameq|bar|])
         -- Consider, this should be legal?
-        -- it "Trailing /" $ "/foo/bar/" `shouldBeGoodPath` (Root :/ [segq|foo|] :/ [segq|bar|])
+        -- it "Trailing /" $ "/foo/bar/" `shouldBeGoodPath` (Root :/ [nameq|foo|] :/ [nameq|bar|])
         it "Fails with no leading /" $ shouldBeBadPath "foo/bar"
         it "No leading /" $ shouldBeBadPath "foo/bar"
     describe "Round trip" $ do

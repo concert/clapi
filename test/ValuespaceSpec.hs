@@ -23,7 +23,7 @@ import Text.Printf (printf)
 import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
 
-import Clapi.TH (segq, pathq)
+import Clapi.TH (nameq, pathq)
 import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base
@@ -53,9 +53,9 @@ import Instances ()
 spec :: Spec
 spec =
   let
-    referer = [segq|referer|]
-    referee1 = [segq|referee1|]
-    referee2 = [segq|referee2|]
+    referer = [nameq|referer|]
+    referee1 = [nameq|referee1|]
+    referee2 = [nameq|referee2|]
     xrefSetup = do
       res <- processTrpd $ (trpdEmpty ns)
         { trpdDefs = Map.fromList
@@ -65,7 +65,7 @@ spec =
                 , (referee2, (Tagged referee2, ReadOnly))
                 ])
             , (Tagged referer, OpDefine $ tupleDef "referer"
-                (AL.singleton [segq|r|] $ ttRef referee1)
+                (AL.singleton [nameq|r|] $ ttRef referee1)
                 Nothing)
             , (Tagged referee1, OpDefine w32Tup)
             , (Tagged referee2, OpDefine w32Tup)
@@ -165,11 +165,11 @@ spec =
 
       describe "Child resolution on type changes" $
         let
-          foo = [segq|foo|]
-          common = [segq|common|]
-          structOnly = [segq|structOnly|]
-          arrayOnly = [segq|arrayOnly|]
-          w32Dn = Tagged [segq|w32|]
+          foo = [nameq|foo|]
+          common = [nameq|common|]
+          structOnly = [nameq|structOnly|]
+          arrayOnly = [nameq|arrayOnly|]
+          w32Dn = Tagged [nameq|w32|]
 
           setupStruct = do
             res <- processTrpd $ (trpdEmpty ns)
@@ -245,7 +245,7 @@ spec =
 
       it "handle removing a type definition (unused)" $ go $
         let
-          superfluousDn = Tagged [segq|superfluous|]
+          superfluousDn = Tagged [nameq|superfluous|]
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton superfluousDn $ OpDefine w32Tup
@@ -262,8 +262,8 @@ spec =
 
       it "handle removing a type definition (uses removed at same time)" $ go $
         let
-          foo = [segq|foo|]
-          w32Dn = Tagged [segq|w32|]
+          foo = [nameq|foo|]
+          w32Dn = Tagged [nameq|w32|]
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
@@ -286,8 +286,8 @@ spec =
 
       it "catches in use type when undefined" $ go $
         let
-          foo = [segq|foo|]
-          w32Dn = Tagged [segq|w32|]
+          foo = [nameq|foo|]
+          w32Dn = Tagged [nameq|w32|]
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
@@ -308,12 +308,12 @@ spec =
 
       it "errors on struct with missing child" $ go $
         let
-          w32Tn = Tagged [segq|w32|]
+          w32Tn = Tagged [nameq|w32|]
           trpd = (trpdEmpty ns)
             { trpdDefs = Map.fromList
                [ (rootDn, OpDefine $ structDef "foo and bar" $ AL.fromList
-                   [ ([segq|foo|], (w32Tn, ReadOnly))
-                   , ([segq|bar|], (w32Tn, ReadOnly))
+                   [ ([nameq|foo|], (w32Tn, ReadOnly))
+                   , ([nameq|bar|], (w32Tn, ReadOnly))
                    ])
                , (w32Tn, OpDefine w32Tup)
                ]
@@ -346,9 +346,9 @@ spec =
 
       describe "Container ordering" $
         let
-          foo = [segq|foo|]
-          bar = [segq|bar|]
-          w32Dn = Tagged [segq|w32Dn|]
+          foo = [nameq|foo|]
+          bar = [nameq|bar|]
+          w32Dn = Tagged [nameq|w32Dn|]
 
           arraySetup = do
             res <- processTrpd $ (trpdEmpty ns)
@@ -401,7 +401,7 @@ spec =
             arraySetup
             res <- processTrpd $ (trpdEmpty ns)
               { trpdContOps = Map.singleton Root $ Map.singleton foo
-                  (Nothing, SoAfter $ Just [segq|tosh|])
+                  (Nothing, SoAfter $ Just [nameq|tosh|])
               }
             errorsOn Root res
 
@@ -415,7 +415,7 @@ spec =
               }
             errorsOn Root res
 
-      describe "Recursive struct definitions" $ let r = [segq|r|] in do
+      describe "Recursive struct definitions" $ let r = [nameq|r|] in do
         it "rejected in a direct loop" $ timeLimit 1 $ go $ do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton rootDn $ OpDefine $
@@ -482,7 +482,7 @@ spec =
             trpd = (trpdEmpty ns)
               { trpdDefs = Map.singleton (Tagged referer) $
                   OpDefine $ tupleDef "referer"
-                    (AL.singleton [segq|r|] $ ttRef referee2)
+                    (AL.singleton [nameq|r|] $ ttRef referee2)
                     Nothing
               }
           in do
@@ -513,7 +513,7 @@ spec =
             res' <- processTrpd trpd
               { trpdDefs = defs <> (Map.singleton (Tagged referer) $
                   OpDefine $ tupleDef "referer"
-                    (AL.singleton [segq|r|] $ ttRef referee2)
+                    (AL.singleton [nameq|r|] $ ttRef referee2)
                     Nothing)
               }
             succeeds res'
@@ -530,10 +530,10 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
-                    [ ([segq|myWord|], (Tagged [segq|w32|], Editable))
-                    , ([segq|otherWord|], (Tagged [segq|w32|], ReadOnly))
+                    [ ([nameq|myWord|], (Tagged [nameq|w32|], Editable))
+                    , ([nameq|otherWord|], (Tagged [nameq|w32|], ReadOnly))
                     ])
-                , (Tagged [segq|w32|], OpDefine w32Tup)
+                , (Tagged [nameq|w32|], OpDefine w32Tup)
                 ]
             , trpdData = AL.fromList
                 [ ([pathq|/myWord|], ConstChange Nothing [someWv WtWord32 41])
@@ -546,14 +546,14 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ arrayDef "root"
-                    (Just $ Tagged [segq|postW32|])
-                    (Tagged [segq|w32|])
+                    (Just $ Tagged [nameq|postW32|])
+                    (Tagged [nameq|w32|])
                     editability)
-                , (Tagged [segq|w32|], OpDefine w32Tup)
+                , (Tagged [nameq|w32|], OpDefine w32Tup)
                 ]
-            , trpdPostDefs = Map.singleton (Tagged [segq|postW32|]) $ OpDefine $
+            , trpdPostDefs = Map.singleton (Tagged [nameq|postW32|]) $ OpDefine $
                 PostDefinition "Post me a Word worthy of Mordor!" $ AL.singleton
-                  [segq|theWord|] [w32Ty]
+                  [nameq|theWord|] [w32Ty]
             }
           succeeds res
 
@@ -598,8 +598,8 @@ spec =
 
           it "probibits child reorderings on read-only paths" $ go $
             let
-              foo = [segq|foo|]
-              bar = [segq|bar|]
+              foo = [nameq|foo|]
+              bar = [nameq|bar|]
             in do
               basicArraySetup  -- Root is defined as read-only
               res <- processTrpd $ (trpdEmpty ns)
@@ -648,7 +648,7 @@ spec =
             let
               doCreate vals = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $
-                    Map.singleton (Placeholder [segq|new|])
+                    Map.singleton (Placeholder [nameq|new|])
                     (Nothing, OpCreate vals Nothing)
                 }
             in do
@@ -663,20 +663,20 @@ spec =
               vals = [[someWv WtWord32 0]]
               doCreates targ = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $ Map.fromList
-                  [ (Placeholder [segq|one|], (Nothing, OpCreate vals targ))
-                  , (Placeholder [segq|two|], (Nothing, OpCreate vals targ))
+                  [ (Placeholder [nameq|one|], (Nothing, OpCreate vals targ))
+                  , (Placeholder [nameq|two|], (Nothing, OpCreate vals targ))
                   ]
                 }
             in do
               basicArraySetup
               doCreates Nothing >>= errorsOn Root
-              doCreates (Just $ Left $ Placeholder [segq|one|]) >>= errorsOn Root
+              doCreates (Just $ Left $ Placeholder [nameq|one|]) >>= errorsOn Root
 
           it "catches circular dependencies in creation targets" $ go $
             let
-              ph1 = Placeholder [segq|ph1|]
-              ph2 = Placeholder [segq|ph2|]
-              ph3 = Placeholder [segq|ph3|]
+              ph1 = Placeholder [nameq|ph1|]
+              ph2 = Placeholder [nameq|ph2|]
+              ph3 = Placeholder [nameq|ph3|]
               vals = [[someWv WtWord32 0]]
             in do
               basicArraySetup
@@ -698,10 +698,10 @@ spec =
 
           it "catches missing child seg creation targets" $ go $
             let
-              ei = [segq|existingItem|]
+              ei = [nameq|existingItem|]
               doCreate = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $ Map.singleton
-                    (Placeholder [segq|new|])
+                    (Placeholder [nameq|new|])
                     (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Right ei)
                 }
             in do
@@ -712,8 +712,8 @@ spec =
 
           it "catches missing placeholder creation targets (naive)" $ go $
             let
-              ph1 = Placeholder [segq|ph1|]
-              ph2 = Placeholder [segq|ph2|]
+              ph1 = Placeholder [nameq|ph1|]
+              ph2 = Placeholder [nameq|ph2|]
             in do
               basicArraySetup
               res <- processTrcud' $ (trcudEmpty ns)
@@ -724,8 +724,8 @@ spec =
 
           it "catches missing placeholder creation targets (other failures)" $
             go $ let
-              ph1 = Placeholder [segq|ph1|]
-              ph2 = Placeholder [segq|ph2|]
+              ph1 = Placeholder [nameq|ph1|]
+              ph2 = Placeholder [nameq|ph2|]
             in do
               basicArraySetup
               res <- processTrcud' $ (trcudEmpty ns)
@@ -763,8 +763,8 @@ spec =
           flip evalStateT (baseValuespace rootDn Editable) $ do
             basicStructSetup
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudContOps = Map.singleton Root $ Map.singleton [segq|myWord|]
-                  (Nothing, SoAfter $ Just $ Right [segq|otherWord|])
+              { trcudContOps = Map.singleton Root $ Map.singleton [nameq|myWord|]
+                  (Nothing, SoAfter $ Just $ Right [nameq|otherWord|])
               }
             liftIO $ res `shouldBe` Left (
               Mol.singleton (PathError Root)
@@ -833,10 +833,10 @@ succeedsWith
 succeedsWith ea a = liftIO $ ea `shouldBe` Right a
 
 ns :: Namespace
-ns = Namespace [segq|test_ns|]
+ns = Namespace [nameq|test_ns|]
 
 rootDn :: DefName
-rootDn = Tagged [segq|root|]
+rootDn = Tagged [nameq|root|]
 
 bvs :: Valuespace
 bvs = baseValuespace rootDn ReadOnly
@@ -848,12 +848,12 @@ boundedW32 :: Word32 -> Word32 -> SomeTreeType
 boundedW32 lo hi = either error ttWord32 $ bounds (Just lo) (Just hi)
 
 w32Tup :: SomeDefinition
-w32Tup = tupleDef "w32" (AL.singleton [segq|val|] w32Ty) Nothing
+w32Tup = tupleDef "w32" (AL.singleton [nameq|val|] w32Ty) Nothing
 
 boundedW32Tup :: Word32 -> Word32 -> SomeDefinition
 boundedW32Tup lo hi = tupleDef "bounded w32"
-  (AL.singleton [segq|val|] $ boundedW32 lo hi)
+  (AL.singleton [nameq|val|] $ boundedW32 lo hi)
   Nothing
 
 w32Ts :: SomeDefinition
-w32Ts = tupleDef "w32Ts" (AL.singleton [segq|val|] $ boundedW32 0 5) (Just ItLinear)
+w32Ts = tupleDef "w32Ts" (AL.singleton [nameq|val|] $ boundedW32 0 5) (Just ItLinear)

@@ -28,14 +28,14 @@ import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.TH (pathq, segq)
+import Clapi.TH (pathq, nameq)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 
 class PathSegable a where
     pathNameFor :: a -> Seg
 
-dn :: Seg
-dn = [segq|display_name|]
+dn :: Name
+dn = [nameq|display_name|]
 
 relayApiProto ::
     forall i. (Ord i, PathSegable i) =>
@@ -53,39 +53,39 @@ relayApiProto selfAddr =
       rns
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
-        [ ([segq|build|], tupleDef "builddoc"
-             (AL.singleton [segq|commit_hash|] $ ttString "banana")
+        [ ([nameq|build|], tupleDef "builddoc"
+             (AL.singleton [nameq|commit_hash|] $ ttString "banana")
              Nothing)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (AL.singleton [segq|seconds|] $ ttFloat unbounded)
+             (AL.singleton [nameq|seconds|] $ ttFloat unbounded)
              Nothing)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
-             (AL.singleton [segq|name|] $ ttString "")
+             (AL.singleton [nameq|name|] $ ttString "")
              Nothing)
-        , ([segq|client_info|], structDef
+        , ([nameq|client_info|], structDef
              "Info about a single connected client" $ staticAl
              [ (dn, (Tagged dn, Editable))
              , (clock_diff, (Tagged clock_diff, ReadOnly))
              ])
-        , ([segq|clients|], arrayDef "Info about the connected clients"
-             Nothing (Tagged [segq|client_info|]) ReadOnly)
-        , ([segq|owner_info|], tupleDef "owner info"
-             (AL.singleton [segq|owner|]
-               -- FIXME: want to make Ref's Seg tagged...
-               $ ttRef [segq|client_info|])
+        , ([nameq|clients|], arrayDef "Info about the connected clients"
+             Nothing (Tagged [nameq|client_info|]) ReadOnly)
+        , ([nameq|owner_info|], tupleDef "owner info"
+             (AL.singleton [nameq|owner|]
+               -- FIXME: want to make Ref's Name tagged...
+               $ ttRef [nameq|client_info|])
              Nothing)
-        , ([segq|owners|], arrayDef "ownersdoc"
-             Nothing (Tagged [segq|owner_info|]) ReadOnly)
-        , ([segq|self|], tupleDef "Which client you are"
-             (AL.singleton [segq|info|] $ ttRef [segq|client_info|])
+        , ([nameq|owners|], arrayDef "ownersdoc"
+             Nothing (Tagged [nameq|owner_info|]) ReadOnly)
+        , ([nameq|self|], tupleDef "Which client you are"
+             (AL.singleton [nameq|info|] $ ttRef [nameq|client_info|])
              Nothing)
-        , ([segq|relay|], structDef "topdoc" $ staticAl
-          [ ([segq|build|], (Tagged [segq|build|], ReadOnly))
-          , ([segq|clients|], (Tagged [segq|clients|], ReadOnly))
-          , ([segq|owners|], (Tagged [segq|owners|], ReadOnly))
-          , ([segq|self|], (Tagged [segq|self|], ReadOnly))])
+        , ([nameq|relay|], structDef "topdoc" $ staticAl
+          [ ([nameq|build|], (Tagged [nameq|build|], ReadOnly))
+          , ([nameq|clients|], (Tagged [nameq|clients|], ReadOnly))
+          , ([nameq|owners|], (Tagged [nameq|owners|], ReadOnly))
+          , ([nameq|self|], (Tagged [nameq|self|], ReadOnly))])
         ])
       (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
@@ -98,10 +98,10 @@ relayApiProto selfAddr =
         ])
       mempty
       mempty
-    rns = Namespace [segq|relay|]
-    clock_diff = [segq|clock_diff|]
-    selfSeg = pathNameFor selfAddr
-    selfClientPath = Root :/ [segq|clients|] :/ selfSeg
+    rns = Namespace [nameq|relay|]
+    clock_diff = [nameq|clock_diff|]
+    selfName = pathNameFor selfAddr
+    selfClientPath = Root :/ [nameq|clients|] :/ selfName
     staticAl = AL.fromMap . Map.fromList
     steadyState
       :: Map i TimeDelta -> Map Namespace Seg -> Protocol
@@ -133,7 +133,7 @@ relayApiProto selfAddr =
             -- pipeline, it'd be less jittery and tidy this up
             delta <- lift $ getDelta theirTime
             let timingMap' = Map.insert cAddr delta timingMap
-            pubUpdate (AL.singleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
+            pubUpdate (AL.singleton ([pathq|/clients|] :/ cName :/ clock_diff)
               $ ConstChange Nothing [someWireable $ unTimeDelta delta])
               mempty
             sendFwd $ ClientData cAddr d
@@ -188,8 +188,8 @@ relayApiProto selfAddr =
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
-          someWireable $ Path.toText Path.unSeg $
-          Root :/ [segq|clients|] :/ ns]
+          someWireable $ Path.toText Path.unName $
+          Root :/ [nameq|clients|] :/ ns]
         viewAs i dd =
           let
             theirSeg = pathNameFor i
@@ -201,7 +201,7 @@ relayApiProto selfAddr =
             alterTime _ = error "Weird data back out of VS"
             fiddleDataChanges p dc
               | p `Path.isChildOf` [pathq|/clients|] = alterTime dc
-              | p == [pathq|/self|] = toSetRefOp theirSeg
+              | p == [pathq|/self|] = toSetRefOp theirName
               | otherwise = dc
           in
             AL.fmapWithKey fiddleDataChanges dd
