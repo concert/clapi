@@ -115,20 +115,20 @@ relayApiProto selfAddr =
         fwd ce = case ce of
           ClientConnect displayName cAddr ->
             let
-              cSeg = pathNameFor cAddr
+              cName = pathNameFor cAddr
               timingMap' = Map.insert cAddr tdZero timingMap
             in do
               sendFwd (ClientConnect displayName cAddr)
               pubUpdate (AL.fromList
-                [ ( [pathq|/clients|] :/ cSeg :/ clock_diff
+                [ ( [pathq|/clients|] :/ cName :/ clock_diff
                   , ConstChange Nothing [someWireable $ unTimeDelta tdZero])
-                , ( [pathq|/clients|] :/ cSeg :/ dn
+                , ( [pathq|/clients|] :/ cName :/ dn
                   , ConstChange Nothing [someWireable $ Text.pack displayName])
                 ])
                 mempty
               steadyState timingMap' ownerMap
           ClientData cAddr (TimeStamped (theirTime, d)) -> do
-            let cSeg = pathNameFor cAddr
+            let cName = pathNameFor cAddr
             -- FIXME: this delta thing should probably be in the per client
             -- pipeline, it'd be less jittery and tidy this up
             delta <- lift $ getDelta theirTime
@@ -142,14 +142,14 @@ relayApiProto selfAddr =
             sendFwd (ClientDisconnect cAddr) >> removeClient cAddr
         removeClient cAddr =
           let
-            cSeg = pathNameFor cAddr
+            cName = pathNameFor cAddr
             timingMap' = Map.delete cAddr timingMap
             -- FIXME: This feels a bit like reimplementing some of the NST
-            ownerMap' = Map.filter (/= cSeg) ownerMap
+            ownerMap' = Map.filter (/= cName) ownerMap
             (dd, cops) = ownerChangeInfo ownerMap'
           in do
             pubUpdate dd $ Map.insert [pathq|/clients|]
-              (Map.singleton cSeg (Nothing, SoAbsent)) cops
+              (Map.singleton cName (Nothing, SoAbsent)) cops
             steadyState timingMap' ownerMap'
         pubUpdate dd co = sendFwd $ ClientData selfAddr $ SomeTrDigest $ Trpd
           rns mempty mempty dd co mempty
