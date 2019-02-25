@@ -53,7 +53,7 @@ missing = inner Root
 children :: RoseTree a -> AssocList Seg (RoseTree a)
 children t = case t of
     RtContainer al -> snd <$> al
-    _ -> AL.empty
+    _ -> mempty
 
 childNames :: RoseTree a -> [Seg]
 childNames = fmap fst . unAssocList . children
@@ -82,7 +82,7 @@ applyReorderings contOps (RtContainer kids) =
   in
     RtContainer . AL.fmapWithKey reattribute . AL.pickFromMap childMap
     <$> (updateUniqList (snd <$> contOps) $ AL.keys kids)
-applyReorderings contOps RtEmpty = applyReorderings contOps (RtContainer AL.empty)
+applyReorderings contOps RtEmpty = applyReorderings contOps (RtContainer mempty)
 applyReorderings _ _ = fail "Not a container"
 
 constSet :: Maybe Attributee -> a -> RoseTree a -> RoseTree a

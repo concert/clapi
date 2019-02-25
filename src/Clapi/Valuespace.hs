@@ -286,7 +286,7 @@ pathChildren path = pathNode path >>= return . \case
 
 baseValuespace :: DefName -> Editability -> Valuespace
 baseValuespace rootDn rootEd = Valuespace
-    (Tree.RtContainer AL.empty)
+    (Tree.RtContainer mempty)
     mempty
     (Map.singleton rootDn emptyStructDef)
     rootDn
@@ -295,7 +295,7 @@ baseValuespace rootDn rootEd = Valuespace
     mempty
     Vs2Xrefs.emptyTac
   where
-    emptyStructDef = structDef "Empty namespace" AL.empty
+    emptyStructDef = structDef "Empty namespace" mempty
 
 
 -- FIXME: Perhaps this should return the Frped directly?

@@ -228,7 +228,7 @@ frDigestNull = \case
     null pds && null ds && null tys && null dat && null cops && null errs
 
 trpdEmpty :: Namespace -> TrpDigest
-trpdEmpty ns = Trpd ns mempty mempty AL.empty mempty mempty
+trpdEmpty ns = Trpd ns mempty mempty mempty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
@@ -348,4 +348,4 @@ frcsdFromClientRegs :: ClientRegs -> FrcSubDigest
 frcsdFromClientRegs (ClientRegs p t d) = Frcsd mempty p t d
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
-frcudEmpty ns = Frcud ns mempty mempty mempty AL.empty mempty mempty
+frcudEmpty ns = Frcud ns mempty mempty mempty mempty mempty mempty
