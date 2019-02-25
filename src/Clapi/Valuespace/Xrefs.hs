@@ -3,15 +3,18 @@
 #-}
 
 module Clapi.Valuespace.Xrefs
-  -- ( References(..), getReferees
-  -- , Xrefs, xrefsFwd, xrefsRev, empty
-  -- , update, updateLookup, lookupFwd, lookupRev
-  -- ) where
-  where
+  ( Referer(..), Referee(..)
+  -- FIXME: Might want TypeAssertionCache to be internal so that just the tests
+  -- can get at the constructors
+  , TypeAssertions, toTypeAssertions, TypeAssertionCache(..), empty
+  , updateConst, updateTp, removeConst, removeTp
+  , lookup, referers
+  ) where
 
 
-import Data.Bifunctor (bimap, first)
-import Data.Foldable (foldl', toList)
+import Prelude hiding (lookup)
+import Data.Bifunctor (bimap)
+import Data.Foldable (toList)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -28,73 +31,6 @@ import Clapi.Validator (TypeAssertion(..))
 
 newtype Referer = Referer {unReferer :: Path} deriving (Show, Eq, Ord)
 newtype Referee = Referee {unReferee :: Path} deriving (Show, Eq, Ord)
-
-data References
-  = NoReferences
-  | ConstReferences (Set Referee)
-  | TsReferences (Mos TpId Referee)
-  deriving Show
-
-getReferees :: References -> [(Maybe TpId, Referee)]
-getReferees = \case
-  NoReferences -> []
-  ConstReferences referees -> (Nothing,) <$> Set.toList referees
-  TsReferences referees -> first Just <$> Mos.toList referees
-
-toReferences :: Maybe (Either (Set Referee) (Mos TpId Referee)) -> References
-toReferences = maybe NoReferences $ either ConstReferences TsReferences
-
-
-data Xrefs
-  = Xrefs
-  { xrefsFwd :: Map Referer (Either (Set Referee) (Mos TpId Referee))
-  , xrefsRev :: Mos Referee (Maybe TpId, Referer)
-  } deriving Show
-
-
-empty :: Xrefs
-empty = Xrefs mempty mempty
-
-updateLookup :: Referer -> References -> Xrefs -> (References, Xrefs)
-updateLookup referer newReferences (Xrefs fwd rev) =
-  let
-    (oldReferences, fwd') = first toReferences $ Map.alterF
-      (\mr -> (mr, case newReferences of
-          NoReferences -> Nothing
-          ConstReferences referees -> Just (Left referees)
-          TsReferences referees -> Just (Right referees)))
-      referer fwd
-    rev' =
-      foldMos Mos.insert mempty newReferences <>
-      foldMos Mos.delete rev oldReferences
-  in
-    (oldReferences, Xrefs fwd' rev')
-  where
-    foldMos
-      :: (Referee -> (Maybe TpId, Referer) -> c -> c) -> c -> References -> c
-    foldMos f mos =
-      foldl' (\acc (mtpid, referee) -> f referee (mtpid, referer) acc) mos
-      . getReferees
-
-update :: Referer -> References -> Xrefs -> Xrefs
-update referer newReferences = snd . updateLookup referer newReferences
-
-updateConst :: Referer -> Set Referee -> Xrefs -> Xrefs
-updateConst = undefined
-
-updateTs :: Referer -> TpId -> Set Referee -> Xrefs -> Xrefs
-updateTs = undefined
-
-rmTp :: Referer -> TpId -> Xrefs -> Xrefs
-rmTp = undefined
-
-lookupFwd :: Referer -> Xrefs -> References
-lookupFwd referer (Xrefs fwd _) = toReferences $ Map.lookup referer fwd
-
-lookupRev :: Referee -> Xrefs -> Set (Maybe TpId, Referer)
-lookupRev referee (Xrefs _ rev) = Mos.lookup referee rev
-
--- Attempt Number4(!):
 
 type TypeAssertions = Map Referee DefName
 
@@ -113,13 +49,13 @@ data TypeAssertionCache
   } deriving Show
 
 
-emptyTac :: TypeAssertionCache
-emptyTac = TypeAssertionCache mempty mempty mempty
+empty :: TypeAssertionCache
+empty = TypeAssertionCache mempty mempty mempty
 
-gubbins
+updateDataPoint
   :: Referer -> Maybe TpId -> TypeAssertions -> TypeAssertionCache
   -> TypeAssertionCache
-gubbins referer mtpid newTas tac =
+updateDataPoint referer mtpid newTas tac =
   let
     (tasToRemove, rtas') = Map.alterF thingAtTra referer
       $ tacRefererTypeAssertions tac
@@ -168,20 +104,21 @@ gubbins referer mtpid newTas tac =
     deleteOldTas mtpid' = flip $ Map.foldlWithKey
         (\acc referee _dn -> Mos.delete referee (referer, mtpid') acc)
 
-updateConstTas
+updateConst
   :: Referer -> TypeAssertions -> TypeAssertionCache -> TypeAssertionCache
-updateConstTas referer newTas tac = gubbins referer Nothing newTas tac
+updateConst referer newTas tac = updateDataPoint referer Nothing newTas tac
 
-removeTas :: Referer -> TypeAssertionCache -> TypeAssertionCache
-removeTas referer tac = updateConstTas referer mempty tac
+removeConst :: Referer -> TypeAssertionCache -> TypeAssertionCache
+removeConst referer tac = updateConst referer mempty tac
 
-updateTpTas
+updateTp
   :: Referer -> TpId -> TypeAssertions -> TypeAssertionCache
   -> TypeAssertionCache
-updateTpTas referer tpid newTas tac = gubbins referer (Just tpid) newTas tac
+updateTp referer tpid newTas tac =
+  updateDataPoint referer (Just tpid) newTas tac
 
-removeTpTas :: Referer -> TpId -> TypeAssertionCache -> TypeAssertionCache
-removeTpTas referer tpid tac = updateTpTas referer tpid mempty tac
+removeTp :: Referer -> TpId -> TypeAssertionCache -> TypeAssertionCache
+removeTp referer tpid tac = updateTp referer tpid mempty tac
 
 lookup :: Referee -> TypeAssertionCache -> Map Referer TypeAssertion
 lookup referee (TypeAssertionCache _ trrs trds) =

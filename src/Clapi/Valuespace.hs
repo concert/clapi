@@ -291,8 +291,7 @@ baseValuespace rootDn rootEd = Valuespace
     rootDn
     rootEd
     (Dependencies.singleton Root rootDn)
-    mempty
-    Vs2Xrefs.emptyTac
+    Vs2Xrefs.empty
   where
     emptyStructDef = structDef "Empty namespace" AL.alEmpty
 
@@ -540,7 +539,7 @@ updatePathData p dc = do
       ConstChange att wvs -> pathErrors p $ do
         tyAsserts <- validateTupleValues tdef wvs
         modifying vsTree $ Tree.constSetAt att p wvs
-        modifying vsTac $ Vs2Xrefs.updateConstTas (Vs2Xrefs.Referer p) tyAsserts
+        modifying vsTac $ Vs2Xrefs.updateConst (Vs2Xrefs.Referer p) tyAsserts
 
     applyTsChanges :: Monad m => Definition 'Tuple -> DataChange -> VsM' m ()
     applyTsChanges tdef = \case
@@ -559,11 +558,11 @@ updatePathData p dc = do
         eitherModifying vsTree $
           first (\s -> [ErrorString s]) . Tree.setTpAt att p tpid t wvs i
         modifying vsTac $
-          Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
+          Vs2Xrefs.updateTp (Vs2Xrefs.Referer p) tpid tyAsserts
       OpRemove -> do
         eitherModifying vsTree $
           first (\s -> [ErrorString s]) . Tree.removeTpAt att p tpid
-        modifying vsTac $ Vs2Xrefs.removeTpTas (Vs2Xrefs.Referer p) tpid
+        modifying vsTac $ Vs2Xrefs.removeTp (Vs2Xrefs.Referer p) tpid
 
 updateContainer
   :: Monad m => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> VsM' m ()
@@ -699,7 +698,7 @@ handleImpl p = \case
       let typeAssertions = Vs2Xrefs.lookup (Vs2Xrefs.Referee p) tac
       if null typeAssertions
         then assign vsTac $
-          Vs2Xrefs.removeTas (Vs2Xrefs.Referer p) tac
+          Vs2Xrefs.removeConst (Vs2Xrefs.Referer p) tac
         else
           pathError p $ throwError $ RemovedWhileReferencedBy $
             Vs2Xrefs.referers (Vs2Xrefs.Referee p) tac
@@ -896,7 +895,7 @@ revalidateConstData
 revalidateConstData tdef p = \case
   rt@(RtConstData _att wvs) -> do
     tyAsserts <- pathErrors p (validateTupleValues tdef wvs)
-    modifying vsTac $ Vs2Xrefs.updateConstTas (Vs2Xrefs.Referer p) tyAsserts
+    modifying vsTac $ Vs2Xrefs.updateConst (Vs2Xrefs.Referer p) tyAsserts
     return rt
   _ -> pathError p $ throwError UnexpectedNodeType
 
@@ -914,7 +913,7 @@ revalidateTsData tdef p = \case
         -> VsM' m ()
     atTp tpid _ (_, (_, wvs)) = do
       tyAsserts <- tpErrors p tpid $ validateTupleValues tdef wvs
-      modifying vsTac $ Vs2Xrefs.updateTpTas (Vs2Xrefs.Referer p) tpid tyAsserts
+      modifying vsTac $ Vs2Xrefs.updateTp (Vs2Xrefs.Referer p) tpid tyAsserts
 
 
 -- FIXME: these are named incorrectly and should be something to do with
