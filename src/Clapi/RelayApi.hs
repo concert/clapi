@@ -23,7 +23,7 @@ import Clapi.Types.Digests
   , trpdEmpty, OriginatorRole(..), DigestAction(..)
   , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Seg, pattern Root, pattern (:/), Namespace(..))
+import Clapi.Types.Path (Name, pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
@@ -104,7 +104,7 @@ relayApiProto selfAddr =
     selfClientPath = Root :/ [nameq|clients|] :/ selfName
     staticAl = AL.fromMap . Map.fromList
     steadyState
-      :: Map i TimeDelta -> Map Namespace Seg -> Protocol
+      :: Map i TimeDelta -> Map Namespace Name -> Protocol
             (ClientEvent i (TimeStamped SomeTrDigest))
             (ClientEvent i SomeTrDigest)
             (ServerEvent i SomeFrDigest)
@@ -179,7 +179,7 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
-        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContOps args)
+        ownerChangeInfo :: Map Namespace Name -> (DataDigest, ContOps args)
         ownerChangeInfo ownerMap' =
             ( AL.fromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $

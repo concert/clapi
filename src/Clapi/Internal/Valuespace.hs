@@ -18,12 +18,12 @@ import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
   (SomeDefinition, PostDefinition, Editability, DefName)
 import Clapi.Types.Base (TpId)
-import Clapi.Types.Path (Seg, Path)
+import Clapi.Types.Path (Name, Path)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
 import qualified Clapi.Valuespace.Xrefs as VsXrefs
 
-type DefMap def = Map (Tagged def Seg) def
+type DefMap def = Map (Tagged def Name) def
 type TypeAssignmentMap = Dependencies Path DefName
 type Referer = Path
 type Referee = Path

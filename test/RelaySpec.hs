@@ -43,7 +43,7 @@ import Clapi.Types.Definitions
   , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
+import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Name, Path)
 import Clapi.Types.Tree
   (SomeTreeType(..), unbounded, ttInt64, ttInt32, ttString)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWv)
@@ -684,12 +684,12 @@ retrieve ns name =
     return $ fromMaybe (error $ "missing existing " ++ etName) $
         extractEntity name frcud
 
-define :: Seg -> SomeDefinition -> TrpDigest -> TrpDigest
+define :: Name -> SomeDefinition -> TrpDigest -> TrpDigest
 define name def trpd = trpd
   { trpdDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdDefs trpd }
 
-postDefine :: Seg -> PostDefinition -> TrpDigest -> TrpDigest
+postDefine :: Name -> PostDefinition -> TrpDigest -> TrpDigest
 postDefine name def trpd = trpd
   { trpdPostDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdPostDefs trpd }
@@ -702,7 +702,7 @@ subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
   { trcudData = AL.insert path (ConstChange Nothing values) $ trcudData trcud }
 
-foo, bar, baz, x:: Seg
+foo, bar, baz, x:: Name
 foo = [nameq|foo|]; bar = [nameq|bar|]; baz = [nameq|baz|]; x = [nameq|x|]
 
 fooNs, barNs, bazNs :: Namespace
@@ -718,19 +718,19 @@ fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 root :: Path
 root = Root
 
-arrayDef' :: Text -> Seg -> Editability -> SomeDefinition
+arrayDef' :: Text -> Name -> Editability -> SomeDefinition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
 
-structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition
+structDef' :: Text -> [(Name, Name)] -> SomeDefinition
 structDef' doc tys = structDef doc $ AL.unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
 tupleDef'
-  :: Text -> [(Seg, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
+  :: Text -> [(Name, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
 tupleDef' doc tys il = tupleDef doc (AL.unsafeMkAssocList tys) il
 
-postDef' :: Text -> [(Seg, SomeTreeType)] -> PostDefinition
+postDef' :: Text -> [(Name, SomeTreeType)] -> PostDefinition
 postDef' doc tys = PostDefinition doc (AL.unsafeMkAssocList $ fmap pure <$> tys)
 
-defMap :: [(Seg, def)] -> DefMap def
+defMap :: [(Name, def)] -> DefMap def
 defMap = Map.mapKeysMonotonic Tagged . Map.fromList

@@ -98,7 +98,7 @@ instance Arbitrary Text where
 name :: Gen Name
 name = fromJust . mkName . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 
-instance Arbitrary Seg where
+instance Arbitrary Name where
   arbitrary = name
 
 deriving instance Arbitrary Attributee

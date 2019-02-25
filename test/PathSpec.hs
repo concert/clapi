@@ -18,14 +18,14 @@ import Clapi.TH (pathq, nameq)
 import Clapi.Types (CanFail)
 import Clapi.Types.Path
   ( Path'(..), Path, pattern Root, pattern (:/), pattern (:</), fromText, toText
-  , isChildOf, unSeg, segP, prefixes, prefixesMap, isStrictChildOfAny)
+  , isChildOf, unName, nameP, prefixes, prefixesMap, isStrictChildOfAny)
 
 import Arbitrary ()
 
 
 spec :: Spec
 spec = do
-    describe "Seg Semigroup instance" $ it "Joins segs as expected" $
+    describe "Name Semigroup instance" $ it "Joins names as expected" $
         [nameq|yo|] <> [nameq|ho|] <> [nameq|ahoy|] `shouldBe` [nameq|yo_ho_ahoy|]
     describe "Quasiquoter" $ it "Produces expected path" $
       [pathq|/oi/mate|] `shouldBe` Path' [[nameq|oi|], [nameq|mate|]]

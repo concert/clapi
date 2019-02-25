@@ -9,7 +9,7 @@
 module Clapi.Serialisation.Path where
 
 import Clapi.Serialisation.Base (Encodable(..), Decodable(..))
-import Clapi.Types.Path (Path, Seg, Placeholder, Namespace)
+import Clapi.Types.Path (Path, Name, Placeholder, Namespace)
 import qualified Clapi.Types.Path as Path
 
 instance Encodable Name where
