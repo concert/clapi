@@ -2,9 +2,12 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE DataKinds #-}
 
 module Clapi.Types.Path
-  ( Name, mkName, unName, nameP, Placeholder(..), Namespace(..)
+  ( NameRole, Name, mkName, unName, nameP
+  , DataName, DefName, PostDefName, Namespace, PostArgName, Placeholder
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
@@ -27,29 +30,40 @@ import Control.Monad.Fail (MonadFail, fail)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Lift (Lift)
 
-newtype Name = Name {unName :: Text} deriving (Eq, Ord, Lift)
+data NameRole
+  = ForData
+  | ForTyDef
+  | ForPostTyDef
+  | ForNamespace
+  | ForPostArg
+  | ForPlaceholder
 
-instance Show Name where
+newtype Name (nr :: NameRole) = Name {unName :: Text} deriving (Eq, Ord, Lift)
+
+type DataName = Name 'ForData
+type DefName = Name 'ForTyDef
+type PostDefName = Name 'ForPostTyDef
+type Namespace = Name 'ForNamespace
+type PostArgName = Name 'ForPostArg
+type Placeholder = Name 'ForPlaceholder
+
+instance Show (Name nr) where
     show = Text.unpack . unName
 
 isValidNameChar :: Char -> Bool
 isValidNameChar c = isLetter c || isDigit c || c == '_'
 
-nameP :: Parser Name
+nameP :: Parser (Name nr)
 nameP = fmap (Name . Text.pack) $ DAT.many1 $ DAT.satisfy isValidNameChar
 
-mkName :: MonadFail m => Text -> m Name
+mkName :: MonadFail m => Text -> m (Name nr)
 mkName = either fail return . DAT.parseOnly (nameP <* DAT.endOfInput)
 
-instance Semigroup Name where
+instance Semigroup (Name nr) where
   (Name t1) <> (Name t2) = Name (t1 <> Text.singleton '_' <> t2)
 
-newtype Namespace = Namespace {unNamespace :: Name} deriving (Show, Eq, Ord)
-newtype Placeholder
-  = Placeholder { unPlaceholder :: Name } deriving (Eq, Ord, Show)
-
 newtype Path' a = Path' {unPath :: [a]} deriving (Eq, Ord, Lift)
-type Path = Path' Name
+type Path = Path' DataName
 
 sepChar :: Char
 sepChar = '/'
