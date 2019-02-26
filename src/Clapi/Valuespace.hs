@@ -20,9 +20,8 @@ module Clapi.Valuespace
 
 import Control.Lens (_1, _2, _3, assign, modifying, use)
 import Control.Monad (join, unless, void, when, (>=>))
-import Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
+import Control.Monad.Except (MonadError(..))
 import Control.Monad.State (MonadState(..), State, execState, StateT, get, put)
-import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter(..))
 import Data.Bifunctor (first, bimap)
 import Data.Either (isLeft)
@@ -53,9 +52,7 @@ import Clapi.Types.Base (TpId, Time, Attributee, TypeEnumOf(..))
 import Clapi.Types.Definitions
   ( MetaType(..), SomeDefinition(..), Definition(..), PostDefinition(..)
   , Editability(..)
-  , structDef
-  , DefName, PostDefName
-  , getTyInfoForSeg
+  , DefName
   )
 import Clapi.Types.Digests
   ( DataErrorIndex(..), DefOp(..), isDef, DataChange(..)
@@ -65,13 +62,12 @@ import Clapi.Types.Digests
   , TrcUpdateDigest, FrpDigest, frpdEmpty)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Error
-  (ErrsT, errsStateT, castErrs, collect, eitherThrow, eitherModifying)
+  (ErrsT, errsStateT, collect, eitherThrow, eitherModifying)
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.Path
-  (Path, Seg, Placeholder,  pattern Root, pattern (:/), pattern (:</))
+  (Path, Seg, Placeholder,  pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
-import Clapi.Types.UniqList (unUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Util
   ( mapFoldMapMWithKey, justs, lefts, strictZipWith, fmtStrictZipError)
@@ -81,133 +77,12 @@ import Clapi.Valuespace.Errors
   ( AccessError(..), ConsumerError(..), ErrorString(..), ProviderError(..)
   , SeqOpError(..), StructuralError(..), ValidationError(..)
   , ErrText(..))
-import Clapi.Valuespace.ErrWrap
-  (Wraps(..), Errs, MonadErrors, throw, liftEither)
-
-
-type VsM e m = ExceptT e (StateT Valuespace m)
-type VsM' e m = ErrsT Valuespace (Mol DataErrorIndex e) m
-
-castVsMError :: Monad m => DataErrorIndex -> VsM e m a -> VsM' e m a
-castVsMError idx m =
-  (lift $ lift $ runExceptT m) >>=
-  either (throwError . Mol.singleton idx) return
-
-castSingleErr
-  :: Monad m => VsM e m a -> ErrsT Valuespace [e] m a
-castSingleErr m =
-  (lift $ lift $ runExceptT m) >>= either (throwError . pure) return
-
-pathError :: Monad m => Path -> VsM e m a -> VsM' e m a
-pathError p = castVsMError $ PathError p
-
-pathErrors
-  :: Monad m
-  => Path -> ErrsT Valuespace [e] m a
-  -> ErrsT Valuespace (Mol DataErrorIndex e) m a
-pathErrors p = castErrs $ Mol.singletonList $ PathError p
-
-tpErrors
-  :: Monad m
-  => Path -> TpId -> ErrsT Valuespace [e] m a
-  -> ErrsT Valuespace (Mol DataErrorIndex e) m a
-tpErrors p tpid = castErrs $ Mol.singletonList $ TimePointError p tpid
-
-note :: MonadErrors '[e1] e2 m => e1 -> Maybe a -> m a
-note err = maybe (throw err) return
-
-lookupDef
-  :: (MonadState Valuespace m, MonadErrors '[AccessError] e m)
-  => DefName -> m SomeDefinition
-lookupDef dn = use vsTyDefs >>= note (DefNotFound dn) . Map.lookup dn
-
-lookupPostDef
-  :: (MonadState Valuespace m, MonadErrors '[AccessError] e m)
-  => PostDefName -> m PostDefinition
-lookupPostDef dn = use vsPostDefs >>= note (PostDefNotFound dn) . Map.lookup dn
-
-pathTyInfo
-  :: (MonadState Valuespace m, MonadErrors '[AccessError, ErrorString] e m)
-  => Path -> m (DefName, Editability)
-pathTyInfo path = do
-    dn <- use vsRootDefName
-    ed <- use vsRootEditability
-    go path (dn, ed)
-  where
-    go
-      :: (MonadState Valuespace m, MonadErrors '[AccessError, ErrorString] e m)
-      => Path -> (DefName, Editability) -> m (DefName, Editability)
-    go (s :</ p) (dn, _) = do
-      SomeDefinition def <- lookupDef dn
-      r <- liftEither @ErrorString $ getTyInfoForSeg s def
-      go p r
-    go _ r = return r
-
-pathDefName
-  :: (MonadState Valuespace m, MonadErrors '[AccessError, ErrorString] e m)
-  => Path -> m DefName
-pathDefName path = fst <$> pathTyInfo path
-
-pathEditability
-  :: (MonadState Valuespace m, MonadErrors '[AccessError, ErrorString] e m)
-  => Path -> m Editability
-pathEditability path = snd <$> pathTyInfo path
-
-pathDef
-  :: (MonadState Valuespace m, MonadErrors '[AccessError, ErrorString] e m)
-  => Path -> m SomeDefinition
-pathDef path = pathDefName path >>= lookupDef
-
-pathPostDef
-  :: ( MonadState Valuespace m
-     , MonadErrors '[AccessError, ConsumerError, ErrorString] e m)
-  => Path -> m PostDefinition
-pathPostDef path = do
-  SomeDefinition def <- pathDef path
-  case def of
-    ArrayDef { arrDefPostTy = mpd } -> maybe
-      (throw CreatesNotSupported) lookupPostDef mpd
-    -- FIXME: Might be better to have have a more specific error type here...
-    _ -> throw CreatesNotSupported
-
-pathNode
-  :: (MonadState Valuespace m, MonadErrors '[AccessError] e m)
-  => Path -> m (RoseTreeNode [SomeWireValue])
-pathNode path = use vsTree >>= guard . Tree.lookupNode path
-  where
-    guard Nothing = throw NodeNotFound
-    guard (Just n) = case n of
-      -- FIXME: More evidence for getting rid of RtnEmpty?
-      RtnEmpty -> throw NodeNotFound
-      _ -> return n
-
-pathExists :: MonadState Valuespace m => Path -> m Bool
-pathExists path = use vsTree >>= return . go . Tree.lookupNode path
-  where
-    go Nothing = False
-    go (Just RtnEmpty) = False
-    go _ = True
-
-pathChildren
-  :: (MonadState Valuespace m, MonadErrors '[AccessError] e m)
-  => Path -> m [Seg]
-pathChildren path = pathNode path >>= return . \case
-  RtnChildren al -> unUniqList $ AL.alKeys al
-  _ -> mempty
-
-
-baseValuespace :: DefName -> Editability -> Valuespace
-baseValuespace rootDn rootEd = Valuespace
-    (Tree.RtContainer AL.alEmpty)
-    mempty
-    (Map.singleton rootDn emptyStructDef)
-    rootDn
-    rootEd
-    (Dependencies.singleton Root rootDn)
-    mempty
-    Vs2Xrefs.emptyTac
-  where
-    emptyStructDef = structDef "Empty namespace" AL.alEmpty
+import Clapi.Valuespace.ErrWrap (Wraps(..), Errs, throw)
+import Clapi.Valuespace.Prim
+  ( VsM', pathError, pathErrors, tpErrors, castVsMError, castSingleErr
+  , baseValuespace
+  , lookupDef, lookupPostDef, pathTyInfo, pathDefName, pathDef, pathPostDef
+  , pathEditability, pathChildren, pathExists, pathNode)
 
 
 -- FIXME: Perhaps this should return the Frped directly?

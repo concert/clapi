@@ -70,6 +70,7 @@ library
                      , Clapi.Valuespace
                      , Clapi.Valuespace.Errors
                      , Clapi.Valuespace.ErrWrap
+                     , Clapi.Valuespace.Prim
                      , Clapi.Valuespace.Xrefs
                      , Clapi.Util
   other-modules:       Data.Maybe.Clapi

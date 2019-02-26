@@ -17,7 +17,7 @@ import Text.Printf (printf)
 import Clapi.Internal.Valuespace (EPS)
 import Clapi.Types.Base (TpId, InterpolationType)
 import Clapi.Types.Definitions (DefName, PostDefName)
-import Clapi.Types.Path (Path, Seg, Placeholder)
+import Clapi.Types.Path (Seg, Placeholder)
 import qualified Clapi.Types.Path as Path
 import Clapi.Valuespace.ErrWrap (Wraps(..))
 import Clapi.Valuespace.Xrefs (Referer)

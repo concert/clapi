@@ -37,3 +37,7 @@ type family Errs_ (errs :: [Type]) (e :: Type) (c :: Constraint) where
   Errs_ ('(:) t ts) e c = (Wraps t e, Errs_ ts e c)
 
 type MonadErrors errs e m = (Errs errs e, MonadError e m)
+
+
+note :: MonadErrors '[e1] e2 m => e1 -> Maybe a -> m a
+note err = maybe (throw err) return
