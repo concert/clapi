@@ -9,7 +9,7 @@ module Clapi.Valuespace.Prim
   ( lookupDef, lookupPostDef
   , pathTyInfo, pathDefName, pathEditability
   , pathDef, pathPostDef, pathNode, pathExists, pathChildren
-  , baseValuespace
+  , Valuespace, baseValuespace
 
   , VsM', pathError, pathErrors, tpErrors, castVsMError, castSingleErr
   ) where
