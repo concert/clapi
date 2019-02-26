@@ -41,7 +41,7 @@ import Clapi.Types.Digests
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Error (collect, errsStateT, eitherModifying)
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.Path (Path, Seg, pattern (:/))
+import Clapi.Types.Path (Path, Name, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp, fullOrderOps)
 import Clapi.Types.Wire (SomeWireValue)
@@ -94,7 +94,7 @@ processTrpd_ trpd =
 
     -- Let's update the rest of the primary state:
     modifying vsPostDefs $ Map.union pTyDefs . flip Map.withoutKeys pTyUndefs
-    _ <- collect $ AL.alFmapWithKey updatePathData $ trpdData trpd
+    _ <- collect $ AL.fmapWithKey updatePathData $ trpdData trpd
     -- FIXME: The container updates might need to happen later, if changing the
     -- types has a material effect on what the types of the tree nodes are:
     _ <- collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
@@ -218,7 +218,7 @@ guardRecursiveStructs = go mempty []
 
 updateContainer
   :: (Errs '[AccessError, ErrorString, StructuralError] e, Monad m)
-  => Path -> Map Seg (Maybe Attributee, SequenceOp Seg) -> VsM' e m ()
+  => Path -> Map Name (Maybe Attributee, SequenceOp Name) -> VsM' e m ()
 updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
@@ -296,8 +296,8 @@ extendImpls oldTree initialImpls
 
     tyInfoDiffDcImpls
       :: (Errs '[AccessError] e, Monad m)
-      => Path -> Map Seg (DefName, Editability)
-      -> Map Seg (DefName, Editability) -> VsM' e m (Map Path TypeImpl)
+      => Path -> Map Name (DefName, Editability)
+      -> Map Name (DefName, Editability) -> VsM' e m (Map Path TypeImpl)
     tyInfoDiffDcImpls p oldTyInfo newTyInfo = fold <$>
         mergeA (traverseMissing f) (traverseMissing g) (zipWithAMatched h)
         oldTyInfo newTyInfo
@@ -315,14 +315,14 @@ extendImpls oldTree initialImpls
                 TypeReassigned dn1 dn2 def1 def2 ed2
 
 getChildTyInfo
-  :: Path -> Definition mt -> RoseTree a -> Map Seg (DefName, Editability)
+  :: Path -> Definition mt -> RoseTree a -> Map Name (DefName, Editability)
 getChildTyInfo p def = go . maybe RtnEmpty id . Tree.lookupNode p
   where
     go node = case def of
       TupleDef {} -> mempty
-      StructDef { strDefChildTys = tyInfo } -> AL.alToMap tyInfo
+      StructDef { strDefChildTys = tyInfo } -> AL.toMap tyInfo
       ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> case node of
-        RtnChildren al -> const (dn, ed) <$> AL.alToMap al
+        RtnChildren al -> const (dn, ed) <$> AL.toMap al
         _ -> mempty
 
 handleImpl
@@ -355,7 +355,7 @@ handleImpl p = \case
       let typeAssertions = Xrefs.lookup (Xrefs.Referee p) tac
       if null typeAssertions
         then assign vsTac $
-          Xrefs.removeTas (Xrefs.Referer p) tac
+          Xrefs.removeConst (Xrefs.Referer p) tac
         else
           pathError p $ throw $ RemovedWhileReferencedBy $
             Xrefs.referers (Xrefs.Referee p) tac
@@ -375,7 +375,7 @@ handleImpl p = \case
         modifying vsTree $ Tree.initContainerAt p
         pathError p $ eitherModifying vsTree $ fmap (first wrap) .
           Tree.applyReorderingsAt @(Either ErrorString) p $
-          (Nothing,) <$> fullOrderOps (AL.alKeys_ tyInfo)
+          (Nothing,) <$> fullOrderOps (AL.keys_ tyInfo)
       ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p
 
 
@@ -413,7 +413,7 @@ revalidateConstData
 revalidateConstData tdef p = \case
   rt@(RtConstData _att wvs) -> do
     tyAsserts <- pathErrors p (validateTupleValues tdef wvs)
-    modifying vsTac $ Xrefs.updateConstTas (Xrefs.Referer p) tyAsserts
+    modifying vsTac $ Xrefs.updateConst (Xrefs.Referer p) tyAsserts
     return rt
   _ -> pathError p $ throw UnexpectedNodeType
 
@@ -432,7 +432,7 @@ revalidateTsData tdef p = \case
         -> VsM' e m ()
     atTp tpid _ (_, (_, wvs)) = do
       tyAsserts <- tpErrors p tpid $ validateTupleValues tdef wvs
-      modifying vsTac $ Xrefs.updateTpTas (Xrefs.Referer p) tpid tyAsserts
+      modifying vsTac $ Xrefs.updateTp (Xrefs.Referer p) tpid tyAsserts
 
 
 -- FIXME: these are named incorrectly and should be something to do with

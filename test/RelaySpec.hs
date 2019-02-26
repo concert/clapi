@@ -36,15 +36,14 @@ import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Relay (relay, RelayState(..))
-import Clapi.Types.AssocList
-  ( alSingleton, unsafeMkAssocList, alInsert, alLookup)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit)
 import Clapi.Types.Definitions
   ( arrayDef, structDef, tupleDef, DefName, PostDefName
   , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Seg, Path)
+import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Name, Path)
 import Clapi.Types.Tree
   (SomeTreeType(..), unbounded, ttInt64, ttInt32, ttString)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWv)
@@ -149,7 +148,7 @@ spec = do
           subscribe fooNs id_ "sub"
           expect [ServerData "sub" $ SomeFrDigest $ mkFrcsd fooNs id_]
         pd = postDef' "fooy" [(x, ttInt64 unbounded)]
-        bar1 = [segq|bar1|]
+        bar1 = [n|bar1|]
       in do
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect [emptyRootDig "sub"]
@@ -205,7 +204,7 @@ spec = do
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
           { frcudDefs = Map.singleton fooTn $ OpDefine intDef
           , frcudTyAssigns = Map.singleton Root (fooTn, Editable)
-          , frcudData = alSingleton Root $ ConstChange Nothing [someWv WtInt32 12]
+          , frcudData = AL.singleton Root $ ConstChange Nothing [someWv WtInt32 12]
           }]
         verifyDataSub "owner" "sub" fooNs Root [someWv WtInt32 13]
         verifyTySub "owner" "sub" fooNs fooTn
@@ -296,7 +295,7 @@ spec = do
           expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
             { frcudDefs = Map.singleton fooTn $ OpDefine intDef
             , frcudTyAssigns = Map.singleton Root (fooTn, Editable)
-            , frcudData = alSingleton Root $
+            , frcudData = AL.singleton Root $
               ConstChange Nothing [someWv WtInt32 12]
             }]
         checkAlreadyUnsub root
@@ -318,7 +317,7 @@ spec = do
       subscribe fooNs fooTn "sub"
       expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
         { frcudDefs = Map.singleton fooTn $ OpDefine $
-          structDef' "test" [(foo, [segq|texty|]), (bar, [segq|inty|])]
+          structDef' "test" [(foo, [n|texty|]), (bar, [n|inty|])]
         }]
 
       sendFwd $ ClientDisconnect "sub"
@@ -332,7 +331,7 @@ spec = do
       subscribe fooNs fooTn "sub"
       expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
         { frcudDefs = Map.singleton fooTn $ OpDefine $
-          structDef' "test" [(foo, [segq|texty|]), (bar, [segq|inty|])]
+          structDef' "test" [(foo, [n|texty|]), (bar, [n|inty|])]
         }]
 
       -- We have to trigger a client disconnect by being a bad provider:
@@ -343,7 +342,7 @@ spec = do
 
     it "unsubscribes clients on owner disconnect and disowns" $
       -- Also that the client gets notified of the deletion of the owner's data.
-      testRelay mempty $ let textyTn = Tagged @SomeDefinition [segq|texty|] in do
+      testRelay mempty $ let textyTn = Tagged @SomeDefinition [n|texty|] in do
         sub_owner_preamble
         subscribe fooNs textyTn "sub"
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
@@ -369,7 +368,7 @@ spec = do
           subSet (Root :/ bar) [someWv WtInt32 3, someWv WtInt32 4] $
           trcudEmpty fooNs
         expect [ServerData "owner" $ SomeFrDigest $ (frpdEmpty fooNs)
-          { frpdData = alSingleton (Root :/ foo) $
+          { frpdData = AL.singleton (Root :/ foo) $
             ConstChange Nothing [someWv WtString "hello"]
           }]
         expectSubErr "sub" (PathError $ Root :/ bar) "Mismatched numbers"
@@ -455,11 +454,11 @@ spec = do
       ownerSet (Root :/ bar) [someWv WtInt32 2] $
       ownerSet (Root :/ foo) [someWv WtString "one"] $
       define name (structDef' "test"
-        [ (foo, [segq|texty|])
-        , (bar, [segq|inty|])
+        [ (foo, [n|texty|])
+        , (bar, [n|inty|])
         ]) $
-      define [segq|inty|] intDef $
-      define [segq|texty|] strDef $
+      define [n|inty|] intDef $
+      define [n|texty|] strDef $
       trpdEmpty $ Namespace name
 
 all' :: [a -> Bool] -> a -> Bool
@@ -643,11 +642,11 @@ instance Subscribe [SomeWireValue] where
   mkTrcsd ns path op = mempty {trcsdData = Map.singleton (ns, path) op}
   mkFrcsd ns path = mempty {frcsdDataUnsubs = Mos.singleton ns path}
   mkTrpd ns name ent = (trpdEmpty ns)
-    { trpdData = alSingleton name $ ConstChange Nothing ent }
+    { trpdData = AL.singleton name $ ConstChange Nothing ent }
   mkFrcud ns name ent = (frcudEmpty ns)
-    {frcudData = alSingleton name $ ConstChange Nothing ent }
+    {frcudData = AL.singleton name $ ConstChange Nothing ent }
   _repr _ = "data"
-  extractEntity name = alLookup name . frcudData >=> unConstChange
+  extractEntity name = AL.lookup name . frcudData >=> unConstChange
   type Mutator [SomeWireValue] = [SomeWireValue]
   mutate wvs _ = wvs
 
@@ -685,26 +684,26 @@ retrieve ns name =
     return $ fromMaybe (error $ "missing existing " ++ etName) $
         extractEntity name frcud
 
-define :: Seg -> SomeDefinition -> TrpDigest -> TrpDigest
+define :: Name -> SomeDefinition -> TrpDigest -> TrpDigest
 define name def trpd = trpd
   { trpdDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdDefs trpd }
 
-postDefine :: Seg -> PostDefinition -> TrpDigest -> TrpDigest
+postDefine :: Name -> PostDefinition -> TrpDigest -> TrpDigest
 postDefine name def trpd = trpd
   { trpdPostDefs = Map.insert (Tagged name) (OpDefine def) $
     trpdPostDefs trpd }
 
 ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
 ownerSet path values trpd = trpd
-  { trpdData = alInsert path (ConstChange Nothing values) $ trpdData trpd }
+  { trpdData = AL.insert path (ConstChange Nothing values) $ trpdData trpd }
 
 subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
-  { trcudData = alInsert path (ConstChange Nothing values) $ trcudData trcud }
+  { trcudData = AL.insert path (ConstChange Nothing values) $ trcudData trcud }
 
-foo, bar, baz, x:: Seg
-foo = [segq|foo|]; bar = [segq|bar|]; baz = [segq|baz|]; x = [segq|x|]
+foo, bar, baz, x:: Name
+foo = [n|foo|]; bar = [n|bar|]; baz = [n|baz|]; x = [n|x|]
 
 fooNs, barNs, bazNs :: Namespace
 fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
@@ -719,19 +718,19 @@ fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
 root :: Path
 root = Root
 
-arrayDef' :: Text -> Seg -> Editability -> SomeDefinition
+arrayDef' :: Text -> Name -> Editability -> SomeDefinition
 arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
 
-structDef' :: Text -> [(Seg, Seg)] -> SomeDefinition
-structDef' doc tys = structDef doc $ unsafeMkAssocList $
+structDef' :: Text -> [(Name, Name)] -> SomeDefinition
+structDef' doc tys = structDef doc $ AL.unsafeMkAssocList $
   fmap ((,Editable) . Tagged) <$> tys
 
 tupleDef'
-  :: Text -> [(Seg, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
-tupleDef' doc tys il = tupleDef doc (unsafeMkAssocList tys) il
+  :: Text -> [(Name, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
+tupleDef' doc tys il = tupleDef doc (AL.unsafeMkAssocList tys) il
 
-postDef' :: Text -> [(Seg, SomeTreeType)] -> PostDefinition
-postDef' doc tys = PostDefinition doc (unsafeMkAssocList $ fmap pure <$> tys)
+postDef' :: Text -> [(Name, SomeTreeType)] -> PostDefinition
+postDef' doc tys = PostDefinition doc (AL.unsafeMkAssocList $ fmap pure <$> tys)
 
-defMap :: [(Seg, def)] -> DefMap def
+defMap :: [(Name, def)] -> DefMap def
 defMap = Map.mapKeysMonotonic Tagged . Map.fromList

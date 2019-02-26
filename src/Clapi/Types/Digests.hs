@@ -25,12 +25,12 @@ import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
-import Clapi.Types.AssocList (AssocList, alEmpty)
+import Clapi.Types.AssocList (AssocList)
 import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
 import Clapi.Types.Path
-  (Seg, Path, pattern (:/), Namespace(..), Placeholder(..))
+  (Name, Path, pattern (:/), Namespace(..), Placeholder(..))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (SomeWireValue)
 
@@ -87,17 +87,17 @@ data CreateOp
   -- FIXME: Nested lists of WireValues is a legacy hangover because our tree
   -- data nodes still contain [WireValue] as a single "value":
   { ocArgs :: [[SomeWireValue]]
-  , ocAfter :: Maybe (Either Placeholder Seg)
+  , ocAfter :: Maybe (Either Placeholder Name)
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
 
 type RootContOps = Map Namespace (SequenceOp Namespace)
--- FIXME: might this be better as Map (Path, Seg) (blah)? We spend a lot of time
+-- FIXME: might this be better as Map (Path, Name) (blah)? We spend a lot of time
 -- coping with the nested map-ness:
-type ContOps after = Map Path (Map Seg (Maybe Attributee, SequenceOp after))
+type ContOps after = Map Path (Map Name (Maybe Attributee, SequenceOp after))
 
 data PostOp
-  = OpPost {opPath :: Path, opArgs :: Map Seg SomeWireValue} deriving (Show, Eq)
+  = OpPost {opPath :: Path, opArgs :: Map Name SomeWireValue} deriving (Show, Eq)
 
 data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq, Enum, Bounded)
 
@@ -114,7 +114,7 @@ data TrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
     , trpdDefs :: Map DefName (DefOp SomeDefinition)
     , trpdData :: DataDigest
-    , trpdContOps :: ContOps Seg
+    , trpdContOps :: ContOps Name
     -- FIXME: should errors come in a different digest to data updates? At the
     -- moment we just check a TrpDigest isn't null when processing namespace
     -- claims...
@@ -133,7 +133,7 @@ data TrDigest (r :: OriginatorRole) (a :: DigestAction) where
     { trcudNs :: Namespace
     , trcudData :: DataDigest
     , trcudCreates :: Creates
-    , trcudContOps :: ContOps (Either Placeholder Seg)
+    , trcudContOps :: ContOps (Either Placeholder Name)
     } -> TrDigest 'Consumer 'Update
 
 deriving instance Show (TrDigest o a)
@@ -144,7 +144,7 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     { frpdNs :: Namespace
     , frpdData :: DataDigest
     , frpdCreates :: Creates
-    , frpdContOps :: ContOps (Either Placeholder Seg)
+    , frpdContOps :: ContOps (Either Placeholder Name)
     } -> FrDigest 'Provider 'Update
   Frped ::
     { frpedErrors :: Mol DataErrorIndex Text
@@ -166,7 +166,7 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , frcudDefs :: Map DefName (DefOp SomeDefinition)
     , frcudTyAssigns :: Map Path (DefName, Editability)
     , frcudData :: DataDigest
-    , frcudContOps :: ContOps Seg
+    , frcudContOps :: ContOps Name
     -- FIXME: This could just be for errors that come from providers. Although
     -- we currently send Relay errors here, if we do so we never send any of the
     -- other fields. I.e. we could add an additional Frced type...
@@ -222,14 +222,14 @@ frDigestNull = \case
     null pds && null ds && null tys && null dat && null cops && null errs
 
 trpdEmpty :: Namespace -> TrpDigest
-trpdEmpty ns = Trpd ns mempty mempty alEmpty mempty mempty
+trpdEmpty ns = Trpd ns mempty mempty mempty mempty mempty
 
 trpdRemovedPaths :: TrpDigest -> [Path]
 trpdRemovedPaths trpd =
     Map.foldlWithKey f [] (trpdContOps trpd)
   where
-    f acc p segMap = acc ++
-      (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd segMap)
+    f acc p nameMap = acc ++
+      (fmap (p :/) $ Map.keys $ Map.filter isSoAbsent $ fmap snd nameMap)
 
 frpdEmpty :: Namespace -> FrpDigest
 frpdEmpty ns = Frpd ns mempty mempty mempty
@@ -342,4 +342,4 @@ frcsdFromClientRegs :: ClientRegs -> FrcSubDigest
 frcsdFromClientRegs (ClientRegs p t d) = Frcsd mempty p t d
 
 frcudEmpty :: Namespace -> FrcUpdateDigest
-frcudEmpty ns = Frcud ns mempty mempty mempty alEmpty mempty mempty
+frcudEmpty ns = Frcud ns mempty mempty mempty mempty mempty mempty

@@ -30,10 +30,10 @@ import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (TpId)
 import Clapi.Types.Definitions
   ( Definition(..), SomeDefinition(..), PostDefinition(..), DefName
-  , PostDefName, Editability, getTyInfoForSeg, structDef)
+  , PostDefName, Editability, getTyInfoForName, structDef)
 import Clapi.Types.Digests (DataErrorIndex(..))
 import Clapi.Types.Error (ErrsT, castErrs)
-import Clapi.Types.Path (Path, Seg, pattern Root, pattern (:</))
+import Clapi.Types.Path (Path, Name, pattern Root, pattern (:</))
 import Clapi.Types.UniqList (unUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace.Errors
@@ -67,9 +67,9 @@ pathTyInfo path = do
     go
       :: (MonadState Valuespace m, MonadErrors '[AccessError, ErrorString] e m)
       => Path -> (DefName, Editability) -> m (DefName, Editability)
-    go (s :</ p) (dn, _) = do
+    go (n :</ p) (dn, _) = do
       SomeDefinition def <- lookupDef dn
-      r <- liftEither @ErrorString $ getTyInfoForSeg s def
+      r <- liftEither @ErrorString $ getTyInfoForName n def
       go p r
     go _ r = return r
 
@@ -120,24 +120,23 @@ pathExists path = use vsTree >>= return . go . Tree.lookupNode path
 
 pathChildren
   :: (MonadState Valuespace m, MonadErrors '[AccessError] e m)
-  => Path -> m [Seg]
+  => Path -> m [Name]
 pathChildren path = pathNode path >>= return . \case
-  RtnChildren al -> unUniqList $ AL.alKeys al
+  RtnChildren al -> unUniqList $ AL.keys al
   _ -> mempty
 
 
 baseValuespace :: DefName -> Editability -> Valuespace
 baseValuespace rootDn rootEd = Valuespace
-    (Tree.RtContainer AL.alEmpty)
+    (Tree.RtContainer AL.empty)
     mempty
     (Map.singleton rootDn emptyStructDef)
     rootDn
     rootEd
     (Dependencies.singleton Root rootDn)
-    mempty
-    Xrefs.emptyTac
+    Xrefs.empty
   where
-    emptyStructDef = structDef "Empty namespace" AL.alEmpty
+    emptyStructDef = structDef "Empty namespace" AL.empty
 
 
 -- Some basic type and error handling stuff that might want to live elsewhere:

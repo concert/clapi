@@ -57,7 +57,7 @@ updatePathData p dc = do
       ConstChange att wvs -> pathErrors p $ do
         tyAsserts <- validateTupleValues tdef wvs
         modifying vsTree $ Tree.constSetAt att p wvs
-        modifying vsTac $ Xrefs.updateConstTas (Xrefs.Referer p) tyAsserts
+        modifying vsTac $ Xrefs.updateConst (Xrefs.Referer p) tyAsserts
 
     applyTsChanges
       :: ( Errs '[AccessError, ErrorString, StructuralError, ValidationError] e
@@ -79,11 +79,11 @@ updatePathData p dc = do
         eitherModifying vsTree $
           first (\s -> [wrap $ ErrorString s]) . Tree.setTpAt att p tpid t wvs i
         modifying vsTac $
-          Xrefs.updateTpTas (Xrefs.Referer p) tpid tyAsserts
+          Xrefs.updateTp (Xrefs.Referer p) tpid tyAsserts
       OpRemove -> do
         eitherModifying vsTree $
           first (\s -> [wrap $ ErrorString s]) . Tree.removeTpAt att p tpid
-        modifying vsTac $ Xrefs.removeTpTas (Xrefs.Referer p) tpid
+        modifying vsTac $ Xrefs.removeTp (Xrefs.Referer p) tpid
 
 validateTupleValues
   :: (Errs '[ValidationError, ErrorString, AccessError] e, Monad m)

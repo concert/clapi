@@ -16,6 +16,7 @@ import Clapi.PerClientProto (ServerEvent(..))
 import Clapi.Serialisation (FrDigestType(..))
 import Clapi.Tree
 import Clapi.Types
+import Clapi.Types.SymbolList
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace.Xrefs
 

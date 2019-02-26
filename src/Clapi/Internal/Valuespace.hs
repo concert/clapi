@@ -4,7 +4,7 @@ module Clapi.Internal.Valuespace
   ( Valuespace(..)
   , DefMap, TypeAssignmentMap, Referer, Referee, Xrefs
   , vsTree, vsPostDefs, vsTyDefs, vsRootDefName, vsRootEditability
-  , vsTyAssns, vsXrefs, vsTac
+  , vsTyAssns, vsTac
 
   , EPS
   ) where
@@ -20,12 +20,12 @@ import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
   (SomeDefinition, PostDefinition, Editability, DefName)
 import Clapi.Types.Base (TpId)
-import Clapi.Types.Path (Seg, Path, Placeholder)
+import Clapi.Types.Path (Name, Path, Placeholder)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
 import qualified Clapi.Valuespace.Xrefs as VsXrefs
 
-type DefMap def = Map (Tagged def Seg) def
+type DefMap def = Map (Tagged def Name) def
 type TypeAssignmentMap = Dependencies Path DefName
 type Referer = Path
 type Referee = Path
@@ -39,11 +39,10 @@ data Valuespace = Valuespace
   , _vsRootEditability :: Editability
   -- These are just caches that help us do reverse lookups:
   , _vsTyAssns :: TypeAssignmentMap
-  , _vsXrefs :: Xrefs
   , _vsTac :: VsXrefs.TypeAssertionCache
   } deriving Show
 
 makeLenses ''Valuespace
 
 
-type EPS = Either Placeholder Seg
+type EPS = Either Placeholder Name

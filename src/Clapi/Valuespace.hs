@@ -9,7 +9,6 @@ import Clapi.Valuespace.Prim as X
   , lookupDef, lookupPostDef, pathDef, pathPostDef
   , pathTyInfo, pathDefName, pathEditability
   , pathExists, pathNode)
-
 import Clapi.Valuespace.Errors as X
    ( AccessError(..), ConsumerError(..), ErrorString(..), ProviderError(..)
    , SeqOpError(..), StructuralError(..), ValidationError(..))

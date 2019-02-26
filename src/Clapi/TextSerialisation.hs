@@ -19,7 +19,7 @@ import Data.Scientific (toRealFloat)
 
 import Clapi.Types.Base (typeEnumOf)
 import Clapi.Types.Tree
-import Clapi.Types.Path (segP, unSeg)
+import Clapi.Types.Path (nameP, unName)
 import qualified Clapi.Types.Path as Path
 import qualified Clapi.Types.SymbolList as SL
 
@@ -92,7 +92,7 @@ ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtFloat b -> boundsToText b
       TtDouble b -> boundsToText b
       TtString r -> r
-      TtRef ts -> Path.unSeg ts
+      TtRef ts -> Path.unName ts
       TtList tt' -> ttToText tt'
       TtSet tt' -> ttToText tt'
       TtOrdSet tt' -> ttToText tt'
@@ -120,8 +120,8 @@ ttParser' = ttNameParser >>= argsParser
         Dat.scan (False, 1 :: Int) f
     argsParser ttn = case ttn of
       TtnTime -> return ttTime
-      TtnEnum -> ttEnum <$> fmap (Text.unpack . unSeg)
-        <$> optionalBracket [] (Dat.sepBy segP $ sep'd listSep)
+      TtnEnum -> ttEnum <$> fmap (Text.unpack . unName)
+        <$> optionalBracket [] (Dat.sepBy nameP $ sep'd listSep)
       TtnWord32 -> ttWord32 <$> bbp Dat.decimal
       TtnWord64 -> ttWord64 <$> bbp Dat.decimal
       TtnInt32 -> ttInt32 <$> bbp (Dat.signed Dat.decimal)
@@ -129,7 +129,7 @@ ttParser' = ttNameParser >>= argsParser
       TtnFloat -> ttFloat <$> bbp (toRealFloat <$> Dat.scientific)
       TtnDouble -> ttDouble <$> bbp (toRealFloat <$> Dat.scientific)
       TtnString -> ttString <$> optionalBracket "" regex
-      TtnRef -> ttRef <$> bracketed Path.segP
+      TtnRef -> ttRef <$> bracketed Path.nameP
       TtnList -> bracketed $ ttList <$> ttParser'
       TtnSet -> bracketed $ ttSet <$> ttParser'
       TtnOrdSet -> bracketed $ ttOrdSet <$> ttParser'

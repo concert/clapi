@@ -2,7 +2,7 @@
     TemplateHaskell
 #-}
 
-module Clapi.TH (segq, pathq, btq) where
+module Clapi.TH (n, pathq, btq) where
 
 import Control.Monad ((>=>))
 import Data.Char (ord)
@@ -11,18 +11,18 @@ import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
 import Clapi.Types.Base (mkTag)
-import Clapi.Types.Path (fromText, mkSeg, segP)
+import Clapi.Types.Path (fromText, mkName, nameP)
 
-segq :: QuasiQuoter
-segq = QuasiQuoter {
-    quoteExp = mkSeg . pack >=> lift,
+n :: QuasiQuoter
+n = QuasiQuoter {
+    quoteExp = mkName . pack >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}
 
 pathq :: QuasiQuoter
 pathq = QuasiQuoter {
-    quoteExp = fromText segP . pack >=> lift,
+    quoteExp = fromText nameP . pack >=> lift,
     quotePat = fail "Not supported",
     quoteDec = fail "Not supported",
     quoteType = fail "Not supported"}

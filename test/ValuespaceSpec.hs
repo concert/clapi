@@ -23,9 +23,9 @@ import Text.Printf (printf)
 import Data.Map.Mol (Mol)
 import qualified Data.Map.Mol as Mol
 
-import Clapi.TH (segq, pathq)
+import Clapi.TH (n, pathq)
 import qualified Clapi.Tree as Tree
-import Clapi.Types.AssocList (alSingleton, alFromList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base
   (InterpolationType(..), Interpolation(..), TpId, Time(..))
 import Clapi.Types.Definitions
@@ -53,24 +53,24 @@ import Instances ()
 spec :: Spec
 spec =
   let
-    referer = [segq|referer|]
-    referee1 = [segq|referee1|]
-    referee2 = [segq|referee2|]
+    referer = [n|referer|]
+    referee1 = [n|referee1|]
+    referee2 = [n|referee2|]
     xrefSetup = do
       res <- processTrpd $ (trpdEmpty ns)
         { trpdDefs = Map.fromList
-            [ (rootDn, OpDefine $ structDef "root" $ alFromList
+            [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
                 [ (referer, (Tagged referer, Editable))
                 , (referee1, (Tagged referee1, ReadOnly))
                 , (referee2, (Tagged referee2, ReadOnly))
                 ])
             , (Tagged referer, OpDefine $ tupleDef "referer"
-                (alSingleton [segq|r|] $ ttRef referee1)
+                (AL.singleton [n|r|] $ ttRef referee1)
                 Nothing)
             , (Tagged referee1, OpDefine w32Tup)
             , (Tagged referee2, OpDefine w32Tup)
             ]
-        , trpdData = alFromList
+        , trpdData = AL.fromList
             [ (Root :/ referee1,
                  ConstChange Nothing [someWv WtWord32 11])
             , (Root :/ referee2,
@@ -89,16 +89,16 @@ spec =
       it "validates constant data changes" $ go $ do
          res <- processTrpd $ (trpdEmpty ns)
            { trpdDefs = Map.singleton rootDn $ OpDefine $ boundedW32Tup 3 5
-           , trpdData = alSingleton Root $ ConstChange Nothing
+           , trpdData = AL.singleton Root $ ConstChange Nothing
               [someWv WtWord32 4]
            }
          succeedsWith res $ (frcudEmpty ns)
            { frcudDefs = Map.singleton rootDn $ OpDefine $ boundedW32Tup 3 5
-           , frcudData = alSingleton Root $ ConstChange Nothing
+           , frcudData = AL.singleton Root $ ConstChange Nothing
                [someWv WtWord32 4]
            }
          res' <- processTrpd $ (trpdEmpty ns)
-           { trpdData = alSingleton Root $ ConstChange Nothing
+           { trpdData = AL.singleton Root $ ConstChange Nothing
               [someWv WtWord32 7]
            }
          errorsOn Root res'
@@ -110,19 +110,19 @@ spec =
           setup = do
             res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $ OpDefine w32Ts
-              , trpdData = alSingleton Root $ TimeChange $ Map.fromList
+              , trpdData = AL.singleton Root $ TimeChange $ Map.fromList
                  [mkTpSet 0, mkTpSet 1, mkTpSet 2]
               }
             succeedsWith res $ (frcudEmpty ns)
               { frcudDefs = Map.singleton rootDn $ OpDefine w32Ts
-              , frcudData = alSingleton Root $ TimeChange $ Map.fromList
+              , frcudData = AL.singleton Root $ TimeChange $ Map.fromList
                  [mkTpSet 0, mkTpSet 1, mkTpSet 2]
               }
         in do
           it "validates data" $ go $ do
             setup
             res <- processTrpd $ (trpdEmpty ns)
-              { trpdData = alSingleton Root $ TimeChange $ Map.singleton 1
+              { trpdData = AL.singleton Root $ TimeChange $ Map.singleton 1
                   (Nothing, OpSet (Time 0 1) [someWv WtWord32 7] IConstant)
               }
             errorsOnTp Root 1 res
@@ -130,7 +130,7 @@ spec =
           it "validates interpolation" $ go $ do
             setup
             res <- processTrpd $ (trpdEmpty ns)
-              { trpdData = alSingleton Root $ TimeChange $ Map.singleton 2
+              { trpdData = AL.singleton Root $ TimeChange $ Map.singleton 2
                   (Nothing, OpSet (Time 0 2) [someWv WtWord32 2] $ IBezier 0 0)
               }
             errorsOnTp Root 2 res
@@ -138,7 +138,7 @@ spec =
           it "catches overlapping time points" $ go $ do
             setup
             res <- processTrpd $ (trpdEmpty ns)
-              { trpdData = alSingleton Root $ TimeChange $ Map.singleton 0
+              { trpdData = AL.singleton Root $ TimeChange $ Map.singleton 0
                   (Nothing, OpSet (Time 0 1) [someWv WtWord32 2] $ IConstant)
               }
             errorsOnTp Root 0 res
@@ -150,12 +150,12 @@ spec =
         errorsOn Root res
 
         let trpd' = trpd
-              {trpdData = alSingleton Root $
+              {trpdData = AL.singleton Root $
                 ConstChange Nothing [someWv WtWord64 1]}
         res' <- processTrpd trpd'
         errorsOn Root res'
 
-        let change = alSingleton Root $ ConstChange Nothing [someWv WtWord32 1]
+        let change = AL.singleton Root $ ConstChange Nothing [someWv WtWord32 1]
         let trpd'' = trpd {trpdData = change}
         res'' <- processTrpd trpd''
         succeedsWith res'' $ (frcudEmpty ns)
@@ -165,22 +165,22 @@ spec =
 
       describe "Child resolution on type changes" $
         let
-          foo = [segq|foo|]
-          common = [segq|common|]
-          structOnly = [segq|structOnly|]
-          arrayOnly = [segq|arrayOnly|]
-          w32Dn = Tagged [segq|w32|]
+          foo = [n|foo|]
+          common = [n|common|]
+          structOnly = [n|structOnly|]
+          arrayOnly = [n|arrayOnly|]
+          w32Dn = Tagged [n|w32|]
 
           setupStruct = do
             res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.fromList
-                 [ (rootDn, OpDefine $ structDef "some struct" $ alFromList
+                 [ (rootDn, OpDefine $ structDef "some struct" $ AL.fromList
                      [ (common, (w32Dn, ReadOnly))
                      , (structOnly, (w32Dn, ReadOnly))
                      ])
                  , (w32Dn, OpDefine w32Tup)
                  ]
-              , trpdData = alFromList
+              , trpdData = AL.fromList
                   [ ( Root :/ common, ConstChange Nothing [someWv WtWord32 0])
                   , ( Root :/ structOnly
                     , ConstChange Nothing [someWv WtWord32 1])
@@ -195,7 +195,7 @@ spec =
                       arrayDef "some array" Nothing w32Dn ReadOnly)
                   , (w32Dn, OpDefine w32Tup)
                   ]
-              , trpdData = alFromList
+              , trpdData = AL.fromList
                   [ (Root :/ common, ConstChange Nothing [someWv WtWord32 0])
                   , (Root :/ arrayOnly, ConstChange Nothing [someWv WtWord32 0])
                   ]
@@ -206,11 +206,11 @@ spec =
             setupStruct
             res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $
-                  OpDefine $ structDef "new struct" $ alFromList
+                  OpDefine $ structDef "new struct" $ AL.fromList
                     [ (foo, (w32Dn, ReadOnly))
                     , (common, (w32Dn, ReadOnly))
                     ]
-              , trpdData = alSingleton (Root :/ foo) $
+              , trpdData = AL.singleton (Root :/ foo) $
                   ConstChange Nothing [someWv WtWord32 2]
               }
             succeeds res
@@ -231,11 +231,11 @@ spec =
             setupArray
             res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $
-                  OpDefine $ structDef "new struct" $ alFromList
+                  OpDefine $ structDef "new struct" $ AL.fromList
                     [ (foo, (w32Dn, ReadOnly))
                     , (common, (w32Dn, ReadOnly))
                     ]
-              , trpdData = alSingleton (Root :/ foo) $
+              , trpdData = AL.singleton (Root :/ foo) $
                   ConstChange Nothing [someWv WtWord32 2]
               }
             succeeds res
@@ -245,7 +245,7 @@ spec =
 
       it "handle removing a type definition (unused)" $ go $
         let
-          superfluousDn = Tagged [segq|superfluous|]
+          superfluousDn = Tagged [n|superfluous|]
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton superfluousDn $ OpDefine w32Tup
@@ -262,16 +262,16 @@ spec =
 
       it "handle removing a type definition (uses removed at same time)" $ go $
         let
-          foo = [segq|foo|]
-          w32Dn = Tagged [segq|w32|]
+          foo = [n|foo|]
+          w32Dn = Tagged [n|w32|]
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
-                [ (rootDn, OpDefine $ structDef "some struct" $ alSingleton foo
+                [ (rootDn, OpDefine $ structDef "some struct" $ AL.singleton foo
                     (w32Dn, ReadOnly))
                 , (w32Dn, OpDefine w32Tup)
                 ]
-            , trpdData = alSingleton (Root :/ foo) $
+            , trpdData = AL.singleton (Root :/ foo) $
                 ConstChange Nothing [someWv WtWord32 0]
             }
           succeeds res
@@ -286,16 +286,16 @@ spec =
 
       it "catches in use type when undefined" $ go $
         let
-          foo = [segq|foo|]
-          w32Dn = Tagged [segq|w32|]
+          foo = [n|foo|]
+          w32Dn = Tagged [n|w32|]
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
-                [ (rootDn, OpDefine $ structDef "some struct" $ alSingleton foo
+                [ (rootDn, OpDefine $ structDef "some struct" $ AL.singleton foo
                     (w32Dn, ReadOnly))
                 , (w32Dn, OpDefine w32Tup)
                 ]
-            , trpdData = alSingleton (Root :/ foo) $
+            , trpdData = AL.singleton (Root :/ foo) $
                 ConstChange Nothing [someWv WtWord32 0]
             }
           succeeds res
@@ -308,12 +308,12 @@ spec =
 
       it "errors on struct with missing child" $ go $
         let
-          w32Tn = Tagged [segq|w32|]
+          w32Tn = Tagged [n|w32|]
           trpd = (trpdEmpty ns)
             { trpdDefs = Map.fromList
-               [ (rootDn, OpDefine $ structDef "foo and bar" $ alFromList
-                   [ ([segq|foo|], (w32Tn, ReadOnly))
-                   , ([segq|bar|], (w32Tn, ReadOnly))
+               [ (rootDn, OpDefine $ structDef "foo and bar" $ AL.fromList
+                   [ ([n|foo|], (w32Tn, ReadOnly))
+                   , ([n|bar|], (w32Tn, ReadOnly))
                    ])
                , (w32Tn, OpDefine w32Tup)
                ]
@@ -325,13 +325,13 @@ spec =
           errorsOn [pathq|/bar|] res
 
           res' <- processTrpd $ trpd
-            { trpdData = alSingleton [pathq|/foo|] $
+            { trpdData = AL.singleton [pathq|/foo|] $
                 ConstChange Nothing [someWv WtWord32 17] }
           noErrorsOn Root res'
           errorsOn [pathq|/bar|] res'
 
           res'' <- processTrpd $ trpd
-            { trpdData = alFromList
+            { trpdData = AL.fromList
               [ ([pathq|/foo|], ConstChange Nothing [someWv WtWord32 17])
               , ([pathq|/bar|], ConstChange Nothing [someWv WtWord32 18])
               ]
@@ -340,15 +340,15 @@ spec =
 
       it "errors with extra data" $ go $ do
         res <- processTrpd $ (trpdEmpty ns)
-          { trpdData = alSingleton [pathq|/foo|] $ ConstChange Nothing []
+          { trpdData = AL.singleton [pathq|/foo|] $ ConstChange Nothing []
           }
         errorsOn [pathq|/foo|] res
 
       describe "Container ordering" $
         let
-          foo = [segq|foo|]
-          bar = [segq|bar|]
-          w32Dn = Tagged [segq|w32Dn|]
+          foo = [n|foo|]
+          bar = [n|bar|]
+          w32Dn = Tagged [n|w32Dn|]
 
           arraySetup = do
             res <- processTrpd $ (trpdEmpty ns)
@@ -357,7 +357,7 @@ spec =
                     , OpDefine $ arrayDef "some array" Nothing w32Dn ReadOnly)
                   , ( w32Dn, OpDefine w32Tup)
                   ]
-              , trpdData = alFromList
+              , trpdData = AL.fromList
                   [ (Root :/ foo, ConstChange Nothing [someWv WtWord32 0])
                   , (Root :/ bar, ConstChange Nothing [someWv WtWord32 1])
                   ]
@@ -368,14 +368,14 @@ spec =
           it "forbids struct reordering" $ go $ do
             res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.fromList
-                  [ (rootDn, OpDefine $ structDef "some struct" $ alFromList
+                  [ (rootDn, OpDefine $ structDef "some struct" $ AL.fromList
                       [ (foo, (w32Dn, ReadOnly))
                       , (bar, (w32Dn, ReadOnly))
                       ]
                     )
                   , (w32Dn, OpDefine w32Tup)
                   ]
-              , trpdData = alFromList
+              , trpdData = AL.fromList
                   [ (Root :/ foo, ConstChange Nothing [someWv WtWord32 0])
                   , (Root :/ bar, ConstChange Nothing [someWv WtWord32 1])
                   ]
@@ -401,7 +401,7 @@ spec =
             arraySetup
             res <- processTrpd $ (trpdEmpty ns)
               { trpdContOps = Map.singleton Root $ Map.singleton foo
-                  (Nothing, SoAfter $ Just [segq|tosh|])
+                  (Nothing, SoAfter $ Just [n|tosh|])
               }
             errorsOn Root res
 
@@ -415,11 +415,11 @@ spec =
               }
             errorsOn Root res
 
-      describe "Recursive struct definitions" $ let r = [segq|r|] in do
+      describe "Recursive struct definitions" $ let r = [n|r|] in do
         it "rejected in a direct loop" $ timeLimit 1 $ go $ do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton rootDn $ OpDefine $
-                structDef "Recursive!" $ alSingleton r (rootDn, ReadOnly)
+                structDef "Recursive!" $ AL.singleton r (rootDn, ReadOnly)
             }
           errors GlobalError res
 
@@ -427,9 +427,9 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "rec1" $
-                    alSingleton r (Tagged r, ReadOnly))
+                    AL.singleton r (Tagged r, ReadOnly))
                 , (Tagged r, OpDefine $ structDef "rec2" $
-                    alSingleton r (rootDn, ReadOnly))
+                    AL.singleton r (rootDn, ReadOnly))
                 ]
             }
           errors GlobalError res
@@ -440,7 +440,7 @@ spec =
                [ (rootDn, OpDefine $
                    arrayDef "rec below" Nothing (Tagged r) ReadOnly)
                , (Tagged r, OpDefine $ structDef "recursive!" $
-                   alSingleton r (Tagged r, ReadOnly))
+                   AL.singleton r (Tagged r, ReadOnly))
                ]
            }
           errors GlobalError res
@@ -449,11 +449,11 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "rec1" $
-                    alSingleton r (Tagged r, ReadOnly))
+                    AL.singleton r (Tagged r, ReadOnly))
                 , (Tagged r, OpDefine $
                     arrayDef "rec2" Nothing rootDn ReadOnly)
                 ]
-            , trpdData = alFromList
+            , trpdData = AL.fromList
                 [
                 ]
             }
@@ -464,7 +464,7 @@ spec =
         it "catches reference to invalid paths" $ go $ do
           xrefSetup
           res <- processTrpd $ (trpdEmpty ns)
-            { trpdData = alSingleton (Root :/ referer) $
+            { trpdData = AL.singleton (Root :/ referer) $
                 ConstChange Nothing [someWv WtString "/bad"]
             }
           errorsOn (Root :/ referer) res
@@ -472,7 +472,7 @@ spec =
         it "catches references to invalid types" $ go $ do
           xrefSetup
           res <- processTrpd $ (trpdEmpty ns)
-            { trpdData = alSingleton (Root :/ referer) $
+            { trpdData = AL.singleton (Root :/ referer) $
                 ConstChange Nothing [someWv WtString "/referee2"]
             }
           errorsOn (Root :/ referer) res
@@ -482,7 +482,7 @@ spec =
             trpd = (trpdEmpty ns)
               { trpdDefs = Map.singleton (Tagged referer) $
                   OpDefine $ tupleDef "referer"
-                    (alSingleton [segq|r|] $ ttRef referee2)
+                    (AL.singleton [n|r|] $ ttRef referee2)
                     Nothing
               }
           in do
@@ -491,7 +491,7 @@ spec =
             errorsOn (Root :/ referer) res
 
             res' <- processTrpd $ trpd
-              { trpdData = alSingleton (Root :/ referer) $
+              { trpdData = AL.singleton (Root :/ referer) $
                   ConstChange Nothing [someWv WtString "/referee2"]
               }
             succeeds res'
@@ -499,7 +499,7 @@ spec =
         it "catches referee type changes" $ go $
           let
             defs = Map.singleton rootDn $
-                  OpDefine $ structDef "root" $ alFromList
+                  OpDefine $ structDef "root" $ AL.fromList
                     [ (referer, (Tagged referer, ReadOnly))
                     , (referee1, (Tagged referee2, ReadOnly))
                     , (referee2, (Tagged referee2, ReadOnly))
@@ -513,7 +513,7 @@ spec =
             res' <- processTrpd trpd
               { trpdDefs = defs <> (Map.singleton (Tagged referer) $
                   OpDefine $ tupleDef "referer"
-                    (alSingleton [segq|r|] $ ttRef referee2)
+                    (AL.singleton [n|r|] $ ttRef referee2)
                     Nothing)
               }
             succeeds res'
@@ -529,13 +529,13 @@ spec =
         basicStructSetup = do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
-                [ (rootDn, OpDefine $ structDef "root" $ alFromList
-                    [ ([segq|myWord|], (Tagged [segq|w32|], Editable))
-                    , ([segq|otherWord|], (Tagged [segq|w32|], ReadOnly))
+                [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
+                    [ ([n|myWord|], (Tagged [n|w32|], Editable))
+                    , ([n|otherWord|], (Tagged [n|w32|], ReadOnly))
                     ])
-                , (Tagged [segq|w32|], OpDefine w32Tup)
+                , (Tagged [n|w32|], OpDefine w32Tup)
                 ]
-            , trpdData = alFromList
+            , trpdData = AL.fromList
                 [ ([pathq|/myWord|], ConstChange Nothing [someWv WtWord32 41])
                 , ([pathq|/otherWord|], ConstChange Nothing [someWv WtWord32 0])
                 ]
@@ -546,14 +546,14 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ arrayDef "root"
-                    (Just $ Tagged [segq|postW32|])
-                    (Tagged [segq|w32|])
+                    (Just $ Tagged [n|postW32|])
+                    (Tagged [n|w32|])
                     editability)
-                , (Tagged [segq|w32|], OpDefine w32Tup)
+                , (Tagged [n|w32|], OpDefine w32Tup)
                 ]
-            , trpdPostDefs = Map.singleton (Tagged [segq|postW32|]) $ OpDefine $
-                PostDefinition "Post me a Word worthy of Mordor!" $ alSingleton
-                  [segq|theWord|] [w32Ty]
+            , trpdPostDefs = Map.singleton (Tagged [n|postW32|]) $ OpDefine $
+                PostDefinition "Post me a Word worthy of Mordor!" $ AL.singleton
+                  [n|theWord|] [w32Ty]
             }
           succeeds res
 
@@ -561,7 +561,7 @@ spec =
 
         addBasicArrayItem name value = do
           res <- processTrpd $ (trpdEmpty ns)
-            { trpdData = alSingleton (Root :/ name) $
+            { trpdData = AL.singleton (Root :/ name) $
                 ConstChange Nothing [someWv WtWord32 value]
             }
           succeeds res
@@ -573,37 +573,37 @@ spec =
           it "prohibits data changes on read-only paths" $ go $ do
             _ <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $ OpDefine $ boundedW32Tup 3 5
-              , trpdData = alSingleton Root $ ConstChange Nothing
+              , trpdData = AL.singleton Root $ ConstChange Nothing
                   [someWv WtWord32 4]
               }
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudData = alSingleton Root $ ConstChange Nothing
+              { trcudData = AL.singleton Root $ ConstChange Nothing
                   [someWv WtWord32 5]
               }
             errorsOn Root res
 
             basicStructSetup
             res' <- processTrcud' $ (trcudEmpty ns)
-              { trcudData = alSingleton [pathq|/otherWord|] $ ConstChange Nothing
+              { trcudData = AL.singleton [pathq|/otherWord|] $ ConstChange Nothing
                   [someWv WtWord32 42]
               }
             errorsOn [pathq|/otherWord|] res'
 
             basicArraySetup' ReadOnly
             res'' <- processTrcud' $ (trcudEmpty ns)
-              { trcudData = alSingleton [pathq|/otherWord|] $ ConstChange Nothing
+              { trcudData = AL.singleton [pathq|/otherWord|] $ ConstChange Nothing
                   [someWv WtWord32 42]
               }
             errorsOn [pathq|/otherWord|] res''
 
           it "probibits child reorderings on read-only paths" $ go $
             let
-              foo = [segq|foo|]
-              bar = [segq|bar|]
+              foo = [n|foo|]
+              bar = [n|bar|]
             in do
               basicArraySetup  -- Root is defined as read-only
               res <- processTrpd $ (trpdEmpty ns)
-                { trpdData = alFromList
+                { trpdData = AL.fromList
                     [ (Root :/ foo, ConstChange Nothing [someWv WtWord32 0])
                     , (Root :/ bar, ConstChange Nothing [someWv WtWord32 1])
                     ]
@@ -620,13 +620,13 @@ spec =
         it "validates constant data changes" $ go $ do
           basicStructSetup
           res <- processTrcud' $ (trcudEmpty ns)
-            { trcudData = alSingleton [pathq|/myWord|] $ ConstChange Nothing
+            { trcudData = AL.singleton [pathq|/myWord|] $ ConstChange Nothing
                 [someWv WtInt32 42]
             }
           errorsOn [pathq|/myWord|] res
 
           res' <- processTrcud' $ (trcudEmpty ns)
-            { trcudData = alSingleton [pathq|/myWord|] $ ConstChange Nothing
+            { trcudData = AL.singleton [pathq|/myWord|] $ ConstChange Nothing
                 [someWv WtWord32 42]
             }
           succeeds res'
@@ -648,7 +648,7 @@ spec =
             let
               doCreate vals = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $
-                    Map.singleton (Placeholder [segq|new|])
+                    Map.singleton (Placeholder [n|new|])
                     (Nothing, OpCreate vals Nothing)
                 }
             in do
@@ -663,20 +663,20 @@ spec =
               vals = [[someWv WtWord32 0]]
               doCreates targ = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $ Map.fromList
-                  [ (Placeholder [segq|one|], (Nothing, OpCreate vals targ))
-                  , (Placeholder [segq|two|], (Nothing, OpCreate vals targ))
+                  [ (Placeholder [n|one|], (Nothing, OpCreate vals targ))
+                  , (Placeholder [n|two|], (Nothing, OpCreate vals targ))
                   ]
                 }
             in do
               basicArraySetup
               doCreates Nothing >>= errorsOn Root
-              doCreates (Just $ Left $ Placeholder [segq|one|]) >>= errorsOn Root
+              doCreates (Just $ Left $ Placeholder [n|one|]) >>= errorsOn Root
 
           it "catches circular dependencies in creation targets" $ go $
             let
-              ph1 = Placeholder [segq|ph1|]
-              ph2 = Placeholder [segq|ph2|]
-              ph3 = Placeholder [segq|ph3|]
+              ph1 = Placeholder [n|ph1|]
+              ph2 = Placeholder [n|ph2|]
+              ph3 = Placeholder [n|ph3|]
               vals = [[someWv WtWord32 0]]
             in do
               basicArraySetup
@@ -696,12 +696,12 @@ spec =
                 }
               errorsOn Root res'
 
-          it "catches missing child seg creation targets" $ go $
+          it "catches missing child name creation targets" $ go $
             let
-              ei = [segq|existingItem|]
+              ei = [n|existingItem|]
               doCreate = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $ Map.singleton
-                    (Placeholder [segq|new|])
+                    (Placeholder [n|new|])
                     (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Right ei)
                 }
             in do
@@ -712,8 +712,8 @@ spec =
 
           it "catches missing placeholder creation targets (naive)" $ go $
             let
-              ph1 = Placeholder [segq|ph1|]
-              ph2 = Placeholder [segq|ph2|]
+              ph1 = Placeholder [n|ph1|]
+              ph2 = Placeholder [n|ph2|]
             in do
               basicArraySetup
               res <- processTrcud' $ (trcudEmpty ns)
@@ -724,8 +724,8 @@ spec =
 
           it "catches missing placeholder creation targets (other failures)" $
             go $ let
-              ph1 = Placeholder [segq|ph1|]
-              ph2 = Placeholder [segq|ph2|]
+              ph1 = Placeholder [n|ph1|]
+              ph2 = Placeholder [n|ph2|]
             in do
               basicArraySetup
               res <- processTrcud' $ (trcudEmpty ns)
@@ -745,7 +745,7 @@ spec =
 
         it "errors with extra data (struct)" $ go $ do
           res <- processTrcud' $ (trcudEmpty ns)
-            { trcudData = alSingleton [pathq|/bad|] $ ConstChange Nothing
+            { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
                 [someWv WtString "Irrelevant"]
             }
           liftIO $ res `shouldBe`
@@ -754,7 +754,7 @@ spec =
         it "errors with extra data (array)" $ go $ do
           basicArraySetup
           res <- processTrcud' $ (trcudEmpty ns)
-            { trcudData = alSingleton [pathq|/bad|] $ ConstChange Nothing
+            { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
                 [someWv WtWord32 0]  -- Good data for array
             }
           errorsOn [pathq|/bad|] res
@@ -763,8 +763,8 @@ spec =
           flip evalStateT (baseValuespace rootDn Editable) $ do
             basicStructSetup
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudContOps = Map.singleton Root $ Map.singleton [segq|myWord|]
-                  (Nothing, SoAfter $ Just $ Right [segq|otherWord|])
+              { trcudContOps = Map.singleton Root $ Map.singleton [n|myWord|]
+                  (Nothing, SoAfter $ Just $ Right [n|otherWord|])
               }
             liftIO $ res `shouldBe` Left (
               Mol.singleton (PathError Root)
@@ -779,7 +779,7 @@ spec =
           it "catches references to invalid types" $ go $ do
             xrefSetup
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudData = alSingleton (Root :/ referer) $
+              { trcudData = AL.singleton (Root :/ referer) $
                   ConstChange Nothing [someWv WtString "/referee2"]
               }
             errorsOn (Root :/ referer) res
@@ -833,10 +833,10 @@ succeedsWith
 succeedsWith ea a = liftIO $ ea `shouldBe` Right a
 
 ns :: Namespace
-ns = Namespace [segq|test_ns|]
+ns = Namespace [n|test_ns|]
 
 rootDn :: DefName
-rootDn = Tagged [segq|root|]
+rootDn = Tagged [n|root|]
 
 bvs :: Valuespace
 bvs = baseValuespace rootDn ReadOnly
@@ -848,12 +848,12 @@ boundedW32 :: Word32 -> Word32 -> SomeTreeType
 boundedW32 lo hi = either error ttWord32 $ bounds (Just lo) (Just hi)
 
 w32Tup :: SomeDefinition
-w32Tup = tupleDef "w32" (alSingleton [segq|val|] w32Ty) Nothing
+w32Tup = tupleDef "w32" (AL.singleton [n|val|] w32Ty) Nothing
 
 boundedW32Tup :: Word32 -> Word32 -> SomeDefinition
 boundedW32Tup lo hi = tupleDef "bounded w32"
-  (alSingleton [segq|val|] $ boundedW32 lo hi)
+  (AL.singleton [n|val|] $ boundedW32 lo hi)
   Nothing
 
 w32Ts :: SomeDefinition
-w32Ts = tupleDef "w32Ts" (alSingleton [segq|val|] $ boundedW32 0 5) (Just ItLinear)
+w32Ts = tupleDef "w32Ts" (AL.singleton [n|val|] $ boundedW32 0 5) (Just ItLinear)

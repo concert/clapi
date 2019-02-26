@@ -17,7 +17,7 @@ import Text.Printf (printf)
 import Clapi.Internal.Valuespace (EPS)
 import Clapi.Types.Base (TpId, InterpolationType)
 import Clapi.Types.Definitions (DefName, PostDefName)
-import Clapi.Types.Path (Seg, Placeholder)
+import Clapi.Types.Path (Name, Placeholder)
 import qualified Clapi.Types.Path as Path
 import Clapi.Valuespace.ErrWrap (Wraps(..))
 import Clapi.Valuespace.Xrefs (Referer)
@@ -79,8 +79,8 @@ instance ErrText StructuralError where
 
 data SeqOpError soTarget
   -- FIXME: Check both Consumers and Providers can raise these
-  = SeqOpMovedMissingChild Seg
-  | SeqOpTargetMissing Seg soTarget
+  = SeqOpMovedMissingChild Name
+  | SeqOpTargetMissing Name soTarget
 
 instance Show soTarget => ErrText (SeqOpError soTarget) where
   errText = Text.pack . \case
@@ -104,7 +104,7 @@ data ProviderError
   | MissingNodeData
   | PEValidationError ValidationError
   | PEStructuralError StructuralError
-  | PESeqOpError (SeqOpError Seg)
+  | PESeqOpError (SeqOpError Name)
   -- FIXME: This is currently only exposed when handling implicit removes from
   -- Provider definition updates, but we could potentially be invalid if a
   -- Consumer drops a member of an array!
@@ -137,7 +137,7 @@ instance Wraps ValidationError ProviderError where
 instance Wraps StructuralError ProviderError where
   wrap = PEStructuralError
 
-instance Wraps (SeqOpError Seg) ProviderError where
+instance Wraps (SeqOpError Name) ProviderError where
   wrap = PESeqOpError
 
 instance Wraps ErrorString ProviderError where
@@ -172,7 +172,7 @@ instance ErrText ConsumerError where
     CyclicReferencesInCreates targs ->
       "Several create operations formed a loop with their position targets: "
       ++ intercalate " -> "
-      (Text.unpack . Path.unSeg . Path.unPlaceholder <$> targs)
+      (Text.unpack . Path.unName . Path.unPlaceholder <$> targs)
     MissingCreatePositionTarget ph eps -> printf
       "Create for %s references missing position target %s"
       (show ph) (show eps)

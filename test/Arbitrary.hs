@@ -39,6 +39,8 @@ import Clapi.TextSerialisation (argsOpen, argsClose)
 import Clapi.Types hiding (reverse)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import qualified Clapi.Types.SymbolList as SL
+import Clapi.Types.AssocList (AssocList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.WireTH (mkGetWtConstraint)
 
 
@@ -77,11 +79,11 @@ instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
 
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
-assocListOf gk gv = alFromMap <$> smallMapOf gk gv
+assocListOf gk gv = AL.fromMap <$> smallMapOf gk gv
 
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
-  shrink = fmap unsafeMkAssocList . shrink . unAssocList
+  shrink = fmap AL.unsafeMkAssocList . shrink . AL.unAssocList
 
 
 arbitraryTextNoNull :: Gen Text
@@ -93,10 +95,10 @@ instance Arbitrary Text where
   shrink = fmap Text.pack . shrink . Text.unpack
 
 
-name :: Gen Seg
-name = fromJust . mkSeg . Text.pack <$> smallListOf1 (elements ['a'..'z'])
+name :: Gen Name
+name = fromJust . mkName . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 
-instance Arbitrary Seg where
+instance Arbitrary Name where
   arbitrary = name
 
 deriving instance Arbitrary Attributee
@@ -148,7 +150,7 @@ arbitraryRegex =
 instance Arbitrary SomeTreeType where
   arbitrary = oneof
     [ return ttTime
-    , ttEnum . fmap (Text.unpack . unSeg) <$> arbitrary
+    , ttEnum . fmap (Text.unpack . unName) <$> arbitrary
     , ttWord32 <$> arbitrary, ttWord64 <$> arbitrary
     , ttInt32 <$> arbitrary, ttInt64 <$> arbitrary
     , ttFloat <$> arbitrary, ttDouble <$> arbitrary

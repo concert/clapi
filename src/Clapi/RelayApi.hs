@@ -4,7 +4,7 @@
   , OverloadedStrings
 #-}
 
-module Clapi.RelayApi (relayApiProto, PathSegable(..)) where
+module Clapi.RelayApi (relayApiProto, PathNameable(..)) where
 
 import Control.Monad (void)
 import Control.Monad.Trans (lift)
@@ -16,29 +16,29 @@ import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
 import Clapi.Types (WireValue(..), TimeStamped(..), Editability(..))
-import Clapi.Types.AssocList (alSingleton, alFromMap, alFmapWithKey, alFromList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Definitions (tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   ( TrDigest(..), FrDigest(..), SomeTrDigest(..), SomeFrDigest(..)
   , trpdEmpty, OriginatorRole(..), DigestAction(..)
   , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Seg, pattern Root, pattern (:/), Namespace(..))
+import Clapi.Types.Path (Name(..), pattern Root, pattern (:/), Namespace(..))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
 import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
-import Clapi.TH (pathq, segq)
+import Clapi.TH (pathq, n)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 
-class PathSegable a where
-    pathNameFor :: a -> Seg
+class PathNameable a where
+    pathNameFor :: a -> Name
 
-dn :: Seg
-dn = [segq|display_name|]
+dn :: Name
+dn = [n|display_name|]
 
 relayApiProto ::
-    forall i. (Ord i, PathSegable i) =>
+    forall i. (Ord i, PathNameable i) =>
     i ->
     Protocol
         (ClientEvent i (TimeStamped SomeTrDigest))
@@ -53,44 +53,44 @@ relayApiProto selfAddr =
       rns
       mempty
       (Map.fromList $ bimap Tagged OpDefine <$>
-        [ ([segq|build|], tupleDef "builddoc"
-             (alSingleton [segq|commit_hash|] $ ttString "banana")
+        [ ([n|build|], tupleDef "builddoc"
+             (AL.singleton [n|commit_hash|] $ ttString "banana")
              Nothing)
         , (clock_diff, tupleDef
              "The difference between two clocks, in seconds"
-             (alSingleton [segq|seconds|] $ ttFloat unbounded)
+             (AL.singleton [n|seconds|] $ ttFloat unbounded)
              Nothing)
         , (dn, tupleDef
              "A human-readable name for a struct or array element"
-             (alSingleton [segq|name|] $ ttString "")
+             (AL.singleton [n|name|] $ ttString "")
              Nothing)
-        , ([segq|client_info|], structDef
+        , ([n|client_info|], structDef
              "Info about a single connected client" $ staticAl
              [ (dn, (Tagged dn, Editable))
              , (clock_diff, (Tagged clock_diff, ReadOnly))
              ])
-        , ([segq|clients|], arrayDef "Info about the connected clients"
-             Nothing (Tagged [segq|client_info|]) ReadOnly)
-        , ([segq|owner_info|], tupleDef "owner info"
-             (alSingleton [segq|owner|]
-               -- FIXME: want to make Ref's Seg tagged...
-               $ ttRef [segq|client_info|])
+        , ([n|clients|], arrayDef "Info about the connected clients"
+             Nothing (Tagged [n|client_info|]) ReadOnly)
+        , ([n|owner_info|], tupleDef "owner info"
+             (AL.singleton [n|owner|]
+               -- FIXME: want to make Ref's Name tagged...
+               $ ttRef [n|client_info|])
              Nothing)
-        , ([segq|owners|], arrayDef "ownersdoc"
-             Nothing (Tagged [segq|owner_info|]) ReadOnly)
-        , ([segq|self|], tupleDef "Which client you are"
-             (alSingleton [segq|info|] $ ttRef [segq|client_info|])
+        , ([n|owners|], arrayDef "ownersdoc"
+             Nothing (Tagged [n|owner_info|]) ReadOnly)
+        , ([n|self|], tupleDef "Which client you are"
+             (AL.singleton [n|info|] $ ttRef [n|client_info|])
              Nothing)
-        , ([segq|relay|], structDef "topdoc" $ staticAl
-          [ ([segq|build|], (Tagged [segq|build|], ReadOnly))
-          , ([segq|clients|], (Tagged [segq|clients|], ReadOnly))
-          , ([segq|owners|], (Tagged [segq|owners|], ReadOnly))
-          , ([segq|self|], (Tagged [segq|self|], ReadOnly))])
+        , ([n|relay|], structDef "topdoc" $ staticAl
+          [ ([n|build|], (Tagged [n|build|], ReadOnly))
+          , ([n|clients|], (Tagged [n|clients|], ReadOnly))
+          , ([n|owners|], (Tagged [n|owners|], ReadOnly))
+          , ([n|self|], (Tagged [n|self|], ReadOnly))])
         ])
-      (alFromList
+      (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             someWireable $ Path.toText Path.unSeg selfClientPath])
+             someWireable $ Path.toText Path.unName selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [someWv WtFloat 0.0])
         , ( selfClientPath :/ dn
@@ -98,13 +98,13 @@ relayApiProto selfAddr =
         ])
       mempty
       mempty
-    rns = Namespace [segq|relay|]
-    clock_diff = [segq|clock_diff|]
-    selfSeg = pathNameFor selfAddr
-    selfClientPath = Root :/ [segq|clients|] :/ selfSeg
-    staticAl = alFromMap . Map.fromList
+    rns = Namespace [n|relay|]
+    clock_diff = [n|clock_diff|]
+    selfName = pathNameFor selfAddr
+    selfClientPath = Root :/ [n|clients|] :/ selfName
+    staticAl = AL.fromMap . Map.fromList
     steadyState
-      :: Map i TimeDelta -> Map Namespace Seg -> Protocol
+      :: Map i TimeDelta -> Map Namespace Name -> Protocol
             (ClientEvent i (TimeStamped SomeTrDigest))
             (ClientEvent i SomeTrDigest)
             (ServerEvent i SomeFrDigest)
@@ -115,25 +115,25 @@ relayApiProto selfAddr =
         fwd ce = case ce of
           ClientConnect displayName cAddr ->
             let
-              cSeg = pathNameFor cAddr
+              cName = pathNameFor cAddr
               timingMap' = Map.insert cAddr tdZero timingMap
             in do
               sendFwd (ClientConnect displayName cAddr)
-              pubUpdate (alFromList
-                [ ( [pathq|/clients|] :/ cSeg :/ clock_diff
+              pubUpdate (AL.fromList
+                [ ( [pathq|/clients|] :/ cName :/ clock_diff
                   , ConstChange Nothing [someWireable $ unTimeDelta tdZero])
-                , ( [pathq|/clients|] :/ cSeg :/ dn
+                , ( [pathq|/clients|] :/ cName :/ dn
                   , ConstChange Nothing [someWireable $ Text.pack displayName])
                 ])
                 mempty
               steadyState timingMap' ownerMap
           ClientData cAddr (TimeStamped (theirTime, d)) -> do
-            let cSeg = pathNameFor cAddr
+            let cName = pathNameFor cAddr
             -- FIXME: this delta thing should probably be in the per client
             -- pipeline, it'd be less jittery and tidy this up
             delta <- lift $ getDelta theirTime
             let timingMap' = Map.insert cAddr delta timingMap
-            pubUpdate (alSingleton ([pathq|/clients|] :/ cSeg :/ clock_diff)
+            pubUpdate (AL.singleton ([pathq|/clients|] :/ cName :/ clock_diff)
               $ ConstChange Nothing [someWireable $ unTimeDelta delta])
               mempty
             sendFwd $ ClientData cAddr d
@@ -142,14 +142,14 @@ relayApiProto selfAddr =
             sendFwd (ClientDisconnect cAddr) >> removeClient cAddr
         removeClient cAddr =
           let
-            cSeg = pathNameFor cAddr
+            cName = pathNameFor cAddr
             timingMap' = Map.delete cAddr timingMap
             -- FIXME: This feels a bit like reimplementing some of the NST
-            ownerMap' = Map.filter (/= cSeg) ownerMap
+            ownerMap' = Map.filter (/= cName) ownerMap
             (dd, cops) = ownerChangeInfo ownerMap'
           in do
             pubUpdate dd $ Map.insert [pathq|/clients|]
-              (Map.singleton cSeg (Nothing, SoAbsent)) cops
+              (Map.singleton cName (Nothing, SoAbsent)) cops
             steadyState timingMap' ownerMap'
         pubUpdate dd co = sendFwd $ ClientData selfAddr $ SomeTrDigest $ Trpd
           rns mempty mempty dd co mempty
@@ -179,20 +179,20 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
-        ownerChangeInfo :: Map Namespace Seg -> (DataDigest, ContOps args)
+        ownerChangeInfo :: Map Namespace Name -> (DataDigest, ContOps args)
         ownerChangeInfo ownerMap' =
-            ( alFromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
+            ( AL.fromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
                 (const (Nothing, SoAbsent)) <$>
                   Map.mapKeys unNamespace (ownerMap `Map.difference` ownerMap'))
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath s = [pathq|/owners|] :/ unNamespace s
         toSetRefOp ns = ConstChange Nothing [
-          someWireable $ Path.toText Path.unSeg $
-          Root :/ [segq|clients|] :/ ns]
+          someWireable $ Path.toText Path.unName $
+          Root :/ [n|clients|] :/ ns]
         viewAs i dd =
           let
-            theirSeg = pathNameFor i
+            theirName = pathNameFor i
             theirTime = unTimeDelta $ Map.findWithDefault
               (error "Can't rewrite message for unconnected client") i
               timingMap
@@ -201,10 +201,10 @@ relayApiProto selfAddr =
             alterTime _ = error "Weird data back out of VS"
             fiddleDataChanges p dc
               | p `Path.isChildOf` [pathq|/clients|] = alterTime dc
-              | p == [pathq|/self|] = toSetRefOp theirSeg
+              | p == [pathq|/self|] = toSetRefOp theirName
               | otherwise = dc
           in
-            alFmapWithKey fiddleDataChanges dd
+            AL.fmapWithKey fiddleDataChanges dd
         -- This function trusts that the valuespace has completely validated the
         -- actions the client can perform (i.e. can only change the display name
         -- of a client)
