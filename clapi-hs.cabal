@@ -68,6 +68,7 @@ library
                      , Clapi.Tree
                      , Clapi.Validator
                      , Clapi.Valuespace
+                     , Clapi.Valuespace.Errors
                      , Clapi.Valuespace.ErrWrap
                      , Clapi.Valuespace.Xrefs
                      , Clapi.Util
