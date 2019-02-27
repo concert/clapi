@@ -8,6 +8,8 @@ module Clapi.Internal.Valuespace
   , DefMap, DefKey, TypeAssignmentMap, Referer, Referee, Xrefs
   , vsTree, vsPostDefs, vsTyDefs, vsRootDefName, vsRootEditability
   , vsTyAssns, vsTac
+
+  , EPS
   ) where
 
 import Control.Lens (makeLenses)
@@ -20,7 +22,7 @@ import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
   (SomeDefinition, PostDefinition, Editability)
 import Clapi.Types.Base (TpId)
-import Clapi.Types.Path (DefName, PostDefName, Path)
+import Clapi.Types.Path (DataName, DefName, PostDefName, Placeholder, Path)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
 import qualified Clapi.Valuespace.Xrefs as VsXrefs
@@ -47,3 +49,6 @@ data Valuespace = Valuespace
   } deriving Show
 
 makeLenses ''Valuespace
+
+
+type EPS = Either Placeholder DataName

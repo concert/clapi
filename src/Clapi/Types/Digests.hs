@@ -26,12 +26,11 @@ import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList)
-import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, Editability, PostDefinition)
 import Clapi.Types.Path
-  ( Name, Path, pattern (:/)
+  ( Path, pattern (:/)
   , DataName, DefName, Namespace, Placeholder, PostArgName, PostDefName)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (SomeWireValue)
