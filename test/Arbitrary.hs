@@ -24,7 +24,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Language.Haskell.TH (Type(ConT))
@@ -36,17 +35,13 @@ import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.TextSerialisation (argsOpen, argsClose)
-import Clapi.Types hiding (reverse)
+import Clapi.Types
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import qualified Clapi.Types.SymbolList as SL
 import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.WireTH (mkGetWtConstraint)
 
-
-deriving instance Arbitrary a => Arbitrary (Tagged t a)
-deriving instance Arbitrary Namespace
-deriving instance Arbitrary Placeholder
 
 boundedListOf :: Int -> Int -> Gen a -> Gen [a]
 boundedListOf lo hi g = choose (lo, hi) >>= flip replicateM g
@@ -95,10 +90,10 @@ instance Arbitrary Text where
   shrink = fmap Text.pack . shrink . Text.unpack
 
 
-name :: Gen Name
+name :: Gen (Name nr)
 name = fromJust . mkName . Text.pack <$> smallListOf1 (elements ['a'..'z'])
 
-instance Arbitrary Name where
+instance Arbitrary (Name nr) where
   arbitrary = name
 
 deriving instance Arbitrary Attributee

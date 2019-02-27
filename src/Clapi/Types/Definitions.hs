@@ -13,28 +13,25 @@ module Clapi.Types.Definitions where
 import Prelude hiding (fail)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Foldable (toList)
-import Data.Tagged (Tagged)
 import Data.Text (Text)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
-import Clapi.Types.Path (Name)
+import Clapi.Types.Name
+  ( DataName, DefName, PostDefName, PostArgName, TupMemberName)
 import Clapi.Types.Tree (SomeTreeType(..))
 
 data Editability = Editable | ReadOnly deriving (Show, Eq, Enum, Bounded)
 
 data MetaType = Tuple | Struct | Array deriving (Show, Eq, Ord, Enum, Bounded)
 
-type DefName = Tagged SomeDefinition Name
-type PostDefName = Tagged PostDefinition Name
-
 data PostDefinition = PostDefinition
   { postDefDoc :: Text
   -- FIXME: We really need to stop treating single values as lists of types,
   -- which makes the "top level" special:
-  , postDefArgs :: AssocList Name [SomeTreeType]
+  , postDefArgs :: AssocList PostArgName [SomeTreeType]
   } deriving (Show, Eq)
 
 data Definition (mt :: MetaType) where
@@ -42,12 +39,12 @@ data Definition (mt :: MetaType) where
     { tupDefDoc :: Text
   -- FIXME: this should eventually boil down to a single TreeType (NB remove
   -- names too and just write more docstring) now that we have pairs:
-    , tupDefTys :: AssocList Name SomeTreeType
+    , tupDefTys :: AssocList TupMemberName SomeTreeType
     , tupDefILimit :: InterpolationLimit
     } -> Definition 'Tuple
   StructDef ::
     { strDefDoc :: Text
-    , strDefChildTys :: AssocList Name (DefName, Editability)
+    , strDefChildTys :: AssocList DataName (DefName, Editability)
     } -> Definition 'Struct
   ArrayDef ::
     { arrDefDoc :: Text
@@ -77,10 +74,12 @@ withDefinition :: (forall mt. Definition mt -> r) -> SomeDefinition -> r
 withDefinition f (SomeDefinition d) = f d
 
 tupleDef
-  :: Text -> AssocList Name SomeTreeType -> InterpolationLimit -> SomeDefinition
+  :: Text -> AssocList TupMemberName SomeTreeType -> InterpolationLimit
+  -> SomeDefinition
 tupleDef doc tys ilimit = SomeDefinition $ TupleDef doc tys ilimit
 
-structDef :: Text -> AssocList Name (DefName, Editability) -> SomeDefinition
+structDef
+  :: Text -> AssocList DataName (DefName, Editability) -> SomeDefinition
 structDef doc tyinfo = SomeDefinition $ StructDef doc tyinfo
 
 arrayDef
@@ -96,14 +95,13 @@ instance TypeEnumOf (Definition mt) MetaType where
 instance TypeEnumOf SomeDefinition MetaType where
   typeEnumOf = withDefinition typeEnumOf
 
-
 refersTo :: Definition mt -> [DefName]
 refersTo = \case
   TupleDef {} -> mempty
   StructDef { strDefChildTys = tyInfo } -> fst <$> toList tyInfo
   ArrayDef { arrDefChildTy = dn } -> pure dn
 
-childTypeFor :: Name -> Definition mt -> Maybe DefName
+childTypeFor :: DataName -> Definition mt -> Maybe DefName
 childTypeFor name = \case
   TupleDef {} -> Nothing
   StructDef { strDefChildTys = tyinfo } ->
@@ -112,10 +110,10 @@ childTypeFor name = \case
 
 
 getTyInfoForName
-  :: MonadFail m => Name -> Definition mt -> m (DefName, Editability)
+  :: MonadFail m => DataName -> Definition mt -> m (DefName, Editability)
 getTyInfoForName childName = \case
   TupleDef {} -> fail "Tuples do not have children"
   StructDef { strDefChildTys = tyInfo } ->
-    maybe (fail $ "Invalid struct child") return
+    maybe (fail "Invalid struct child") return
     $ AL.lookup childName tyInfo
   ArrayDef { arrDefChildTy = dn, arrDefChildEd = ed } -> return (dn, ed)

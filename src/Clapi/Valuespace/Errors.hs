@@ -9,16 +9,13 @@ module Clapi.Valuespace.Errors where
 import Control.Monad.Fail (MonadFail(..))
 import Data.List (intercalate)
 import Data.Set (Set)
-import Data.Tagged (untag)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Printf (printf)
 
 import Clapi.Internal.Valuespace (EPS)
 import Clapi.Types.Base (TpId, InterpolationType)
-import Clapi.Types.Definitions (DefName, PostDefName)
-import Clapi.Types.Path (Name, Placeholder)
-import qualified Clapi.Types.Path as Path
+import Clapi.Types.Name (DataName, DefName, Placeholder, PostDefName)
 import Clapi.Valuespace.ErrWrap (Wraps(..))
 import Clapi.Valuespace.Xrefs (Referer)
 
@@ -36,9 +33,9 @@ data AccessError
 instance ErrText AccessError where
   errText = Text.pack . \case
     NodeNotFound -> "Node not found"
-    DefNotFound dn -> printf "Definition %s not found" $ show $ untag dn
+    DefNotFound dn -> printf "Definition %s not found" $ show dn
     PostDefNotFound dn ->
-      printf "Post definition %s not found" $ show $ untag dn
+      printf "Post definition %s not found" $ show dn
 
 data ValidationError
   -- FIXME: DataValidationError is a wrapper for MonadFail stuff that comes out
@@ -79,8 +76,8 @@ instance ErrText StructuralError where
 
 data SeqOpError soTarget
   -- FIXME: Check both Consumers and Providers can raise these
-  = SeqOpMovedMissingChild Name
-  | SeqOpTargetMissing Name soTarget
+  = SeqOpMovedMissingChild DataName
+  | SeqOpTargetMissing DataName soTarget
 
 instance Show soTarget => ErrText (SeqOpError soTarget) where
   errText = Text.pack . \case
@@ -104,7 +101,7 @@ data ProviderError
   | MissingNodeData
   | PEValidationError ValidationError
   | PEStructuralError StructuralError
-  | PESeqOpError (SeqOpError Name)
+  | PESeqOpError (SeqOpError DataName)
   -- FIXME: This is currently only exposed when handling implicit removes from
   -- Provider definition updates, but we could potentially be invalid if a
   -- Consumer drops a member of an array!
@@ -121,7 +118,7 @@ instance ErrText ProviderError where
     PESeqOpError soe -> Text.unpack $ errText soe
     CircularStructDefinitions dns ->
       "Circular struct definitions: "
-      ++ intercalate " -> " (show . untag <$> dns)
+      ++ intercalate " -> " (show <$> dns)
     MissingNodeData -> "Missing node data"
     RemovedWhileReferencedBy referers -> printf "Removed path referenced by %s"
       (show referers)
@@ -137,7 +134,7 @@ instance Wraps ValidationError ProviderError where
 instance Wraps StructuralError ProviderError where
   wrap = PEStructuralError
 
-instance Wraps (SeqOpError Name) ProviderError where
+instance Wraps (SeqOpError DataName) ProviderError where
   wrap = PESeqOpError
 
 instance Wraps ErrorString ProviderError where
@@ -172,7 +169,7 @@ instance ErrText ConsumerError where
     CyclicReferencesInCreates targs ->
       "Several create operations formed a loop with their position targets: "
       ++ intercalate " -> "
-      (Text.unpack . Path.unName . Path.unPlaceholder <$> targs)
+      (show <$> targs)
     MissingCreatePositionTarget ph eps -> printf
       "Create for %s references missing position target %s"
       (show ph) (show eps)

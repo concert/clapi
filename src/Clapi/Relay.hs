@@ -28,7 +28,6 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Last(..))
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Void (Void, absurd)
 
@@ -43,7 +42,7 @@ import Clapi.Tree (RoseTreeNode(..), TimeSeries)
 import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Definitions
-  (PostDefinition, SomeDefinition, PostDefName, DefName, Editability(..))
+  (PostDefinition, SomeDefinition, Editability(..))
 import Clapi.Types.Digests
   ( ClientRegs(..)
   , crDeleteLookupNs, crPostTypeRegs, crTypeRegs, crDataRegs
@@ -57,7 +56,8 @@ import Clapi.Types.Digests
   )
 import qualified Clapi.Types.Dkmap as Dkmap
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.Path (Namespace(..), Path)
+import Clapi.Types.Name (DefName, Namespace, PostDefName, castName)
+import Clapi.Types.Path (Path)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace
@@ -190,7 +190,7 @@ handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
         else stop >> return (Just x)
   where
     ns = trpdNs trpd
-    bvs = baseValuespace (Tagged $ unNamespace ns) Editable
+    bvs = baseValuespace (castName ns) Editable
     go vs onSuccess = do
       (res, vs') <- runStateT (processTrpd trpd) vs
       case res of

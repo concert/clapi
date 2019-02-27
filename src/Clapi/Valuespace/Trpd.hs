@@ -21,7 +21,6 @@ import Data.Map.Merge.Strict
   )
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (untag)
 import Data.Text (Text)
 import Text.Printf (printf)
 
@@ -34,14 +33,15 @@ import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Time, TpId, Attributee)
 import Clapi.Types.Definitions
-  ( Definition(..), MetaType(..), Editability, DefName, SomeDefinition(..))
+  ( Definition(..), MetaType(..), Editability, SomeDefinition(..))
 import Clapi.Types.Digests
   ( DataErrorIndex(..), DefOp(..), isDef
   , TrDigest(..), FrDigest(..), TrpDigest, FrcUpdateDigest)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Error (collect, errsStateT, eitherModifying)
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.Path (Path, Name, pattern (:/))
+import Clapi.Types.Name (DataName, DefName)
+import Clapi.Types.Path (Path, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp, fullOrderOps)
 import Clapi.Types.Wire (SomeWireValue)
@@ -218,7 +218,7 @@ guardRecursiveStructs = go mempty []
 
 updateContainer
   :: (Errs '[AccessError, ErrorString, StructuralError] e, Monad m)
-  => Path -> Map Name (Maybe Attributee, SequenceOp Name) -> VsM' e m ()
+  => Path -> Map DataName (Maybe Attributee, SequenceOp DataName) -> VsM' e m ()
 updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
@@ -239,11 +239,11 @@ data TypeImpl
 
 instance Show TypeImpl where
   show = \case
-    TypeRedefined dn _ _ -> printf "<TypeRedefined %s>" (show $ untag dn)
+    TypeRedefined dn _ _ -> printf "<TypeRedefined %s>" (show dn)
     TypeReassigned dn1 dn2 _ _ ed2 -> printf "<TypeReassigned %s %s %s>"
-      (show $ untag dn1) (show $ untag dn2) (show ed2)
+      (show dn1) (show dn2) (show ed2)
     NewlyAssigned dn _ ed -> printf "<NewlyAssigned %s %s>"
-      (show $ untag dn) (show ed)
+      (show dn) (show ed)
     ImplicitlyRemoved -> "<ImplicitlyRemoved>"
 
 possibleImpls :: TypeAssignmentMap -> Map DefName DefChange -> Map Path TypeImpl
@@ -296,8 +296,8 @@ extendImpls oldTree initialImpls
 
     tyInfoDiffDcImpls
       :: (Errs '[AccessError] e, Monad m)
-      => Path -> Map Name (DefName, Editability)
-      -> Map Name (DefName, Editability) -> VsM' e m (Map Path TypeImpl)
+      => Path -> Map DataName (DefName, Editability)
+      -> Map DataName (DefName, Editability) -> VsM' e m (Map Path TypeImpl)
     tyInfoDiffDcImpls p oldTyInfo newTyInfo = fold <$>
         mergeA (traverseMissing f) (traverseMissing g) (zipWithAMatched h)
         oldTyInfo newTyInfo
@@ -315,7 +315,7 @@ extendImpls oldTree initialImpls
                 TypeReassigned dn1 dn2 def1 def2 ed2
 
 getChildTyInfo
-  :: Path -> Definition mt -> RoseTree a -> Map Name (DefName, Editability)
+  :: Path -> Definition mt -> RoseTree a -> Map DataName (DefName, Editability)
 getChildTyInfo p def = go . maybe RtnEmpty id . Tree.lookupNode p
   where
     go node = case def of

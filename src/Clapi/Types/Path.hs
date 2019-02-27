@@ -1,10 +1,12 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE
+    DeriveLift
+  , PatternSynonyms
+  , ViewPatterns
+#-}
 
 module Clapi.Types.Path
-  ( Name, mkName, unName, nameP, Placeholder(..), Namespace(..)
+  ( DataName  -- Convenience re-export
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
@@ -16,7 +18,6 @@ module Clapi.Types.Path
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
-import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -27,29 +28,11 @@ import Control.Monad.Fail (MonadFail, fail)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Lift (Lift)
 
-newtype Name = Name {unName :: Text} deriving (Eq, Ord, Lift)
+import Clapi.Types.Name (DataName)
 
-instance Show Name where
-    show = Text.unpack . unName
-
-isValidNameChar :: Char -> Bool
-isValidNameChar c = isLetter c || isDigit c || c == '_'
-
-nameP :: Parser Name
-nameP = fmap (Name . Text.pack) $ DAT.many1 $ DAT.satisfy isValidNameChar
-
-mkName :: MonadFail m => Text -> m Name
-mkName = either fail return . DAT.parseOnly (nameP <* DAT.endOfInput)
-
-instance Semigroup Name where
-  (Name t1) <> (Name t2) = Name (t1 <> Text.singleton '_' <> t2)
-
-newtype Namespace = Namespace {unNamespace :: Name} deriving (Show, Eq, Ord)
-newtype Placeholder
-  = Placeholder { unPlaceholder :: Name } deriving (Eq, Ord, Show)
 
 newtype Path' a = Path' {unPath :: [a]} deriving (Eq, Ord, Lift)
-type Path = Path' Name
+type Path = Path' DataName
 
 sepChar :: Char
 sepChar = '/'

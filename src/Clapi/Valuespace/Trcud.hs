@@ -34,7 +34,8 @@ import Clapi.Types.Digests
 import Clapi.Types.Error (ErrsT, eitherThrow)
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Path, Name, Placeholder)
+import Clapi.Types.Name (DataName, Placeholder)
+import Clapi.Types.Path (Path)
 import Clapi.Util (strictZipWith, fmtStrictZipError, justs, lefts)
 import Clapi.Validator (TypeAssertion, validateValues)
 
@@ -124,8 +125,8 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
           '[ ErrorString, AccessError, ConsumerError, SeqOpError EPS
            , StructuralError] e
          , Monad m)
-      => Path -> Map Name (x, SequenceOp EPS)
-      -> VsM' e m (Map Name (x, SequenceOp EPS))
+      => Path -> Map DataName (x, SequenceOp EPS)
+      -> VsM' e m (Map DataName (x, SequenceOp EPS))
     perPath p m = do
       guardReadOnly ReadOnlySeqOps p
       SomeDefinition def <- pathError p $ pathDef p
@@ -137,7 +138,8 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
 
     validateCop
       :: (Wraps (SeqOpError EPS) e, MonadError [e] m)
-      => Set Name -> Set Placeholder -> Name -> (x, SequenceOp EPS) -> m ()
+      => Set DataName -> Set Placeholder -> DataName -> (x, SequenceOp EPS)
+      -> m ()
     validateCop kids phs kidToChange (_, so) =
       case so of
         SoAfter (Just t) -> do
@@ -193,7 +195,7 @@ doFilter f = Error.filterErrs . Map.mapWithKey (\k a -> f k a >> return a)
 -- FIXME: Rename?
 sortOutAfterDeps
   :: (Errs '[ConsumerError] e, Monad m)
-  => Set Name -> PathCreates -> ErrsT s [e] m PathCreates
+  => Set DataName -> PathCreates -> ErrsT s [e] m PathCreates
 sortOutAfterDeps existingKids =
       filterDuplicateTargets >=> filterCycles >=> filterMissingNames
   where

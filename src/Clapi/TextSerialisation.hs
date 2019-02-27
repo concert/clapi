@@ -19,8 +19,7 @@ import Data.Scientific (toRealFloat)
 
 import Clapi.Types.Base (typeEnumOf)
 import Clapi.Types.Tree
-import Clapi.Types.Path (nameP, unName)
-import qualified Clapi.Types.Path as Path
+import Clapi.Types.Name (nameP, unName)
 import qualified Clapi.Types.SymbolList as SL
 
 
@@ -92,7 +91,7 @@ ttToText tt = (ttNameToText $ typeEnumOf tt) <> bracketNotNull bracketContent
       TtFloat b -> boundsToText b
       TtDouble b -> boundsToText b
       TtString r -> r
-      TtRef ts -> Path.unName ts
+      TtRef ts -> unName ts
       TtList tt' -> ttToText tt'
       TtSet tt' -> ttToText tt'
       TtOrdSet tt' -> ttToText tt'
@@ -129,7 +128,7 @@ ttParser' = ttNameParser >>= argsParser
       TtnFloat -> ttFloat <$> bbp (toRealFloat <$> Dat.scientific)
       TtnDouble -> ttDouble <$> bbp (toRealFloat <$> Dat.scientific)
       TtnString -> ttString <$> optionalBracket "" regex
-      TtnRef -> ttRef <$> bracketed Path.nameP
+      TtnRef -> ttRef <$> bracketed nameP
       TtnList -> bracketed $ ttList <$> ttParser'
       TtnSet -> bracketed $ ttSet <$> ttParser'
       TtnOrdSet -> bracketed $ ttOrdSet <$> ttParser'

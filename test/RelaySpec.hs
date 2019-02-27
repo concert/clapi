@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# LANGUAGE
-    FlexibleInstances
+    FlexibleContexts
+  , FlexibleInstances
   , LambdaCase
   , OverloadedStrings
   , PartialTypeSignatures
@@ -22,7 +23,6 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.MultiSet as MS
 import Data.Proxy
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
@@ -39,16 +39,20 @@ import Clapi.Relay (relay, RelayState(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit)
 import Clapi.Types.Definitions
-  ( arrayDef, structDef, tupleDef, DefName, PostDefName
+  ( arrayDef, structDef, tupleDef
   , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (pattern Root, pattern (:/), Namespace(..), Name, Path)
+import Clapi.Types.Name
+  ( Name, castName
+  , DataName, DefName, Namespace, PostArgName, PostDefName, TupMemberName
+  )
+import Clapi.Types.Path (pattern Root, pattern (:/), Path)
 import Clapi.Types.Tree
   (SomeTreeType(..), unbounded, ttInt64, ttInt32, ttString)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWv)
 
-import Clapi.Internal.Valuespace (DefMap)
+import Clapi.Internal.Valuespace (DefMap, DefKey)
 import Instances ()
 
 
@@ -103,9 +107,9 @@ spec = do
         -- Check that the previously defined namespace is completely gone
         sendFwd $ ClientConnect "Subscriber" "sub"
         expect $ [emptyRootDig "sub"]
-        subscribe fooNs (Tagged @SomeDefinition foo) "sub"
+        subscribe fooNs fooDn "sub"
         expect $ [ServerData "sub" $ SomeFrDigest $ frcsdEmpty
-          { frcsdTypeUnsubs = Mos.singleton fooNs (Tagged @SomeDefinition foo)
+          { frcsdTypeUnsubs = Mos.singleton fooNs fooDn
           }]
         sendFwd $ ClientDisconnect "sub"
 
@@ -121,10 +125,10 @@ spec = do
         forM_ [OpSubscribe, OpUnsubscribe] $ \op ->
           -- "foo"s exists, "bar"s do not, but existance should be irrelevent to
           -- the error...
-          forM_ [ pt op $ Tagged @PostDefinition foo
-                , pt op $ Tagged @PostDefinition bar
-                , t op $ Tagged @SomeDefinition foo
-                , t op $ Tagged @SomeDefinition bar
+          forM_ [ pt op fooPdn
+                , pt op barPdn
+                , t op fooDn
+                , t op barDn
                 , d op $ Root
                 , d op $ Root :/ bar
                 ] $ \subDig ->
@@ -178,7 +182,7 @@ spec = do
 
         -- Invalid PostDefinition and Definition IDs:
         badSub bazPdn
-        badSub bazTn
+        badSub bazDn
 
         -- And again check that once the owner does define these, we haven't got
         -- registered subscriptions already:
@@ -187,7 +191,7 @@ spec = do
           postDefine baz pd $
           trpdEmpty fooNs
         verifyNoPdSub "owner" "sub" fooNs bazPdn
-        verifyNoTySub "owner" "sub" fooNs bazTn
+        verifyNoTySub "owner" "sub" fooNs bazDn
 
     it "handles legitimate subscriptions" $ testRelay mempty $ do
       -- Make an API with an owner:
@@ -202,29 +206,29 @@ spec = do
       -- Subscribe to some data and check data and type subscriptions:
       withSubscription fooNs root "sub" $ do
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
-          { frcudDefs = Map.singleton fooTn $ OpDefine intDef
-          , frcudTyAssigns = Map.singleton Root (fooTn, Editable)
+          { frcudDefs = Map.singleton fooDn $ OpDefine intDef
+          , frcudTyAssigns = Map.singleton Root (fooDn, Editable)
           , frcudData = AL.singleton Root $ ConstChange Nothing [someWv WtInt32 12]
           }]
         verifyDataSub "owner" "sub" fooNs Root [someWv WtInt32 13]
-        verifyTySub "owner" "sub" fooNs fooTn
+        verifyTySub "owner" "sub" fooNs fooDn
 
       -- After unsubscribing from the data, check that
       -- a) The data subscription is terminated
       verifyNoDataSub "owner" "sub" fooNs Root [someWv WtInt32 14]
       -- b) The type subscription remains
-      verifyTySub "owner" "sub" fooNs fooTn
+      verifyTySub "owner" "sub" fooNs fooDn
 
       -- Ditch the residual type subscription
-      unsubscribe fooNs fooTn "sub"
-      verifyNoTySub "owner" "sub" fooNs fooTn
+      unsubscribe fooNs fooDn "sub"
+      verifyNoTySub "owner" "sub" fooNs fooDn
 
       -- Test regulare sub/unsub cycle for Definitions
-      withSubscription fooNs fooTn "sub" $ do
+      withSubscription fooNs fooDn "sub" $ do
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
-          { frcudDefs = Map.singleton fooTn $ OpDefine intDef }]
-        verifyTySub "owner" "sub" fooNs fooTn
-      verifyNoTySub "owner" "sub" fooNs fooTn
+          { frcudDefs = Map.singleton fooDn $ OpDefine intDef }]
+        verifyTySub "owner" "sub" fooNs fooDn
+      verifyNoTySub "owner" "sub" fooNs fooDn
 
       -- Test sub/unsub cycle for PostDefinitions too
       let pd = postDef' "fooy" [(x, ttInt64 unbounded)]
@@ -269,13 +273,13 @@ spec = do
         expectSet $ nsExists fooNs <$> ["owner", "sub"]
 
         -- PostDefinition, Definition and data don't exist:
-        checkAlreadyUnsub $ Tagged @PostDefinition bar
-        checkAlreadyUnsub $ Tagged @SomeDefinition bar
-        checkAlreadyUnsub $ Root :/ bar
+        checkAlreadyUnsub $ barPdn
+        checkAlreadyUnsub $ barDn
+        checkAlreadyUnsub $ Root :/ (bar :: DataName)
 
         -- PostDefinition, Definition and data exist, but never subscribed
         checkAlreadyUnsub fooPdn
-        checkAlreadyUnsub fooTn
+        checkAlreadyUnsub fooDn
         checkAlreadyUnsub root
 
         -- PostDefinition, Definition and data exist, previous subscription
@@ -285,16 +289,16 @@ spec = do
         checkAlreadyUnsub fooPdn
         verifyNoPdSub "owner" "sub" fooNs fooPdn
 
-        withSubscription fooNs fooTn "sub" $ do
+        withSubscription fooNs fooDn "sub" $ do
           expect [ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
-            { frcudDefs = Map.singleton fooTn $ OpDefine intDef }]
-        checkAlreadyUnsub fooTn
-        verifyNoTySub "owner" "sub" fooNs fooTn
+            { frcudDefs = Map.singleton fooDn $ OpDefine intDef }]
+        checkAlreadyUnsub fooDn
+        verifyNoTySub "owner" "sub" fooNs fooDn
 
         withSubscription fooNs root "sub" $ do
           expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
-            { frcudDefs = Map.singleton fooTn $ OpDefine intDef
-            , frcudTyAssigns = Map.singleton Root (fooTn, Editable)
+            { frcudDefs = Map.singleton fooDn $ OpDefine intDef
+            , frcudTyAssigns = Map.singleton Root (fooDn, Editable)
             , frcudData = AL.singleton Root $
               ConstChange Nothing [someWv WtInt32 12]
             }]
@@ -314,23 +318,23 @@ spec = do
       -- i.e. after client disconnects, the relay never tries to send another
       -- message to that client.
       sub_owner_preamble
-      subscribe fooNs fooTn "sub"
+      subscribe fooNs fooDn "sub"
       expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
-        { frcudDefs = Map.singleton fooTn $ OpDefine $
+        { frcudDefs = Map.singleton fooDn $ OpDefine $
           structDef' "test" [(foo, [n|texty|]), (bar, [n|inty|])]
         }]
 
       sendFwd $ ClientDisconnect "sub"
-      verifyNoTySub "owner" "sub" fooNs fooTn
+      verifyNoTySub "owner" "sub" fooNs fooDn
       sendFwd $ ClientDisconnect "owner"
 
     it "unsubscribes clients on relay disconnect" $ testRelay mempty $ do
       -- i.e. after the relay disconnects a client, the relay never tries to
       -- send another message to that client.
       sub_owner_preamble
-      subscribe fooNs fooTn "sub"
+      subscribe fooNs fooDn "sub"
       expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
-        { frcudDefs = Map.singleton fooTn $ OpDefine $
+        { frcudDefs = Map.singleton fooDn $ OpDefine $
           structDef' "test" [(foo, [n|texty|]), (bar, [n|inty|])]
         }]
 
@@ -338,11 +342,11 @@ spec = do
       sendFwd $ ClientData "sub" $ SomeTrDigest $ simpleClaim foo
       expectFrped "sub" [(NamespaceError fooNs, "Already owned")]
 
-      verifyNoTySub "owner" "sub" fooNs fooTn
+      verifyNoTySub "owner" "sub" fooNs fooDn
 
     it "unsubscribes clients on owner disconnect and disowns" $
       -- Also that the client gets notified of the deletion of the owner's data.
-      testRelay mempty $ let textyTn = Tagged @SomeDefinition [n|texty|] in do
+      testRelay mempty $ let textyTn = [n|texty|] :: DefName in do
         sub_owner_preamble
         subscribe fooNs textyTn "sub"
         expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty fooNs)
@@ -448,7 +452,7 @@ spec = do
     simpleClaim name =
       ownerSet Root [someWv WtInt32 12] $
       define name intDef $
-      trpdEmpty $ Namespace name
+      trpdEmpty $ castName name
 
     structClaim name =
       ownerSet (Root :/ bar) [someWv WtInt32 2] $
@@ -459,7 +463,7 @@ spec = do
         ]) $
       define [n|inty|] intDef $
       define [n|texty|] strDef $
-      trpdEmpty $ Namespace name
+      trpdEmpty $ castName name
 
 all' :: [a -> Bool] -> a -> Bool
 all' preds a = all id $ preds <*> pure a
@@ -684,14 +688,14 @@ retrieve ns name =
     return $ fromMaybe (error $ "missing existing " ++ etName) $
         extractEntity name frcud
 
-define :: Name -> SomeDefinition -> TrpDigest -> TrpDigest
+define :: DefName -> SomeDefinition -> TrpDigest -> TrpDigest
 define name def trpd = trpd
-  { trpdDefs = Map.insert (Tagged name) (OpDefine def) $
+  { trpdDefs = Map.insert name (OpDefine def) $
     trpdDefs trpd }
 
-postDefine :: Name -> PostDefinition -> TrpDigest -> TrpDigest
+postDefine :: PostDefName -> PostDefinition -> TrpDigest -> TrpDigest
 postDefine name def trpd = trpd
-  { trpdPostDefs = Map.insert (Tagged name) (OpDefine def) $
+  { trpdPostDefs = Map.insert name (OpDefine def) $
     trpdPostDefs trpd }
 
 ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
@@ -702,35 +706,36 @@ subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
   { trcudData = AL.insert path (ConstChange Nothing values) $ trcudData trcud }
 
-foo, bar, baz, x:: Name
+foo, bar, baz, x :: Name nr
 foo = [n|foo|]; bar = [n|bar|]; baz = [n|baz|]; x = [n|x|]
 
 fooNs, barNs, bazNs :: Namespace
-fooNs = Namespace foo; barNs = Namespace bar; bazNs = Namespace baz
+fooNs = foo; barNs = bar; bazNs = baz
 
-fooTn, barTn, bazTn :: DefName
-fooTn = Tagged foo; barTn = Tagged bar; bazTn = Tagged baz
+fooDn, barDn, bazDn :: DefName
+fooDn = foo; barDn = bar; bazDn = baz
 
 fooPdn, barPdn, bazPdn :: PostDefName
-fooPdn = Tagged foo; barPdn = Tagged bar; bazPdn = Tagged baz
+fooPdn = foo; barPdn = bar; bazPdn = baz
 
 -- | A non-polymorphic root path
 root :: Path
 root = Root
 
-arrayDef' :: Text -> Name -> Editability -> SomeDefinition
-arrayDef' doc tn ed = arrayDef doc Nothing (Tagged tn) ed
+arrayDef' :: Text -> DefName -> Editability -> SomeDefinition
+arrayDef' doc dn ed = arrayDef doc Nothing dn ed
 
-structDef' :: Text -> [(Name, Name)] -> SomeDefinition
+structDef' :: Text -> [(DataName, DefName)] -> SomeDefinition
 structDef' doc tys = structDef doc $ AL.unsafeMkAssocList $
-  fmap ((,Editable) . Tagged) <$> tys
+  fmap (,Editable) <$> tys
 
 tupleDef'
-  :: Text -> [(Name, SomeTreeType)] -> InterpolationLimit -> SomeDefinition
+  :: Text -> [(TupMemberName, SomeTreeType)] -> InterpolationLimit
+  -> SomeDefinition
 tupleDef' doc tys il = tupleDef doc (AL.unsafeMkAssocList tys) il
 
-postDef' :: Text -> [(Name, SomeTreeType)] -> PostDefinition
+postDef' :: Text -> [(PostArgName, SomeTreeType)] -> PostDefinition
 postDef' doc tys = PostDefinition doc (AL.unsafeMkAssocList $ fmap pure <$> tys)
 
-defMap :: [(Name, def)] -> DefMap def
-defMap = Map.mapKeysMonotonic Tagged . Map.fromList
+defMap :: Ord (DefKey def) => [(DefKey def, def)] -> DefMap def
+defMap = Map.fromList

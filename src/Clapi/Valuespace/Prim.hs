@@ -29,11 +29,12 @@ import qualified Clapi.Tree as Tree
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (TpId)
 import Clapi.Types.Definitions
-  ( Definition(..), SomeDefinition(..), PostDefinition(..), DefName
-  , PostDefName, Editability, getTyInfoForName, structDef)
+  ( Definition(..), SomeDefinition(..), PostDefinition(..)
+  , Editability, getTyInfoForName, structDef)
 import Clapi.Types.Digests (DataErrorIndex(..))
 import Clapi.Types.Error (ErrsT, castErrs)
-import Clapi.Types.Path (Path, Name, pattern Root, pattern (:</))
+import Clapi.Types.Name (DataName, DefName, PostDefName)
+import Clapi.Types.Path (Path, pattern Root, pattern (:</))
 import Clapi.Types.UniqList (unUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace.Errors
@@ -120,7 +121,7 @@ pathExists path = use vsTree >>= return . go . Tree.lookupNode path
 
 pathChildren
   :: (MonadState Valuespace m, MonadErrors '[AccessError] e m)
-  => Path -> m [Name]
+  => Path -> m [DataName]
 pathChildren path = pathNode path >>= return . \case
   RtnChildren al -> unUniqList $ AL.keys al
   _ -> mempty

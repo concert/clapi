@@ -27,7 +27,7 @@ import Clapi.Types.Base (TpId)
 import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
-    Name, Path, pattern Root, pattern (:/), pattern (:</))
+    DataName, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
   ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
@@ -38,7 +38,7 @@ type TimeSeries a = Dkmap TpId Time (Attributed (TimePoint a))
 
 data RoseTree a
   = RtEmpty
-  | RtContainer (AssocList Name (Maybe Attributee, RoseTree a))
+  | RtContainer (AssocList DataName (Maybe Attributee, RoseTree a))
   | RtConstData (Maybe Attributee) a
   | RtDataSeries (TimeSeries a)
   deriving (Show, Eq, Functor, Foldable)
@@ -51,12 +51,12 @@ missing = inner Root
       mconcat $ (\(s, (_, rt)) -> inner (p :/ s) rt) <$> unAssocList al
     inner _ _ = []
 
-children :: RoseTree a -> AssocList Name (RoseTree a)
+children :: RoseTree a -> AssocList DataName (RoseTree a)
 children t = case t of
     RtContainer al -> snd <$> al
     _ -> mempty
 
-childNames :: RoseTree a -> [Name]
+childNames :: RoseTree a -> [DataName]
 childNames = fmap fst . unAssocList . children
 
 -- FIXME: define in terms of treeChildren (if even used)
@@ -70,7 +70,7 @@ paths p t = case t of
 
 applyReorderings
   :: MonadFail m
-  => Map Name (Maybe Attributee, SequenceOp Name) -> RoseTree a
+  => Map DataName (Maybe Attributee, SequenceOp DataName) -> RoseTree a
   -> m (RoseTree a)
 applyReorderings contOps (RtContainer kids) =
   let
@@ -149,13 +149,13 @@ alterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
       fmap ((att,) . RtContainer . AL.singleton s) <$> inner p Nothing
 
 updateTreeStructure
-  :: ContOps Name -> RoseTree a -> (Mol Path Text, RoseTree a)
+  :: ContOps DataName -> RoseTree a -> (Mol Path Text, RoseTree a)
 updateTreeStructure contOps = runState $ do
     errs <- sequence $ Map.mapWithKey applyContOp contOps
     return $ Mol.fromMap errs
   where
     applyContOp
-      :: Path -> Map Name (Maybe Attributee, SequenceOp Name)
+      :: Path -> Map DataName (Maybe Attributee, SequenceOp DataName)
       -> State (RoseTree a) [Text]
     applyContOp np m = do
       eRt <- adjustF Nothing (applyReorderings m) np <$> get
@@ -191,7 +191,7 @@ updateTreeData dd = runState $ do
 
 -- FIXME: Maybe reorder the args to reflect application order?
 updateTreeWithDigest
-  :: ContOps Name -> DataDigest -> RoseTree [SomeWireValue]
+  :: ContOps DataName -> DataDigest -> RoseTree [SomeWireValue]
   -> (Mol Path Text, RoseTree [SomeWireValue])
 updateTreeWithDigest contOps dd = runState $ do
     errs <- state (updateTreeData dd)
@@ -200,7 +200,7 @@ updateTreeWithDigest contOps dd = runState $ do
 
 data RoseTreeNode a
   = RtnEmpty
-  | RtnChildren (AssocList Name (Maybe Attributee))
+  | RtnChildren (AssocList DataName (Maybe Attributee))
   | RtnConstData (Maybe Attributee) a
   | RtnDataSeries (TimeSeries a)
   deriving (Show, Eq)
@@ -249,11 +249,11 @@ removeTpAt att p tpid = adjustF Nothing (remove tpid) p
 
 applyReorderingsAt
   :: MonadFail m
-  => Path -> Map Name (Maybe Attributee, SequenceOp Name) -> RoseTree a
+  => Path -> Map DataName (Maybe Attributee, SequenceOp DataName) -> RoseTree a
   -> m (RoseTree a)
 applyReorderingsAt p cOps = adjustF Nothing (applyReorderings cOps) p
 
-childNamesAt :: Path -> RoseTree a -> Maybe [Name]
+childNamesAt :: Path -> RoseTree a -> Maybe [DataName]
 childNamesAt p = fmap childNames . lookup p
 
 -- | Initialise a container at the given path if it is not already a container.

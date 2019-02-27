@@ -8,10 +8,9 @@ module Clapi.RelayApi (relayApiProto, PathNameable(..)) where
 
 import Control.Monad (void)
 import Control.Monad.Trans (lift)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (second)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Tagged (Tagged(..))
 import qualified Data.Text as Text
 
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
@@ -23,7 +22,8 @@ import Clapi.Types.Digests
   , trpdEmpty, OriginatorRole(..), DigestAction(..)
   , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Name(..), pattern Root, pattern (:/), Namespace(..))
+import Clapi.Types.Name (Name, DataName, Namespace, castName, unName)
+import Clapi.Types.Path (pattern Root, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
@@ -31,28 +31,31 @@ import Clapi.Protocol (Protocol, waitThen, sendFwd, sendRev)
 import Clapi.TH (pathq, n)
 import Clapi.TimeDelta (tdZero, getDelta, TimeDelta(..))
 
-class PathNameable a where
-    pathNameFor :: a -> Name
 
-dn :: Name
+type RelayApiProtocol i
+  = Protocol
+      (ClientEvent i (TimeStamped SomeTrDigest))
+      (ClientEvent i SomeTrDigest)
+      (ServerEvent i SomeFrDigest)
+      (Either (Map Namespace i) (ServerEvent i SomeFrDigest))
+      IO ()
+
+type OwnerName = DataName
+
+class PathNameable a where
+    pathNameFor :: a -> DataName
+
+dn :: Name nr
 dn = [n|display_name|]
 
-relayApiProto ::
-    forall i. (Ord i, PathNameable i) =>
-    i ->
-    Protocol
-        (ClientEvent i (TimeStamped SomeTrDigest))
-        (ClientEvent i SomeTrDigest)
-        (ServerEvent i SomeFrDigest)
-        (Either (Map Namespace i) (ServerEvent i SomeFrDigest))
-        IO ()
+relayApiProto :: forall i. (Ord i, PathNameable i) => i -> RelayApiProtocol i
 relayApiProto selfAddr =
     publishRelayApi >> steadyState mempty mempty
   where
     publishRelayApi = sendFwd $ ClientData selfAddr $ SomeTrDigest $ Trpd
       rns
       mempty
-      (Map.fromList $ bimap Tagged OpDefine <$>
+      (Map.fromList $ second OpDefine <$>
         [ ([n|build|], tupleDef "builddoc"
              (AL.singleton [n|commit_hash|] $ ttString "banana")
              Nothing)
@@ -66,31 +69,29 @@ relayApiProto selfAddr =
              Nothing)
         , ([n|client_info|], structDef
              "Info about a single connected client" $ staticAl
-             [ (dn, (Tagged dn, Editable))
-             , (clock_diff, (Tagged clock_diff, ReadOnly))
+             [ (dn, (dn, Editable))
+             , (clock_diff, (clock_diff, ReadOnly))
              ])
         , ([n|clients|], arrayDef "Info about the connected clients"
-             Nothing (Tagged [n|client_info|]) ReadOnly)
+             Nothing [n|client_info|] ReadOnly)
         , ([n|owner_info|], tupleDef "owner info"
-             (AL.singleton [n|owner|]
-               -- FIXME: want to make Ref's Name tagged...
-               $ ttRef [n|client_info|])
+             (AL.singleton [n|owner|] $ ttRef [n|client_info|])
              Nothing)
         , ([n|owners|], arrayDef "ownersdoc"
-             Nothing (Tagged [n|owner_info|]) ReadOnly)
+             Nothing [n|owner_info|] ReadOnly)
         , ([n|self|], tupleDef "Which client you are"
              (AL.singleton [n|info|] $ ttRef [n|client_info|])
              Nothing)
         , ([n|relay|], structDef "topdoc" $ staticAl
-          [ ([n|build|], (Tagged [n|build|], ReadOnly))
-          , ([n|clients|], (Tagged [n|clients|], ReadOnly))
-          , ([n|owners|], (Tagged [n|owners|], ReadOnly))
-          , ([n|self|], (Tagged [n|self|], ReadOnly))])
+          [ ([n|build|], ([n|build|], ReadOnly))
+          , ([n|clients|], ([n|clients|], ReadOnly))
+          , ([n|owners|], ([n|owners|], ReadOnly))
+          , ([n|self|], ([n|self|], ReadOnly))])
         ])
       (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             someWireable $ Path.toText Path.unName selfClientPath])
+             someWireable $ Path.toText unName selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [someWv WtFloat 0.0])
         , ( selfClientPath :/ dn
@@ -98,18 +99,14 @@ relayApiProto selfAddr =
         ])
       mempty
       mempty
-    rns = Namespace [n|relay|]
+    rns = [n|relay|] :: Namespace
+    clock_diff :: Name nr
     clock_diff = [n|clock_diff|]
     selfName = pathNameFor selfAddr
     selfClientPath = Root :/ [n|clients|] :/ selfName
     staticAl = AL.fromMap . Map.fromList
     steadyState
-      :: Map i TimeDelta -> Map Namespace Name -> Protocol
-            (ClientEvent i (TimeStamped SomeTrDigest))
-            (ClientEvent i SomeTrDigest)
-            (ServerEvent i SomeFrDigest)
-            (Either (Map Namespace i) (ServerEvent i SomeFrDigest))
-            IO ()
+      :: Map i TimeDelta -> Map Namespace OwnerName -> RelayApiProtocol i
     steadyState timingMap ownerMap = waitThen fwd rev
       where
         fwd ce = case ce of
@@ -153,6 +150,10 @@ relayApiProto selfAddr =
             steadyState timingMap' ownerMap'
         pubUpdate dd co = sendFwd $ ClientData selfAddr $ SomeTrDigest $ Trpd
           rns mempty mempty dd co mempty
+
+        rev
+          :: Either (Map Namespace i) (ServerEvent i SomeFrDigest)
+          -> RelayApiProtocol i
         rev (Left ownerAddrs) = do
           let ownerMap' = pathNameFor <$> ownerAddrs
           if elem selfAddr $ Map.elems ownerAddrs
@@ -179,17 +180,19 @@ relayApiProto selfAddr =
                 _ -> sendRev se
             _ -> sendRev se
           steadyState timingMap ownerMap
-        ownerChangeInfo :: Map Namespace Name -> (DataDigest, ContOps args)
+
+        ownerChangeInfo :: Map Namespace (Name nr) -> (DataDigest, ContOps args)
         ownerChangeInfo ownerMap' =
             ( AL.fromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
                 (const (Nothing, SoAbsent)) <$>
-                  Map.mapKeys unNamespace (ownerMap `Map.difference` ownerMap'))
+                  Map.mapKeys castName (ownerMap `Map.difference` ownerMap'))
         toOwnerPath :: Namespace -> Path.Path
-        toOwnerPath s = [pathq|/owners|] :/ unNamespace s
+        toOwnerPath name = [pathq|/owners|] :/ castName name
         toSetRefOp ns = ConstChange Nothing [
-          someWireable $ Path.toText Path.unName $
+          someWireable $ Path.toText unName $
           Root :/ [n|clients|] :/ ns]
+        viewAs :: i -> DataDigest -> DataDigest
         viewAs i dd =
           let
             theirName = pathNameFor i
