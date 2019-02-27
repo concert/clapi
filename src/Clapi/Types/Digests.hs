@@ -26,7 +26,6 @@ import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList)
-import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
