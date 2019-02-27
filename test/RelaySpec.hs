@@ -43,11 +43,11 @@ import Clapi.Types.Definitions
   , Editability(..), Definition(..), SomeDefinition(..), PostDefinition(..))
 import Clapi.Types.Digests
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path
-  ( pattern Root, pattern (:/)
-  , Name, castName
+import Clapi.Types.Name
+  ( Name, castName
   , DataName, DefName, Namespace, PostArgName, PostDefName, TupMemberName
-  , Path)
+  )
+import Clapi.Types.Path (pattern Root, pattern (:/), Path)
 import Clapi.Types.Tree
   (SomeTreeType(..), unbounded, ttInt64, ttInt32, ttString)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWv)

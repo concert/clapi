@@ -40,7 +40,8 @@ import Clapi.Types.Digests
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Error (collect, errsStateT, eitherModifying)
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.Path (Path, DataName, DefName, pattern (:/))
+import Clapi.Types.Name (DataName, DefName)
+import Clapi.Types.Path (Path, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp, fullOrderOps)
 import Clapi.Types.Wire (SomeWireValue)

@@ -33,8 +33,8 @@ import Clapi.Types.Definitions
   , Editability, getTyInfoForName, structDef)
 import Clapi.Types.Digests (DataErrorIndex(..))
 import Clapi.Types.Error (ErrsT, castErrs)
-import Clapi.Types.Path
-  ( Path, DataName, DefName, PostDefName, pattern Root, pattern (:</))
+import Clapi.Types.Name (DataName, DefName, PostDefName)
+import Clapi.Types.Path (Path, pattern Root, pattern (:</))
 import Clapi.Types.UniqList (unUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace.Errors

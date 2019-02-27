@@ -19,7 +19,7 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit, TypeEnumOf(..))
-import Clapi.Types.Path
+import Clapi.Types.Name
   ( DataName, DefName, PostDefName, PostArgName, TupMemberName)
 import Clapi.Types.Tree (SomeTreeType(..))
 

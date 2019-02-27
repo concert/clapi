@@ -34,7 +34,8 @@ import Clapi.Types.Digests
 import Clapi.Types.Error (ErrsT, eitherThrow)
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path (Path, DataName, Placeholder)
+import Clapi.Types.Name (DataName, Placeholder)
+import Clapi.Types.Path (Path)
 import Clapi.Util (strictZipWith, fmtStrictZipError, justs, lefts)
 import Clapi.Validator (TypeAssertion, validateValues)
 

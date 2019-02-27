@@ -15,8 +15,7 @@ import Text.Printf (printf)
 
 import Clapi.Internal.Valuespace (EPS)
 import Clapi.Types.Base (TpId, InterpolationType)
-import Clapi.Types.Path (DataName, DefName, Placeholder, PostDefName)
-import qualified Clapi.Types.Path as Path
+import Clapi.Types.Name (DataName, DefName, Placeholder, PostDefName)
 import Clapi.Valuespace.ErrWrap (Wraps(..))
 import Clapi.Valuespace.Xrefs (Referer)
 
@@ -170,7 +169,7 @@ instance ErrText ConsumerError where
     CyclicReferencesInCreates targs ->
       "Several create operations formed a loop with their position targets: "
       ++ intercalate " -> "
-      (Text.unpack . Path.unName <$> targs)
+      (show <$> targs)
     MissingCreatePositionTarget ph eps -> printf
       "Create for %s references missing position target %s"
       (show ph) (show eps)

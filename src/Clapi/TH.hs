@@ -11,7 +11,8 @@ import Language.Haskell.TH.Lift (lift)
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
 import Clapi.Types.Base (mkTag)
-import Clapi.Types.Path (fromText, mkName, nameP)
+import Clapi.Types.Name (mkName, nameP)
+import Clapi.Types.Path (fromText)
 
 n :: QuasiQuoter
 n = QuasiQuoter {

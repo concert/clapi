@@ -1,14 +1,12 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE DeriveLift #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE
+    DeriveLift
+  , PatternSynonyms
+  , ViewPatterns
+#-}
 
 module Clapi.Types.Path
-  ( NameRole, Name, mkName, unName, nameP, castName
-  , DataName, DefName, PostDefName, Namespace, PostArgName, Placeholder
-  , TupMemberName
+  ( DataName  -- Convenience re-export
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
@@ -20,7 +18,6 @@ module Clapi.Types.Path
 import Prelude hiding (fail)
 import qualified Data.Attoparsec.Text as DAT
 import Data.Attoparsec.Text (Parser)
-import Data.Char (isLetter, isDigit)
 import Data.List (isPrefixOf)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -31,42 +28,8 @@ import Control.Monad.Fail (MonadFail, fail)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Lift (Lift)
 
-data NameRole
-  = ForData
-  | ForTyDef
-  | ForPostTyDef
-  | ForNamespace
-  | ForPostArg
-  | ForPlaceholder
-  | ForTupMember
+import Clapi.Types.Name (DataName)
 
-newtype Name (nr :: NameRole) = Name {unName :: Text} deriving (Eq, Ord, Lift)
-
-type DataName = Name 'ForData
-type DefName = Name 'ForTyDef
-type PostDefName = Name 'ForPostTyDef
-type Namespace = Name 'ForNamespace
-type PostArgName = Name 'ForPostArg
-type Placeholder = Name 'ForPlaceholder
-type TupMemberName = Name 'ForTupMember
-
-instance Show (Name nr) where
-    show = Text.unpack . unName
-
-castName :: Name nr1 -> Name nr2
-castName (Name n) = Name n
-
-isValidNameChar :: Char -> Bool
-isValidNameChar c = isLetter c || isDigit c || c == '_'
-
-nameP :: Parser (Name nr)
-nameP = fmap (Name . Text.pack) $ DAT.many1 $ DAT.satisfy isValidNameChar
-
-mkName :: MonadFail m => Text -> m (Name nr)
-mkName = either fail return . DAT.parseOnly (nameP <* DAT.endOfInput)
-
-instance Semigroup (Name nr) where
-  (Name t1) <> (Name t2) = Name (t1 <> Text.singleton '_' <> t2)
 
 newtype Path' a = Path' {unPath :: [a]} deriving (Eq, Ord, Lift)
 type Path = Path' DataName

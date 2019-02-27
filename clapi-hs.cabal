@@ -40,6 +40,7 @@ library
                      , Clapi.Serialisation.Base
                      , Clapi.Serialisation.Definitions
                      , Clapi.Serialisation.Digests
+                     , Clapi.Serialisation.Name
                      , Clapi.Serialisation.Path
                      , Clapi.Serialisation.Wire
                      , Clapi.Server
@@ -55,6 +56,7 @@ library
                      , Clapi.Types.Dkmap
                      , Clapi.Types.EnumVal
                      , Clapi.Types.Error
+                     , Clapi.Types.Name
                      , Clapi.Types.Nat
                      , Clapi.Types.SequenceOps
                      , Clapi.Types.Symbol

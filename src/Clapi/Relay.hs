@@ -56,7 +56,8 @@ import Clapi.Types.Digests
   )
 import qualified Clapi.Types.Dkmap as Dkmap
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.Path (Path, DefName, PostDefName, Namespace, castName)
+import Clapi.Types.Name (DefName, Namespace, PostDefName, castName)
+import Clapi.Types.Path (Path)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace

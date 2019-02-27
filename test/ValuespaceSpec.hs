@@ -35,8 +35,8 @@ import Clapi.Types.Digests
   , CreateOp(..)
   , TrDigest(..), trpdEmpty, TrcUpdateDigest, trcudEmpty
   , FrDigest(..), frcudEmpty, FrpDigest, frpdEmpty)
-import Clapi.Types.Path
-  ( Namespace, DefName, Path, pattern Root, pattern (:/))
+import Clapi.Types.Name (DefName, Namespace)
+import Clapi.Types.Path (Path, pattern Root, pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Tree (SomeTreeType, bounds, unbounded, ttWord32, ttRef)
 import Clapi.Types.Wire (someWv, WireType(..))

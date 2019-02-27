@@ -22,7 +22,8 @@ import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
   (SomeDefinition, PostDefinition, Editability)
 import Clapi.Types.Base (TpId)
-import Clapi.Types.Path (DataName, DefName, PostDefName, Placeholder, Path)
+import Clapi.Types.Name (DataName, DefName, PostDefName, Placeholder)
+import Clapi.Types.Path (Path)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
 import qualified Clapi.Valuespace.Xrefs as VsXrefs

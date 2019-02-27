@@ -16,9 +16,10 @@ import qualified Data.Set as Set
 
 import Clapi.TH (pathq, n)
 import Clapi.Types (CanFail)
+import Clapi.Types.Name (unName, nameP)
 import Clapi.Types.Path
   ( Path'(..), Path, pattern Root, pattern (:/), pattern (:</), fromText, toText
-  , isChildOf, unName, nameP, prefixes, prefixesMap, isStrictChildOfAny)
+  , isChildOf, prefixes, prefixesMap, isStrictChildOfAny)
 
 import Arbitrary ()
 

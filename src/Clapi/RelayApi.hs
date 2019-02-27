@@ -22,9 +22,8 @@ import Clapi.Types.Digests
   , trpdEmpty, OriginatorRole(..), DigestAction(..)
   , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
-import Clapi.Types.Path
-  ( Name, DataName, Namespace, castName
-  , pattern Root, pattern (:/))
+import Clapi.Types.Name (Name, DataName, Namespace, castName, unName)
+import Clapi.Types.Path (pattern Root, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
@@ -92,7 +91,7 @@ relayApiProto selfAddr =
       (AL.fromList
         [ ([pathq|/build|], ConstChange Nothing [someWv WtString "banana"])
         , ([pathq|/self|], ConstChange Nothing [
-             someWireable $ Path.toText Path.unName selfClientPath])
+             someWireable $ Path.toText unName selfClientPath])
         , ( selfClientPath :/ clock_diff
           , ConstChange Nothing [someWv WtFloat 0.0])
         , ( selfClientPath :/ dn
@@ -191,7 +190,7 @@ relayApiProto selfAddr =
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath name = [pathq|/owners|] :/ castName name
         toSetRefOp ns = ConstChange Nothing [
-          someWireable $ Path.toText Path.unName $
+          someWireable $ Path.toText unName $
           Root :/ [n|clients|] :/ ns]
         viewAs :: i -> DataDigest -> DataDigest
         viewAs i dd =

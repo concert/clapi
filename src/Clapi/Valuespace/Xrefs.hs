@@ -23,9 +23,9 @@ import qualified Data.Set as Set
 import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
-import Clapi.Types.Definitions
 import Clapi.Types.Base (TpId)
-import Clapi.Types.Path (Path, DefName)
+import Clapi.Types.Name (DefName)
+import Clapi.Types.Path (Path)
 import Clapi.Validator (TypeAssertion(..))
 
 

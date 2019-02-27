@@ -14,7 +14,8 @@ import Language.Haskell.TH hiding (Name)
 
 import Clapi.Types.Base (Time(..))
 import Clapi.Types.EnumVal (EnumVal)
-import Clapi.Types.Path (DefName, Path)
+import Clapi.Types.Name (DefName)
+import Clapi.Types.Path (Path)
 import Clapi.Types.SymbolList (SymbolList)
 import Clapi.Types.UniqList (UniqList)
 

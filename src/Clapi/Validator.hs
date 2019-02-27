@@ -25,7 +25,8 @@ import Clapi.Util (ensureUnique, foldMapM, fmtStrictZipError, strictZipWith)
 import Clapi.TextSerialisation (ttToText)
 import Clapi.Types ()
 import Clapi.Types.EnumVal (enumVal)
-import Clapi.Types.Path (Path, DefName)
+import Clapi.Types.Name (DefName, nameP)
+import Clapi.Types.Path (Path)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
 import Clapi.Types.UniqList (mkUniqList, unUniqList)
@@ -121,7 +122,7 @@ inflateValue = \case
   TtFloat _ -> return
   TtDouble _ -> return
   TtString _ -> return
-  TtRef _ -> Path.fromText Path.nameP
+  TtRef _ -> Path.fromText nameP
   TtList tt -> mapM $ inflateValue tt
   TtSet tt -> case (getTtShow tt, getTtOrd tt) of
     (Dict, Dict) -> mapM (inflateValue tt) >=> ensureUnique "items"
@@ -158,7 +159,7 @@ extractTypeAssertions
   :: MonadFail m
   => TreeType a -> WireTypeOf a -> m [(DefName, Path)]
 extractTypeAssertions = \case
-    TtRef tn -> Path.fromText Path.nameP >=> return . pure . (tn,)
+    TtRef tn -> Path.fromText nameP >=> return . pure . (tn,)
     TtList tt -> recurse tt
     TtSet tt -> recurse tt
     TtOrdSet tt -> recurse tt

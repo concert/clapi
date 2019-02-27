@@ -29,9 +29,9 @@ import Clapi.Types.AssocList (AssocList)
 import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
   (SomeDefinition, Editability, PostDefinition)
-import Clapi.Types.Path
-  ( Path, pattern (:/)
-  , DataName, DefName, Namespace, Placeholder, PostArgName, PostDefName)
+import Clapi.Types.Name
+  ( DataName, DefName, Namespace, Placeholder, PostArgName, PostDefName)
+import Clapi.Types.Path (Path, pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (SomeWireValue)
 

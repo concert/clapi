@@ -12,6 +12,7 @@ import Control.Monad.Fail (MonadFail, fail)
 import Clapi.Types.Base as X
 import Clapi.Types.Definitions as X
 import Clapi.Types.Digests as X
+import Clapi.Types.Name as X
 import Clapi.Types.Nat as X
 import Clapi.Types.Path as X
 import Clapi.Types.UniqList as X
