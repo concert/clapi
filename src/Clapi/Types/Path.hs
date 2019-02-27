@@ -6,8 +6,9 @@
 {-# LANGUAGE DataKinds #-}
 
 module Clapi.Types.Path
-  ( NameRole, Name, mkName, unName, nameP
+  ( NameRole, Name, mkName, unName, nameP, castName
   , DataName, DefName, PostDefName, Namespace, PostArgName, Placeholder
+  , TupMemberName
   , Path'(..), Path, pathP, toText, fromText
   , pattern Root, pattern (:</), pattern (:/)
   , splitHead, splitTail, parentPath
@@ -37,6 +38,7 @@ data NameRole
   | ForNamespace
   | ForPostArg
   | ForPlaceholder
+  | ForTupMember
 
 newtype Name (nr :: NameRole) = Name {unName :: Text} deriving (Eq, Ord, Lift)
 
@@ -46,9 +48,13 @@ type PostDefName = Name 'ForPostTyDef
 type Namespace = Name 'ForNamespace
 type PostArgName = Name 'ForPostArg
 type Placeholder = Name 'ForPlaceholder
+type TupMemberName = Name 'ForTupMember
 
 instance Show (Name nr) where
     show = Text.unpack . unName
+
+castName :: Name nr1 -> Name nr2
+castName (Name n) = Name n
 
 isValidNameChar :: Char -> Bool
 isValidNameChar c = isLetter c || isDigit c || c == '_'

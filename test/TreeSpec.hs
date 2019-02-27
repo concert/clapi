@@ -10,14 +10,14 @@ import qualified Data.Map as Map
 import Clapi.TH
 import qualified Clapi.Types.AssocList as AL
 import qualified Clapi.Types.Dkmap as Dkmap
-import Clapi.Types.Path (Name, pattern Root, pattern (:/))
+import Clapi.Types.Path (DataName, pattern Root, pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(SoAfter))
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..))
 import qualified Clapi.Tree as Tree
 
 import Instances ()
 
-s0, s1, s2, s3, s4 :: Name
+s0, s1, s2, s3, s4 :: DataName
 s0 = [n|t0|]
 s1 = [n|t1|]
 s2 = [n|t2|]

@@ -36,7 +36,6 @@ import Data.Map.Merge.Strict
   )
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (untag)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Printf (printf)
@@ -57,7 +56,6 @@ import Clapi.Types.Definitions
   ( MetaType(..), SomeDefinition(..), Definition(..), PostDefinition(..)
   , Editability(..)
   , structDef
-  , DefName, PostDefName
   , getTyInfoForName
   )
 import Clapi.Types.Digests
@@ -71,7 +69,9 @@ import Clapi.Types.Error
   (ErrsT, errsStateT, castErrs, collect, eitherThrow, eitherModifying)
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.Path
-  (Path, Name, Placeholder,  pattern Root, pattern (:/), pattern (:</))
+  ( Path, DataName, DefName, Placeholder, PostDefName
+  , pattern Root, pattern (:/), pattern (:</)
+  )
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
 import Clapi.Types.UniqList (unUniqList)
@@ -97,7 +97,7 @@ data ProviderError
   | ArrayDoesNotSupportCreates
   | MissingNodeData
   | UnexpectedNodeType
-  | BadChildKeys [Name] [Name]
+  | BadChildKeys [DataName] [DataName]
   | TsChangeOnConst | ConstChangeOnTs
   -- FIXME: this really should contain two InterpolationType values, but because
   -- we currently don't distinguish between TS tuples and const tuples at the
@@ -123,17 +123,17 @@ data ProviderError
   | CyclicReferencesInCreates [Placeholder]
   | MissingCreatePositionTarget Placeholder EPS
   | SeqOpsOnNonArray
-  | SeqOpMovedMissingChild Name
-  | SeqOpTargetMissing Name EPS
+  | SeqOpMovedMissingChild DataName
+  | SeqOpTargetMissing DataName EPS
   -- ---------------------------------------------------------------------------
 
 errText :: ProviderError -> Text
 errText = Text.pack . \case
   NodeNotFound -> "Node not found"
-  DefNotFound dn -> printf "Definition %s not found" $ show $ untag dn
-  PostDefNotFound dn -> printf "Post definition %s not found" $ show $ untag dn
+  DefNotFound dn -> printf "Definition %s not found" $ show dn
+  PostDefNotFound dn -> printf "Post definition %s not found" $ show  dn
   CircularStructDefinitions dns ->
-    "Circular struct definitions: " ++ intercalate " -> " (show . untag <$> dns)
+    "Circular struct definitions: " ++ intercalate " -> " (show <$> dns)
   ExpectedArrayDefinition -> "Expected array definition"
   ArrayDoesNotSupportCreates -> "Array does not support creates"
   MissingNodeData -> "Missing node data"
@@ -158,7 +158,7 @@ errText = Text.pack . \case
   CyclicReferencesInCreates targs ->
     "Several create operations formed a loop with their position targets: "
     ++ intercalate " -> "
-    (Text.unpack . Path.unName . Path.unPlaceholder <$> targs)
+    (Text.unpack . Path.unName <$> targs)
   MissingCreatePositionTarget ph eps -> printf
     "Create for %s references missing position target %s"
     (show ph) (show eps)
@@ -277,7 +277,7 @@ pathExists path = use vsTree >>= return . go . Tree.lookupNode path
 
 pathChildren
   :: (MonadState Valuespace m, MonadError ProviderError m)
-  => Path -> m [Name]
+  => Path -> m [DataName]
 pathChildren path = pathNode path >>= return . \case
   RtnChildren al -> unUniqList $ AL.keys al
   _ -> mempty
@@ -432,7 +432,7 @@ guardClientUpdates = Error.filterErrs . AL.fmapWithKey atPath
         else pathError p $ throwError NodeNotFound
       return dc
 
-type EPS = Either Placeholder Name
+type EPS = Either Placeholder DataName
 
 guardClientCops
   :: Monad m => Mos Path Placeholder -> ContOps EPS -> VsM' m (ContOps EPS)
@@ -440,8 +440,8 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
   where
     perPath
       :: Monad m
-      => Path -> Map Name (x, SequenceOp EPS)
-      -> VsM' m (Map Name (x, SequenceOp EPS))
+      => Path -> Map DataName (x, SequenceOp EPS)
+      -> VsM' m (Map DataName (x, SequenceOp EPS))
     perPath p m = do
       guardReadOnly ReadOnlySeqOps p
       SomeDefinition def <- pathError p $ pathDef p
@@ -453,7 +453,7 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
 
     validateCop
       :: MonadError [ProviderError] m
-      => Set Name -> Set Placeholder -> Name -> (x, SequenceOp EPS) -> m ()
+      => Set DataName -> Set Placeholder -> DataName -> (x, SequenceOp EPS) -> m ()
     validateCop kids phs kidToChange (_, so) =
       case so of
         SoAfter (Just t) -> do
@@ -490,11 +490,11 @@ data TypeImpl
 
 instance Show TypeImpl where
   show = \case
-    TypeRedefined dn _ _ -> printf "<TypeRedefined %s>" (show $ untag dn)
+    TypeRedefined dn _ _ -> printf "<TypeRedefined %s>" (show dn)
     TypeReassigned dn1 dn2 _ _ ed2 -> printf "<TypeReassigned %s %s %s>"
-      (show $ untag dn1) (show $ untag dn2) (show ed2)
+      (show dn1) (show dn2) (show ed2)
     NewlyAssigned dn _ ed -> printf "<NewlyAssigned %s %s>"
-      (show $ untag dn) (show ed)
+      (show dn) (show ed)
     ImplicitlyRemoved -> "<ImplicitlyRemoved>"
 
 
@@ -565,7 +565,8 @@ updatePathData p dc = do
         modifying vsTac $ Vs2Xrefs.removeTp (Vs2Xrefs.Referer p) tpid
 
 updateContainer
-  :: Monad m => Path -> Map Name (Maybe Attributee, SequenceOp Name) -> VsM' m ()
+  :: Monad m => Path -> Map DataName (Maybe Attributee, SequenceOp DataName)
+  -> VsM' m ()
 updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
@@ -642,8 +643,8 @@ extendImpls oldTree initialImpls
 
     tyInfoDiffDcImpls
       :: Monad m
-      => Path -> Map Name (DefName, Editability)
-      -> Map Name (DefName, Editability) -> VsM' m (Map Path TypeImpl)
+      => Path -> Map DataName (DefName, Editability)
+      -> Map DataName (DefName, Editability) -> VsM' m (Map Path TypeImpl)
     tyInfoDiffDcImpls p oldTyInfo newTyInfo = fold <$>
         mergeA (traverseMissing f) (traverseMissing g) (zipWithAMatched h)
         oldTyInfo newTyInfo
@@ -662,7 +663,7 @@ extendImpls oldTree initialImpls
 
 
 getChildTyInfo
-  :: Path -> Definition mt -> RoseTree a -> Map Name (DefName, Editability)
+  :: Path -> Definition mt -> RoseTree a -> Map DataName (DefName, Editability)
 getChildTyInfo p def = go . maybe RtnEmpty id . Tree.lookupNode p
   where
     go node = case def of
@@ -770,7 +771,7 @@ doFilter f = Error.filterErrs . Map.mapWithKey (\k a -> f k a >> return a)
 -- FIXME: Rename?
 sortOutAfterDeps
   :: Monad m
-  => Set Name -> PathCreates -> ErrsT s [ProviderError] m PathCreates
+  => Set DataName -> PathCreates -> ErrsT s [ProviderError] m PathCreates
 sortOutAfterDeps existingKids =
       filterDuplicateTargets >=> filterCycles >=> filterMissingNames
   where

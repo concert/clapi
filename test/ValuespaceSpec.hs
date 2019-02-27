@@ -15,7 +15,6 @@ import Control.Monad.State (StateT, liftIO, evalStateT, get)
 import Data.Either (isRight)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import Data.Word
 import Text.Printf (printf)
@@ -29,7 +28,7 @@ import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base
   (InterpolationType(..), Interpolation(..), TpId, Time(..))
 import Clapi.Types.Definitions
-  ( Editability(..), DefName, SomeDefinition, PostDefinition(..)
+  ( Editability(..), SomeDefinition, PostDefinition(..)
   , tupleDef, structDef, arrayDef)
 import Clapi.Types.Digests
   ( DefOp(..), DataErrorIndex(..), DataChange(..), TimeSeriesDataOp(..)
@@ -37,7 +36,7 @@ import Clapi.Types.Digests
   , TrDigest(..), trpdEmpty, TrcUpdateDigest, trcudEmpty
   , FrDigest(..), frcudEmpty, FrpDigest, frpdEmpty)
 import Clapi.Types.Path
-  (Namespace(..), Placeholder(..), Path, pattern Root, pattern (:/))
+  ( Namespace, DefName, Path, pattern Root, pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Tree (SomeTreeType, bounds, unbounded, ttWord32, ttRef)
 import Clapi.Types.Wire (someWv, WireType(..))
@@ -60,15 +59,15 @@ spec =
       res <- processTrpd $ (trpdEmpty ns)
         { trpdDefs = Map.fromList
             [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
-                [ (referer, (Tagged referer, Editable))
-                , (referee1, (Tagged referee1, ReadOnly))
-                , (referee2, (Tagged referee2, ReadOnly))
+                [ (referer, (referer, Editable))
+                , (referee1, (referee1, ReadOnly))
+                , (referee2, (referee2, ReadOnly))
                 ])
-            , (Tagged referer, OpDefine $ tupleDef "referer"
+            , (referer, OpDefine $ tupleDef "referer"
                 (AL.singleton [n|r|] $ ttRef referee1)
                 Nothing)
-            , (Tagged referee1, OpDefine w32Tup)
-            , (Tagged referee2, OpDefine w32Tup)
+            , (referee1, OpDefine w32Tup)
+            , (referee2, OpDefine w32Tup)
             ]
         , trpdData = AL.fromList
             [ (Root :/ referee1,
@@ -169,7 +168,7 @@ spec =
           common = [n|common|]
           structOnly = [n|structOnly|]
           arrayOnly = [n|arrayOnly|]
-          w32Dn = Tagged [n|w32|]
+          w32Dn = [n|w32|] :: DefName
 
           setupStruct = do
             res <- processTrpd $ (trpdEmpty ns)
@@ -245,7 +244,7 @@ spec =
 
       it "handle removing a type definition (unused)" $ go $
         let
-          superfluousDn = Tagged [n|superfluous|]
+          superfluousDn = [n|superfluous|] :: DefName
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton superfluousDn $ OpDefine w32Tup
@@ -263,7 +262,7 @@ spec =
       it "handle removing a type definition (uses removed at same time)" $ go $
         let
           foo = [n|foo|]
-          w32Dn = Tagged [n|w32|]
+          w32Dn = [n|w32|] :: DefName
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
@@ -287,7 +286,7 @@ spec =
       it "catches in use type when undefined" $ go $
         let
           foo = [n|foo|]
-          w32Dn = Tagged [n|w32|]
+          w32Dn = [n|w32|] :: DefName
         in do
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
@@ -308,7 +307,7 @@ spec =
 
       it "errors on struct with missing child" $ go $
         let
-          w32Tn = Tagged [n|w32|]
+          w32Tn = [n|w32|] :: DefName
           trpd = (trpdEmpty ns)
             { trpdDefs = Map.fromList
                [ (rootDn, OpDefine $ structDef "foo and bar" $ AL.fromList
@@ -348,7 +347,7 @@ spec =
         let
           foo = [n|foo|]
           bar = [n|bar|]
-          w32Dn = Tagged [n|w32Dn|]
+          w32Dn = [n|w32Dn|] :: DefName
 
           arraySetup = do
             res <- processTrpd $ (trpdEmpty ns)
@@ -427,8 +426,8 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "rec1" $
-                    AL.singleton r (Tagged r, ReadOnly))
-                , (Tagged r, OpDefine $ structDef "rec2" $
+                    AL.singleton r (r, ReadOnly))
+                , (r, OpDefine $ structDef "rec2" $
                     AL.singleton r (rootDn, ReadOnly))
                 ]
             }
@@ -438,9 +437,9 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
            { trpdDefs = Map.fromList
                [ (rootDn, OpDefine $
-                   arrayDef "rec below" Nothing (Tagged r) ReadOnly)
-               , (Tagged r, OpDefine $ structDef "recursive!" $
-                   AL.singleton r (Tagged r, ReadOnly))
+                   arrayDef "rec below" Nothing r ReadOnly)
+               , (r, OpDefine $ structDef "recursive!" $
+                   AL.singleton r (r, ReadOnly))
                ]
            }
           errors GlobalError res
@@ -449,9 +448,8 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "rec1" $
-                    AL.singleton r (Tagged r, ReadOnly))
-                , (Tagged r, OpDefine $
-                    arrayDef "rec2" Nothing rootDn ReadOnly)
+                    AL.singleton r (r, ReadOnly))
+                , (r, OpDefine $ arrayDef "rec2" Nothing rootDn ReadOnly)
                 ]
             , trpdData = AL.fromList
                 [
@@ -480,7 +478,7 @@ spec =
         it "catches referer type change" $ go $
           let
             trpd = (trpdEmpty ns)
-              { trpdDefs = Map.singleton (Tagged referer) $
+              { trpdDefs = Map.singleton referer $
                   OpDefine $ tupleDef "referer"
                     (AL.singleton [n|r|] $ ttRef referee2)
                     Nothing
@@ -500,9 +498,9 @@ spec =
           let
             defs = Map.singleton rootDn $
                   OpDefine $ structDef "root" $ AL.fromList
-                    [ (referer, (Tagged referer, ReadOnly))
-                    , (referee1, (Tagged referee2, ReadOnly))
-                    , (referee2, (Tagged referee2, ReadOnly))
+                    [ (referer, (referer, ReadOnly))
+                    , (referee1, (referee2, ReadOnly))
+                    , (referee2, (referee2, ReadOnly))
                     ]
             trpd = (trpdEmpty ns) { trpdDefs = defs }
           in do
@@ -511,7 +509,7 @@ spec =
             errorsOn (Root :/ referer) res
 
             res' <- processTrpd trpd
-              { trpdDefs = defs <> (Map.singleton (Tagged referer) $
+              { trpdDefs = defs <> (Map.singleton referer $
                   OpDefine $ tupleDef "referer"
                     (AL.singleton [n|r|] $ ttRef referee2)
                     Nothing)
@@ -530,10 +528,10 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
-                    [ ([n|myWord|], (Tagged [n|w32|], Editable))
-                    , ([n|otherWord|], (Tagged [n|w32|], ReadOnly))
+                    [ ([n|myWord|], ([n|w32|], Editable))
+                    , ([n|otherWord|], ([n|w32|], ReadOnly))
                     ])
-                , (Tagged [n|w32|], OpDefine w32Tup)
+                , ([n|w32|], OpDefine w32Tup)
                 ]
             , trpdData = AL.fromList
                 [ ([pathq|/myWord|], ConstChange Nothing [someWv WtWord32 41])
@@ -546,12 +544,10 @@ spec =
           res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ arrayDef "root"
-                    (Just $ Tagged [n|postW32|])
-                    (Tagged [n|w32|])
-                    editability)
-                , (Tagged [n|w32|], OpDefine w32Tup)
+                    (Just [n|postW32|]) [n|w32|] editability)
+                , ([n|w32|], OpDefine w32Tup)
                 ]
-            , trpdPostDefs = Map.singleton (Tagged [n|postW32|]) $ OpDefine $
+            , trpdPostDefs = Map.singleton [n|postW32|] $ OpDefine $
                 PostDefinition "Post me a Word worthy of Mordor!" $ AL.singleton
                   [n|theWord|] [w32Ty]
             }
@@ -648,7 +644,7 @@ spec =
             let
               doCreate vals = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $
-                    Map.singleton (Placeholder [n|new|])
+                    Map.singleton [n|new|]
                     (Nothing, OpCreate vals Nothing)
                 }
             in do
@@ -663,20 +659,20 @@ spec =
               vals = [[someWv WtWord32 0]]
               doCreates targ = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $ Map.fromList
-                  [ (Placeholder [n|one|], (Nothing, OpCreate vals targ))
-                  , (Placeholder [n|two|], (Nothing, OpCreate vals targ))
+                  [ ([n|one|], (Nothing, OpCreate vals targ))
+                  , ([n|two|], (Nothing, OpCreate vals targ))
                   ]
                 }
             in do
               basicArraySetup
               doCreates Nothing >>= errorsOn Root
-              doCreates (Just $ Left $ Placeholder [n|one|]) >>= errorsOn Root
+              doCreates (Just $ Left [n|one|]) >>= errorsOn Root
 
           it "catches circular dependencies in creation targets" $ go $
             let
-              ph1 = Placeholder [n|ph1|]
-              ph2 = Placeholder [n|ph2|]
-              ph3 = Placeholder [n|ph3|]
+              ph1 = [n|ph1|]
+              ph2 = [n|ph2|]
+              ph3 = [n|ph3|]
               vals = [[someWv WtWord32 0]]
             in do
               basicArraySetup
@@ -701,7 +697,7 @@ spec =
               ei = [n|existingItem|]
               doCreate = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $ Map.singleton
-                    (Placeholder [n|new|])
+                    [n|new|]
                     (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Right ei)
                 }
             in do
@@ -712,8 +708,8 @@ spec =
 
           it "catches missing placeholder creation targets (naive)" $ go $
             let
-              ph1 = Placeholder [n|ph1|]
-              ph2 = Placeholder [n|ph2|]
+              ph1 = [n|ph1|]
+              ph2 = [n|ph2|]
             in do
               basicArraySetup
               res <- processTrcud' $ (trcudEmpty ns)
@@ -724,8 +720,8 @@ spec =
 
           it "catches missing placeholder creation targets (other failures)" $
             go $ let
-              ph1 = Placeholder [n|ph1|]
-              ph2 = Placeholder [n|ph2|]
+              ph1 = [n|ph1|]
+              ph2 = [n|ph2|]
             in do
               basicArraySetup
               res <- processTrcud' $ (trcudEmpty ns)
@@ -833,10 +829,10 @@ succeedsWith
 succeedsWith ea a = liftIO $ ea `shouldBe` Right a
 
 ns :: Namespace
-ns = Namespace [n|test_ns|]
+ns = [n|test_ns|]
 
 rootDn :: DefName
-rootDn = Tagged [n|root|]
+rootDn = [n|root|]
 
 bvs :: Valuespace
 bvs = baseValuespace rootDn ReadOnly

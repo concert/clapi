@@ -1,8 +1,11 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE
+    TemplateHaskell
+  , TypeFamilies
+#-}
 
 module Clapi.Internal.Valuespace
   ( Valuespace(..)
-  , DefMap, TypeAssignmentMap, Referer, Referee, Xrefs
+  , DefMap, DefKey, TypeAssignmentMap, Referer, Referee, Xrefs
   , vsTree, vsPostDefs, vsTyDefs, vsRootDefName, vsRootEditability
   , vsTyAssns, vsTac
   ) where
@@ -10,20 +13,23 @@ module Clapi.Internal.Valuespace
 import Control.Lens (makeLenses)
 import Data.Map (Map)
 import Data.Set (Set)
-import Data.Tagged (Tagged)
 
 import Data.Map.Dependencies (Dependencies)
 
 import Clapi.Tree (RoseTree)
 import Clapi.Types.Definitions
-  (SomeDefinition, PostDefinition, Editability, DefName)
+  (SomeDefinition, PostDefinition, Editability)
 import Clapi.Types.Base (TpId)
-import Clapi.Types.Path (Name, Path)
+import Clapi.Types.Path (DefName, PostDefName, Path)
 import Clapi.Types.Wire (SomeWireValue)
 -- FIXME: These modules are becoming a bit of a messy tangle
 import qualified Clapi.Valuespace.Xrefs as VsXrefs
 
-type DefMap def = Map (Tagged def Name) def
+type family DefKey a
+type instance DefKey SomeDefinition = DefName
+type instance DefKey PostDefinition = PostDefName
+
+type DefMap def = Map (DefKey def) def
 type TypeAssignmentMap = Dependencies Path DefName
 type Referer = Path
 type Referee = Path

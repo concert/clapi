@@ -14,7 +14,7 @@ import Language.Haskell.TH hiding (Name)
 
 import Clapi.Types.Base (Time(..))
 import Clapi.Types.EnumVal (EnumVal)
-import Clapi.Types.Path (Name, Path)
+import Clapi.Types.Path (DefName, Path)
 import Clapi.Types.SymbolList (SymbolList)
 import Clapi.Types.UniqList (UniqList)
 
@@ -35,9 +35,7 @@ data TreeType a where
   TtFloat :: Bounds Float -> TreeType Float
   TtDouble :: Bounds Double -> TreeType Double
   TtString :: Text -> TreeType Text
-  -- FIXME: kinda want this to be `TtRef DefName`, but that creates an import
-  -- loop:
-  TtRef :: Name -> TreeType Path
+  TtRef :: DefName -> TreeType Path
   TtList :: TreeType a -> TreeType [a]
   TtSet :: TreeType a -> TreeType (Set a)
   TtOrdSet :: TreeType a -> TreeType (UniqList a)

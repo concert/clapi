@@ -29,9 +29,10 @@ import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee, Time, TpId, Interpolation)
 import Clapi.Types.Definitions
-  (SomeDefinition, DefName, PostDefName, Editability, PostDefinition)
+  (SomeDefinition, Editability, PostDefinition)
 import Clapi.Types.Path
-  (Name, Path, pattern (:/), Namespace(..), Placeholder(..))
+  ( Name, Path, pattern (:/)
+  , DataName, DefName, Namespace, Placeholder, PostArgName, PostDefName)
 import Clapi.Types.SequenceOps (SequenceOp(..), isSoAbsent)
 import Clapi.Types.Wire (SomeWireValue)
 
@@ -88,17 +89,20 @@ data CreateOp
   -- FIXME: Nested lists of WireValues is a legacy hangover because our tree
   -- data nodes still contain [WireValue] as a single "value":
   { ocArgs :: [[SomeWireValue]]
-  , ocAfter :: Maybe (Either Placeholder Name)
+  , ocAfter :: Maybe (Either Placeholder DataName)
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
 
 type RootContOps = Map Namespace (SequenceOp Namespace)
 -- FIXME: might this be better as Map (Path, Name) (blah)? We spend a lot of time
 -- coping with the nested map-ness:
-type ContOps after = Map Path (Map Name (Maybe Attributee, SequenceOp after))
+type ContOps after = Map Path (Map DataName (Maybe Attributee, SequenceOp after))
 
 data PostOp
-  = OpPost {opPath :: Path, opArgs :: Map Name SomeWireValue} deriving (Show, Eq)
+  = OpPost
+  { opPath :: Path
+  , opArgs :: Map PostArgName SomeWireValue
+  } deriving (Show, Eq)
 
 data SubOp = OpSubscribe | OpUnsubscribe deriving (Show, Eq, Enum, Bounded)
 
@@ -115,7 +119,7 @@ data TrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , trpdPostDefs :: Map PostDefName (DefOp PostDefinition)
     , trpdDefs :: Map DefName (DefOp SomeDefinition)
     , trpdData :: DataDigest
-    , trpdContOps :: ContOps Name
+    , trpdContOps :: ContOps DataName
     -- FIXME: should errors come in a different digest to data updates? At the
     -- moment we just check a TrpDigest isn't null when processing namespace
     -- claims...
@@ -134,7 +138,7 @@ data TrDigest (r :: OriginatorRole) (a :: DigestAction) where
     { trcudNs :: Namespace
     , trcudData :: DataDigest
     , trcudCreates :: Creates
-    , trcudContOps :: ContOps (Either Placeholder Name)
+    , trcudContOps :: ContOps (Either Placeholder DataName)
     } -> TrDigest 'Consumer 'Update
 
 deriving instance Show (TrDigest o a)
@@ -145,7 +149,7 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     { frpdNs :: Namespace
     , frpdData :: DataDigest
     , frpdCreates :: Creates
-    , frpdContOps :: ContOps (Either Placeholder Name)
+    , frpdContOps :: ContOps (Either Placeholder DataName)
     } -> FrDigest 'Provider 'Update
   Frped ::
     { frpedErrors :: Mol DataErrorIndex Text
@@ -167,7 +171,7 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , frcudDefs :: Map DefName (DefOp SomeDefinition)
     , frcudTyAssigns :: Map Path (DefName, Editability)
     , frcudData :: DataDigest
-    , frcudContOps :: ContOps Name
+    , frcudContOps :: ContOps DataName
     -- FIXME: This could just be for errors that come from providers. Although
     -- we currently send Relay errors here, if we do so we never send any of the
     -- other fields. I.e. we could add an additional Frced type...

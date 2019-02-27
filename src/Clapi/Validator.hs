@@ -15,7 +15,6 @@ import Data.Constraint (Dict(..))
 import Data.Either (partitionEithers)
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tagged (Tagged(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Type.Equality ((:~:)(..))
@@ -25,9 +24,8 @@ import Text.Printf (printf, PrintfArg)
 import Clapi.Util (ensureUnique, foldMapM, fmtStrictZipError, strictZipWith)
 import Clapi.TextSerialisation (ttToText)
 import Clapi.Types ()
-import Clapi.Types.Definitions (DefName)
 import Clapi.Types.EnumVal (enumVal)
-import Clapi.Types.Path (Path)
+import Clapi.Types.Path (Path, DefName)
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree
 import Clapi.Types.UniqList (mkUniqList, unUniqList)
@@ -71,7 +69,7 @@ validateValue = \case
     TtFloat b -> none . inBounds b
     TtDouble b -> none . inBounds b
     TtString pat -> none . checkString pat
-    TtRef dn -> return . Set.singleton . flip TypeAssertion (Tagged dn)
+    TtRef dn -> return . Set.singleton . flip TypeAssertion dn
     TtList tt -> subValidate tt
     TtSet tt -> subValidate tt . Set.toList
     TtOrdSet tt -> subValidate tt . unUniqList
@@ -160,7 +158,7 @@ extractTypeAssertions
   :: MonadFail m
   => TreeType a -> WireTypeOf a -> m [(DefName, Path)]
 extractTypeAssertions = \case
-    TtRef tn -> Path.fromText Path.nameP >=> return . pure . (Tagged tn,)
+    TtRef tn -> Path.fromText Path.nameP >=> return . pure . (tn,)
     TtList tt -> recurse tt
     TtSet tt -> recurse tt
     TtOrdSet tt -> recurse tt
