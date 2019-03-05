@@ -1,7 +1,3 @@
-{-# LANGUAGE
-    LambdaCase
-#-}
-
 module Clapi.Valuespace.Xrefs
   ( Referer(..), Referee(..)
   -- FIXME: Might want TypeAssertionCache to be internal so that just the tests

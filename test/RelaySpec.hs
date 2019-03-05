@@ -2,7 +2,6 @@
 {-# LANGUAGE
     FlexibleContexts
   , FlexibleInstances
-  , LambdaCase
   , OverloadedStrings
   , PartialTypeSignatures
   , TypeFamilies

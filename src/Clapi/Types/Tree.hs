@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
 {-# LANGUAGE
     GADTs
-  , LambdaCase
   , MultiParamTypeClasses
   , RankNTypes
   , StandaloneDeriving

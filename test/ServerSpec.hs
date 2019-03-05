@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# LANGUAGE
-    LambdaCase
-  , OverloadedStrings
+    OverloadedStrings
 #-}
 
 module ServerSpec where

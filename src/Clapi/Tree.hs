@@ -1,7 +1,6 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
-  , LambdaCase
 #-}
 
 module Clapi.Tree where

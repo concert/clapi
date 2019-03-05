@@ -3,7 +3,6 @@
     TypeSynonymInstances
   , FlexibleInstances
   , GADTs
-  , LambdaCase
   , MultiParamTypeClasses
   , StandaloneDeriving
 #-}

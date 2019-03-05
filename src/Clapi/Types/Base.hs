@@ -1,7 +1,6 @@
 {-# LANGUAGE
     DeriveLift
   , GeneralizedNewtypeDeriving
-  , LambdaCase
   , MultiParamTypeClasses
   , FunctionalDependencies
 #-}
