@@ -1,6 +1,5 @@
 {-# LANGUAGE
     GeneralizedNewtypeDeriving
-  , LambdaCase
   , StandaloneDeriving
 #-}
 

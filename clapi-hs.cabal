@@ -15,9 +15,10 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  ghc-options:         -Wall -Werror=missing-methods
+  ghc-options:         -Wall -Werror=missing-methods -Wno-name-shadowing
   default-extensions:
-                       PatternSynonyms
+                       LambdaCase
+                     , PatternSynonyms
                      , QuasiQuotes
                      , ScopedTypeVariables
                      , TupleSections
@@ -134,9 +135,10 @@ test-suite clapi-hs-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  ghc-options:         -Wall -Werror=missing-methods
+  ghc-options:         -Wall -Werror=missing-methods -Wno-name-shadowing
   default-extensions:
-                       PatternSynonyms
+                       LambdaCase
+                     , PatternSynonyms
                      , QuasiQuotes
                      , ScopedTypeVariables
                      , TupleSections

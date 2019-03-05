@@ -4,7 +4,6 @@
   , FlexibleInstances
   , GADTs
   , KindSignatures
-  , LambdaCase
   , MultiParamTypeClasses
   , PolyKinds
   , RankNTypes

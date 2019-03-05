@@ -1,6 +1,5 @@
 {-# LANGUAGE
     FlexibleContexts
-  , LambdaCase
   , OverloadedStrings
   , QuasiQuotes
 #-}

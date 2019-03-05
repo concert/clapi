@@ -2,7 +2,6 @@
     DataKinds
   , GADTs
   , KindSignatures
-  , LambdaCase
   , MultiParamTypeClasses
   , RankNTypes
   , StandaloneDeriving

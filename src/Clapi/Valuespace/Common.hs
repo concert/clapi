@@ -1,7 +1,6 @@
 {-# LANGUAGE
     DataKinds
   , GADTs
-  , LambdaCase
 #-}
 
 -- | Valuspace maniupulations common to both handleTrpd and handleTrcud

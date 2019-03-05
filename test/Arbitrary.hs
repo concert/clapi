@@ -4,7 +4,6 @@
   , FlexibleInstances
   , GADTs
   , GeneralizedNewtypeDeriving
-  , LambdaCase
   , OverloadedStrings
   , RankNTypes
   , StandaloneDeriving

@@ -1,6 +1,5 @@
 {-# LANGUAGE
     FlexibleInstances
-  , LambdaCase
   , MultiParamTypeClasses
 #-}
 

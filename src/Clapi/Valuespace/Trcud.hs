@@ -2,7 +2,6 @@
     DataKinds
   , FlexibleContexts
   , GADTs
-  , LambdaCase
 #-}
 
 module Clapi.Valuespace.Trcud

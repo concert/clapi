@@ -2,7 +2,6 @@
     DataKinds
   , FlexibleContexts
   , GADTs
-  , LambdaCase
   , OverloadedStrings
 #-}
 module Clapi.Valuespace.Prim

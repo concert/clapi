@@ -1,7 +1,6 @@
 {-# LANGUAGE
     DataKinds
   , GADTs
-  , LambdaCase
 #-}
 
 module Clapi.Valuespace.Trpd where

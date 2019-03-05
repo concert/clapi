@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
     GADTs
-  , LambdaCase
   , TemplateHaskell
 #-}
 

@@ -1,6 +1,5 @@
 {-# LANGUAGE
     GADTs
-  , LambdaCase
   , RankNTypes
   , TypeOperators
 #-}

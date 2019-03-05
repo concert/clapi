@@ -4,7 +4,6 @@
   , FlexibleContexts
   , FlexibleInstances
   , GADTs
-  , LambdaCase
   , OverloadedStrings
   , RankNTypes
   , TemplateHaskell

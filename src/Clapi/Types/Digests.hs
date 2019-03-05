@@ -3,7 +3,6 @@
   , FlexibleInstances
   , KindSignatures
   , GADTs
-  , LambdaCase
   , RankNTypes
   , StandaloneDeriving
   , TypeSynonymInstances
