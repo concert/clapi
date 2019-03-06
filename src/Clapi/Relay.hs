@@ -8,7 +8,6 @@
   , OverloadedStrings
   , RankNTypes
   , TemplateHaskell
-  , TypeFamilies
   , TypeFamilyDependencies
 #-}
 
