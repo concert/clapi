@@ -39,7 +39,8 @@ import Data.Text.Encoding (decodeUtf8With)
 
 import Clapi.TaggedData
   (TaggedData, taggedData, tdInstanceToTag, tdAllTags, tdTagToEnum)
-import Clapi.Types.AssocList (AssocList, mkAssocList, unAssocList)
+import Clapi.Types.AssocList (AssocList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base
   ( Attributee(..), Time(..), TimeStamped(..), Tag(..), mkTag
   , Interpolation(..), InterpolationType(..)
@@ -124,11 +125,11 @@ instance (Ord a, Show a, Decodable a) => Decodable (UniqList a) where
 
 instance (Encodable k, Encodable v) => Encodable (Map k v) where
   builder = builder . Map.toList
-instance (Ord k, Decodable k, Decodable v) => Decodable (Map k v) where
-  parser = Map.fromList <$> parser
+instance (Ord k, Decodable k, Show k, Decodable v) => Decodable (Map k v) where
+  parser = AL.toMap <$> parser
 
 deriving instance (Encodable k, Encodable v) => Encodable (Mol k v)
-deriving instance (Ord k, Decodable k, Decodable v) => Decodable (Mol k v)
+deriving instance (Ord k, Decodable k, Show k, Decodable v) => Decodable (Mol k v)
 
 
 instance Encodable a => Encodable (Set a) where
@@ -171,10 +172,10 @@ instance (Decodable a, Decodable b) => Decodable (a, b) where
     parser = (,) <$> parser <*> parser
 
 instance (Encodable k, Encodable v) => Encodable (AssocList k v) where
-    builder = builder . unAssocList
+    builder = builder . AL.unAssocList
 instance (Ord k, Show k, Decodable k, Decodable v)
   => Decodable (AssocList k v) where
-    parser = parser >>= mkAssocList
+    parser = parser >>= AL.mkAssocList
 
 
 deriving instance Encodable Attributee
