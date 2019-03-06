@@ -47,7 +47,6 @@ instance Eq a => Semigroup (AssocList a b) where
   al1 <> AssocList l2 = Foldable.foldl' (\acc (a, b) -> insert a b acc) al1 l2
 instance Eq a => Monoid (AssocList a b) where
   mempty = AssocList []
-  mappend = (<>)
 
 singleton :: a -> b -> AssocList a b
 singleton a b = AssocList [(a, b)]
