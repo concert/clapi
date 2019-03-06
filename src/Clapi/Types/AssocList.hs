@@ -6,7 +6,7 @@
 
 module Clapi.Types.AssocList
   ( AssocList, unAssocList, mkAssocList, unsafeMkAssocList, null
-  , empty, singleton, fromKeys, fromList, fromMap, pickFromMap
+  , singleton, fromKeys, fromList, fromMap, pickFromMap
   , toMap, fromZip
   , cons, lookup, insert, setDefault, delete
   , keys, keys_, keysSet, values
@@ -48,10 +48,6 @@ instance Eq a => Semigroup (AssocList a b) where
 instance Eq a => Monoid (AssocList a b) where
   mempty = AssocList []
   mappend = (<>)
-
--- FIXME: remove at some point now we have defined a monoid instance?
-empty :: AssocList a b
-empty = AssocList []
 
 singleton :: a -> b -> AssocList a b
 singleton a b = AssocList [(a, b)]
