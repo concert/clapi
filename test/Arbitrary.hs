@@ -71,6 +71,9 @@ instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
   arbitrary = genMol arbitrary arbitrary
   shrink = fmap Mol.fromMap . traverse shrink . Mol.unMol
 
+instance (Ord a, Arbitrary a) => Arbitrary (UniqList a) where
+  arbitrary =
+     arbitrary >>= shuffle . Set.toList >>= return . unsafeMkUniqList
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
 assocListOf gk gv =
