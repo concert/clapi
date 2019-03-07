@@ -60,16 +60,18 @@ getChainStarts m =
         (remainder, starts) = Map.partition hasUnresolvedDep m
     in (Map.toList starts, remainder)
 
+resolveDigest :: (MonadFail m, Ord i) => Map i (Maybe i) -> m [(i, Maybe i)]
+resolveDigest m' = if null m' then return []
+    else case getChainStarts m' of
+        ([], _) -> fail "Unresolvable order dependencies"
+        (starts, remainder) -> (starts ++) <$> resolveDigest remainder
+
 reorderFromDeps
     :: (MonadFail m, Ord i, Show i)
     => Map i (Maybe i) -> UniqList i -> m (UniqList i)
 reorderFromDeps m ul =
     resolveDigest m >>= applyMoves (unUniqList ul) >>= mkUniqList
   where
-    resolveDigest m' = if null m' then return []
-        else case getChainStarts m' of
-            ([], _) -> fail "Unresolvable order dependencies"
-            (starts, remainder) -> (starts ++) <$> resolveDigest remainder
     applyMoves l starts = foldlM applyMove l starts
 
 applyMove :: (MonadFail m, Eq i, Show i) => [i] -> (i, Maybe i) -> m [i]
