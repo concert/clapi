@@ -7,6 +7,7 @@ module Clapi.Types.UniqList
   ) where
 
 import Control.Monad.Fail (MonadFail)
+import Data.Foldable (foldl')
 import qualified Data.List as List
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -40,3 +41,9 @@ ulInsert a' = UniqList . inner . unUniqList
     inner [] = [a']
     inner l@(a:as) | a' == a = l
                    | otherwise = a : inner as
+
+instance Eq a => Semigroup (UniqList a) where
+  ul <> UniqList l = foldl' (flip ulInsert) ul l
+
+instance Eq a => Monoid (UniqList a) where
+  mempty = ulEmpty
