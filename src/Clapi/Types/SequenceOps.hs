@@ -3,6 +3,7 @@
     DeriveFunctor
   , DeriveFoldable
   , DeriveTraversable
+  , FlexibleContexts
 #-}
 
 module Clapi.Types.SequenceOps
@@ -11,6 +12,8 @@ module Clapi.Types.SequenceOps
   ) where
 
 import Prelude hiding (fail)
+
+import Control.Lens (_1, _2, over)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -51,9 +54,9 @@ dependencyOrder m =
     (absents ++) . fmap (fmap SoAfter) <$> resolveDigest afters
   where
     (afters, absents) = Map.foldlWithKey f mempty m
-    f (af, ab) i so = case so of
-      SoAfter mi -> (Map.insert i mi af, ab)
-      SoAbsent -> (af, (i, so):ab)
+    f acc i so = case so of
+      SoAfter mi -> over _1 (Map.insert i mi) acc
+      SoAbsent -> over _2 ((i, so):) acc
 
 
 fullOrderOps :: Ord i => [i] -> Map i (SequenceOp i)
