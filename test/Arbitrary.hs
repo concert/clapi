@@ -73,7 +73,9 @@ instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
 
 instance (Ord a, Arbitrary a) => Arbitrary (UniqList a) where
   arbitrary =
-     arbitrary >>= shuffle . Set.toList >>= return . unsafeMkUniqList
+        smallListOf arbitrary
+    >>= shuffle . Set.toList . Set.fromList
+    >>= return . unsafeMkUniqList
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
 assocListOf gk gv =
