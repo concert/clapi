@@ -61,8 +61,8 @@ dependencyOrder m =
       SoAbsent -> over _2 ((i, so):) acc
 
 
-fullOrderOps :: Ord i => [i] -> AssocList i (SequenceOp i)
-fullOrderOps = go Nothing
+fullOrderOps :: Ord i => UniqList i -> AssocList i (SequenceOp i)
+fullOrderOps = go Nothing . unUniqList
   where
     go prev [] = mempty
     go prev (i:is) = AL.singleton i (SoAfter prev) <> go (Just i) is

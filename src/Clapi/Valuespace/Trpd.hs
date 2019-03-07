@@ -374,7 +374,7 @@ handleImpl p = \case
         modifying vsTree $ Tree.initContainerAt p
         pathError p $ eitherModifying vsTree $ fmap (first wrap) .
           Tree.applyReorderingsAt @(Either ErrorString) p $
-          (Nothing,) <$> AL.toMap (fullOrderOps $ AL.keys_ tyInfo)
+          (Nothing,) <$> AL.toMap (fullOrderOps $ AL.keys tyInfo)
       ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p
 
 
