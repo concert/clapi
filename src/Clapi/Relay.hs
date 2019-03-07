@@ -56,7 +56,8 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.Name (DefName, Namespace, PostDefName, castName)
 import Clapi.Types.Path (Path)
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
+import Clapi.Types.UniqList (unsafeMkUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace
   ( Valuespace, ProviderError, baseValuespace
@@ -167,7 +168,7 @@ handleConnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleConnect i = do
   modifying rsRegs $ Map.insert i mempty
   vsMap <- use rsVsMap
-  collectFrd i $ Frcrd $ const (SoAfter Nothing) <$> vsMap
+  collectFrd i $ Frcrd $ fullOrderOps $ unsafeMkUniqList $ Map.keys vsMap
 
 
 handleDisconnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
@@ -181,7 +182,7 @@ handleTrpd
   :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Provider 'Update -> m ()
 handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
     Nothing -> go bvs $
-      broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
+      broadcast $ Frcrd $ AL.singleton ns $ SoAfter Nothing
     Just x@(ownerI, vs) ->
       if i == ownerI
         then go vs $ return ()
@@ -301,7 +302,7 @@ relinquish ns = do
     Just (i, vs) -> do
       -- FIXME: This doesn't check that the namespace is owned by the
       -- reqlinquisher
-      broadcast $ Frcrd $ Map.singleton ns SoAbsent
+      broadcast $ Frcrd $ AL.singleton ns SoAbsent
   unsubscribeNs ns
 
 unsubscribeNs :: (Ord i, Queries i m, Sends i m) => Namespace -> m ()

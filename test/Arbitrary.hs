@@ -85,7 +85,6 @@ instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
   shrink = fmap AL.unsafeMkAssocList . shrink . AL.unAssocList
 
-
 arbitraryTextNoNull :: Gen Text
 arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$>
   boundedListOf 0 30 arbitrary
@@ -332,7 +331,7 @@ instance Arbitrary FrpErrorDigest where
   shrink (Frped mol) = Frped <$> shrink mol
 
 instance Arbitrary FrcRootDigest where
-  arbitrary = Frcrd <$> smallMap
+  arbitrary = Frcrd <$> arbitrary
   shrink (Frcrd m) = Frcrd <$> shrink m
 
 instance Arbitrary FrcSubDigest where

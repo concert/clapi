@@ -405,8 +405,8 @@ spec = do
   where
     rootDig client = ServerData client . SomeFrDigest . Frcrd
     emptyRootDig client = rootDig client mempty
-    nsExists ns client = rootDig client $ Map.singleton ns $ SoAfter Nothing
-    nsCease ns client = rootDig client $ Map.singleton ns $ SoAbsent
+    nsExists ns client = rootDig client $ AL.singleton ns $ SoAfter Nothing
+    nsCease ns client = rootDig client $ AL.singleton ns $ SoAbsent
     err client i msg = errs client $ Mol.singleton i msg
     errs client = ServerData client . SomeFrDigest . Frped
 

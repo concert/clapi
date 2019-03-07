@@ -91,7 +91,7 @@ data CreateOp
   } deriving (Show, Eq)
 type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
 
-type RootContOps = Map Namespace (SequenceOp Namespace)
+type RootContOps = AssocList Namespace (SequenceOp Namespace)
 -- FIXME: might this be better as Map (Path, Name) (blah)? We spend a lot of time
 -- coping with the nested map-ness:
 type ContOps after = Map Path (Map DataName (Maybe Attributee, SequenceOp after))
