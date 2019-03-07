@@ -20,6 +20,8 @@ import qualified Data.Map as Map
 import qualified Data.List as List
 import Data.Foldable (foldlM)
 
+import Clapi.Types.AssocList (AssocList)
+import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.UniqList
   (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
 import Clapi.Util (ensureUnique)
@@ -49,9 +51,9 @@ updateUniqList ops ul = do
       SoAfter mi -> Map.insert i mi acc
       SoAbsent -> acc
 
-dependencyOrder :: (MonadFail m, Ord i) => Map i (SequenceOp i) -> m [(i, SequenceOp i)]
+dependencyOrder :: (MonadFail m, Ord i) => Map i (SequenceOp i) -> m (AssocList i (SequenceOp i))
 dependencyOrder m =
-    (absents ++) . fmap (fmap SoAfter) <$> resolveDigest afters
+    AL.unsafeMkAssocList . (absents ++) . fmap (fmap SoAfter) <$> resolveDigest afters
   where
     (afters, absents) = Map.foldlWithKey f mempty m
     f acc i so = case so of
@@ -59,11 +61,11 @@ dependencyOrder m =
       SoAbsent -> over _2 ((i, so):) acc
 
 
-fullOrderOps :: Ord i => [i] -> Map i (SequenceOp i)
+fullOrderOps :: Ord i => [i] -> AssocList i (SequenceOp i)
 fullOrderOps = go Nothing
   where
     go prev [] = mempty
-    go prev (i:is) = Map.singleton i (SoAfter prev) <> go (Just i) is
+    go prev (i:is) = AL.singleton i (SoAfter prev) <> go (Just i) is
 
 getChainStarts ::
     Ord i => Map i (Maybe i) -> ([(i, Maybe i)], Map i (Maybe i))
