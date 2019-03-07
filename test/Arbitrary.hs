@@ -73,7 +73,8 @@ instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
 
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
-assocListOf gk gv = AL.fromMap <$> smallMapOf gk gv
+assocListOf gk gv =
+  smallMapOf gk gv >>= shuffle . Map.toList >>= return . AL.unsafeMkAssocList
 
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
