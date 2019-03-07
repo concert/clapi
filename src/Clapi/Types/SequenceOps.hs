@@ -7,7 +7,7 @@
 
 module Clapi.Types.SequenceOps
   ( SequenceOp(..), isSoAbsent
-  , updateUniqList, fullOrderOps
+  , updateUniqList, dependencyOrder, fullOrderOps
   ) where
 
 import Prelude hiding (fail)
@@ -45,6 +45,16 @@ updateUniqList ops ul = do
     bar acc i op = case op of
       SoAfter mi -> Map.insert i mi acc
       SoAbsent -> acc
+
+dependencyOrder :: (MonadFail m, Ord i) => Map i (SequenceOp i) -> m [(i, SequenceOp i)]
+dependencyOrder m =
+    (absents ++) . fmap (fmap SoAfter) <$> resolveDigest afters
+  where
+    (afters, absents) = Map.foldlWithKey f mempty m
+    f (af, ab) i so = case so of
+      SoAfter mi -> (Map.insert i mi af, ab)
+      SoAbsent -> (af, (i, so):ab)
+
 
 fullOrderOps :: Ord i => [i] -> Map i (SequenceOp i)
 fullOrderOps = go Nothing
