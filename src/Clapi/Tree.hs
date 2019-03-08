@@ -147,56 +147,6 @@ alterF att f path tree = maybe tree snd <$> inner path (Just (att, tree))
     buildChildTree s p =
       fmap ((att,) . RtContainer . AL.singleton s) <$> inner p Nothing
 
-updateTreeStructure
-  :: ContOps DataName -> RoseTree a -> (Mol Path Text, RoseTree a)
-updateTreeStructure contOps = runState $ do
-    errs <- sequence $ Map.mapWithKey applyContOp contOps
-    return $ Mol.fromMap errs
-  where
-    applyContOp
-      :: Path -> Map DataName (Maybe Attributee, SequenceOp DataName)
-      -> State (RoseTree a) [Text]
-    applyContOp np m = do
-      eRt <- adjustF Nothing (applyReorderings m) np <$> get
-      either (return . pure . Text.pack) (\rt -> put rt >> return []) eRt
-
-updateTreeData
-  :: DataDigest -> RoseTree [SomeWireValue]
-  -> (Mol Path Text, RoseTree [SomeWireValue])
-updateTreeData dd = runState $ do
-    errs <- AL.toMap <$> (sequence $ AL.fmapWithKey applyDd dd)
-    return $ Mol.fromMap errs
-  where
-    applyDd
-      :: Path -> DataChange
-      -> State (RoseTree [SomeWireValue]) [Text]
-    applyDd np dc = case dc of
-      ConstChange att wv -> do
-        modify $ adjust Nothing (constSet att wv) np
-        return []
-      TimeChange m -> mconcat <$> (mapM (applyTc np) $ Map.toList m)
-    applyTc
-      :: Path
-      -> (TpId, (Maybe Attributee, TimeSeriesDataOp))
-      -> State (RoseTree [SomeWireValue]) [Text]
-    applyTc np (tpId, (att, op)) = case op of
-      OpSet t wv i -> get >>=
-        either (return . pure . Text.pack) (\vs -> put vs >> return [])
-        . adjustF Nothing (set tpId t wv i att) np
-      OpRemove -> get >>=
-        either (return . pure . Text.pack) (\vs -> put vs >> return [])
-        . adjustF Nothing (remove tpId) np
-
-
--- FIXME: Maybe reorder the args to reflect application order?
-updateTreeWithDigest
-  :: ContOps DataName -> DataDigest -> RoseTree [SomeWireValue]
-  -> (Mol Path Text, RoseTree [SomeWireValue])
-updateTreeWithDigest contOps dd = runState $ do
-    errs <- state (updateTreeData dd)
-    errs' <- state (updateTreeStructure contOps)
-    return $ errs <> errs'
-
 data RoseTreeNode a
   = RtnEmpty
   | RtnChildren (AssocList DataName (Maybe Attributee))
