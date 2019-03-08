@@ -8,7 +8,7 @@
 
 module Clapi.Types.SequenceOps
   ( SequenceOp(..), isSoAbsent
-  , updateUniqList, dependencyOrder, fullOrderOps
+  , updateUniqList, dependencyOrder, dependencyOrder', fullOrderOps
   ) where
 
 import Prelude hiding (fail)
@@ -51,14 +51,23 @@ updateUniqList ops ul = do
       SoAfter mi -> Map.insert i mi acc
       SoAbsent -> acc
 
-dependencyOrder :: (MonadFail m, Ord i) => Map i (SequenceOp i) -> m (AssocList i (SequenceOp i))
-dependencyOrder m =
-    AL.unsafeMkAssocList . (absents ++) . fmap (fmap SoAfter) <$> resolveDigest afters
+dependencyOrder'
+  :: (MonadFail m, Ord i)
+  => (v -> SequenceOp i) -> Map i v -> m (AssocList i v)
+dependencyOrder' f m =
+    AL.unsafeMkAssocList . (absents ++) . (fmap (fmap fst))
+    <$> resolveDigest snd afters
   where
-    (afters, absents) = Map.foldlWithKey f mempty m
-    f acc i so = case so of
-      SoAfter mi -> over _1 (Map.insert i mi) acc
-      SoAbsent -> over _2 ((i, so):) acc
+    (afters, absents) = Map.foldlWithKey classify mempty m
+    classify acc i v = case f v of
+      SoAfter mi -> over _1 (Map.insert i (v, mi)) acc
+      SoAbsent -> over _2 ((i, v):) acc
+
+
+dependencyOrder
+  :: (MonadFail m, Ord i)
+  => Map i (SequenceOp i) -> m (AssocList i (SequenceOp i))
+dependencyOrder = dependencyOrder' id
 
 
 fullOrderOps :: Ord i => UniqList i -> AssocList i (SequenceOp i)
@@ -67,25 +76,25 @@ fullOrderOps = go Nothing . unUniqList
     go prev [] = mempty
     go prev (i:is) = AL.singleton i (SoAfter prev) <> go (Just i) is
 
-getChainStarts ::
-    Ord i => Map i (Maybe i) -> ([(i, Maybe i)], Map i (Maybe i))
-getChainStarts m =
-    let
-        hasUnresolvedDep = maybe False (flip Map.member m)
-        (remainder, starts) = Map.partition hasUnresolvedDep m
-    in (Map.toList starts, remainder)
+getChainStarts :: Ord i => (v -> Maybe i) -> Map i v -> ([(i, v)], Map i v)
+getChainStarts f m =
+  let
+    hasUnresolvedDep = maybe False (flip Map.member m) . f
+    (remainder, starts) = Map.partition hasUnresolvedDep m
+  in
+    (Map.toList starts, remainder)
 
-resolveDigest :: (MonadFail m, Ord i) => Map i (Maybe i) -> m [(i, Maybe i)]
-resolveDigest m' = if null m' then return []
-    else case getChainStarts m' of
-        ([], _) -> fail "Unresolvable order dependencies"
-        (starts, remainder) -> (starts ++) <$> resolveDigest remainder
+resolveDigest :: (MonadFail m, Ord i) => (v -> Maybe i) -> Map i v -> m [(i, v)]
+resolveDigest f m = if null m then return []
+  else case getChainStarts f m of
+    ([], _) -> fail "Unresolvable order dependencies"
+    (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
 
 reorderFromDeps
     :: (MonadFail m, Ord i, Show i)
     => Map i (Maybe i) -> UniqList i -> m (UniqList i)
 reorderFromDeps m ul =
-    resolveDigest m >>= applyMoves (unUniqList ul) >>= mkUniqList
+    resolveDigest id m >>= applyMoves (unUniqList ul) >>= mkUniqList
   where
     applyMoves l starts = foldlM applyMove l starts
 
