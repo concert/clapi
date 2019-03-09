@@ -181,12 +181,13 @@ relayApiProto selfAddr =
             _ -> sendRev se
           steadyState timingMap ownerMap
 
-        ownerChangeInfo :: Map Namespace (Name nr) -> (DataDigest, ContOps args)
+        ownerChangeInfo
+          :: Map Namespace OwnerName -> (DataDigest, ContOps OwnerName)
         ownerChangeInfo ownerMap' =
             ( AL.fromMap $ Map.mapKeys toOwnerPath $ toSetRefOp <$> ownerMap'
             , Map.singleton [pathq|/owners|] $
                 (const (Nothing, SoAbsent)) <$>
-                  Map.mapKeys castName (ownerMap `Map.difference` ownerMap'))
+                  Map.mapKeysMonotonic castName (ownerMap `Map.difference` ownerMap'))
         toOwnerPath :: Namespace -> Path.Path
         toOwnerPath name = [pathq|/owners|] :/ castName name
         toSetRefOp ns = ConstChange Nothing [
