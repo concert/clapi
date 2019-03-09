@@ -59,15 +59,6 @@ children t = case t of
 childNames :: RoseTree a -> [DataName]
 childNames = fmap fst . unAssocList . children
 
--- FIXME: define in terms of treeChildren (if even used)
-paths :: Path -> RoseTree a -> [Path]
-paths p t = case t of
-  RtEmpty -> [p]
-  RtConstData _ _ -> [p]
-  RtDataSeries _ -> [p]
-  RtContainer al ->
-    p : (mconcat $ (\(s, (_, t')) -> paths (p :/ s) t') <$> unAssocList al)
-
 applyReorderings
   :: MonadFail m
   => DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)

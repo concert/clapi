@@ -33,16 +33,6 @@ t4 = RtContainer $ fmap (Nothing,) $ AL.fromList [(s3, t3), (s1, t1)]
 
 spec :: Spec
 spec = do
-  describe "Tree.paths" $
-    it "should return the paths of all the nodes in a tree" $
-      Tree.paths Root t4 `shouldBe`
-        [ Root
-        , Root :/ s3
-        , Root :/ s3 :/ s0
-        , Root :/ s3 :/ s1
-        , Root :/ s3 :/ s2
-        , Root :/ s1]
-
   describe "Tree.lookup" $ do
     it "should find a node that is present" $
       Tree.lookup (Root :/ s3 :/ s1) t4 `shouldBe` Just t1
