@@ -82,19 +82,20 @@ data DataChange
   deriving (Show, Eq)
 type DataDigest = AssocList Path DataChange
 
-data CreateOp
+newtype CreateOp
   = OpCreate
   -- FIXME: Nested lists of WireValues is a legacy hangover because our tree
   -- data nodes still contain [WireValue] as a single "value":
   { ocArgs :: [[SomeWireValue]]
-  , ocAfter :: Maybe (Either Placeholder DataName)
   } deriving (Show, Eq)
-type Creates = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
+type Creates
+  = AssocList Path (AssocList Placeholder (Maybe Attributee, CreateOp))
 
 type RootContOps = AssocList Namespace (SequenceOp Namespace)
 -- FIXME: might this be better as Map (Path, Name) (blah)? We spend a lot of time
 -- coping with the nested map-ness:
-type ContOps after = Map Path (Map DataName (Maybe Attributee, SequenceOp after))
+type ContOps i = Map Path (Map i (Maybe Attributee, SequenceOp i))
+type OrderedContOps i = Map Path (AssocList i (Maybe Attributee, SequenceOp i))
 
 data PostOp
   = OpPost
@@ -147,7 +148,7 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     { frpdNs :: Namespace
     , frpdData :: DataDigest
     , frpdCreates :: Creates
-    , frpdContOps :: ContOps (Either Placeholder DataName)
+    , frpdContOps :: OrderedContOps (Either Placeholder DataName)
     } -> FrDigest 'Provider 'Update
   Frped ::
     { frpedErrors :: Mol DataErrorIndex Text
@@ -169,7 +170,7 @@ data FrDigest (r :: OriginatorRole) (a :: DigestAction) where
     , frcudDefs :: Map DefName (DefOp SomeDefinition)
     , frcudTyAssigns :: Map Path (DefName, Editability)
     , frcudData :: DataDigest
-    , frcudContOps :: ContOps DataName
+    , frcudContOps :: OrderedContOps DataName
     -- FIXME: This could just be for errors that come from providers. Although
     -- we currently send Relay errors here, if we do so we never send any of the
     -- other fields. I.e. we could add an additional Frced type...

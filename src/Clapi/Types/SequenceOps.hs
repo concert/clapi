@@ -4,27 +4,29 @@
   , DeriveFoldable
   , DeriveTraversable
   , FlexibleContexts
+  , GeneralizedNewtypeDeriving
 #-}
 
 module Clapi.Types.SequenceOps
   ( SequenceOp(..), isSoAbsent
-  , updateUniqList, dependencyOrder, dependencyOrder', fullOrderOps
+  , updateUniqList
+  , DependencyOrdered, unDependencyOrdered
+  , dependencyOrder, dependencyOrder'
+  , fullOrderOps, fullOrderOps'
   ) where
 
 import Prelude hiding (fail)
 
 import Control.Lens (_1, _2, over)
+import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
-import qualified Data.List as List
-import Data.Foldable (foldlM)
 
-import Clapi.Types.AssocList (AssocList)
+import Clapi.Types.AssocList (AssocList, unAssocList)
 import qualified Clapi.Types.AssocList as AL
-import Clapi.Types.UniqList
-  (UniqList, unUniqList, mkUniqList, ulDelete, ulInsert)
-import Clapi.Util (ensureUnique)
+import Clapi.Types.UniqList (UniqList, unUniqList, ulDelete, ulPresentAfter)
+
 
 data SequenceOp i
   = SoAfter (Maybe i)
@@ -36,26 +38,28 @@ isSoAbsent so = case so of
   SoAbsent -> True
   _ -> False
 
+-- | Used to represent a collection of SequenceOps that have been put in the
+--   correct order.
+newtype DependencyOrdered k v
+  = DepO
+  { unDependencyOrdered :: AssocList k v
+  } deriving (Show, Eq, Foldable, Semigroup, Monoid)
+
 updateUniqList
   :: (Eq i, Ord i, Show i, MonadFail m)
-  => Map i (SequenceOp i) -> UniqList i -> m (UniqList i)
-updateUniqList ops ul = do
-    ensureUnique "flange" $ Map.elems reorders
-    reorderFromDeps reorders $ Map.foldlWithKey foo ul ops
+  => (v -> SequenceOp i) -> DependencyOrdered i v -> UniqList i
+  -> m (UniqList i)
+updateUniqList f (DepO ops) ul = foldM applySo ul $ unAssocList ops
   where
-    foo ul' i op = case op of
-      SoAfter _ -> ulInsert i ul'
-      SoAbsent -> ulDelete i ul'
-    reorders = Map.foldlWithKey bar mempty ops
-    bar acc i op = case op of
-      SoAfter mi -> Map.insert i mi acc
-      SoAbsent -> acc
+    applySo acc (i, v) = case f v of
+      SoAfter mi -> ulPresentAfter i mi acc
+      SoAbsent -> return $ ulDelete i acc
 
 dependencyOrder'
   :: (MonadFail m, Ord i)
-  => (v -> SequenceOp i) -> Map i v -> m (AssocList i v)
+  => (v -> SequenceOp i) -> Map i v -> m (DependencyOrdered i v)
 dependencyOrder' f m =
-    AL.unsafeMkAssocList . (absents ++) . (fmap (fmap fst))
+    DepO . AL.unsafeMkAssocList . (absents ++) . (fmap (fmap fst))
     <$> resolveDigest snd afters
   where
     (afters, absents) = Map.foldlWithKey classify mempty m
@@ -66,15 +70,19 @@ dependencyOrder' f m =
 
 dependencyOrder
   :: (MonadFail m, Ord i)
-  => Map i (SequenceOp i) -> m (AssocList i (SequenceOp i))
+  => Map i (SequenceOp i) -> m (DependencyOrdered i (SequenceOp i))
 dependencyOrder = dependencyOrder' id
 
 
-fullOrderOps :: Ord i => UniqList i -> AssocList i (SequenceOp i)
-fullOrderOps = go Nothing . unUniqList
+fullOrderOps'
+  :: Ord i => (SequenceOp i -> v) -> UniqList i -> DependencyOrdered i v
+fullOrderOps' f = DepO . go Nothing . unUniqList
   where
-    go prev [] = mempty
-    go prev (i:is) = AL.singleton i (SoAfter prev) <> go (Just i) is
+    go _ [] = mempty
+    go prev (i:is) = AL.singleton i (f $ SoAfter prev) <> go (Just i) is
+
+fullOrderOps :: Ord i => UniqList i -> DependencyOrdered i (SequenceOp i)
+fullOrderOps = fullOrderOps' id
 
 getChainStarts :: Ord i => (v -> Maybe i) -> Map i v -> ([(i, v)], Map i v)
 getChainStarts f m =
@@ -89,37 +97,3 @@ resolveDigest f m = if null m then return []
   else case getChainStarts f m of
     ([], _) -> fail "Unresolvable order dependencies"
     (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
-
-reorderFromDeps
-    :: (MonadFail m, Ord i, Show i)
-    => Map i (Maybe i) -> UniqList i -> m (UniqList i)
-reorderFromDeps m ul =
-    resolveDigest id m >>= applyMoves (unUniqList ul) >>= mkUniqList
-  where
-    applyMoves l starts = foldlM applyMove l starts
-
-applyMove :: (MonadFail m, Eq i, Show i) => [i] -> (i, Maybe i) -> m [i]
-applyMove l (i, mi) =
-    removeElem "Element was not present to move" i l
-    >>= insertAfter "Preceeding element not found for move" i mi
-
-
-insertAfter
-  :: (MonadFail m, Eq i, Show i) => String -> i -> Maybe i -> [i] -> m [i]
-insertAfter msg v mAfter ol = case mAfter of
-    Nothing -> return $ v : ol
-    Just after ->
-      let
-        (bl, al) = span (/= after) ol
-      in case al of
-        (a:rl) -> return $ bl ++ [a, v] ++ rl
-        [] -> fail $ msg ++ ": " ++ show after
-
-removeElem
-  :: (MonadFail m, Eq i, Show i) => String -> i -> [i] -> m [i]
-removeElem msg v ol =
-  let
-    (ds, ol') = List.partition (== v) ol
-  in case ds of
-    [_] -> return ol'
-    _ -> fail $ msg ++ ": " ++ show v

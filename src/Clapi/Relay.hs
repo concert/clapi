@@ -56,7 +56,8 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.Name (DefName, Namespace, PostDefName, castName)
 import Clapi.Types.Path (Path)
-import Clapi.Types.SequenceOps (SequenceOp(..), fullOrderOps)
+import Clapi.Types.SequenceOps
+  ( SequenceOp(..), unDependencyOrdered, fullOrderOps)
 import Clapi.Types.UniqList (unsafeMkUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace
@@ -168,7 +169,9 @@ handleConnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleConnect i = do
   modifying rsRegs $ Map.insert i mempty
   vsMap <- use rsVsMap
-  collectFrd i $ Frcrd $ fullOrderOps $ unsafeMkUniqList $ Map.keys vsMap
+  collectFrd i
+    $ Frcrd $ unDependencyOrdered $ fullOrderOps $ unsafeMkUniqList
+    $ Map.keys vsMap
 
 
 handleDisconnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
@@ -402,10 +405,11 @@ instance Subscribable Path where
         RtnDataSeries ts -> (frcudEmpty ns)
           { frcudData = AL.singleton p $ oppifyTimeSeries ts}
 
-      oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
+      -- FIXME: Should try to reuse SequenceOps.fullOrderOps
+      oppifySequence :: Ord k => AssocList k v -> AssocList k (v, SequenceOp k)
       oppifySequence al =
         let (alKs, alVs) = unzip $ unAssocList al in
-          Map.fromList $ zipWith3
+          AL.fromList $ zipWith3
             (\k afterK v -> (k, (v, SoAfter afterK)))
             alKs (Nothing : (Just <$> alKs)) alVs
 

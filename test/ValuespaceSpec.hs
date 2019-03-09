@@ -606,7 +606,7 @@ spec =
               succeeds res
 
               res' <- processTrcud' $ (trcudEmpty ns)
-                { trcudContOps = Map.singleton Root $ Map.singleton foo
+                { trcudContOps = Map.singleton Root $ Map.singleton (Right foo)
                     (Nothing, SoAfter $ Just $ Right bar)
                 }
               errorsOn Root res'
@@ -635,16 +635,16 @@ spec =
           it "forbids creates on non-arrays" $ go $ do
             basicStructSetup
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudCreates = Map.singleton Root mempty
+              { trcudCreates = AL.singleton Root mempty
               }
             errorsOn Root res
 
           it "catches bad create arguments" $ go $
             let
               doCreate vals = processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $
-                    Map.singleton [n|new|]
-                    (Nothing, OpCreate vals Nothing)
+                { trcudCreates = AL.singleton Root $
+                    AL.singleton [n|new|]
+                    (Nothing, OpCreate vals)
                 }
             in do
               basicArraySetup
@@ -653,90 +653,90 @@ spec =
               doCreate [[someWv WtString "bad type"]] >>= errorsOn Root
               doCreate [[someWv WtWord32 0]] >>= succeeds
 
-          it "catches duplicate creation targets" $ go $
-            let
-              vals = [[someWv WtWord32 0]]
-              doCreates targ = processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $ Map.fromList
-                  [ ([n|one|], (Nothing, OpCreate vals targ))
-                  , ([n|two|], (Nothing, OpCreate vals targ))
-                  ]
-                }
-            in do
-              basicArraySetup
-              doCreates Nothing >>= errorsOn Root
-              doCreates (Just $ Left [n|one|]) >>= errorsOn Root
+          -- it "catches duplicate creation targets" $ go $
+          --   let
+          --     vals = [[someWv WtWord32 0]]
+          --     doCreates targ = processTrcud' $ (trcudEmpty ns)
+          --       { trcudCreates = Map.singleton Root $ Map.fromList
+          --         [ ([n|one|], (Nothing, OpCreate vals targ))
+          --         , ([n|two|], (Nothing, OpCreate vals targ))
+          --         ]
+          --       }
+          --   in do
+          --     basicArraySetup
+          --     doCreates Nothing >>= errorsOn Root
+          --     doCreates (Just $ Left [n|one|]) >>= errorsOn Root
 
-          it "catches circular dependencies in creation targets" $ go $
-            let
-              ph1 = [n|ph1|]
-              ph2 = [n|ph2|]
-              ph3 = [n|ph3|]
-              vals = [[someWv WtWord32 0]]
-            in do
-              basicArraySetup
-              res <- processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $ Map.fromList
-                   [ (ph1, (Nothing, OpCreate vals $ Just $ Left ph1))
-                   ]
-                }
-              errorsOn Root res
+          -- it "catches circular dependencies in creation targets" $ go $
+          --   let
+          --     ph1 = [n|ph1|]
+          --     ph2 = [n|ph2|]
+          --     ph3 = [n|ph3|]
+          --     vals = [[someWv WtWord32 0]]
+          --   in do
+          --     basicArraySetup
+          --     res <- processTrcud' $ (trcudEmpty ns)
+          --       { trcudCreates = Map.singleton Root $ Map.fromList
+          --          [ (ph1, (Nothing, OpCreate vals $ Just $ Left ph1))
+          --          ]
+          --       }
+          --     errorsOn Root res
 
-              res' <- processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $ Map.fromList
-                   [ (ph1, (Nothing, OpCreate vals $ Just $ Left ph3))
-                   , (ph2, (Nothing, OpCreate vals $ Just $ Left ph1))
-                   , (ph3, (Nothing, OpCreate vals $ Just $ Left ph2))
-                   ]
-                }
-              errorsOn Root res'
+          --     res' <- processTrcud' $ (trcudEmpty ns)
+          --       { trcudCreates = Map.singleton Root $ Map.fromList
+          --          [ (ph1, (Nothing, OpCreate vals $ Just $ Left ph3))
+          --          , (ph2, (Nothing, OpCreate vals $ Just $ Left ph1))
+          --          , (ph3, (Nothing, OpCreate vals $ Just $ Left ph2))
+          --          ]
+          --       }
+          --     errorsOn Root res'
 
-          it "catches missing child name creation targets" $ go $
-            let
-              ei = [n|existingItem|]
-              doCreate = processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $ Map.singleton
-                    [n|new|]
-                    (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Right ei)
-                }
-            in do
-              basicArraySetup
-              doCreate >>= errorsOn Root
-              addBasicArrayItem ei 0
-              doCreate >>= succeeds
+          -- it "catches missing child name creation targets" $ go $
+          --   let
+          --     ei = [n|existingItem|]
+          --     doCreate = processTrcud' $ (trcudEmpty ns)
+          --       { trcudCreates = Map.singleton Root $ Map.singleton
+          --           [n|new|]
+          --           (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Right ei)
+          --       }
+          --   in do
+          --     basicArraySetup
+          --     doCreate >>= errorsOn Root
+          --     addBasicArrayItem ei 0
+          --     doCreate >>= succeeds
 
-          it "catches missing placeholder creation targets (naive)" $ go $
-            let
-              ph1 = [n|ph1|]
-              ph2 = [n|ph2|]
-            in do
-              basicArraySetup
-              res <- processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $ Map.singleton ph1
-                    (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Left ph2)
-                }
-              errorsOn Root res
+          -- it "catches missing placeholder creation targets (naive)" $ go $
+          --   let
+          --     ph1 = [n|ph1|]
+          --     ph2 = [n|ph2|]
+          --   in do
+          --     basicArraySetup
+          --     res <- processTrcud' $ (trcudEmpty ns)
+          --       { trcudCreates = Map.singleton Root $ Map.singleton ph1
+          --           (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Left ph2)
+          --       }
+          --     errorsOn Root res
 
-          it "catches missing placeholder creation targets (other failures)" $
-            go $ let
-              ph1 = [n|ph1|]
-              ph2 = [n|ph2|]
-            in do
-              basicArraySetup
-              res <- processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = Map.singleton Root $ Map.fromList
-                    [ ( ph1
-                      , ( Nothing
-                        , OpCreate [[someWv WtString "bad"]] Nothing))
-                    , ( ph2
-                      , ( Nothing
-                        , OpCreate [[someWv WtWord32 0]] $ Just $ Left ph1))
-                    ]
-                }
-              -- FIXME: We should have better introspection of errors for these
-              -- tests, because we should get both an error about the bad
-              -- validation for ph1 and the bad reference in ph2:
-              errorsOn Root res
+          -- it "catches missing placeholder creation targets (other failures)" $
+          --   go $ let
+          --     ph1 = [n|ph1|]
+          --     ph2 = [n|ph2|]
+          --   in do
+          --     basicArraySetup
+          --     res <- processTrcud' $ (trcudEmpty ns)
+          --       { trcudCreates = Map.singleton Root $ Map.fromList
+          --           [ ( ph1
+          --             , ( Nothing
+          --               , OpCreate [[someWv WtString "bad"]] Nothing))
+          --           , ( ph2
+          --             , ( Nothing
+          --               , OpCreate [[someWv WtWord32 0]] $ Just $ Left ph1))
+          --           ]
+          --       }
+          --     -- FIXME: We should have better introspection of errors for these
+          --     -- tests, because we should get both an error about the bad
+          --     -- validation for ph1 and the bad reference in ph2:
+          --     errorsOn Root res
 
         it "errors with extra data (struct)" $ go $ do
           res <- processTrcud' $ (trcudEmpty ns)
@@ -758,7 +758,8 @@ spec =
           flip evalStateT (baseValuespace rootDn Editable) $ do
             basicStructSetup
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudContOps = Map.singleton Root $ Map.singleton [n|myWord|]
+              { trcudContOps = Map.singleton Root
+                  $ Map.singleton (Right [n|myWord|])
                   (Nothing, SoAfter $ Just $ Right [n|otherWord|])
               }
             liftIO $ res `shouldBe` Left (

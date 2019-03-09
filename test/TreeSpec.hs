@@ -11,7 +11,7 @@ import Clapi.TH
 import qualified Clapi.Types.AssocList as AL
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (DataName, pattern Root, pattern (:/))
-import Clapi.Types.SequenceOps (SequenceOp(SoAfter))
+import Clapi.Types.SequenceOps (SequenceOp(SoAfter), dependencyOrder')
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..))
 import qualified Clapi.Tree as Tree
 
@@ -92,6 +92,8 @@ spec = do
       Tree.delete [pathq|/t1/to/box|] t3 `shouldBe` t3
 
   describe "Tree.applyReorderings" $ do
-    it "should preserve child contents" $
-      Tree.applyReorderings (Map.singleton s3 (Nothing, SoAfter Nothing)) t4
-      `shouldBe` (Right t4 :: Either String (RoseTree Char))
+    it "should preserve child contents" $ do
+      orderedOps <- dependencyOrder' snd
+        $ Map.singleton s3 (Nothing, SoAfter Nothing)
+      Tree.applyReorderings orderedOps t4
+        `shouldBe` (Right t4 :: Either String (RoseTree Char))

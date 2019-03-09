@@ -24,6 +24,9 @@ class ErrText e where
 
 newtype ErrorString = ErrorString { unErrorString :: String }
 
+instance Wraps String ErrorString where
+  wrap = ErrorString
+
 data AccessError
   = NodeNotFound
   | DefNotFound DefName
@@ -73,10 +76,10 @@ instance ErrText StructuralError where
     SeqOpsOnNonArray -> "Array rearrangement operation on non-array"
 
 
-data SeqOpError soTarget
+data SeqOpError i
   -- FIXME: Check both Consumers and Providers can raise these
-  = SeqOpMovedMissingChild DataName
-  | SeqOpTargetMissing DataName soTarget
+  = SeqOpMovedMissingChild i
+  | SeqOpTargetMissing i i
 
 instance Show soTarget => ErrText (SeqOpError soTarget) where
   errText = Text.pack . \case

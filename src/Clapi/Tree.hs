@@ -29,7 +29,8 @@ import Clapi.Types.Path (
     DataName, Path, pattern Root, pattern (:/), pattern (:</))
 import Clapi.Types.Digests
   ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
-import Clapi.Types.SequenceOps (SequenceOp, updateUniqList)
+import Clapi.Types.SequenceOps
+  (SequenceOp, DependencyOrdered, updateUniqList, unDependencyOrdered)
 
 type TimePoint a = (Interpolation, a)
 type Attributed a = (Maybe Attributee, a)
@@ -69,19 +70,20 @@ paths p t = case t of
 
 applyReorderings
   :: MonadFail m
-  => Map DataName (Maybe Attributee, SequenceOp DataName) -> RoseTree a
+  => DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)
+  -> RoseTree a
   -> m (RoseTree a)
 applyReorderings contOps (RtContainer kids) =
   let
-    attMap = fst <$> contOps
+    attMap = fst <$> AL.toMap (unDependencyOrdered contOps)
     childMap = Map.foldlWithKey'
         (\acc k att -> Map.alter (Just . maybe (att, RtEmpty) id) k acc)
         (AL.toMap kids)
-        (fst <$> contOps)
+        attMap
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
     RtContainer . AL.fmapWithKey reattribute . AL.pickFromMap childMap
-    <$> (updateUniqList (snd <$> contOps) $ AL.keys kids)
+    <$> (updateUniqList snd contOps $ AL.keys kids)
 applyReorderings contOps RtEmpty = applyReorderings contOps (RtContainer mempty)
 applyReorderings _ _ = fail "Not a container"
 
@@ -198,7 +200,8 @@ removeTpAt att p tpid = adjustF Nothing (remove tpid) p
 
 applyReorderingsAt
   :: MonadFail m
-  => Path -> Map DataName (Maybe Attributee, SequenceOp DataName) -> RoseTree a
+  => Path -> DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)
+  -> RoseTree a
   -> m (RoseTree a)
 applyReorderingsAt p cOps = adjustF Nothing (applyReorderings cOps) p
 

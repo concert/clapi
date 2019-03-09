@@ -42,7 +42,9 @@ import qualified Clapi.Types.Error as Error
 import Clapi.Types.Name (DataName, DefName)
 import Clapi.Types.Path (Path, pattern (:/))
 import qualified Clapi.Types.Path as Path
-import Clapi.Types.SequenceOps (SequenceOp, fullOrderOps)
+import Clapi.Types.SequenceOps
+  ( SequenceOp, DependencyOrdered, unDependencyOrdered, dependencyOrder'
+  , fullOrderOps')
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Util (mapFoldMapMWithKey)
 import Clapi.Validator (TypeAssertion(..))
@@ -96,7 +98,7 @@ processTrpd_ trpd =
     _ <- collect $ AL.fmapWithKey updatePathData $ trpdData trpd
     -- FIXME: The container updates might need to happen later, if changing the
     -- types has a material effect on what the types of the tree nodes are:
-    _ <- collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
+    orderedCops <- collect $ Map.mapWithKey updateContainer $ trpdContOps trpd
 
     -- The tree should now be correct, so long as the provider has not made a
     -- mistake. So, next we need to check that is the case.
@@ -129,15 +131,15 @@ processTrpd_ trpd =
 
     -- Finally, spit out the changes in a form that will be useful to the
     -- clients:
-    return $ generateFrcud allImpls
+    return $ generateFrcud allImpls orderedCops
   where
-    generateFrcud allImpls = Frcud
+    generateFrcud allImpls orderedCops = Frcud
       (trpdNs trpd)
       (trpdPostDefs trpd)
       (trpdDefs trpd)
       (Map.foldMapWithKey generateTyAsn allImpls)
       (trpdData trpd)
-      (trpdContOps trpd)
+      (unDependencyOrdered <$> orderedCops)
       (trpdErrors trpd)
 
     generateTyAsn :: Path -> TypeImpl -> Map Path (DefName, Editability)
@@ -217,12 +219,18 @@ guardRecursiveStructs = go mempty []
 
 updateContainer
   :: (Errs '[AccessError, ErrorString, StructuralError] e, Monad m)
-  => Path -> Map DataName (Maybe Attributee, SequenceOp DataName) -> VsM' e m ()
+  => Path -> Map DataName (Maybe Attributee, SequenceOp DataName)
+  -> VsM' e m
+       (DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName))
 updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
-    ArrayDef {} -> eitherModifying vsTree
-      $ first (wrap . ErrorString) . Tree.applyReorderingsAt p cOps
+    ArrayDef {} -> do
+      orderedCops <- either (throw . ErrorString) return
+        $ dependencyOrder' snd cOps
+      eitherModifying vsTree
+        $ first (wrap . ErrorString) . Tree.applyReorderingsAt p orderedCops
+      return orderedCops
     -- FIXME: Potentially better error value here?
     _ -> throw SeqOpsOnNonArray
 
@@ -374,7 +382,7 @@ handleImpl p = \case
         modifying vsTree $ Tree.initContainerAt p
         pathError p $ eitherModifying vsTree $ fmap (first wrap) .
           Tree.applyReorderingsAt @(Either ErrorString) p $
-          (Nothing,) <$> AL.toMap (fullOrderOps $ AL.keys tyInfo)
+          fullOrderOps' (Nothing,) $ AL.keys tyInfo
       ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p
 
 
