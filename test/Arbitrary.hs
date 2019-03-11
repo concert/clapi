@@ -289,7 +289,7 @@ instance Arbitrary SubErrorIndex where
 
 
 creates :: Gen Creates
-creates = assocListOf arbitrary $ assocListOf arbitrary arbitrary
+creates = smallMapOf arbitrary smallMap
 
 contOps :: (Ord a, Arbitrary a) => Gen (ContOps a)
 contOps = smallMapOf arbitrary smallMap

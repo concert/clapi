@@ -635,15 +635,15 @@ spec =
           it "forbids creates on non-arrays" $ go $ do
             basicStructSetup
             res <- processTrcud' $ (trcudEmpty ns)
-              { trcudCreates = AL.singleton Root mempty
+              { trcudCreates = Map.singleton Root mempty
               }
             errorsOn Root res
 
           it "catches bad create arguments" $ go $
             let
               doCreate vals = processTrcud' $ (trcudEmpty ns)
-                { trcudCreates = AL.singleton Root $
-                    AL.singleton [n|new|]
+                { trcudCreates = Map.singleton Root $
+                    Map.singleton [n|new|]
                     (Nothing, OpCreate vals)
                 }
             in do

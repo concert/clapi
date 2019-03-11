@@ -89,7 +89,7 @@ newtype CreateOp
   { ocArgs :: [[SomeWireValue]]
   } deriving (Show, Eq)
 type Creates
-  = AssocList Path (AssocList Placeholder (Maybe Attributee, CreateOp))
+  = Map Path (Map Placeholder (Maybe Attributee, CreateOp))
 
 type RootContOps = AssocList Namespace (SequenceOp Namespace)
 -- FIXME: might this be better as Map (Path, Name) (blah)? We spend a lot of time

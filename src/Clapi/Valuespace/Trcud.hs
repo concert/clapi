@@ -66,13 +66,13 @@ processTrcud_ (Trcud ns dat crs cops) = do
   orderedCops<- guardClientCops newPhs cops
   return $ Frpd ns dat' crs' orderedCops
 
-type PathCreates = AssocList Placeholder (Maybe Attributee, CreateOp)
+type PathCreates = Map Placeholder (Maybe Attributee, CreateOp)
 
 guardCreates
   :: ( Errs '[AccessError, ConsumerError, ErrorString, ValidationError] e
      , Monad m)
   => Creates -> VsM' e m (Mos Path Placeholder, Creates)
-guardCreates = fmap output . Error.filterErrs . AL.fmapWithKey perPath
+guardCreates = fmap output . Error.filterErrs . Map.mapWithKey perPath
   where
     perPath
       :: ( Errs '[AccessError, ConsumerError, ErrorString, ValidationError] e
@@ -83,7 +83,7 @@ guardCreates = fmap output . Error.filterErrs . AL.fmapWithKey perPath
       pathErrors p $ validateCreates p pd m
 
     output :: Creates -> (Mos Path Placeholder, Creates)
-    output m = (Mos.fromMap $ AL.toMap $ AL.keysSet <$> m, m)
+    output m = (Mos.fromMap $ Map.keysSet <$> m, m)
 
 guardReadOnly
   :: (Errs '[roErr, ErrorString, AccessError] e, Monad m)
@@ -162,7 +162,7 @@ validateCreates
   :: ( Errs '[AccessError, ConsumerError, ErrorString, ValidationError] e
      , Monad m)
   => Path -> PostDefinition -> PathCreates -> ErrsT Valuespace [e] m PathCreates
-validateCreates p pdef = Error.filterErrs . AL.fmapWithKey
+validateCreates p pdef = Error.filterErrs . Map.mapWithKey
   (\_ph x@(_att, cr) -> validateCreateValues pdef cr >> return x)
 
 validateCreateValues
