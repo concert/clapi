@@ -51,7 +51,7 @@ isValidNameChar :: Char -> Bool
 isValidNameChar c = isLetter c || isDigit c || c == '_'
 
 nameP :: Parser (Name nr)
-nameP = fmap (Name . Text.pack) $ DAT.many1 $ DAT.satisfy isValidNameChar
+nameP = Name <$> DAT.takeWhile1 isValidNameChar
 
 mkName :: MonadFail m => Text -> m (Name nr)
 mkName = either fail return . DAT.parseOnly (nameP <* DAT.endOfInput)
