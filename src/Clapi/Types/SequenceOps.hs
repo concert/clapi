@@ -20,8 +20,11 @@ import Prelude hiding (fail)
 import Control.Lens (_1, _2, over)
 import Control.Monad (foldM)
 import Control.Monad.Fail (MonadFail(..))
+import Data.Foldable (fold, foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
 import qualified Clapi.Types.AssocList as AL
@@ -97,3 +100,30 @@ resolveDigest f m = if null m then return []
   else case getChainStarts f m of
     ([], _) -> fail "Unresolvable order dependencies"
     (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
+
+-- FIXME: might want to move detect cycles to somewhere more generic so that it
+-- doesn't get polluted with Valuespace-specific concerns. Also, might want to
+-- make it return something more intuitive?
+-- | Returns a list of arbitrary edges from the set that if removed will break
+--   cycles
+detectCycles :: Ord a => Set (a, a) -> [(a, a)]
+detectCycles edges =
+  let
+    nodes = Set.mapMonotonic fst edges <> Set.map snd edges
+  in
+    snd $ foldl' go (Set.map Set.singleton nodes, []) edges
+  where
+    go :: Ord a => (Set (Set a), [(a, a)]) -> (a, a) -> (Set (Set a), [(a, a)])
+    go (equivalenceSets, cycles) edge@(from, to) =
+      let
+        (matches, others) = Set.partition
+          (\as -> from `Set.member` as || to `Set.member` as)
+          equivalenceSets
+      in
+        case Set.size matches of
+          -- We found a cycle, because `from` was already connected to `to`:
+          1 -> (equivalenceSets, edge : cycles)
+          -- We union the sets of connected nodes:
+          2 -> (Set.singleton (fold matches) <> others, cycles)
+          -- This should not happen, but is not harmful:
+          _n -> (equivalenceSets, cycles)
