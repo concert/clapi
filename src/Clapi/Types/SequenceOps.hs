@@ -13,14 +13,16 @@ module Clapi.Types.SequenceOps
   , DependencyOrdered, unDependencyOrdered
   , dependencyOrder, dependencyOrder'
   , fullOrderOps, fullOrderOps'
-  , validateAfters
+  , validateAfters, DependencyError(..)
   ) where
 
 import Prelude hiding (fail)
 
 import Control.Lens (_1, _2, over)
 import Control.Monad (foldM, unless)
+import Control.Monad.Except (MonadError(..))
 import Control.Monad.Fail (MonadFail(..))
+import Control.Monad.Writer (Writer, tell, runWriter)
 import Data.Foldable (fold, foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -106,16 +108,24 @@ resolveDigest f m = if null m then return []
     ([], _) -> fail "Unresolvable order dependencies"
     (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
 
-validateAfters :: (MonadFail m, Ord a) => Map a a -> m [[a]]
+data DependencyError a
+  = DuplicateReferences (Map a (Set a))
+  | CyclicReferences [[a]]
+  deriving (Show, Eq)
+
+validateAfters :: (MonadError (DependencyError a) m, Ord a) => Map a a -> m [[a]]
 validateAfters m =
   let
     nodes = Map.keysSet m <> foldMap Set.singleton m
     dupRefs = detectDuplicates m
     start = [((a,a), [a]) | a <- Set.toList nodes]
+    (chains, cycles) = runWriter $ mapFoldMWithKey f start m
   in do
-    unless (null dupRefs) $ fail "Duplicate References!"
-    fmap snd <$> mapFoldMWithKey f start m
+    unless (null dupRefs) $ throwError $ DuplicateReferences dupRefs
+    unless (null cycles) $ throwError $ CyclicReferences cycles
+    return $ snd <$> chains
   where
+    f :: Eq a => ([((a, a), [a])] -> a -> a -> Writer [[a]] [((a, a), [a])])
     f acc from to =
       let
         (start, end, rest) = foldl' g (Nothing, Nothing, []) acc
@@ -125,8 +135,16 @@ validateAfters m =
           | otherwise = (is, ie, x:ir)
       in
         case (start, end) of
+          -- Join two chains:
           (Just ((ss, se),sl), Just ((es, ee), el)) -> return $ ((es, se), sl ++ el):rest
-          _ -> fail "Cyclic References :("
+          -- Attempt to form a loop from end to start (NB: which one of the
+          -- pair is Nothing depends on the order of the guards above):
+          (Just (_, l), Nothing) -> tell [l] >> return acc
+          -- We can't have a loop that start halfway through a chain because
+          -- we started from a map (this would mean duplicate keys).
+          -- We can't have a loop that ends halfway through a chain because
+          -- dupRefs picks that up:
+          _ -> error "Impossible"
 
 detectDuplicates :: (Ord k, Ord v) => Map k v -> Map v (Set k)
 detectDuplicates =  Map.filter ((>= 2) . Set.size) . Mos.unMos . Mos.invertMap
