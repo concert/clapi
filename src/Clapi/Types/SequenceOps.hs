@@ -19,13 +19,16 @@ module Clapi.Types.SequenceOps
 import Prelude hiding (fail)
 
 import Control.Lens (_1, _2, over)
-import Control.Monad (foldM)
+import Control.Monad (foldM, unless)
 import Control.Monad.Fail (MonadFail(..))
 import Data.Foldable (fold, foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+
+import Data.Map.Mos (Mos)
+import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
 import qualified Clapi.Types.AssocList as AL
@@ -107,8 +110,10 @@ validateAfters :: (MonadFail m, Ord a) => Map a a -> m [[a]]
 validateAfters m =
   let
     nodes = Map.keysSet m <> foldMap Set.singleton m
+    dupRefs = detectDuplicates m
     start = [((a,a), [a]) | a <- Set.toList nodes]
-  in
+  in do
+    unless (null dupRefs) $ fail "Duplicate References!"
     fmap snd <$> mapFoldMWithKey f start m
   where
     f acc from to =
@@ -121,7 +126,10 @@ validateAfters m =
       in
         case (start, end) of
           (Just ((ss, se),sl), Just ((es, ee), el)) -> return $ ((es, se), sl ++ el):rest
-          _ -> fail "goaway"
+          _ -> fail "Cyclic References :("
+
+detectDuplicates :: (Ord k, Ord v) => Map k v -> Map v (Set k)
+detectDuplicates =  Map.filter ((>= 2) . Set.size) . Mos.unMos . Mos.invertMap
 
 -- FIXME: might want to move detect cycles to somewhere more generic so that it
 -- doesn't get polluted with Valuespace-specific concerns. Also, might want to
