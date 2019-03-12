@@ -13,12 +13,12 @@ module Clapi.Types.SequenceOps
   , DependencyOrdered, unDependencyOrdered
   , dependencyOrder, dependencyOrder'
   , fullOrderOps, fullOrderOps'
-  , validateAfters, DependencyError(..)
+  , extractDependencyChains, DependencyError(..)
   ) where
 
 import Prelude hiding (fail)
 
-import Control.Lens (_1, _2, over)
+import Control.Lens (_1, _2, _3, over, set)
 import Control.Monad (foldM, unless)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Fail (MonadFail(..))
@@ -29,7 +29,6 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Data.Map.Mos (Mos)
 import qualified Data.Map.Mos as Mos
 
 import Clapi.Types.AssocList (AssocList, unAssocList)
@@ -113,33 +112,38 @@ data DependencyError a
   | CyclicReferences [[a]]
   deriving (Show, Eq)
 
-validateAfters :: (MonadError (DependencyError a) m, Ord a) => Map a a -> m [[a]]
-validateAfters m =
+extractDependencyChains
+  :: (MonadError (DependencyError a) m, Ord a) => Map a a -> m [[a]]
+extractDependencyChains m =
   let
     nodes = Map.keysSet m <> foldMap Set.singleton m
     dupRefs = detectDuplicates m
-    start = [((a,a), [a]) | a <- Set.toList nodes]
-    (chains, cycles) = runWriter $ mapFoldMWithKey f start m
+    initChains = [((a,a), [a]) | a <- Set.toList nodes]
+    (chains, cycles) = runWriter $ mapFoldMWithKey link initChains m
   in do
     unless (null dupRefs) $ throwError $ DuplicateReferences dupRefs
     unless (null cycles) $ throwError $ CyclicReferences cycles
     return $ snd <$> chains
   where
-    f :: Eq a => ([((a, a), [a])] -> a -> a -> Writer [[a]] [((a, a), [a])])
-    f acc from to =
+    link :: Eq a => ([((a, a), [a])] -> a -> a -> Writer [[a]] [((a, a), [a])])
+    link chains referer referee =
       let
-        (start, end, rest) = foldl' g (Nothing, Nothing, []) acc
-        g (is, ie, ir) x@((s, e), l)
-          | s == to = (Just x, ie, ir)
-          | e == from = (is, Just x, ir)
-          | otherwise = (is, ie, x:ir)
+        -- Find the two chains that are joined by the current edge by looking
+        -- at the chains start and end nodes:
+        (chainA, chainB, rest) =
+          foldl' findChains (Nothing, Nothing, []) chains
+        findChains acc x@((start, end), _)
+          | start == referee = set _1 (Just x) acc
+          | end == referer = set _2 (Just x) acc
+          | otherwise = over _3 (x:) acc
       in
-        case (start, end) of
+        case (chainA, chainB) of
           -- Join two chains:
-          (Just ((ss, se),sl), Just ((es, ee), el)) -> return $ ((es, se), sl ++ el):rest
+          (Just ((_, end), itemsA), Just ((start, _), itemsB)) ->
+            return $ ((start, end), itemsA ++ itemsB):rest
           -- Attempt to form a loop from end to start (NB: which one of the
           -- pair is Nothing depends on the order of the guards above):
-          (Just (_, l), Nothing) -> tell [l] >> return acc
+          (Just (_, l), Nothing) -> tell [l] >> return chains
           -- We can't have a loop that start halfway through a chain because
           -- we started from a map (this would mean duplicate keys).
           -- We can't have a loop that ends halfway through a chain because
