@@ -13,6 +13,7 @@ module Clapi.Types.SequenceOps
   , DependencyOrdered, unDependencyOrdered
   , dependencyOrder, dependencyOrder'
   , fullOrderOps, fullOrderOps'
+  , validateAfters
   ) where
 
 import Prelude hiding (fail)
@@ -29,6 +30,7 @@ import qualified Data.Set as Set
 import Clapi.Types.AssocList (AssocList, unAssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.UniqList (UniqList, unUniqList, ulDelete, ulPresentAfter)
+import Clapi.Util (mapFoldMWithKey)
 
 
 data SequenceOp i
@@ -100,6 +102,26 @@ resolveDigest f m = if null m then return []
   else case getChainStarts f m of
     ([], _) -> fail "Unresolvable order dependencies"
     (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
+
+validateAfters :: (MonadFail m, Ord a) => Map a a -> m [[a]]
+validateAfters m =
+  let
+    nodes = Map.keysSet m <> foldMap Set.singleton m
+    start = [((a,a), [a]) | a <- Set.toList nodes]
+  in
+    fmap snd <$> mapFoldMWithKey f start m
+  where
+    f acc from to =
+      let
+        (start, end, rest) = foldl' g (Nothing, Nothing, []) acc
+        g (is, ie, ir) x@((s, e), l)
+          | s == to = (Just x, ie, ir)
+          | e == from = (is, Just x, ir)
+          | otherwise = (is, ie, x:ir)
+      in
+        case (start, end) of
+          (Just ((ss, se),sl), Just ((es, ee), el)) -> return $ ((es, se), sl ++ el):rest
+          _ -> fail "goaway"
 
 -- FIXME: might want to move detect cycles to somewhere more generic so that it
 -- doesn't get polluted with Valuespace-specific concerns. Also, might want to
