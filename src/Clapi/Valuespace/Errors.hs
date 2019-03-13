@@ -113,6 +113,7 @@ instance Show soTarget => ErrText (SeqOpError soTarget) where
       (show seg) (show eps)
 
 
+type ProviderDependencyError = DependencyError DataName (Maybe DataName)
 
 data ProviderError
   = PEAccessError AccessError
@@ -121,6 +122,7 @@ data ProviderError
   | PEValidationError ValidationError
   | PEStructuralError StructuralError
   | PESeqOpError (SeqOpError DataName)
+  | PEDependencyError ProviderDependencyError
   -- FIXME: This is currently only exposed when handling implicit removes from
   -- Provider definition updates, but we could potentially be invalid if a
   -- Consumer drops a member of an array!
@@ -135,6 +137,7 @@ instance ErrText ProviderError where
     PEAccessError ae -> Text.unpack $ errText ae
     PEStructuralError se -> Text.unpack $ errText se
     PESeqOpError soe -> Text.unpack $ errText soe
+    PEDependencyError pde -> Text.unpack $ errText pde
     CircularStructDefinitions dns ->
       "Circular struct definitions: "
       ++ intercalate " -> " (show <$> dns)
@@ -156,20 +159,24 @@ instance Wraps StructuralError ProviderError where
 instance Wraps (SeqOpError DataName) ProviderError where
   wrap = PESeqOpError
 
+instance Wraps ProviderDependencyError ProviderError where
+  wrap = PEDependencyError
+
 instance Wraps ErrorString ProviderError where
   wrap = PEErrorString . unErrorString
 
+
+type ConsumerDependencyError = DependencyError EPS (Maybe EPS)
 
 data ConsumerError
   = CEAccessError AccessError
   | CEStructuralError StructuralError
   | CESeqOpError (SeqOpError EPS)
   | CEValidationError ValidationError
+  | CEDependencyError ConsumerDependencyError
   | ReadOnlyEdit
   | ReadOnlySeqOps  -- FIXME: potentially combine with ReadOnlyEdit
   | CreatesNotSupported
-  | MultipleCreatesReferencedTarget (Set Placeholder) (Maybe EPS)
-  | CyclicReferencesInCreates [Placeholder]
   | MissingCreatePositionTarget Placeholder EPS
   | CEErrorString String
 
@@ -179,16 +186,10 @@ instance ErrText ConsumerError where
     CEValidationError ve -> Text.unpack $ errText ve
     CEStructuralError se -> Text.unpack $ errText se
     CESeqOpError soe -> Text.unpack $ errText soe
+    CEDependencyError cde -> Text.unpack $ errText cde
     ReadOnlyEdit -> "Data change at read-only path"
     ReadOnlySeqOps -> "Tried to alter the children of a read-only path"
     CreatesNotSupported -> "Creates not supported"
-    MultipleCreatesReferencedTarget phs targ -> printf
-      "Multiple create operations (%s) referernced the same position target (%s)"
-      (show phs) (show targ)
-    CyclicReferencesInCreates targs ->
-      "Several create operations formed a loop with their position targets: "
-      ++ intercalate " -> "
-      (show <$> targs)
     MissingCreatePositionTarget ph eps -> printf
       "Create for %s references missing position target %s"
       (show ph) (show eps)
@@ -205,6 +206,9 @@ instance Wraps StructuralError ConsumerError where
 
 instance Wraps (SeqOpError EPS) ConsumerError where
   wrap = CESeqOpError
+
+instance Wraps ConsumerDependencyError ConsumerError where
+  wrap = CEDependencyError
 
 instance Wraps ErrorString ConsumerError where
   wrap = CEErrorString . unErrorString
