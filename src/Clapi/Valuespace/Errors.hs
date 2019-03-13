@@ -16,6 +16,7 @@ import Text.Printf (printf)
 import Clapi.Internal.Valuespace (EPS)
 import Clapi.Types.Base (TpId, InterpolationType)
 import Clapi.Types.Name (DataName, DefName, Placeholder, PostDefName)
+import Clapi.Types.SequenceOps (DependencyError(..))
 import Clapi.Valuespace.ErrWrap (Wraps(..))
 import Clapi.Valuespace.Xrefs (Referer)
 
@@ -30,6 +31,19 @@ instance ErrText e => Wraps e String where
 
 instance ErrText e => Wraps e IOException where
   wrap = error . wrap
+
+instance (Show i1, Show i2) => ErrText (DependencyError i1 i2) where
+  -- FIXME: These errors used to be more targeted - each one being about either
+  -- a specific set of dulicates or a specific cycle. It definitely made them
+  -- easier to write a sentence. We had nice formatting for cycles, like
+  -- a -> b -> c -> a
+  errText = Text.pack . \case
+    DuplicateReferences refs ->
+      "Multiple reordering operations referenced the same position targets: "
+      ++ show refs
+    CyclicReferences cycles ->
+      "Several reordering operations formed a loop with their position \
+      \targets: " ++ show cycles
 
 newtype ErrorString = ErrorString { unErrorString :: String }
 
