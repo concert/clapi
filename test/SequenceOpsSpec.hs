@@ -36,7 +36,7 @@ spec = do
     it "catches duplicate references" $
       extractDependencyChains' ["ab", "bc", "dc"]
       `shouldBe`
-      Left (DuplicateReferences $ Map.singleton 'c' $ Set.fromList "bd")
+      Left (DuplicateReferences [('c', "bd")])
     it "catches cyclic references" $
       extractDependencyChains' ["ab", "bc", "ca", "xy", "yx"]
       `shouldBe`
@@ -48,7 +48,7 @@ mkPairs :: [[a]] -> [(a, a)]
 mkPairs = fmap (\[a1, a2] -> (a1, a2))
 
 extractDependencyChains'
-  :: Ord a => [[a]] -> Either (DependencyError a) (Set [(a, a)])
+  :: Ord a => [[a]] -> Either (DependencyError a a) (Set [(a, a)])
 extractDependencyChains'
     = fmap Set.fromList . runExcept . extractDependencyChains id . Map.fromList
       . mkPairs

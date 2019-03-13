@@ -23,7 +23,7 @@ import Control.Monad (foldM, unless)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.Writer (Writer, tell, runWriter)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (Bifunctor(..))
 import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -67,19 +67,21 @@ updateUniqList f (DepO ops) ul = foldM applySo ul $ unAssocList ops
       SoAbsent -> return $ ulDelete i acc
 
 newDependencyOrder
-  :: (MonadError (DependencyError (Maybe i)) m, Ord i)
+  :: (MonadError (DependencyError i (Maybe i)) m, Ord i)
   => (v -> SequenceOp i) -> Map i v -> m (DependencyOrdered i v)
 newDependencyOrder proj m =
-    DepO . AL.unsafeMkAssocList . (absents ++)
-    -- It's safe to remove the Just here, because we added it on in the first
-    -- place ;-)
-    . fmap (bimap fromJust fst) . mconcat <$> extractDependencyChains snd afters
+    either (throwError . mapError) (return . buildResult) $
+      extractDependencyChains snd afters
   where
     (afters, absents) = Map.foldlWithKey classify mempty m
     classify acc i v = case proj v of
-      -- We add on the Just here to unify the types for extractDependencyChains:
+      -- We add on the Just here to unify the types for extractDependencyChains.
+      -- It's safe to use fromJust to strip it off again afterwards:
       SoAfter mi -> over _1 (Map.insert (Just i) (v, mi)) acc
       SoAbsent -> over _2 ((i, v):) acc
+    mapError = first fromJust
+    buildResult = DepO . AL.unsafeMkAssocList . (absents ++)
+      . fmap (bimap fromJust fst) . mconcat
 
 dependencyOrder'
   :: (MonadFail m, Ord i)
@@ -124,17 +126,29 @@ resolveDigest f m = if null m then return []
     ([], _) -> fail "Unresolvable order dependencies"
     (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
 
-data DependencyError i
-  = DuplicateReferences (Map i (Set i))
-  | CyclicReferences [[(i, i)]]
+data DependencyError i1 i2
+  = DuplicateReferences [(i2, [i1])]
+  | CyclicReferences [[(i1, i2)]]
   deriving (Show, Eq)
 
+instance Functor (DependencyError i1) where
+  fmap f = \case
+    DuplicateReferences refs -> DuplicateReferences $ (fmap . first) f refs
+    CyclicReferences cycles -> CyclicReferences $ (fmap . fmap . fmap) f cycles
+
+instance Bifunctor DependencyError where
+  first f = \case
+    DuplicateReferences refs -> DuplicateReferences
+      $ (fmap . fmap . fmap) f refs
+    CyclicReferences cycles -> CyclicReferences $ (fmap . fmap . first) f cycles
+  second = fmap
+
 extractDependencyChains
-  :: forall i v m. (MonadError (DependencyError i) m, Ord i)
+  :: forall i v m. (MonadError (DependencyError i i) m, Ord i)
   => (v -> i) -> Map i v -> m [[(i, v)]]
 extractDependencyChains proj m =
   let
-    dupRefs = detectDuplicates $ proj <$> m
+    dupRefs = Map.toList . fmap Set.toList $ detectDuplicates $ proj <$> m
     referers = Map.keysSet m
     referees = foldMap Set.singleton $ proj <$> m
     onlyReferees = referees `Set.difference` referers
