@@ -113,15 +113,16 @@ data DependencyError i
   deriving (Show, Eq)
 
 extractDependencyChains
-  :: (MonadError (DependencyError i) m, Ord i) => Map i i -> m [[(i, i)]]
-extractDependencyChains m =
+  :: forall i v m. (MonadError (DependencyError i) m, Ord i)
+  => (v -> i) -> Map i v -> m [[(i, v)]]
+extractDependencyChains proj m =
   let
-    dupRefs = detectDuplicates m
+    dupRefs = detectDuplicates $ proj <$> m
     referers = Map.keysSet m
-    referees = foldMap Set.singleton m
+    referees = foldMap Set.singleton $ proj <$> m
     onlyReferees = referees `Set.difference` referers
     initChains =
-         [((i1, i1), [(i1, i2)]) | (i1, i2) <- Map.toList m]
+         [((i, i), [(i, v)]) | (i, v) <- Map.toList m]
       ++ [((i, i), []) | i <- Set.toList onlyReferees]
     (chains, cycles) = runWriter $ mapFoldMWithKey link initChains m
   in do
@@ -129,7 +130,7 @@ extractDependencyChains m =
     unless (null cycles) $ throwError $ CyclicReferences cycles
     return $ snd <$> chains
   where
-    link :: Eq i => ([((i, i), [(i, i)])] -> i -> i -> Writer [[(i, i)]] [((i, i), [(i, i)])])
+    link :: Eq i => [((i, i), [(i, v)])] -> i -> v -> Writer [[(i, i)]] [((i, i), [(i, v)])]
     link chains referer referee =
       let
         -- Find the two chains that are joined by the current edge by looking
@@ -137,7 +138,7 @@ extractDependencyChains m =
         (chainA, chainB, rest) =
           foldl' findChains (Nothing, Nothing, []) chains
         findChains acc x@((start, end), _)
-          | start == referee = set _1 (Just x) acc
+          | start == proj referee = set _1 (Just x) acc
           | end == referer = set _2 (Just x) acc
           | otherwise = over _3 (x:) acc
       in
@@ -147,7 +148,7 @@ extractDependencyChains m =
             return $ ((start, end), itemsA ++ itemsB):rest
           -- Attempt to form a loop from end to start (NB: which one of the
           -- pair is Nothing depends on the order of the guards above):
-          (Just (_, l), Nothing) -> tell [l] >> return chains
+          (Just (_, l), Nothing) -> tell [fmap proj <$> l] >> return chains
           -- We can't have a loop that start halfway through a chain because
           -- we started from a map (this would mean duplicate keys).
           -- We can't have a loop that ends halfway through a chain because

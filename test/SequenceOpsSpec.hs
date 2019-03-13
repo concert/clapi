@@ -47,4 +47,4 @@ spec = do
 extractDependencyChains'
   :: Ord a => Map a a -> Either (DependencyError a) (Set [(a, a)])
 extractDependencyChains'
-  = fmap Set.fromList . runExcept . extractDependencyChains
+  = fmap Set.fromList . runExcept . extractDependencyChains id
