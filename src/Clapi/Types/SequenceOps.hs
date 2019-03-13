@@ -23,9 +23,11 @@ import Control.Monad (foldM, unless)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.Writer (Writer, tell, runWriter)
+import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -63,6 +65,21 @@ updateUniqList f (DepO ops) ul = foldM applySo ul $ unAssocList ops
     applySo acc (i, v) = case f v of
       SoAfter mi -> ulPresentAfter i mi acc
       SoAbsent -> return $ ulDelete i acc
+
+newDependencyOrder
+  :: (MonadError (DependencyError (Maybe i)) m, Ord i)
+  => (v -> SequenceOp i) -> Map i v -> m (DependencyOrdered i v)
+newDependencyOrder proj m =
+    DepO . AL.unsafeMkAssocList . (absents ++)
+    -- It's safe to remove the Just here, because we added it on in the first
+    -- place ;-)
+    . fmap (bimap fromJust fst) . mconcat <$> extractDependencyChains snd afters
+  where
+    (afters, absents) = Map.foldlWithKey classify mempty m
+    classify acc i v = case proj v of
+      -- We add on the Just here to unify the types for extractDependencyChains:
+      SoAfter mi -> over _1 (Map.insert (Just i) (v, mi)) acc
+      SoAbsent -> over _2 ((i, v):) acc
 
 dependencyOrder'
   :: (MonadFail m, Ord i)
