@@ -23,7 +23,7 @@ import Control.Monad (foldM, unless)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.Writer (Writer, tell, runWriter)
-import Data.Foldable (fold, foldl')
+import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -109,23 +109,27 @@ resolveDigest f m = if null m then return []
 
 data DependencyError i
   = DuplicateReferences (Map i (Set i))
-  | CyclicReferences [[i]]
+  | CyclicReferences [[(i, i)]]
   deriving (Show, Eq)
 
 extractDependencyChains
-  :: (MonadError (DependencyError i) m, Ord i) => Map i i -> m [[i]]
+  :: (MonadError (DependencyError i) m, Ord i) => Map i i -> m [[(i, i)]]
 extractDependencyChains m =
   let
-    nodes = Map.keysSet m <> foldMap Set.singleton m
     dupRefs = detectDuplicates m
-    initChains = [((i, i), [i]) | i <- Set.toList nodes]
+    referers = Map.keysSet m
+    referees = foldMap Set.singleton m
+    onlyReferees = referees `Set.difference` referers
+    initChains =
+         [((i1, i1), [(i1, i2)]) | (i1, i2) <- Map.toList m]
+      ++ [((i, i), []) | i <- Set.toList onlyReferees]
     (chains, cycles) = runWriter $ mapFoldMWithKey link initChains m
   in do
     unless (null dupRefs) $ throwError $ DuplicateReferences dupRefs
     unless (null cycles) $ throwError $ CyclicReferences cycles
     return $ snd <$> chains
   where
-    link :: Eq i => ([((i, i), [i])] -> i -> i -> Writer [[i]] [((i, i), [i])])
+    link :: Eq i => ([((i, i), [(i, i)])] -> i -> i -> Writer [[(i, i)]] [((i, i), [(i, i)])])
     link chains referer referee =
       let
         -- Find the two chains that are joined by the current edge by looking

@@ -33,7 +33,7 @@ spec = do
         it "orders correctly structured afters" $
             extractDependencyChains' (Map.fromList
               [('a', 'c'), ('b', 'e'), ('c', 'd'), ('e', 'a'), ('x', 'y')])
-            `shouldBe` Right (Set.fromList ["dcaeb", "yx"])
+            `shouldBe` Right (Set.fromList [[('c', 'd'), ('a', 'c'), ('e', 'a'), ('b', 'e')], [('x', 'y')]])
         it "catches duplicate references" $
             extractDependencyChains' (Map.fromList
               [('a', 'b'), ('b', 'c'), ('d', 'c')])
@@ -42,9 +42,9 @@ spec = do
         it "catches cyclic references" $
             extractDependencyChains' (Map.fromList
               [('a', 'b'), ('b', 'c'), ('c', 'a'), ('x', 'y'), ('y', 'x')])
-              `shouldBe` Left (CyclicReferences ["cba", "yx"])
+              `shouldBe` Left (CyclicReferences [[('c', 'a'), ('b', 'c'), ('a', 'b')], [('y', 'x'), ('x', 'y')]])
 
 extractDependencyChains'
-  :: Ord a => Map a a -> Either (DependencyError a) (Set [a])
+  :: Ord a => Map a a -> Either (DependencyError a) (Set [(a, a)])
 extractDependencyChains'
   = fmap Set.fromList . runExcept . extractDependencyChains
