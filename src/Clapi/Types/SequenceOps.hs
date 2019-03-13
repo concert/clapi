@@ -66,10 +66,10 @@ updateUniqList f (DepO ops) ul = foldM applySo ul $ unAssocList ops
       SoAfter mi -> ulPresentAfter i mi acc
       SoAbsent -> return $ ulDelete i acc
 
-newDependencyOrder
+dependencyOrder'
   :: (MonadError (DependencyError i (Maybe i)) m, Ord i)
   => (v -> SequenceOp i) -> Map i v -> m (DependencyOrdered i v)
-newDependencyOrder proj m =
+dependencyOrder' proj m =
     either (throwError . mapError) (return . buildResult) $
       extractDependencyChains snd afters
   where
@@ -83,21 +83,8 @@ newDependencyOrder proj m =
     buildResult = DepO . AL.unsafeMkAssocList . (absents ++)
       . fmap (bimap fromJust fst) . mconcat
 
-dependencyOrder'
-  :: (MonadFail m, Ord i)
-  => (v -> SequenceOp i) -> Map i v -> m (DependencyOrdered i v)
-dependencyOrder' f m =
-    DepO . AL.unsafeMkAssocList . (absents ++) . (fmap (fmap fst))
-    <$> resolveDigest snd afters
-  where
-    (afters, absents) = Map.foldlWithKey classify mempty m
-    classify acc i v = case f v of
-      SoAfter mi -> over _1 (Map.insert i (v, mi)) acc
-      SoAbsent -> over _2 ((i, v):) acc
-
-
 dependencyOrder
-  :: (MonadFail m, Ord i)
+  :: (MonadError (DependencyError i (Maybe i)) m, Ord i)
   => Map i (SequenceOp i) -> m (DependencyOrdered i (SequenceOp i))
 dependencyOrder = dependencyOrder' id
 
@@ -111,20 +98,6 @@ fullOrderOps' f = DepO . go Nothing . unUniqList
 
 fullOrderOps :: Ord i => UniqList i -> DependencyOrdered i (SequenceOp i)
 fullOrderOps = fullOrderOps' id
-
-getChainStarts :: Ord i => (v -> Maybe i) -> Map i v -> ([(i, v)], Map i v)
-getChainStarts f m =
-  let
-    hasUnresolvedDep = maybe False (flip Map.member m) . f
-    (remainder, starts) = Map.partition hasUnresolvedDep m
-  in
-    (Map.toList starts, remainder)
-
-resolveDigest :: (MonadFail m, Ord i) => (v -> Maybe i) -> Map i v -> m [(i, v)]
-resolveDigest f m = if null m then return []
-  else case getChainStarts f m of
-    ([], _) -> fail "Unresolvable order dependencies"
-    (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
 
 data DependencyError i1 i2
   = DuplicateReferences [(i2, [i1])]

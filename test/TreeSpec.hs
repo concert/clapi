@@ -14,6 +14,8 @@ import Clapi.Types.Path (DataName, pattern Root, pattern (:/))
 import Clapi.Types.SequenceOps (SequenceOp(SoAfter), dependencyOrder')
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..))
 import qualified Clapi.Tree as Tree
+import Clapi.Valuespace.ErrWrap (liftExcept)
+import Clapi.Valuespace.Errors ()  -- Wraps e IOException
 
 import Instances ()
 
@@ -83,7 +85,7 @@ spec = do
 
   describe "Tree.applyReorderings" $ do
     it "should preserve child contents" $ do
-      orderedOps <- dependencyOrder' snd
+      orderedOps <- liftExcept $ dependencyOrder' snd
         $ Map.singleton s3 (Nothing, SoAfter Nothing)
       Tree.applyReorderings orderedOps t4
         `shouldBe` (Right t4 :: Either String (RoseTree Char))

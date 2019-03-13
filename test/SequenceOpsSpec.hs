@@ -4,15 +4,19 @@ import Test.Hspec
 import Test.QuickCheck (property)
 
 import Control.Monad.Except (runExcept)
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.SequenceOps
-  ( DependencyError(..), fullOrderOps, dependencyOrder, unDependencyOrdered
+  ( SequenceOp, DependencyError(..), DependencyOrdered(..)
+  , fullOrderOps, dependencyOrder
   , updateUniqList, extractDependencyChains)
 import Clapi.Types.UniqList (UniqList(..))
+import Clapi.Valuespace.Errors ()  -- ErrText (DependencyError a b)
+import Clapi.Valuespace.ErrWrap (liftExcept)
 
 import Arbitrary ()
 
@@ -21,7 +25,7 @@ spec = do
   describe "fullOrderOps" $ do
     it "outputs in dependency order" $ property $
       \(ul :: UniqList Int) -> do
-        ordered <- dependencyOrder $ AL.toMap $ unDependencyOrdered
+        ordered <- dependencyOrder'' $ AL.toMap $ unDependencyOrdered
           $ fullOrderOps ul
         fullOrderOps ul `shouldBe` ordered
     it "generates instructions to build the original list" $ property $
@@ -52,3 +56,7 @@ extractDependencyChains'
 extractDependencyChains'
     = fmap Set.fromList . runExcept . extractDependencyChains id . Map.fromList
       . mkPairs
+
+dependencyOrder''
+  :: Map Int (SequenceOp Int) -> IO (DependencyOrdered Int (SequenceOp Int))
+dependencyOrder'' = liftExcept . dependencyOrder

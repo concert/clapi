@@ -43,8 +43,8 @@ import Clapi.Types.Name (DataName, DefName)
 import Clapi.Types.Path (Path, pattern (:/))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.SequenceOps
-  ( SequenceOp, DependencyOrdered, unDependencyOrdered, dependencyOrder'
-  , fullOrderOps')
+  ( SequenceOp, DependencyOrdered, unDependencyOrdered
+  , dependencyOrder', fullOrderOps')
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Util (mapFoldMapMWithKey)
 import Clapi.Validator (TypeAssertion(..))
@@ -55,8 +55,8 @@ import Clapi.Internal.Valuespace
 import Clapi.Valuespace.Common (updatePathData, validateTupleValues)
 import Clapi.Valuespace.Errors
   ( ErrText(..), AccessError(..), ErrorString(..), ProviderError(..)
-  , StructuralError(..), ValidationError(..))
-import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw)
+  , StructuralError(..), ValidationError(..), ProviderDependencyError)
+import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw, liftExcept)
 import Clapi.Valuespace.Prim
   ( VsM', lookupDef, pathDef, pathNode
   , pathError, pathErrors, tpErrors, castVsMError)
@@ -218,7 +218,9 @@ guardRecursiveStructs = go mempty []
           go (processed <> Set.fromList structChainDns) [] dn'
 
 updateContainer
-  :: (Errs '[AccessError, ErrorString, StructuralError] e, Monad m)
+  :: ( Errs
+       '[AccessError, ErrorString, StructuralError, ProviderDependencyError] e
+     , Monad m)
   => Path -> Map DataName (Maybe Attributee, SequenceOp DataName)
   -> VsM' e m
        (DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName))
@@ -226,8 +228,7 @@ updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
     ArrayDef {} -> do
-      orderedCops <- either (throw . ErrorString) return
-        $ dependencyOrder' snd cOps
+      orderedCops <- liftExcept $ dependencyOrder' snd cOps
       eitherModifying vsTree
         $ first (wrap . ErrorString) . Tree.applyReorderingsAt p orderedCops
       return orderedCops

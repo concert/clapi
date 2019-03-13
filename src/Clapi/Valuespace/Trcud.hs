@@ -45,8 +45,9 @@ import Clapi.Internal.Valuespace (Valuespace, EPS)
 import Clapi.Valuespace.Common (updatePathData, checkTypeAssertions)
 import Clapi.Valuespace.Errors
   ( ErrText(..), AccessError(..), ConsumerError(..), ErrorString(..)
-  , SeqOpError(..)  , StructuralError(..), ValidationError(..))
-import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw)
+  , SeqOpError(..)  , StructuralError(..), ValidationError(..)
+  , ConsumerDependencyError)
+import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw, liftExcept)
 import Clapi.Valuespace.Prim
   ( VsM', pathChildren, pathDef, pathPostDef, pathExists, pathEditability
   , pathError, pathErrors, castSingleErr)
@@ -117,7 +118,7 @@ guardClientUpdates = Error.filterErrs . AL.fmapWithKey atPath
 guardClientCops
   :: ( Errs
        '[ SeqOpError EPS, ErrorString, AccessError, ConsumerError
-        , StructuralError] e
+        , StructuralError, ConsumerDependencyError] e
      , Monad m)
   => Mos Path Placeholder -> ContOps EPS -> VsM' e m (OrderedContOps EPS)
 guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
@@ -125,7 +126,7 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
     perPath
       :: (Errs
           '[ ErrorString, AccessError, ConsumerError, SeqOpError EPS
-           , StructuralError] e
+           , StructuralError, ConsumerDependencyError] e
          , Monad m)
       => Path -> Map EPS (x, SequenceOp EPS)
       -> VsM' e m (AssocList EPS (x, SequenceOp EPS))
@@ -137,7 +138,7 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
           kids <- pathError p $ Set.fromList <$> pathChildren p
           pathErrors p $ doFilter (validateCop kids $ Mos.lookup p pphs) m
           pathError p $ unDependencyOrdered
-            <$> either (throw . ErrorString) return (dependencyOrder' snd m)
+            <$> liftExcept (dependencyOrder' snd m)
         _ -> pathError p $ throw $ SeqOpsOnNonArray
 
     -- FIXME: it would be nice to re-use this validation for the Provider
@@ -260,5 +261,3 @@ doFilter f = Error.filterErrs . Map.mapWithKey (\k a -> f k a >> return a)
 --             ocAfter crop)
 --           invalidRoots
 --         return $ validRoots <> dependants
-
-
