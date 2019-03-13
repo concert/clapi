@@ -91,12 +91,6 @@ instance Show soTarget => ErrText (SeqOpError soTarget) where
 
 
 
--- FIXME: I think there will end up being ProviderErrors that we make when we
--- try to apply an Frpd and then a ConsumerErrors that we make when we try to
--- apply a client update digest.
--- FIXME: There may even be a common subset for things that both the API
--- provider and the consumer can get wrong. For example, referencing missing
--- nodes.
 data ProviderError
   = PEAccessError AccessError
   | CircularStructDefinitions [DefName]
