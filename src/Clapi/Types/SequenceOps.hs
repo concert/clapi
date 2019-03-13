@@ -107,25 +107,25 @@ resolveDigest f m = if null m then return []
     ([], _) -> fail "Unresolvable order dependencies"
     (starts, remainder) -> (starts ++) <$> resolveDigest f remainder
 
-data DependencyError a
-  = DuplicateReferences (Map a (Set a))
-  | CyclicReferences [[a]]
+data DependencyError i
+  = DuplicateReferences (Map i (Set i))
+  | CyclicReferences [[i]]
   deriving (Show, Eq)
 
 extractDependencyChains
-  :: (MonadError (DependencyError a) m, Ord a) => Map a a -> m [[a]]
+  :: (MonadError (DependencyError i) m, Ord i) => Map i i -> m [[i]]
 extractDependencyChains m =
   let
     nodes = Map.keysSet m <> foldMap Set.singleton m
     dupRefs = detectDuplicates m
-    initChains = [((a,a), [a]) | a <- Set.toList nodes]
+    initChains = [((i, i), [i]) | i <- Set.toList nodes]
     (chains, cycles) = runWriter $ mapFoldMWithKey link initChains m
   in do
     unless (null dupRefs) $ throwError $ DuplicateReferences dupRefs
     unless (null cycles) $ throwError $ CyclicReferences cycles
     return $ snd <$> chains
   where
-    link :: Eq a => ([((a, a), [a])] -> a -> a -> Writer [[a]] [((a, a), [a])])
+    link :: Eq i => ([((i, i), [i])] -> i -> i -> Writer [[i]] [((i, i), [i])])
     link chains referer referee =
       let
         -- Find the two chains that are joined by the current edge by looking
