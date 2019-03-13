@@ -4,7 +4,6 @@ import Test.Hspec
 import Test.QuickCheck (property)
 
 import Control.Monad.Except (runExcept)
-import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -31,20 +30,25 @@ spec = do
             generated `shouldBe` ul
     describe "extractDependencyChains" $ do
         it "orders correctly structured afters" $
-            extractDependencyChains' (Map.fromList
-              [('a', 'c'), ('b', 'e'), ('c', 'd'), ('e', 'a'), ('x', 'y')])
-            `shouldBe` Right (Set.fromList [[('c', 'd'), ('a', 'c'), ('e', 'a'), ('b', 'e')], [('x', 'y')]])
+            extractDependencyChains' ["ac", "be", "cd", "ea", "xy"]
+            `shouldBe`
+            Right (Set.fromList [mkPairs ["cd", "ac", "ea", "be"], mkPairs ["xy"]])
         it "catches duplicate references" $
-            extractDependencyChains' (Map.fromList
-              [('a', 'b'), ('b', 'c'), ('d', 'c')])
+            extractDependencyChains' ["ab", "bc", "dc"]
             `shouldBe`
             Left (DuplicateReferences $ Map.singleton 'c' $ Set.fromList "bd")
         it "catches cyclic references" $
-            extractDependencyChains' (Map.fromList
-              [('a', 'b'), ('b', 'c'), ('c', 'a'), ('x', 'y'), ('y', 'x')])
-              `shouldBe` Left (CyclicReferences [[('c', 'a'), ('b', 'c'), ('a', 'b')], [('y', 'x'), ('x', 'y')]])
+            extractDependencyChains' ["ab", "bc", "ca", "xy", "yx"]
+            `shouldBe`
+            Left (CyclicReferences [mkPairs ["ca", "bc", "ab"], mkPairs ["yx", "xy"]])
+
+
+-- Just to make the test code above less noisy ;-)
+mkPairs :: [[a]] -> [(a, a)]
+mkPairs = fmap (\[a1, a2] -> (a1, a2))
 
 extractDependencyChains'
-  :: Ord a => Map a a -> Either (DependencyError a) (Set [(a, a)])
+  :: Ord a => [[a]] -> Either (DependencyError a) (Set [(a, a)])
 extractDependencyChains'
-  = fmap Set.fromList . runExcept . extractDependencyChains id
+    = fmap Set.fromList . runExcept . extractDependencyChains id . Map.fromList
+      . mkPairs
