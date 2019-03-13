@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
     FlexibleInstances
   , MultiParamTypeClasses
@@ -18,9 +19,17 @@ import Clapi.Types.Name (DataName, DefName, Placeholder, PostDefName)
 import Clapi.Valuespace.ErrWrap (Wraps(..))
 import Clapi.Valuespace.Xrefs (Referer)
 
+import GHC.IO.Exception (IOException)
+
 
 class ErrText e where
   errText :: e -> Text
+
+instance ErrText e => Wraps e String where
+  wrap = Text.unpack . errText
+
+instance ErrText e => Wraps e IOException where
+  wrap = error . wrap
 
 newtype ErrorString = ErrorString { unErrorString :: String }
 
