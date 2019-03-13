@@ -10,7 +10,7 @@
 
 module Clapi.Valuespace.ErrWrap where
 
-import Control.Monad.Except (MonadError)
+import Control.Monad.Except (MonadError, ExceptT, runExceptT)
 import qualified Control.Monad.Except as E
 import Data.Bifunctor (first)
 import Data.Kind (Type, Constraint)
@@ -27,6 +27,9 @@ throw = E.throwError . wrap
 
 liftEither :: (Wraps e1 e2, MonadError e2 m) => Either e1 a -> m a
 liftEither = E.liftEither . first wrap
+
+liftExcept :: (Wraps e1 e2, MonadError e2 m) => ExceptT e1 m a -> m a
+liftExcept m = runExceptT m >>= liftEither
 
 
 type family Errs (errs :: [Type]) (e :: Type) :: Constraint where
