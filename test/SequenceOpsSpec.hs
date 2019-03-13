@@ -18,29 +18,29 @@ import Arbitrary ()
 
 spec :: Spec
 spec = do
-    describe "fullOrderOps" $ do
-        it "outputs in dependency order" $ property $
-          \(ul :: UniqList Int) -> do
-            ordered <- dependencyOrder $ AL.toMap $ unDependencyOrdered
-              $ fullOrderOps ul
-            fullOrderOps ul `shouldBe` ordered
-        it "generates instructions to build the original list" $ property $
-          \(ul :: UniqList Int) -> do
-            generated <- updateUniqList id (fullOrderOps ul) mempty
-            generated `shouldBe` ul
-    describe "extractDependencyChains" $ do
-        it "orders correctly structured afters" $
-            extractDependencyChains' ["ac", "be", "cd", "ea", "xy"]
-            `shouldBe`
-            Right (Set.fromList [mkPairs ["cd", "ac", "ea", "be"], mkPairs ["xy"]])
-        it "catches duplicate references" $
-            extractDependencyChains' ["ab", "bc", "dc"]
-            `shouldBe`
-            Left (DuplicateReferences $ Map.singleton 'c' $ Set.fromList "bd")
-        it "catches cyclic references" $
-            extractDependencyChains' ["ab", "bc", "ca", "xy", "yx"]
-            `shouldBe`
-            Left (CyclicReferences [mkPairs ["ca", "bc", "ab"], mkPairs ["yx", "xy"]])
+  describe "fullOrderOps" $ do
+    it "outputs in dependency order" $ property $
+      \(ul :: UniqList Int) -> do
+        ordered <- dependencyOrder $ AL.toMap $ unDependencyOrdered
+          $ fullOrderOps ul
+        fullOrderOps ul `shouldBe` ordered
+    it "generates instructions to build the original list" $ property $
+      \(ul :: UniqList Int) -> do
+        generated <- updateUniqList id (fullOrderOps ul) mempty
+        generated `shouldBe` ul
+  describe "extractDependencyChains" $ do
+    it "orders correctly structured afters" $
+      extractDependencyChains' ["ac", "be", "cd", "ea", "xy"]
+      `shouldBe`
+      Right (Set.fromList [mkPairs ["cd", "ac", "ea", "be"], mkPairs ["xy"]])
+    it "catches duplicate references" $
+      extractDependencyChains' ["ab", "bc", "dc"]
+      `shouldBe`
+      Left (DuplicateReferences $ Map.singleton 'c' $ Set.fromList "bd")
+    it "catches cyclic references" $
+      extractDependencyChains' ["ab", "bc", "ca", "xy", "yx"]
+      `shouldBe`
+      Left (CyclicReferences [mkPairs ["ca", "bc", "ab"], mkPairs ["yx", "xy"]])
 
 
 -- Just to make the test code above less noisy ;-)
