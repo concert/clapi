@@ -152,11 +152,11 @@ extractDependencyChains proj m =
           -- Attempt to form a loop from end to start (NB: which one of the
           -- pair is Nothing depends on the order of the guards above):
           (Just (_, l), Nothing) -> tell [fmap proj <$> l] >> return chains
-          -- We can't have a loop that start halfway through a chain because
-          -- we started from a map (this would mean duplicate keys).
-          -- We can't have a loop that ends halfway through a chain because
-          -- dupRefs picks that up:
-          _ -> error "Impossible"
+          -- Impossible: We can't have a loop that start halfway through a chain
+          -- because we started from a map (this would mean duplicate keys).  We
+          -- can't have a loop that ends halfway through a chain because dupRefs
+          -- picks that up:
+          _ -> return chains
 
 detectDuplicates :: (Ord k, Ord v) => Map k v -> Map v (Set k)
 detectDuplicates =  Map.filter ((>= 2) . Set.size) . Mos.unMos . Mos.invertMap
