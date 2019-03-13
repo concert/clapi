@@ -130,7 +130,10 @@ extractDependencyChains proj m =
     unless (null cycles) $ throwError $ CyclicReferences cycles
     return $ snd <$> chains
   where
-    link :: Eq i => [((i, i), [(i, v)])] -> i -> v -> Writer [[(i, i)]] [((i, i), [(i, v)])]
+    link
+      :: Eq i
+      => [((i, i), [(i, v)])] -> i -> v
+      -> Writer [[(i, i)]] [((i, i), [(i, v)])]
     link chains referer referee =
       let
         -- Find the two chains that are joined by the current edge by looking
