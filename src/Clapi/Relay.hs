@@ -180,8 +180,9 @@ handleDisconnect i = do
 handleTrpd
   :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Provider 'Update -> m ()
 handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
-    Nothing -> go bvs $
+    Nothing -> go bvs $ do
       broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
+      notifyOwnerChange
     Just x@(ownerI, vs) ->
       if i == ownerI
         then go vs $ return ()
@@ -302,6 +303,7 @@ relinquish ns = do
       -- FIXME: This doesn't check that the namespace is owned by the
       -- reqlinquisher
       broadcast $ Frcrd $ Map.singleton ns SoAbsent
+      notifyOwnerChange
   unsubscribeNs ns
 
 unsubscribeNs :: (Ord i, Queries i m, Sends i m) => Namespace -> m ()
@@ -440,6 +442,11 @@ broadcast d = use rsRegs >>= multicast . fmap (const d)
 
 disconnect :: (Ord i, Sends i m) => i -> m ()
 disconnect = tell . Buffer mempty mempty mempty . Set.singleton
+
+notifyOwnerChange :: (Queries i m, Sends i m) => m ()
+notifyOwnerChange = do
+  ownerMap <- use rsVsMap
+  tell $ set bOwners (Last . Just $ fst <$> ownerMap) $ mempty
 
 doSend :: Monad m => Buffer i -> RelayProtocol i m ()
 doSend = mapM_ sendRev . toServerEvents
