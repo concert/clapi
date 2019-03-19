@@ -14,7 +14,7 @@ module Clapi.Relay where
 
 import Control.Lens ((&), assign, at, makeLenses, modifying, set, use, view)
 import qualified Control.Lens as Lens
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Control.Monad.Except (MonadError(..), runExceptT)
 import Control.Monad.State
   ( MonadState(..), StateT, evalStateT, evalState, runStateT)
@@ -179,14 +179,20 @@ handleDisconnect i = do
 
 handleTrpd
   :: (Ord i, Sends i m, Queries i m) => i -> TrDigest 'Provider 'Update -> m ()
-handleTrpd i trpd = Error.modifying (rsVsMap . at ns) $ \case
-    Nothing -> go bvs $ do
-      broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
-      notifyOwnerChange
-    Just x@(ownerI, vs) ->
-      if i == ownerI
-        then go vs $ return ()
-        else stop >> return (Just x)
+handleTrpd i trpd = do
+    ownerMap <- fmap fst <$> use rsVsMap
+    Error.modifying (rsVsMap . at ns) $ \case
+      Nothing -> go bvs $ do
+        broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
+      Just x@(ownerI, vs) ->
+        if i == ownerI
+          then go vs $ return ()
+          else stop >> return (Just x)
+    -- FIXME: This is clunky, because we should know from the above code whether
+    -- we've updated the map. There's perhaps some work to do around how the
+    -- relay API receives its data.
+    ownerMap' <- fmap fst <$> use rsVsMap
+    when (ownerMap' /= ownerMap) $ notifyOwnerChange ownerMap'
   where
     ns = trpdNs trpd
     bvs = baseValuespace (castName ns) Editable
@@ -303,7 +309,7 @@ relinquish ns = do
       -- FIXME: This doesn't check that the namespace is owned by the
       -- reqlinquisher
       broadcast $ Frcrd $ Map.singleton ns SoAbsent
-      notifyOwnerChange
+      use rsVsMap >>= notifyOwnerChange . fmap fst
   unsubscribeNs ns
 
 unsubscribeNs :: (Ord i, Queries i m, Sends i m) => Namespace -> m ()
@@ -443,10 +449,8 @@ broadcast d = use rsRegs >>= multicast . fmap (const d)
 disconnect :: (Ord i, Sends i m) => i -> m ()
 disconnect = tell . Buffer mempty mempty mempty . Set.singleton
 
-notifyOwnerChange :: (Queries i m, Sends i m) => m ()
-notifyOwnerChange = do
-  ownerMap <- use rsVsMap
-  tell $ set bOwners (Last . Just $ fst <$> ownerMap) $ mempty
+notifyOwnerChange :: Sends i m => Map Namespace i -> m ()
+notifyOwnerChange ownerMap = tell $ set bOwners (Last $ Just ownerMap) $ mempty
 
 doSend :: Monad m => Buffer i -> RelayProtocol i m ()
 doSend = mapM_ sendRev . toServerEvents
