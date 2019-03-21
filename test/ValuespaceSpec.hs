@@ -653,91 +653,6 @@ spec =
               doCreate [[someWv WtString "bad type"]] >>= errorsOn Root
               doCreate [[someWv WtWord32 0]] >>= succeeds
 
-          -- it "catches duplicate creation targets" $ go $
-          --   let
-          --     vals = [[someWv WtWord32 0]]
-          --     doCreates targ = processTrcud' $ (trcudEmpty ns)
-          --       { trcudCreates = Map.singleton Root $ Map.fromList
-          --         [ ([n|one|], (Nothing, OpCreate vals targ))
-          --         , ([n|two|], (Nothing, OpCreate vals targ))
-          --         ]
-          --       }
-          --   in do
-          --     basicArraySetup
-          --     doCreates Nothing >>= errorsOn Root
-          --     doCreates (Just $ Left [n|one|]) >>= errorsOn Root
-
-          -- it "catches circular dependencies in creation targets" $ go $
-          --   let
-          --     ph1 = [n|ph1|]
-          --     ph2 = [n|ph2|]
-          --     ph3 = [n|ph3|]
-          --     vals = [[someWv WtWord32 0]]
-          --   in do
-          --     basicArraySetup
-          --     res <- processTrcud' $ (trcudEmpty ns)
-          --       { trcudCreates = Map.singleton Root $ Map.fromList
-          --          [ (ph1, (Nothing, OpCreate vals $ Just $ Left ph1))
-          --          ]
-          --       }
-          --     errorsOn Root res
-
-          --     res' <- processTrcud' $ (trcudEmpty ns)
-          --       { trcudCreates = Map.singleton Root $ Map.fromList
-          --          [ (ph1, (Nothing, OpCreate vals $ Just $ Left ph3))
-          --          , (ph2, (Nothing, OpCreate vals $ Just $ Left ph1))
-          --          , (ph3, (Nothing, OpCreate vals $ Just $ Left ph2))
-          --          ]
-          --       }
-          --     errorsOn Root res'
-
-          -- it "catches missing child name creation targets" $ go $
-          --   let
-          --     ei = [n|existingItem|]
-          --     doCreate = processTrcud' $ (trcudEmpty ns)
-          --       { trcudCreates = Map.singleton Root $ Map.singleton
-          --           [n|new|]
-          --           (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Right ei)
-          --       }
-          --   in do
-          --     basicArraySetup
-          --     doCreate >>= errorsOn Root
-          --     addBasicArrayItem ei 0
-          --     doCreate >>= succeeds
-
-          -- it "catches missing placeholder creation targets (naive)" $ go $
-          --   let
-          --     ph1 = [n|ph1|]
-          --     ph2 = [n|ph2|]
-          --   in do
-          --     basicArraySetup
-          --     res <- processTrcud' $ (trcudEmpty ns)
-          --       { trcudCreates = Map.singleton Root $ Map.singleton ph1
-          --           (Nothing, OpCreate [[someWv WtWord32 0]] $ Just $ Left ph2)
-          --       }
-          --     errorsOn Root res
-
-          -- it "catches missing placeholder creation targets (other failures)" $
-          --   go $ let
-          --     ph1 = [n|ph1|]
-          --     ph2 = [n|ph2|]
-          --   in do
-          --     basicArraySetup
-          --     res <- processTrcud' $ (trcudEmpty ns)
-          --       { trcudCreates = Map.singleton Root $ Map.fromList
-          --           [ ( ph1
-          --             , ( Nothing
-          --               , OpCreate [[someWv WtString "bad"]] Nothing))
-          --           , ( ph2
-          --             , ( Nothing
-          --               , OpCreate [[someWv WtWord32 0]] $ Just $ Left ph1))
-          --           ]
-          --       }
-          --     -- FIXME: We should have better introspection of errors for these
-          --     -- tests, because we should get both an error about the bad
-          --     -- validation for ph1 and the bad reference in ph2:
-          --     errorsOn Root res
-
         it "errors with extra data (struct)" $ go $ do
           res <- processTrcud' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
@@ -766,10 +681,119 @@ spec =
               Mol.singleton (PathError Root)
               "Array rearrangement operation on non-array")
 
-        describe "Array reordering" $ do
-          it "rejects array reorderings referencing missing members" $ pending
-          it "rejects cyclic array reordering targets" $ pending
-          it "accepts valid array reordings" $ pending
+        describe "Array reordering" $
+          let
+            editableArraySetup = do
+              res <- processTrpd $ (trpdEmpty ns)
+                { trpdDefs = Map.fromList
+                    [ (rootDn, OpDefine $ structDef "some struct" $
+                        AL.singleton [n|array|] ([n|earray|], Editable))
+                    , ([n|earray|], OpDefine $ arrayDef "editable array"
+                        (Just [n|postW32|]) [n|w32|] Editable)
+                    , ([n|w32|], OpDefine w32Tup)
+                    ]
+                , trpdPostDefs = Map.singleton [n|postW32|] $ OpDefine $
+                    PostDefinition "Post me a Word" $ AL.singleton
+                    [n|theWord|] [w32Ty]
+                , trpdData = AL.fromList
+                    [ ([pathq|/array/foo|], ConstChange Nothing [someWv WtWord32 0])
+                    ]
+                }
+              succeeds res
+           in do
+              it "catches missing placeholder targets (naive)" $ go $ do
+                editableArraySetup
+                res <- processTrcud' $ (trcudEmpty ns)
+                  { trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
+                      (Right [n|foo|])
+                      (Nothing, SoAfter $ Just $ Left [n|bar|])
+                  }
+                errorsOn [pathq|/array|] res
+              it "catches missing placeholder targets (other failures)" $ go $ do
+                editableArraySetup
+                res <- processTrcud' $ (trcudEmpty ns)
+                  {  trcudCreates = Map.singleton [pathq|/array|] $
+                      Map.singleton [n|bar|]
+                        (Nothing, OpCreate [[someWv WtString "wrong type"]])
+
+                  ,  trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
+                      (Right [n|foo|])
+                      (Nothing, SoAfter $ Just $ Left [n|bar|])
+                  }
+              -- FIXME: We should have better introspection of errors for these
+              -- tests, because we should get both an error about the bad
+              -- validation for bar and the bad reference in ContOps:
+                errorsOn [pathq|/array|] res
+              it "rejects array reorderings referencing missing members" $ go $ do
+                editableArraySetup
+                res <- processTrcud' $ (trcudEmpty ns)
+                  { trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
+                      (Right [n|foo|])
+                      (Nothing, SoAfter $ Just $ Right [n|bar|])
+                  }
+                errorsOn [pathq|/array|] res
+              it "rejects cyclic array reordering targets" $ go $ do
+                editableArraySetup
+                a <- processTrpd $ (trpdEmpty ns)
+                  { trpdData = AL.fromList
+                    [
+                      ( [pathq|/array/foo|]
+                      , ConstChange Nothing [someWv WtWord32 0])
+                    ,
+                      ( [pathq|/array/bar|]
+                      , ConstChange Nothing [someWv WtWord32 1])
+                    ]
+                  }
+                res <- processTrcud' $ (trcudEmpty ns)
+                  { trcudContOps = Map.singleton [pathq|/array|] $ Map.fromList
+                    [
+                      ( Right [n|bar|]
+                      , (Nothing, SoAfter $ Just $ Right [n|foo|]))
+                    ,
+                      ( Right [n|foo|]
+                      , (Nothing, SoAfter $ Just $ Right [n|bar|]))
+                    ]
+                  }
+                errorsOn [pathq|/array|] res
+                -- errorsOn [pathq|/array|] res
+              it "rejects duplicate target references" $ go $ do
+                editableArraySetup
+                a <- processTrpd $ (trpdEmpty ns)
+                  { trpdData = AL.fromList
+                    [
+                      ( [pathq|/array/foo|]
+                      , ConstChange Nothing [someWv WtWord32 0])
+                    ,
+                      ( [pathq|/array/bar|]
+                      , ConstChange Nothing [someWv WtWord32 1])
+                    ,
+                      ( [pathq|/array/baz|]
+                      , ConstChange Nothing [someWv WtWord32 1])
+                    ]
+                  }
+                res <- processTrcud' $ (trcudEmpty ns)
+                  { trcudContOps = Map.singleton [pathq|/array|] $ Map.fromList
+                    [
+                      ( Right [n|baz|]
+                      , (Nothing, SoAfter $ Just $ Right [n|foo|]))
+                    ,
+                      ( Right [n|bar|]
+                      , (Nothing, SoAfter $ Just $ Right [n|foo|]))
+                    ]
+                  }
+                errorsOn [pathq|/array|] res
+              it "accepts valid array reordings" $ go $ do
+                editableArraySetup
+                res <- processTrcud' $ (trcudEmpty ns)
+                  {  trcudCreates = Map.singleton [pathq|/array|] $
+                      Map.singleton [n|bar|]
+                        (Nothing, OpCreate [[someWv WtWord32 1]])
+
+                  ,  trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
+                      (Right [n|foo|])
+                      (Nothing, SoAfter $ Just $ Left [n|bar|])
+                  }
+                succeeds res
 
         describe "Cross reference validation" $ do
           it "catches references to invalid types" $ go $ do
