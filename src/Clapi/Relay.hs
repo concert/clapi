@@ -64,7 +64,7 @@ import Clapi.Valuespace
   ( Valuespace, ProviderError, baseValuespace
   , lookupPostDef, lookupDef, pathNode, pathTyInfo
   , processTrpd, processTrcud)
-
+import Clapi.Valuespace.Errors (errText)
 
 newtype SemigroupMap k v = SemigroupMap {unSemigroupMap :: Map k v}
 
@@ -287,7 +287,7 @@ handleTrcud i trcud = use (rsVsMap . at ns) >>= \case
         then throwOutProvider i ns "Acted as client on own namespace"
         else do
           (errs, frpd) <- processTrcud trcud vs
-          sendBackErrors errs
+          sendBackErrors (fmap errText errs)
           collectFrd ownerI frpd
   where
     ns = trcudNs trcud

@@ -56,8 +56,8 @@ import Clapi.Valuespace.Prim
 processTrcud
   :: Monad m
   => TrcUpdateDigest -> Valuespace
-  -> m (Mol DataErrorIndex Text, FrpDigest)
-processTrcud trcud vs = first (fmap errText) . fst
+  -> m (Mol DataErrorIndex ConsumerError, FrpDigest)
+processTrcud trcud vs = fst
   <$> Error.softRunErrsT (frpdEmpty $ trcudNs trcud) (processTrcud_ trcud) vs
 
 processTrcud_ :: Monad m => TrcUpdateDigest -> VsM' ConsumerError m FrpDigest
