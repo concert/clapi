@@ -203,7 +203,7 @@ handleTrpd i trpd = do
     go vs onSuccess = do
       (res, vs') <- runStateT (processTrpd trpd) vs
       case res of
-        Left errs -> throwOutProvider' i errs
+        Left errs -> throwOutProvider' i (fmap errText errs)
         Right frcud -> do
           regMap <- use rsRegs
           multicast $ filterFrcud frcud <$> regMap

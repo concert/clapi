@@ -67,8 +67,8 @@ import qualified Clapi.Valuespace.Xrefs as Xrefs
 processTrpd
   :: Monad m
   => TrpDigest
-  -> StateT Valuespace m (Either (Mol DataErrorIndex Text) FrcUpdateDigest)
-processTrpd trpd = fmap (first $ fmap errText) $ do
+  -> StateT Valuespace m (Either (Mol DataErrorIndex ProviderError) FrcUpdateDigest)
+processTrpd trpd = do
   initState <- get
   e <- errsStateT $ processTrpd_ trpd
   when (isLeft e) $ put initState
