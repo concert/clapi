@@ -22,8 +22,8 @@ import Clapi.Types.SymbolList
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace.Xrefs
 import Clapi.Valuespace.Errors
- ( ConsumerError(..), AccessError(..), StructuralError(..), SeqOpError(..)
- , ValidationError(..)
+ ( AccessError(..), ConsumerError(..), ProviderError(..), StructuralError(..)
+ , SeqOpError(..) , ValidationError(..)
  , errText)
 
 
@@ -165,4 +165,11 @@ instance Show (StructuralError) where
   show = Text.unpack . errText
 
 instance Show (ValidationError) where
+  show = Text.unpack . errText
+
+deriving instance Eq ProviderError
+deriving instance Eq (SeqOpError DataName)
+
+deriving instance Show ProviderError
+instance Show (SeqOpError DataName) where
   show = Text.unpack . errText
