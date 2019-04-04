@@ -563,7 +563,7 @@ spec =
           succeeds res
       in do
         it "validates baseValuespace with no changes" $ go $
-          processTrcud'' (trcudEmpty ns) >>= (`succeedsWith` frpdEmpty ns)
+          processTrcud' (trcudEmpty ns) >>= (`succeedsWith` frpdEmpty ns)
 
         describe "Write permissions" $ do
           it "prohibits data changes on read-only paths" $ go $ do
@@ -572,21 +572,21 @@ spec =
               , trpdData = AL.singleton Root $ ConstChange Nothing
                   [someWv WtWord32 4]
               }
-            res <- processTrcud'' $ (trcudEmpty ns)
+            res <- processTrcud' $ (trcudEmpty ns)
               { trcudData = AL.singleton Root $ ConstChange Nothing
                   [someWv WtWord32 5]
               }
             withErrorsOn [ReadOnlyEdit] Root res
 
             basicStructSetup
-            res' <- processTrcud'' $ (trcudEmpty ns)
+            res' <- processTrcud' $ (trcudEmpty ns)
               { trcudData = AL.singleton [pathq|/otherWord|] $ ConstChange Nothing
                   [someWv WtWord32 42]
               }
             withErrorsOn [ReadOnlyEdit] [pathq|/otherWord|] res'
 
             basicArraySetup' ReadOnly
-            res'' <- processTrcud'' $ (trcudEmpty ns)
+            res'' <- processTrcud' $ (trcudEmpty ns)
               { trcudData = AL.singleton [pathq|/otherWord|] $ ConstChange Nothing
                   [someWv WtWord32 42]
               }
@@ -606,7 +606,7 @@ spec =
                 }
               succeeds res
 
-              res' <- processTrcud'' $ (trcudEmpty ns)
+              res' <- processTrcud' $ (trcudEmpty ns)
                 { trcudContOps = Map.singleton Root $ Map.singleton (Right foo)
                     (Nothing, SoAfter $ Just $ Right bar)
                 }
@@ -615,7 +615,7 @@ spec =
 
         it "validates constant data changes" $ go $ do
           basicStructSetup
-          res <- processTrcud'' $ (trcudEmpty ns)
+          res <- processTrcud' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/myWord|] $ ConstChange Nothing
                 [someWv WtInt32 42]
             }
@@ -625,7 +625,7 @@ spec =
                   "Type mismatch: Cannot produce word32 from WtInt32")]
             [pathq|/myWord|] res
 
-          res' <- processTrcud'' $ (trcudEmpty ns)
+          res' <- processTrcud' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/myWord|] $ ConstChange Nothing
                 [someWv WtWord32 42]
             }
@@ -639,14 +639,14 @@ spec =
         describe "Create validation" $ do
           it "forbids creates on non-arrays" $ go $ do
             basicStructSetup
-            res <- processTrcud'' $ (trcudEmpty ns)
+            res <- processTrcud' $ (trcudEmpty ns)
               { trcudCreates = Map.singleton Root mempty
               }
             withErrorsOn [CreatesNotSupported] Root res
 
           it "catches bad create arguments" $ go $
             let
-              doCreate vals = processTrcud'' $ (trcudEmpty ns)
+              doCreate vals = processTrcud' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $
                     Map.singleton [n|new|]
                     (Nothing, OpCreate vals)
@@ -671,7 +671,7 @@ spec =
               doCreate [[someWv WtWord32 0]] >>= succeeds
 
         it "errors with extra data (struct)" $ go $ do
-          res <- processTrcud'' $ (trcudEmpty ns)
+          res <- processTrcud' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
                 [someWv WtString "Irrelevant"]
             }
@@ -680,7 +680,7 @@ spec =
 
         it "errors with extra data (array)" $ go $ do
           basicArraySetup
-          res <- processTrcud'' $ (trcudEmpty ns)
+          res <- processTrcud' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
                 [someWv WtWord32 0]  -- Good data for array
             }
@@ -691,7 +691,7 @@ spec =
         it "errors on struct reordering" $
           flip evalStateT (baseValuespace rootDn Editable) $ do
             basicStructSetup
-            res <- processTrcud'' $ (trcudEmpty ns)
+            res <- processTrcud' $ (trcudEmpty ns)
               { trcudContOps = Map.singleton Root
                   $ Map.singleton (Right [n|myWord|])
                   (Nothing, SoAfter $ Just $ Right [n|otherWord|])
@@ -722,7 +722,7 @@ spec =
            in do
               it "catches missing placeholder targets (naive)" $ go $ do
                 editableArraySetup
-                res <- processTrcud'' $ (trcudEmpty ns)
+                res <- processTrcud' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
                       (Right [n|foo|])
                       (Nothing, SoAfter $ Just $ Left [n|bar|])
@@ -735,7 +735,7 @@ spec =
                   res
               it "catches missing placeholder targets (other failures)" $ go $ do
                 editableArraySetup
-                res <- processTrcud'' $ (trcudEmpty ns)
+                res <- processTrcud' $ (trcudEmpty ns)
                   {  trcudCreates = Map.singleton [pathq|/array|] $
                       Map.singleton [n|bar|]
                         (Nothing, OpCreate [[someWv WtString "wrong type"]])
@@ -757,7 +757,7 @@ spec =
                 errorsOn [pathq|/array|] res
               it "rejects array reorderings referencing missing members" $ go $ do
                 editableArraySetup
-                res <- processTrcud'' $ (trcudEmpty ns)
+                res <- processTrcud' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
                       (Right [n|foo|])
                       (Nothing, SoAfter $ Just $ Right [n|bar|])
@@ -780,7 +780,7 @@ spec =
                       , ConstChange Nothing [someWv WtWord32 1])
                     ]
                   }
-                res <- processTrcud'' $ (trcudEmpty ns)
+                res <- processTrcud' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.fromList
                     [
                       ( Right [n|bar|]
@@ -813,7 +813,7 @@ spec =
                       , ConstChange Nothing [someWv WtWord32 1])
                     ]
                   }
-                res <- processTrcud'' $ (trcudEmpty ns)
+                res <- processTrcud' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.fromList
                     [
                       ( Right [n|baz|]
@@ -830,7 +830,7 @@ spec =
                   [pathq|/array|] res
               it "accepts valid array reordings" $ go $ do
                 editableArraySetup
-                res <- processTrcud'' $ (trcudEmpty ns)
+                res <- processTrcud' $ (trcudEmpty ns)
                   {  trcudCreates = Map.singleton [pathq|/array|] $
                       Map.singleton [n|bar|]
                         (Nothing, OpCreate [[someWv WtWord32 1]])
@@ -844,7 +844,7 @@ spec =
         describe "Cross reference validation" $ do
           it "catches references to invalid types" $ go $ do
             xrefSetup
-            res <- processTrcud'' $ (trcudEmpty ns)
+            res <- processTrcud' $ (trcudEmpty ns)
               { trcudData = AL.singleton (Root :/ referer) $
                   ConstChange Nothing [someWv WtString "/referee2"]
               }
@@ -859,11 +859,9 @@ spec =
     processTrcud'
       :: Monad m
       => TrcUpdateDigest
-      -> StateT Valuespace m (Either (Mol DataErrorIndex Text) FrpDigest)
+      -> StateT Valuespace m
+         (Either (Mol DataErrorIndex ConsumerError) FrpDigest)
     processTrcud' trcud = get >>= processTrcud trcud >>= \(errs, frpd) ->
-      -- FIXME: Might not want to cast this pair to an Either in the end
-      return $ if null errs then Right frpd else Left (fmap errText errs)
-    processTrcud'' trcud = get >>= processTrcud trcud >>= \(errs, frpd) ->
       -- FIXME: Might not want to cast this pair to an Either in the end
       return $ if null errs then Right frpd else Left errs
 
