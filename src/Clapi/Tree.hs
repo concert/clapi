@@ -7,19 +7,12 @@ module Clapi.Tree where
 
 import Prelude hiding (fail, lookup)
 import Control.Monad.Fail (MonadFail(..))
-import Control.Monad.State (State, get, put, modify, runState, state)
 import Data.Functor.Const (Const(..))
 import Data.Functor.Identity (Identity(..))
-import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Text (Text)
-import qualified Data.Text as Text
-
-import Data.Map.Mol (Mol)
-import qualified Data.Map.Mol as Mol
 
 import Clapi.Types
-  (Time, Interpolation(..), Attributee, SomeWireValue)
+  (Time, Interpolation(..), Attributee)
 import Clapi.Types.AssocList (AssocList(..))
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (TpId)
@@ -27,8 +20,6 @@ import Clapi.Types.Dkmap (Dkmap)
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (
     DataName, Path, pattern Root, pattern (:/), pattern (:</))
-import Clapi.Types.Digests
-  ( DataDigest, ContOps, DataChange(..), TimeSeriesDataOp(..))
 import Clapi.Types.SequenceOps
   (SequenceOp, DependencyOrdered, updateUniqList, unDependencyOrdered)
 

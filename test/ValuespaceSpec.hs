@@ -11,11 +11,9 @@ import Control.Lens (use)
 import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.State (StateT, liftIO, evalStateT, get)
-import Data.Bifunctor (first)
 import Data.Either (isRight)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.Text (Text)
 import Data.Word
 import Text.Printf (printf)
 
@@ -41,7 +39,6 @@ import Clapi.Types.SequenceOps (SequenceOp(..), DependencyError(..))
 import Clapi.Types.Tree (SomeTreeType, bounds, unbounded, ttWord32, ttRef)
 import Clapi.Types.Wire (someWv, WireType(..))
 import Clapi.Valuespace
-import Clapi.Valuespace.Errors (errText)
 
 -- FIXME: this should probably end up at Clapi.Valuespace[2].Internal
 import Clapi.Internal.Valuespace (vsTree, vsTyDefs)

@@ -8,16 +8,14 @@ module Clapi.Valuespace.Trcud
   ( processTrcud
   ) where
 
-import Control.Monad ((>=>), join, unless, void)
+import Control.Monad (join, unless, void)
 import Control.Monad.Except (MonadError, throwError)
-import Control.Monad.Writer (MonadWriter, tell)
 import Data.Bifunctor (bimap, first)
-import Data.Foldable (fold, foldl', toList)
+import Data.Foldable (toList)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Text (Text)
 
 import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos(..))
@@ -38,19 +36,19 @@ import Clapi.Types.SequenceOps
   ( SequenceOp(..), unDependencyOrdered, dependencyOrder')
 import Clapi.Types.Name (DataName, Placeholder)
 import Clapi.Types.Path (Path)
-import Clapi.Util (strictZipWith, fmtStrictZipError, justs, lefts)
+import Clapi.Util (strictZipWith, fmtStrictZipError)
 import Clapi.Validator (TypeAssertion, validateValues)
 
 import Clapi.Internal.Valuespace (Valuespace, EPS)
 import Clapi.Valuespace.Common (updatePathData, checkTypeAssertions)
 import Clapi.Valuespace.Errors
-  ( ErrText(..), AccessError(..), ConsumerError(..), ErrorString(..)
+  ( AccessError(..), ConsumerError(..), ErrorString(..)
   , SeqOpError(..)  , StructuralError(..), ValidationError(..)
   , ConsumerDependencyError)
 import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw, liftExcept)
 import Clapi.Valuespace.Prim
   ( VsM', pathChildren, pathDef, pathPostDef, pathExists, pathEditability
-  , pathError, pathErrors, castSingleErr)
+  , pathError, pathErrors)
 
 
 processTrcud

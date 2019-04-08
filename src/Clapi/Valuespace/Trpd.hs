@@ -20,7 +20,6 @@ import Data.Map.Merge.Strict
   )
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Text (Text)
 import Text.Printf (printf)
 
 import qualified Data.Map.Dependencies as Dependencies
@@ -54,7 +53,7 @@ import Clapi.Internal.Valuespace
   , vsRootDefName, vsTree, vsTyDefs, vsPostDefs, vsTyAssns, vsTac)
 import Clapi.Valuespace.Common (updatePathData, validateTupleValues)
 import Clapi.Valuespace.Errors
-  ( ErrText(..), AccessError(..), ErrorString(..), ProviderError(..)
+  ( AccessError(..), ErrorString(..), ProviderError(..)
   , StructuralError(..), ValidationError(..), ProviderDependencyError)
 import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw, liftExcept)
 import Clapi.Valuespace.Prim
