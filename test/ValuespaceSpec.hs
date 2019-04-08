@@ -594,12 +594,6 @@ spec =
 
         basicArraySetup = basicArraySetup' Editable
 
-        addBasicArrayItem name value = do
-          res <- processTrpd $ (trpdEmpty ns)
-            { trpdData = AL.singleton (Root :/ name) $
-                ConstChange Nothing [someWv WtWord32 value]
-            }
-          succeeds res
       in do
         it "validates baseValuespace with no changes" $ go $
           processTrcud' (trcudEmpty ns) >>= (`succeedsWith` frpdEmpty ns)
@@ -808,7 +802,7 @@ spec =
                   res
               it "rejects cyclic array reordering targets" $ go $ do
                 editableArraySetup
-                a <- processTrpd $ (trpdEmpty ns)
+                _ <- processTrpd $ (trpdEmpty ns)
                   { trpdData = AL.fromList
                     [
                       ( [pathq|/array/foo|]
@@ -838,7 +832,7 @@ spec =
                   res
               it "rejects duplicate target references" $ go $ do
                 editableArraySetup
-                a <- processTrpd $ (trpdEmpty ns)
+                _ <- processTrpd $ (trpdEmpty ns)
                   { trpdData = AL.fromList
                     [
                       ( [pathq|/array/foo|]
