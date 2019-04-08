@@ -57,7 +57,7 @@ spec =
     referee1 = [n|referee1|]
     referee2 = [n|referee2|]
     xrefSetup = do
-      res <- processTrpd' $ (trpdEmpty ns)
+      res <- processTrpd $ (trpdEmpty ns)
         { trpdDefs = Map.fromList
             [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
                 [ (referer, (referer, Editable))
@@ -84,10 +84,10 @@ spec =
   in do
     describe "processTrpd" $ do
       it "validates baseValuespace with no changes" $ go $
-         processTrpd' (trpdEmpty ns) >>= (`succeedsWith` frcudEmpty ns)
+         processTrpd (trpdEmpty ns) >>= (`succeedsWith` frcudEmpty ns)
 
       it "validates constant data changes" $ go $ do
-         res <- processTrpd' $ (trpdEmpty ns)
+         res <- processTrpd $ (trpdEmpty ns)
            { trpdDefs = Map.singleton rootDn $ OpDefine $ boundedW32Tup 3 5
            , trpdData = AL.singleton Root $ ConstChange Nothing
               [someWv WtWord32 4]
@@ -97,18 +97,21 @@ spec =
            , frcudData = AL.singleton Root $ ConstChange Nothing
                [someWv WtWord32 4]
            }
-         res' <- processTrpd' $ (trpdEmpty ns)
+         res' <- processTrpd $ (trpdEmpty ns)
            { trpdData = AL.singleton Root $ ConstChange Nothing
               [someWv WtWord32 7]
            }
-         errorsOn Root res'
+         withErrorsOn
+           [ PEValidationError $ DataValidationError "7 is not <= 5" ]
+           Root
+           res'
 
       describe "time series changes" $
         let
           mkTpSet i =
             (i, (Nothing, OpSet (Time 0 i) [someWv WtWord32 i] IConstant))
           setup = do
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $ OpDefine w32Ts
               , trpdData = AL.singleton Root $ TimeChange $ Map.fromList
                  [mkTpSet 0, mkTpSet 1, mkTpSet 2]
@@ -121,43 +124,54 @@ spec =
         in do
           it "validates data" $ go $ do
             setup
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdData = AL.singleton Root $ TimeChange $ Map.singleton 1
                   (Nothing, OpSet (Time 0 1) [someWv WtWord32 7] IConstant)
               }
-            errorsOnTp Root 1 res
+            withErrorsOnTp
+              [ PEValidationError $ DataValidationError "7 is not <= 5" ]
+              Root 1 res
 
           it "validates interpolation" $ go $ do
             setup
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdData = AL.singleton Root $ TimeChange $ Map.singleton 2
                   (Nothing, OpSet (Time 0 2) [someWv WtWord32 2] $ IBezier 0 0)
               }
-            errorsOnTp Root 2 res
+            withErrorsOnTp
+              [ PEValidationError $ BadInterpolationType ItBezier (Just ItLinear)]
+              Root 2 res
 
           it "catches overlapping time points" $ go $ do
             setup
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdData = AL.singleton Root $ TimeChange $ Map.singleton 0
                   (Nothing, OpSet (Time 0 1) [someWv WtWord32 2] $ IConstant)
               }
-            errorsOnTp Root 0 res
+            withErrorsOnTp
+              [PEErrorString "Duplicate k1"]
+              Root 0 res
 
       it "(re)validates data on type changes" $ go $ do
         let trpd = (trpdEmpty ns)
               {trpdDefs = Map.singleton rootDn $ OpDefine w32Tup}
-        res <- processTrpd' trpd
-        errorsOn Root res
+        res <- processTrpd trpd
+        withErrorsOn
+          [PEStructuralError UnexpectedNodeType] Root res
 
         let trpd' = trpd
               {trpdData = AL.singleton Root $
                 ConstChange Nothing [someWv WtWord64 1]}
-        res' <- processTrpd' trpd'
-        errorsOn Root res'
+        res' <- processTrpd trpd'
+        withErrorsOn
+          [ PEValidationError $
+              DataValidationError "Type mismatch: Cannot produce word32 from WtWord64"
+          ]
+          Root res'
 
         let change = AL.singleton Root $ ConstChange Nothing [someWv WtWord32 1]
         let trpd'' = trpd {trpdData = change}
-        res'' <- processTrpd' trpd''
+        res'' <- processTrpd trpd''
         succeedsWith res'' $ (frcudEmpty ns)
           { frcudDefs = Map.singleton rootDn $ OpDefine w32Tup
           , frcudData = change
@@ -172,7 +186,7 @@ spec =
           w32Dn = [n|w32|] :: DefName
 
           setupStruct = do
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.fromList
                  [ (rootDn, OpDefine $ structDef "some struct" $ AL.fromList
                      [ (common, (w32Dn, ReadOnly))
@@ -189,7 +203,7 @@ spec =
             succeeds res
 
           setupArray = do
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.fromList
                   [ (rootDn, OpDefine $
                       arrayDef "some array" Nothing w32Dn ReadOnly)
@@ -204,7 +218,7 @@ spec =
         in do
           it "struct -> struct" $ go $ do
             setupStruct
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $
                   OpDefine $ structDef "new struct" $ AL.fromList
                     [ (foo, (w32Dn, ReadOnly))
@@ -218,7 +232,7 @@ spec =
 
           it "struct -> array" $ go $ do
             setupStruct
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $
                   OpDefine $ arrayDef "new array" Nothing w32Dn ReadOnly
               }
@@ -229,7 +243,7 @@ spec =
 
           it "array -> struct" $ go $ do
             setupArray
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.singleton rootDn $
                   OpDefine $ structDef "new struct" $ AL.fromList
                     [ (foo, (w32Dn, ReadOnly))
@@ -247,12 +261,12 @@ spec =
         let
           superfluousDn = [n|superfluous|] :: DefName
         in do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton superfluousDn $ OpDefine w32Tup
             }
           succeeds res
 
-          res' <- processTrpd' $ (trpdEmpty ns)
+          res' <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton superfluousDn OpUndefine
             }
           succeeds res'
@@ -265,7 +279,7 @@ spec =
           foo = [n|foo|]
           w32Dn = [n|w32|] :: DefName
         in do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "some struct" $ AL.singleton foo
                     (w32Dn, ReadOnly))
@@ -276,7 +290,7 @@ spec =
             }
           succeeds res
 
-          res' <- processTrpd' $ (trpdEmpty ns)
+          res' <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (w32Dn, OpUndefine)
                 , (rootDn, OpDefine $ structDef "empty struct" mempty)
@@ -289,7 +303,7 @@ spec =
           foo = [n|foo|]
           w32Dn = [n|w32|] :: DefName
         in do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "some struct" $ AL.singleton foo
                     (w32Dn, ReadOnly))
@@ -300,10 +314,12 @@ spec =
             }
           succeeds res
 
-          res' <- processTrpd' $ (trpdEmpty ns)
+          res' <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton w32Dn OpUndefine
             }
-          errors GlobalError res'
+          withErrors
+            GlobalError [ PEAccessError $ DefNotFound [n|w32|]]
+            res'
 
 
       it "errors on struct with missing child" $ go $
@@ -319,18 +335,22 @@ spec =
                ]
             }
         in do
-          res <- processTrpd' trpd
+          res <- processTrpd trpd
           noErrorsOn Root res
-          errorsOn [pathq|/foo|] res
-          errorsOn [pathq|/bar|] res
+          withErrorsOn
+            [PEAccessError NodeNotFound] [pathq|/foo|] res
+          withErrorsOn
+            [PEAccessError NodeNotFound] [pathq|/bar|] res
 
-          res' <- processTrpd' $ trpd
+          res' <- processTrpd $ trpd
             { trpdData = AL.singleton [pathq|/foo|] $
                 ConstChange Nothing [someWv WtWord32 17] }
           noErrorsOn Root res'
-          errorsOn [pathq|/bar|] res'
+          noErrorsOn [pathq|/foo|] res'
+          withErrorsOn
+            [PEAccessError NodeNotFound] [pathq|/bar|] res
 
-          res'' <- processTrpd' $ trpd
+          res'' <- processTrpd $ trpd
             { trpdData = AL.fromList
               [ ([pathq|/foo|], ConstChange Nothing [someWv WtWord32 17])
               , ([pathq|/bar|], ConstChange Nothing [someWv WtWord32 18])
@@ -339,10 +359,11 @@ spec =
           succeeds res''
 
       it "errors with extra data" $ go $ do
-        res <- processTrpd' $ (trpdEmpty ns)
+        res <- processTrpd $ (trpdEmpty ns)
           { trpdData = AL.singleton [pathq|/foo|] $ ConstChange Nothing []
           }
-        errorsOn [pathq|/foo|] res
+        withErrorsOn
+          [PEErrorString "Invalid struct child"] [pathq|/foo|] res
 
       describe "Container ordering" $
         let
@@ -351,7 +372,7 @@ spec =
           w32Dn = [n|w32Dn|] :: DefName
 
           arraySetup = do
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.fromList
                   [ ( rootDn
                     , OpDefine $ arrayDef "some array" Nothing w32Dn ReadOnly)
@@ -366,7 +387,7 @@ spec =
             rootChildrenShouldBe [foo, bar]
         in do
           it "forbids struct reordering" $ go $ do
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdDefs = Map.fromList
                   [ (rootDn, OpDefine $ structDef "some struct" $ AL.fromList
                       [ (foo, (w32Dn, ReadOnly))
@@ -382,15 +403,16 @@ spec =
               }
             succeeds res
 
-            res' <- processTrpd' $ (trpdEmpty ns)
+            res' <- processTrpd $ (trpdEmpty ns)
               {  trpdContOps = Map.singleton Root $ Map.singleton foo
                    (Nothing, SoAfter $ Just bar)
               }
-            errorsOn Root res'
+            withErrorsOn
+              [PEStructuralError SeqOpsOnNonArray] Root res'
 
           it "handles array reordering" $ go $ do
             arraySetup
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdContOps = Map.singleton Root $ Map.singleton foo
                   (Nothing, SoAfter $ Just bar)
               }
@@ -399,32 +421,40 @@ spec =
 
           it "catches missing reorder targets" $ go $ do
             arraySetup
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdContOps = Map.singleton Root $ Map.singleton foo
                   (Nothing, SoAfter $ Just [n|tosh|])
               }
-            errorsOn Root res
+            withErrorsOn
+              [PEErrorString "Preceeding element not found for move"] Root res
 
           it "catches circular reorder target references" $ go $ do
             arraySetup
-            res <- processTrpd' $ (trpdEmpty ns)
+            res <- processTrpd $ (trpdEmpty ns)
               { trpdContOps = Map.singleton Root $ Map.fromList
                   [ (foo, (Nothing, SoAfter $ Just bar))
                   , (bar, (Nothing, SoAfter $ Just foo))
                   ]
               }
-            errorsOn Root res
+            withErrorsOn
+              [ PEDependencyError $
+                  CyclicReferences
+                    [[ ([n|foo|], Just [n|bar|])
+                     , ([n|bar|], Just [n|foo|])
+                    ]]
+              ] Root res
 
       describe "Recursive struct definitions" $ let r = [n|r|] in do
         it "rejected in a direct loop" $ timeLimit 1 $ go $ do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.singleton rootDn $ OpDefine $
                 structDef "Recursive!" $ AL.singleton r (rootDn, ReadOnly)
             }
-          errors GlobalError res
+          withErrors GlobalError
+            [CircularStructDefinitions [[n|root|], [n|root|]]] res
 
         it "rejected in an indirect loop" $ timeLimit 1 $ go $ do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "rec1" $
                     AL.singleton r (r, ReadOnly))
@@ -432,10 +462,11 @@ spec =
                     AL.singleton r (rootDn, ReadOnly))
                 ]
             }
-          errors GlobalError res
+          withErrors GlobalError
+            [CircularStructDefinitions [[n|root|], r, [n|root|]]] res
 
         it "rejected below an array" $ timeLimit 1 $ go $ do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
            { trpdDefs = Map.fromList
                [ (rootDn, OpDefine $
                    arrayDef "rec below" Nothing r ReadOnly)
@@ -443,10 +474,11 @@ spec =
                    AL.singleton r (r, ReadOnly))
                ]
            }
-          errors GlobalError res
+          withErrors GlobalError
+            [CircularStructDefinitions [r, r]] res
 
         it "accepted if mediated by an array" $ timeLimit 1 $ go $ do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "rec1" $
                     AL.singleton r (r, ReadOnly))
@@ -462,19 +494,22 @@ spec =
         -- FIXME: we need to do all this again for time series ;-)
         it "catches reference to invalid paths" $ go $ do
           xrefSetup
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdData = AL.singleton (Root :/ referer) $
                 ConstChange Nothing [someWv WtString "/bad"]
             }
-          errorsOn (Root :/ referer) res
+          withErrorsOn
+            [PEErrorString "Invalid struct child"] [pathq|/referer|] res
 
         it "catches references to invalid types" $ go $ do
           xrefSetup
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdData = AL.singleton (Root :/ referer) $
                 ConstChange Nothing [someWv WtString "/referee2"]
             }
-          errorsOn (Root :/ referer) res
+          withErrorsOn
+            [PEValidationError $ XRefError referee1 referee2]
+            [pathq|/referer|] res
 
         it "catches referer type change" $ go $
           let
@@ -486,10 +521,12 @@ spec =
               }
           in do
             xrefSetup
-            res <- processTrpd' trpd
-            errorsOn (Root :/ referer) res
+            res <- processTrpd trpd
+            withErrorsOn
+              [PEValidationError $ XRefError referee2 referee1]
+              [pathq|/referer|] res
 
-            res' <- processTrpd' $ trpd
+            res' <- processTrpd $ trpd
               { trpdData = AL.singleton (Root :/ referer) $
                   ConstChange Nothing [someWv WtString "/referee2"]
               }
@@ -506,10 +543,14 @@ spec =
             trpd = (trpdEmpty ns) { trpdDefs = defs }
           in do
             xrefSetup
-            res <- processTrpd' trpd
-            errorsOn (Root :/ referer) res
+            res <- processTrpd trpd
+            withErrorsOn
+              [ PEValidationError $ XRefError referee1 referee2
+              , PEValidationError $ XRefError referee1 referee2
+              ]
+              [pathq|/referer|] res
 
-            res' <- processTrpd' trpd
+            res' <- processTrpd trpd
               { trpdDefs = defs <> (Map.singleton referer $
                   OpDefine $ tupleDef "referer"
                     (AL.singleton [n|r|] $ ttRef referee2)
@@ -526,7 +567,7 @@ spec =
     describe "processTrcud" $
       let
         basicStructSetup = do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ structDef "root" $ AL.fromList
                     [ ([n|myWord|], ([n|w32|], Editable))
@@ -542,7 +583,7 @@ spec =
           succeeds res
 
         basicArraySetup' editability = do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdDefs = Map.fromList
                 [ (rootDn, OpDefine $ arrayDef "root"
                     (Just [n|postW32|]) [n|w32|] editability)
@@ -557,7 +598,7 @@ spec =
         basicArraySetup = basicArraySetup' Editable
 
         addBasicArrayItem name value = do
-          res <- processTrpd' $ (trpdEmpty ns)
+          res <- processTrpd $ (trpdEmpty ns)
             { trpdData = AL.singleton (Root :/ name) $
                 ConstChange Nothing [someWv WtWord32 value]
             }
@@ -599,7 +640,7 @@ spec =
               bar = [n|bar|]
             in do
               basicArraySetup  -- Root is defined as read-only
-              res <- processTrpd' $ (trpdEmpty ns)
+              res <- processTrpd $ (trpdEmpty ns)
                 { trpdData = AL.fromList
                     [ (Root :/ foo, ConstChange Nothing [someWv WtWord32 0])
                     , (Root :/ bar, ConstChange Nothing [someWv WtWord32 1])
@@ -704,7 +745,7 @@ spec =
         describe "Array reordering" $
           let
             editableArraySetup = do
-              res <- processTrpd' $ (trpdEmpty ns)
+              res <- processTrpd $ (trpdEmpty ns)
                 { trpdDefs = Map.fromList
                     [ (rootDn, OpDefine $ structDef "some struct" $
                         AL.singleton [n|array|] ([n|earray|], Editable))
@@ -865,8 +906,6 @@ spec =
     processTrcud' trcud = get >>= processTrcud trcud >>= \(errs, frpd) ->
       -- FIXME: Might not want to cast this pair to an Either in the end
       return $ if null errs then Right frpd else Left errs
-    processTrpd' trpd = fmap (first $ fmap errText) (processTrpd trpd)
-
     rootChildrenShouldBe expected = do
       children <- Tree.childNames <$> use vsTree
       liftIO $ children `shouldBe` expected
