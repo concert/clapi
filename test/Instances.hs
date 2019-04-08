@@ -154,22 +154,11 @@ deriving instance Eq AccessError
 deriving instance Eq StructuralError
 deriving instance Eq ValidationError
 
-deriving instance Show ConsumerError
-instance Show (SeqOpError EPS) where
-  show = Text.unpack . errText
-
-instance Show (AccessError) where
-  show = Text.unpack . errText
-
-instance Show (StructuralError) where
-  show = Text.unpack . errText
-
-instance Show (ValidationError) where
+instance Show ConsumerError where
   show = Text.unpack . errText
 
 deriving instance Eq ProviderError
 deriving instance Eq (SeqOpError DataName)
 
-deriving instance Show ProviderError
-instance Show (SeqOpError DataName) where
+instance Show ProviderError where
   show = Text.unpack . errText
