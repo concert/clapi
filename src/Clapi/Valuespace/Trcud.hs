@@ -8,60 +8,62 @@ module Clapi.Valuespace.Trcud
   ( processTrcud
   ) where
 
-import Control.Monad ((>=>), join, unless, void)
+import Control.Monad (join, unless, void)
 import Control.Monad.Except (MonadError, throwError)
-import Control.Monad.Writer (MonadWriter, tell)
 import Data.Bifunctor (bimap, first)
-import Data.Foldable (fold, foldl', toList)
+import Data.Foldable (toList)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Text (Text)
 
 import Data.Map.Mol (Mol)
 import Data.Map.Mos (Mos(..))
 import qualified Data.Map.Mos as Mos
 
+import Clapi.Types.AssocList (AssocList)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (Attributee)
 import Clapi.Types.Definitions
   ( Definition(..), SomeDefinition(..), PostDefinition(..), Editability(..))
 import Clapi.Types.Digests
-  ( DataErrorIndex, ContOps, DataChange, Creates, CreateOp(..), DataDigest
+  ( DataErrorIndex, ContOps, OrderedContOps, DataChange, Creates, CreateOp(..)
+  , DataDigest
   , TrDigest(..), TrcUpdateDigest, FrDigest(..), FrpDigest, frpdEmpty)
 import Clapi.Types.Error (ErrsT, eitherThrow)
 import qualified Clapi.Types.Error as Error
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps
+  ( SequenceOp(..), unDependencyOrdered, dependencyOrder')
 import Clapi.Types.Name (DataName, Placeholder)
 import Clapi.Types.Path (Path)
-import Clapi.Util (strictZipWith, fmtStrictZipError, justs, lefts)
+import Clapi.Util (strictZipWith, fmtStrictZipError)
 import Clapi.Validator (TypeAssertion, validateValues)
 
 import Clapi.Internal.Valuespace (Valuespace, EPS)
 import Clapi.Valuespace.Common (updatePathData, checkTypeAssertions)
 import Clapi.Valuespace.Errors
-  ( ErrText(..), AccessError(..), ConsumerError(..), ErrorString, SeqOpError(..)
-  , StructuralError(..), ValidationError(..))
-import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw)
+  ( AccessError(..), ConsumerError(..), ErrorString(..)
+  , SeqOpError(..)  , StructuralError(..), ValidationError(..)
+  , ConsumerDependencyError)
+import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw, liftExcept)
 import Clapi.Valuespace.Prim
   ( VsM', pathChildren, pathDef, pathPostDef, pathExists, pathEditability
-  , pathError, pathErrors, castSingleErr)
+  , pathError, pathErrors)
 
 
 processTrcud
   :: Monad m
   => TrcUpdateDigest -> Valuespace
-  -> m (Mol DataErrorIndex Text, FrpDigest)
-processTrcud trcud vs = first (fmap errText) . fst
+  -> m (Mol DataErrorIndex ConsumerError, FrpDigest)
+processTrcud trcud vs = fst
   <$> Error.softRunErrsT (frpdEmpty $ trcudNs trcud) (processTrcud_ trcud) vs
 
 processTrcud_ :: Monad m => TrcUpdateDigest -> VsM' ConsumerError m FrpDigest
 processTrcud_ (Trcud ns dat crs cops) = do
   (newPhs, crs') <- guardCreates crs
   dat' <- guardClientUpdates dat
-  cops' <- guardClientCops newPhs cops
-  return $ Frpd ns dat' crs' cops'
+  orderedCops <- guardClientCops newPhs cops
+  return $ Frpd ns dat' crs' orderedCops
 
 type PathCreates = Map Placeholder (Maybe Attributee, CreateOp)
 
@@ -79,7 +81,7 @@ guardCreates = fmap output . Error.filterErrs . Map.mapWithKey perPath
       pd <- pathError p $ pathPostDef p
       pathErrors p $ validateCreates p pd m
 
-    output :: Map Path PathCreates -> (Mos Path Placeholder, Creates)
+    output :: Creates -> (Mos Path Placeholder, Creates)
     output m = (Mos.fromMap $ Map.keysSet <$> m, m)
 
 guardReadOnly
@@ -114,18 +116,18 @@ guardClientUpdates = Error.filterErrs . AL.fmapWithKey atPath
 guardClientCops
   :: ( Errs
        '[ SeqOpError EPS, ErrorString, AccessError, ConsumerError
-        , StructuralError] e
+        , StructuralError, ConsumerDependencyError] e
      , Monad m)
-  => Mos Path Placeholder -> ContOps EPS -> VsM' e m (ContOps EPS)
+  => Mos Path Placeholder -> ContOps EPS -> VsM' e m (OrderedContOps EPS)
 guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
   where
     perPath
       :: (Errs
           '[ ErrorString, AccessError, ConsumerError, SeqOpError EPS
-           , StructuralError] e
+           , StructuralError, ConsumerDependencyError] e
          , Monad m)
-      => Path -> Map DataName (x, SequenceOp EPS)
-      -> VsM' e m (Map DataName (x, SequenceOp EPS))
+      => Path -> Map EPS (x, SequenceOp EPS)
+      -> VsM' e m (AssocList EPS (x, SequenceOp EPS))
     perPath p m = do
       guardReadOnly ReadOnlySeqOps p
       SomeDefinition def <- pathError p $ pathDef p
@@ -133,18 +135,22 @@ guardClientCops pphs = Error.filterErrs . Map.mapWithKey perPath
         ArrayDef {} -> do
           kids <- pathError p $ Set.fromList <$> pathChildren p
           pathErrors p $ doFilter (validateCop kids $ Mos.lookup p pphs) m
+          pathError p $ unDependencyOrdered
+            <$> liftExcept (dependencyOrder' snd m)
         _ -> pathError p $ throw $ SeqOpsOnNonArray
 
+    -- FIXME: it would be nice to re-use this validation for the Provider
+    -- checking too:
     validateCop
       :: (Wraps (SeqOpError EPS) e, MonadError [e] m)
-      => Set DataName -> Set Placeholder -> DataName -> (x, SequenceOp EPS)
-      -> m ()
+      => Set DataName -> Set Placeholder -> EPS -> (x, SequenceOp EPS) -> m ()
     validateCop kids phs kidToChange (_, so) =
+      let allKids = Set.mapMonotonic Right kids <> Set.mapMonotonic Left phs in
       case so of
         SoAfter (Just t) -> do
-          unless (kidToChange `Set.member` kids) $
+          unless (kidToChange `Set.member` allKids) $
             throwError $ wrap <$> [SeqOpMovedMissingChild @EPS kidToChange]
-          unless (either (`Set.member` phs) (`Set.member` kids) t) $
+          unless (t `Set.member` allKids) $
             throwError $ wrap <$> [SeqOpTargetMissing @EPS kidToChange t]
         -- It doesn't matter if the client removed something that's already
         -- gone:
@@ -155,11 +161,8 @@ validateCreates
   :: ( Errs '[AccessError, ConsumerError, ErrorString, ValidationError] e
      , Monad m)
   => Path -> PostDefinition -> PathCreates -> ErrsT Valuespace [e] m PathCreates
-validateCreates p pdef pCrs = do
-    pCrsWithValidVals <-
-      doFilter (\_ph (_att, cr) -> validateCreateValues pdef cr) pCrs
-    kids <- castSingleErr $ Set.fromList <$> pathChildren p
-    sortOutAfterDeps kids pCrsWithValidVals
+validateCreates p pdef = Error.filterErrs . Map.mapWithKey
+  (\_ph x@(_att, cr) -> validateCreateValues pdef cr >> return x)
 
 validateCreateValues
   :: (Errs '[AccessError, ErrorString, ValidationError] e, Monad m)
@@ -189,96 +192,3 @@ doFilter
     :: (Monoid e, Monad m)
     => (k -> a -> ErrsT s e m b) -> Map k a -> ErrsT s e m (Map k a)
 doFilter f = Error.filterErrs . Map.mapWithKey (\k a -> f k a >> return a)
-
-
--- FIXME: Rename?
-sortOutAfterDeps
-  :: (Errs '[ConsumerError] e, Monad m)
-  => Set DataName -> PathCreates -> ErrsT s [e] m PathCreates
-sortOutAfterDeps existingKids =
-      filterDuplicateTargets >=> filterCycles >=> filterMissingNames
-  where
-    filterDuplicateTargets
-      :: (Errs '[ConsumerError] e, MonadWriter [e] m)
-      => PathCreates -> m PathCreates
-    filterDuplicateTargets pCrs =
-      let
-        duplicates :: Map (Maybe EPS) (Set Placeholder)
-        duplicates = Map.filter ((> 1) . Set.size) $ unMos $
-          Mos.invertMap $ ocAfter . snd <$> pCrs
-      in do
-        _ <- sequence $ Map.mapWithKey
-          (\targ phs -> tell [wrap $ MultipleCreatesReferencedTarget phs targ])
-          duplicates
-        return $ pCrs `Map.withoutKeys` fold duplicates
-
-    filterCycles
-      :: (Errs '[ConsumerError] e, MonadWriter [e] m)
-      => PathCreates -> m PathCreates
-    filterCycles pCrs =
-      let
-        badEdges = detectCycles . Set.fromList
-          . Map.toList . lefts . justs $ ocAfter . snd <$> pCrs
-        cycles = reverse
-          . (\(from, _to) -> followCycle [from] from from)
-          <$> badEdges
-        followCycle acc ph stopAt = case Map.lookup ph pCrs of
-          Just (_, OpCreate _ (Just (Left ph'))) ->
-            if ph' == stopAt then acc else followCycle (ph' : acc) ph' stopAt
-          -- Only PHs should be able to form cycles, so we should never hit this
-          -- case:
-          _ -> acc
-        badPhs = mconcat $ Set.fromList <$> cycles
-      in do
-        mapM_ (tell . pure . wrap . CyclicReferencesInCreates) cycles
-        return $ pCrs `Map.withoutKeys` badPhs
-
-    partitionOnAfter
-      :: (Maybe EPS -> Bool) -> PathCreates -> (PathCreates, PathCreates)
-    partitionOnAfter f = Map.partition (f . ocAfter . snd)
-
-    filterMissingNames
-      :: (Errs '[ConsumerError] e, MonadWriter [e] m)
-      => PathCreates -> m PathCreates
-    filterMissingNames pCrs =
-      let
-        (roots, dependants) = partitionOnAfter
-          (maybe True (either (`Map.notMember` pCrs) (const True))) pCrs
-        (validRoots, invalidRoots) = partitionOnAfter
-          (maybe True (either (const False) (`Set.member` existingKids))) roots
-      in do
-        _ <- sequence $ Map.mapWithKey
-          (\ph (_, crop) -> tell $ maybe
-            []  -- `Nothing` is always a valid root
-            (pure . wrap . MissingCreatePositionTarget ph) $
-            ocAfter crop)
-          invalidRoots
-        return $ validRoots <> dependants
-
-
--- FIXME: might want to move detect cycles to somewhere more generic so that it
--- doesn't get polluted with Valuespace-specific concerns. Also, might want to
--- make it return something more intuitive?
--- | Returns a list of arbitrary edges from the set that if removed will break
---   cycles
-detectCycles :: Ord a => Set (a, a) -> [(a, a)]
-detectCycles edges =
-  let
-    nodes = Set.mapMonotonic fst edges <> Set.map snd edges
-  in
-    snd $ foldl' go (Set.map Set.singleton nodes, []) edges
-  where
-    go :: Ord a => (Set (Set a), [(a, a)]) -> (a, a) -> (Set (Set a), [(a, a)])
-    go (equivalenceSets, cycles) edge@(from, to) =
-      let
-        (matches, others) = Set.partition
-          (\as -> from `Set.member` as || to `Set.member` as)
-          equivalenceSets
-      in
-        case Set.size matches of
-          -- We found a cycle, because `from` was already connected to `to`:
-          1 -> (equivalenceSets, edge : cycles)
-          -- We union the sets of connected nodes:
-          2 -> (Set.singleton (fold matches) <> others, cycles)
-          -- This should not happen, but is not harmful:
-          _n -> (equivalenceSets, cycles)

@@ -56,13 +56,15 @@ import qualified Clapi.Types.Dkmap as Dkmap
 import qualified Clapi.Types.Error as Error
 import Clapi.Types.Name (DefName, Namespace, PostDefName, castName)
 import Clapi.Types.Path (Path)
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps
+  ( SequenceOp(..), unDependencyOrdered, fullOrderOps)
+import Clapi.Types.UniqList (unsafeMkUniqList)
 import Clapi.Types.Wire (SomeWireValue)
 import Clapi.Valuespace
   ( Valuespace, ProviderError, baseValuespace
   , lookupPostDef, lookupDef, pathNode, pathTyInfo
   , processTrpd, processTrcud)
-
+import Clapi.Valuespace.Errors (errText)
 
 newtype SemigroupMap k v = SemigroupMap {unSemigroupMap :: Map k v}
 
@@ -167,7 +169,9 @@ handleConnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
 handleConnect i = do
   modifying rsRegs $ Map.insert i mempty
   vsMap <- use rsVsMap
-  collectFrd i $ Frcrd $ const (SoAfter Nothing) <$> vsMap
+  collectFrd i
+    $ Frcrd $ unDependencyOrdered $ fullOrderOps $ unsafeMkUniqList
+    $ Map.keys vsMap
 
 
 handleDisconnect :: (Queries i m, Sends i m, Ord i) => i -> m ()
@@ -183,7 +187,7 @@ handleTrpd i trpd = do
     ownerMap <- fmap fst <$> use rsVsMap
     Error.modifying (rsVsMap . at ns) $ \case
       Nothing -> go bvs $ do
-        broadcast $ Frcrd $ Map.singleton ns $ SoAfter Nothing
+        broadcast $ Frcrd $ AL.singleton ns $ SoAfter Nothing
       Just x@(ownerI, vs) ->
         if i == ownerI
           then go vs $ return ()
@@ -199,7 +203,7 @@ handleTrpd i trpd = do
     go vs onSuccess = do
       (res, vs') <- runStateT (processTrpd trpd) vs
       case res of
-        Left errs -> throwOutProvider' i errs
+        Left errs -> throwOutProvider' i (fmap errText errs)
         Right frcud -> do
           regMap <- use rsRegs
           multicast $ filterFrcud frcud <$> regMap
@@ -283,7 +287,7 @@ handleTrcud i trcud = use (rsVsMap . at ns) >>= \case
         then throwOutProvider i ns "Acted as client on own namespace"
         else do
           (errs, frpd) <- processTrcud trcud vs
-          sendBackErrors errs
+          sendBackErrors (fmap errText errs)
           collectFrd ownerI frpd
   where
     ns = trcudNs trcud
@@ -308,7 +312,7 @@ relinquish ns = do
     Just (i, vs) -> do
       -- FIXME: This doesn't check that the namespace is owned by the
       -- reqlinquisher
-      broadcast $ Frcrd $ Map.singleton ns SoAbsent
+      broadcast $ Frcrd $ AL.singleton ns SoAbsent
       use rsVsMap >>= notifyOwnerChange . fmap fst
   unsubscribeNs ns
 
@@ -409,10 +413,11 @@ instance Subscribable Path where
         RtnDataSeries ts -> (frcudEmpty ns)
           { frcudData = AL.singleton p $ oppifyTimeSeries ts}
 
-      oppifySequence :: Ord k => AssocList k v -> Map k (v, SequenceOp k)
+      -- FIXME: Should try to reuse SequenceOps.fullOrderOps
+      oppifySequence :: Ord k => AssocList k v -> AssocList k (v, SequenceOp k)
       oppifySequence al =
         let (alKs, alVs) = unzip $ unAssocList al in
-          Map.fromList $ zipWith3
+          AL.fromList $ zipWith3
             (\k afterK v -> (k, (v, SoAfter afterK)))
             alKs (Nothing : (Just <$> alKs)) alVs
 

@@ -11,9 +11,11 @@ import Clapi.TH
 import qualified Clapi.Types.AssocList as AL
 import qualified Clapi.Types.Dkmap as Dkmap
 import Clapi.Types.Path (DataName, pattern Root, pattern (:/))
-import Clapi.Types.SequenceOps (SequenceOp(SoAfter))
+import Clapi.Types.SequenceOps (SequenceOp(SoAfter), dependencyOrder')
 import Clapi.Tree (RoseTree(..), RoseTreeNode(..))
 import qualified Clapi.Tree as Tree
+import Clapi.Valuespace.ErrWrap (liftExcept)
+import Clapi.Valuespace.Errors ()  -- Wraps e IOException
 
 import Instances ()
 
@@ -33,16 +35,6 @@ t4 = RtContainer $ fmap (Nothing,) $ AL.fromList [(s3, t3), (s1, t1)]
 
 spec :: Spec
 spec = do
-  describe "Tree.paths" $
-    it "should return the paths of all the nodes in a tree" $
-      Tree.paths Root t4 `shouldBe`
-        [ Root
-        , Root :/ s3
-        , Root :/ s3 :/ s0
-        , Root :/ s3 :/ s1
-        , Root :/ s3 :/ s2
-        , Root :/ s1]
-
   describe "Tree.lookup" $ do
     it "should find a node that is present" $
       Tree.lookup (Root :/ s3 :/ s1) t4 `shouldBe` Just t1
@@ -92,6 +84,8 @@ spec = do
       Tree.delete [pathq|/t1/to/box|] t3 `shouldBe` t3
 
   describe "Tree.applyReorderings" $ do
-    it "should preserve child contents" $
-      Tree.applyReorderings (Map.singleton s3 (Nothing, SoAfter Nothing)) t4
-      `shouldBe` (Right t4 :: Either String (RoseTree Char))
+    it "should preserve child contents" $ do
+      orderedOps <- liftExcept $ dependencyOrder' snd
+        $ Map.singleton s3 (Nothing, SoAfter Nothing)
+      Tree.applyReorderings orderedOps t4
+        `shouldBe` (Right t4 :: Either String (RoseTree Char))

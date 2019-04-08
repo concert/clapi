@@ -71,14 +71,19 @@ instance (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Mol k v) where
   arbitrary = genMol arbitrary arbitrary
   shrink = fmap Mol.fromMap . traverse shrink . Mol.unMol
 
+instance (Ord a, Arbitrary a) => Arbitrary (UniqList a) where
+  arbitrary =
+        smallListOf arbitrary
+    >>= shuffle . Set.toList . Set.fromList
+    >>= return . unsafeMkUniqList
 
 assocListOf :: Ord k => Gen k -> Gen v -> Gen (AssocList k v)
-assocListOf gk gv = AL.fromMap <$> smallMapOf gk gv
+assocListOf gk gv =
+  smallMapOf gk gv >>= shuffle . Map.toList >>= return . AL.unsafeMkAssocList
 
 instance (Ord a, Arbitrary a, Arbitrary b) => Arbitrary (AssocList a b) where
   arbitrary = assocListOf arbitrary arbitrary
   shrink = fmap AL.unsafeMkAssocList . shrink . AL.unAssocList
-
 
 arbitraryTextNoNull :: Gen Text
 arbitraryTextNoNull = Text.pack . filter (/= '\NUL') <$>
@@ -237,9 +242,8 @@ instance Arbitrary SomeDefinition where
     ArrayDef {} -> SomeDefinition <$> shrink def
 
 instance Arbitrary CreateOp where
-  arbitrary = OpCreate <$> smallListOf (smallListOf arbitrary) <*> arbitrary
-  shrink (OpCreate args after) =
-    [OpCreate args' after' | (args', after') <- shrink (args, after)]
+  arbitrary = OpCreate <$> smallListOf (smallListOf arbitrary)
+  shrink (OpCreate args) = OpCreate <$> shrink args
 
 instance Arbitrary d => Arbitrary (DefOp d) where
   arbitrary = oneof [OpDefine <$> arbitrary, return OpUndefine]
@@ -287,8 +291,11 @@ instance Arbitrary SubErrorIndex where
 creates :: Gen Creates
 creates = smallMapOf arbitrary smallMap
 
-contOps :: Arbitrary a => Gen (ContOps a)
+contOps :: (Ord a, Arbitrary a) => Gen (ContOps a)
 contOps = smallMapOf arbitrary smallMap
+
+oContOps :: (Ord a, Arbitrary a) => Gen (OrderedContOps a)
+oContOps = smallMapOf arbitrary $ assocListOf arbitrary arbitrary
 
 
 instance Arbitrary TrpDigest where
@@ -316,7 +323,7 @@ instance Arbitrary TrcUpdateDigest where
 
 
 instance Arbitrary FrpDigest where
-  arbitrary = Frpd <$> arbitrary <*> arbitrary <*> creates <*> contOps
+  arbitrary = Frpd <$> arbitrary <*> arbitrary <*> creates <*> oContOps
   shrink (Frpd ns dat crs cops) =
     [Frpd ns dat' crs' cops'
     | (dat', crs', cops') <- shrink (dat, crs, cops)]
@@ -326,7 +333,7 @@ instance Arbitrary FrpErrorDigest where
   shrink (Frped mol) = Frped <$> shrink mol
 
 instance Arbitrary FrcRootDigest where
-  arbitrary = Frcrd <$> smallMap
+  arbitrary = Frcrd <$> arbitrary
   shrink (Frcrd m) = Frcrd <$> shrink m
 
 instance Arbitrary FrcSubDigest where
@@ -337,7 +344,7 @@ instance Arbitrary FrcSubDigest where
 
 instance Arbitrary FrcUpdateDigest where
   arbitrary = Frcud <$> arbitrary <*> smallMap <*> smallMap
-    <*> smallMap <*> arbitrary <*> contOps
+    <*> smallMap <*> arbitrary <*> oContOps
     <*> arbitrary
   shrink (Frcud ns pt ty tas d cops _errs) =
     [Frcud ns pt' ty' tas' d' cops' mempty

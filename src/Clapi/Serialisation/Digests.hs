@@ -3,6 +3,7 @@
     TypeSynonymInstances
   , FlexibleInstances
   , GADTs
+  , GeneralizedNewtypeDeriving
   , MultiParamTypeClasses
   , StandaloneDeriving
 #-}
@@ -122,7 +123,6 @@ instance Decodable a => Decodable (SequenceOp a) where
     SoAfterT -> SoAfter <$> parser
     SoAbsentT -> return SoAbsent
 
-
 data TsDOpT = OpSetT | OpRemoveT deriving (Enum, Bounded)
 
 tsDOpTaggedData :: TaggedData TsDOpT TimeSeriesDataOp
@@ -187,10 +187,8 @@ instance Decodable a => Decodable (DefOp a) where
     OpDefineT -> OpDefine <$> parser
     OpUndefineT -> return OpUndefine
 
-instance Encodable CreateOp where
-  builder (OpCreate args after) = builder args <<>> builder after
-instance Decodable CreateOp where
-  parser = OpCreate <$> parser <*> parser
+deriving instance Encodable CreateOp
+deriving instance Decodable CreateOp
 
 
 data TrDigestType = TrpdT | TrprdT | TrcsdT | TrcudT deriving (Enum, Bounded)
