@@ -793,7 +793,6 @@ spec =
                   ]
                   [pathq|/array|]
                   res
-                errorsOn [pathq|/array|] res
               it "rejects array reorderings referencing missing members" $ go $ do
                 editableArraySetup
                 res <- processTrcud' $ (trcudEmpty ns)
@@ -937,15 +936,6 @@ withErrorsOn
   :: (Eq errs, Show errs, MonadIO m)
   => [errs] -> Path -> Either (Mol DataErrorIndex errs) x2 -> m ()
 withErrorsOn e p = withErrors (PathError p) e
-
-errorsOn
-  :: (Show x1, MonadIO m) => Path -> Either (Mol DataErrorIndex x1) x2 -> m ()
-errorsOn p = errors (PathError p)
-
-errorsOnTp
-  :: (Show x1, MonadIO m)
-  => Path -> TpId -> Either (Mol DataErrorIndex x1) x2 -> m ()
-errorsOnTp p tpid = errors (TimePointError p tpid)
 
 withErrorsOnTp
   :: (Eq errs, Show errs, MonadIO m)
