@@ -36,10 +36,11 @@ import Clapi.Types.Digests
   , FrDigest(..), frcudEmpty, FrpDigest, frpdEmpty)
 import Clapi.Types.Name (DefName, Namespace)
 import Clapi.Types.Path (Path, pattern Root, pattern (:/))
-import Clapi.Types.SequenceOps (SequenceOp(..))
+import Clapi.Types.SequenceOps (SequenceOp(..), DependencyError(..))
 import Clapi.Types.Tree (SomeTreeType, bounds, unbounded, ttWord32, ttRef)
 import Clapi.Types.Wire (someWv, WireType(..))
 import Clapi.Valuespace
+import Clapi.Valuespace.Errors (errText)
 
 -- FIXME: this should probably end up at Clapi.Valuespace[2].Internal
 import Clapi.Internal.Valuespace (vsTree, vsTyDefs)
@@ -562,7 +563,7 @@ spec =
           succeeds res
       in do
         it "validates baseValuespace with no changes" $ go $
-          processTrcud' (trcudEmpty ns) >>= (`succeedsWith` frpdEmpty ns)
+          processTrcud'' (trcudEmpty ns) >>= (`succeedsWith` frpdEmpty ns)
 
         describe "Write permissions" $ do
           it "prohibits data changes on read-only paths" $ go $ do
@@ -571,25 +572,25 @@ spec =
               , trpdData = AL.singleton Root $ ConstChange Nothing
                   [someWv WtWord32 4]
               }
-            res <- processTrcud' $ (trcudEmpty ns)
+            res <- processTrcud'' $ (trcudEmpty ns)
               { trcudData = AL.singleton Root $ ConstChange Nothing
                   [someWv WtWord32 5]
               }
-            errorsOn Root res
+            withErrorsOn [ReadOnlyEdit] Root res
 
             basicStructSetup
-            res' <- processTrcud' $ (trcudEmpty ns)
+            res' <- processTrcud'' $ (trcudEmpty ns)
               { trcudData = AL.singleton [pathq|/otherWord|] $ ConstChange Nothing
                   [someWv WtWord32 42]
               }
-            errorsOn [pathq|/otherWord|] res'
+            withErrorsOn [ReadOnlyEdit] [pathq|/otherWord|] res'
 
             basicArraySetup' ReadOnly
-            res'' <- processTrcud' $ (trcudEmpty ns)
+            res'' <- processTrcud'' $ (trcudEmpty ns)
               { trcudData = AL.singleton [pathq|/otherWord|] $ ConstChange Nothing
                   [someWv WtWord32 42]
               }
-            errorsOn [pathq|/otherWord|] res''
+            withErrorsOn [ReadOnlyEdit] [pathq|/otherWord|] res''
 
           it "probibits child reorderings on read-only paths" $ go $
             let
@@ -605,22 +606,26 @@ spec =
                 }
               succeeds res
 
-              res' <- processTrcud' $ (trcudEmpty ns)
+              res' <- processTrcud'' $ (trcudEmpty ns)
                 { trcudContOps = Map.singleton Root $ Map.singleton (Right foo)
                     (Nothing, SoAfter $ Just $ Right bar)
                 }
-              errorsOn Root res'
+              withErrorsOn [ReadOnlySeqOps] Root res'
 
 
         it "validates constant data changes" $ go $ do
           basicStructSetup
-          res <- processTrcud' $ (trcudEmpty ns)
+          res <- processTrcud'' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/myWord|] $ ConstChange Nothing
                 [someWv WtInt32 42]
             }
-          errorsOn [pathq|/myWord|] res
+          withErrorsOn
+            [ CEValidationError (
+                DataValidationError
+                  "Type mismatch: Cannot produce word32 from WtInt32")]
+            [pathq|/myWord|] res
 
-          res' <- processTrcud' $ (trcudEmpty ns)
+          res' <- processTrcud'' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/myWord|] $ ConstChange Nothing
                 [someWv WtWord32 42]
             }
@@ -634,52 +639,66 @@ spec =
         describe "Create validation" $ do
           it "forbids creates on non-arrays" $ go $ do
             basicStructSetup
-            res <- processTrcud' $ (trcudEmpty ns)
+            res <- processTrcud'' $ (trcudEmpty ns)
               { trcudCreates = Map.singleton Root mempty
               }
-            errorsOn Root res
+            withErrorsOn [CreatesNotSupported] Root res
 
           it "catches bad create arguments" $ go $
             let
-              doCreate vals = processTrcud' $ (trcudEmpty ns)
+              doCreate vals = processTrcud'' $ (trcudEmpty ns)
                 { trcudCreates = Map.singleton Root $
                     Map.singleton [n|new|]
                     (Nothing, OpCreate vals)
                 }
             in do
               basicArraySetup
-              doCreate [] >>= errorsOn Root
-              doCreate [[]] >>= errorsOn Root
-              doCreate [[someWv WtString "bad type"]] >>= errorsOn Root
+              doCreate [] >>= withErrorsOn
+                [ CEValidationError (
+                    DataValidationError
+                      "Mismatched numbers of post def arg types (1) and list of wire values (0)")]
+                Root
+              doCreate [[]] >>= withErrorsOn
+                [ CEValidationError (
+                    DataValidationError
+                      "Mismatched numbers of types (1) and values (0)")]
+                Root
+              doCreate [[someWv WtString "bad type"]] >>= withErrorsOn
+                [ CEValidationError (
+                    DataValidationError
+                      "Type mismatch: Cannot produce word32 from WtString")]
+                Root
               doCreate [[someWv WtWord32 0]] >>= succeeds
 
         it "errors with extra data (struct)" $ go $ do
-          res <- processTrcud' $ (trcudEmpty ns)
+          res <- processTrcud'' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
                 [someWv WtString "Irrelevant"]
             }
           liftIO $ res `shouldBe`
-            Left (Mol.singleton (PathError [pathq|/bad|]) "Invalid struct child")
+            Left (Mol.singleton (PathError [pathq|/bad|]) $ CEErrorString "Invalid struct child")
 
         it "errors with extra data (array)" $ go $ do
           basicArraySetup
-          res <- processTrcud' $ (trcudEmpty ns)
+          res <- processTrcud'' $ (trcudEmpty ns)
             { trcudData = AL.singleton [pathq|/bad|] $ ConstChange Nothing
                 [someWv WtWord32 0]  -- Good data for array
             }
-          errorsOn [pathq|/bad|] res
+          withErrorsOn
+            [CEAccessError NodeNotFound]
+            [pathq|/bad|] res
 
         it "errors on struct reordering" $
           flip evalStateT (baseValuespace rootDn Editable) $ do
             basicStructSetup
-            res <- processTrcud' $ (trcudEmpty ns)
+            res <- processTrcud'' $ (trcudEmpty ns)
               { trcudContOps = Map.singleton Root
                   $ Map.singleton (Right [n|myWord|])
                   (Nothing, SoAfter $ Just $ Right [n|otherWord|])
               }
             liftIO $ res `shouldBe` Left (
-              Mol.singleton (PathError Root)
-              "Array rearrangement operation on non-array")
+              Mol.singleton (PathError Root) $
+              CEStructuralError SeqOpsOnNonArray)
 
         describe "Array reordering" $
           let
@@ -703,15 +722,20 @@ spec =
            in do
               it "catches missing placeholder targets (naive)" $ go $ do
                 editableArraySetup
-                res <- processTrcud' $ (trcudEmpty ns)
+                res <- processTrcud'' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
                       (Right [n|foo|])
                       (Nothing, SoAfter $ Just $ Left [n|bar|])
                   }
-                errorsOn [pathq|/array|] res
+                withErrorsOn
+                  [ CESeqOpError $
+                      SeqOpTargetMissing (Right [n|foo|]) (Left [n|bar|])
+                  ]
+                  [pathq|/array|]
+                  res
               it "catches missing placeholder targets (other failures)" $ go $ do
                 editableArraySetup
-                res <- processTrcud' $ (trcudEmpty ns)
+                res <- processTrcud'' $ (trcudEmpty ns)
                   {  trcudCreates = Map.singleton [pathq|/array|] $
                       Map.singleton [n|bar|]
                         (Nothing, OpCreate [[someWv WtString "wrong type"]])
@@ -720,18 +744,30 @@ spec =
                       (Right [n|foo|])
                       (Nothing, SoAfter $ Just $ Left [n|bar|])
                   }
-              -- FIXME: We should have better introspection of errors for these
-              -- tests, because we should get both an error about the bad
-              -- validation for bar and the bad reference in ContOps:
+                withErrorsOn
+                  [ CEValidationError (
+                      DataValidationError
+                       "Type mismatch: Cannot produce word32 from WtString")
+                  ,
+                    CESeqOpError $
+                      SeqOpTargetMissing (Right [n|foo|]) (Left [n|bar|])
+                  ]
+                  [pathq|/array|]
+                  res
                 errorsOn [pathq|/array|] res
               it "rejects array reorderings referencing missing members" $ go $ do
                 editableArraySetup
-                res <- processTrcud' $ (trcudEmpty ns)
+                res <- processTrcud'' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.singleton
                       (Right [n|foo|])
                       (Nothing, SoAfter $ Just $ Right [n|bar|])
                   }
-                errorsOn [pathq|/array|] res
+                withErrorsOn
+                  [ CESeqOpError $
+                      SeqOpTargetMissing (Right [n|foo|]) (Right [n|bar|])
+                  ]
+                  [pathq|/array|]
+                  res
               it "rejects cyclic array reordering targets" $ go $ do
                 editableArraySetup
                 a <- processTrpd $ (trpdEmpty ns)
@@ -744,7 +780,7 @@ spec =
                       , ConstChange Nothing [someWv WtWord32 1])
                     ]
                   }
-                res <- processTrcud' $ (trcudEmpty ns)
+                res <- processTrcud'' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.fromList
                     [
                       ( Right [n|bar|]
@@ -754,8 +790,14 @@ spec =
                       , (Nothing, SoAfter $ Just $ Right [n|bar|]))
                     ]
                   }
-                errorsOn [pathq|/array|] res
-                -- errorsOn [pathq|/array|] res
+                withErrorsOn
+                  [ CEDependencyError $ CyclicReferences
+                    [[ (Right [n|foo|], Just $ Right [n|bar|])
+                    ,  (Right [n|bar|], Just $ Right [n|foo|])
+                    ]]
+                  ]
+                  [pathq|/array|]
+                  res
               it "rejects duplicate target references" $ go $ do
                 editableArraySetup
                 a <- processTrpd $ (trpdEmpty ns)
@@ -771,7 +813,7 @@ spec =
                       , ConstChange Nothing [someWv WtWord32 1])
                     ]
                   }
-                res <- processTrcud' $ (trcudEmpty ns)
+                res <- processTrcud'' $ (trcudEmpty ns)
                   { trcudContOps = Map.singleton [pathq|/array|] $ Map.fromList
                     [
                       ( Right [n|baz|]
@@ -781,10 +823,14 @@ spec =
                       , (Nothing, SoAfter $ Just $ Right [n|foo|]))
                     ]
                   }
-                errorsOn [pathq|/array|] res
+                withErrorsOn
+                  [ CEDependencyError $ DuplicateReferences
+                    [(Just $ Right [n|foo|], [Right [n|bar|], Right [n|baz|]])]
+                  ]
+                  [pathq|/array|] res
               it "accepts valid array reordings" $ go $ do
                 editableArraySetup
-                res <- processTrcud' $ (trcudEmpty ns)
+                res <- processTrcud'' $ (trcudEmpty ns)
                   {  trcudCreates = Map.singleton [pathq|/array|] $
                       Map.singleton [n|bar|]
                         (Nothing, OpCreate [[someWv WtWord32 1]])
@@ -798,11 +844,13 @@ spec =
         describe "Cross reference validation" $ do
           it "catches references to invalid types" $ go $ do
             xrefSetup
-            res <- processTrcud' $ (trcudEmpty ns)
+            res <- processTrcud'' $ (trcudEmpty ns)
               { trcudData = AL.singleton (Root :/ referer) $
                   ConstChange Nothing [someWv WtString "/referee2"]
               }
-            errorsOn (Root :/ referer) res
+            withErrorsOn
+              [CEValidationError $ XRefError [n|referee1|] [n|referee2|]]
+              [pathq|/referer|] res
 
   where
     go :: StateT Valuespace IO a -> IO a
