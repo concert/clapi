@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    GADTs
+    FlexibleInstances
+  ,  GADTs
   , GeneralizedNewtypeDeriving
   , StandaloneDeriving
 #-}
@@ -10,6 +11,7 @@ module Instances where
 import Data.Constraint (Dict(..))
 import Data.String (IsString(..))
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
+import qualified Data.Text as Text
 
 import Clapi.Internal.Valuespace
 import Clapi.PerClientProto (ServerEvent(..))
@@ -19,6 +21,10 @@ import Clapi.Types
 import Clapi.Types.SymbolList
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Valuespace.Xrefs
+import Clapi.Valuespace.Errors
+ ( ConsumerError(..), AccessError(..), StructuralError(..), SeqOpError(..)
+ , ValidationError(..)
+ , errText)
 
 
 deriving instance Eq FrDigestType
@@ -141,3 +147,22 @@ instance Ord SomeFrDigest where
       go (Frcsd {}) (Frcsd {}) = compare d1 d2
       go (Frcud {}) (Frcud {}) = compare d1 d2
       go _ _ = compare (typeEnumOf sd1) (typeEnumOf sd2)
+
+deriving instance Eq ConsumerError
+deriving instance Eq (SeqOpError EPS)
+deriving instance Eq AccessError
+deriving instance Eq StructuralError
+deriving instance Eq ValidationError
+
+deriving instance Show ConsumerError
+instance Show (SeqOpError EPS) where
+  show = Text.unpack . errText
+
+instance Show (AccessError) where
+  show = Text.unpack . errText
+
+instance Show (StructuralError) where
+  show = Text.unpack . errText
+
+instance Show (ValidationError) where
+  show = Text.unpack . errText
