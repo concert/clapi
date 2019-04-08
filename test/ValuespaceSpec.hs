@@ -911,6 +911,11 @@ errorsOnTp
   => Path -> TpId -> Either (Mol DataErrorIndex x1) x2 -> m ()
 errorsOnTp p tpid = errors (TimePointError p tpid)
 
+withErrorsOnTp
+  :: (Eq errs, Show errs, MonadIO m)
+  => [errs] -> Path -> TpId -> Either (Mol DataErrorIndex errs) x2 -> m ()
+withErrorsOnTp errs p tpid = withErrors (TimePointError p tpid) errs
+
 noErrorsOn
   :: (Show x1, MonadIO m) => Path -> Either (Mol DataErrorIndex x1) x2 -> m ()
 noErrorsOn p = liftIO . \case
