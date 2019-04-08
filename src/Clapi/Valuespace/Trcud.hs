@@ -62,7 +62,7 @@ processTrcud_ :: Monad m => TrcUpdateDigest -> VsM' ConsumerError m FrpDigest
 processTrcud_ (Trcud ns dat crs cops) = do
   (newPhs, crs') <- guardCreates crs
   dat' <- guardClientUpdates dat
-  orderedCops<- guardClientCops newPhs cops
+  orderedCops <- guardClientCops newPhs cops
   return $ Frpd ns dat' crs' orderedCops
 
 type PathCreates = Map Placeholder (Maybe Attributee, CreateOp)

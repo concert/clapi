@@ -157,7 +157,7 @@ extractDependencyChains proj m =
           -- pair is Nothing depends on the order of the guards above):
           (Just (_, l), Nothing) -> tell [fmap proj <$> l] >> return chains
           -- Impossible: We can't have a loop that start halfway through a chain
-          -- because we started from a map (this would mean duplicate keys).  We
+          -- because we started from a map (this would mean duplicate keys). We
           -- can't have a loop that ends halfway through a chain because dupRefs
           -- picks that up:
           _ -> return chains
