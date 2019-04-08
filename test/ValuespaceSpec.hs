@@ -820,6 +820,23 @@ spec =
       children <- Tree.childNames <$> use vsTree
       liftIO $ children `shouldBe` expected
 
+withErrors
+  :: (Eq errs, Show errs, MonadIO m)
+  => DataErrorIndex -> [errs] -> Either (Mol DataErrorIndex errs) x2 -> m ()
+withErrors idx errs = liftIO . \case
+  Left m ->
+    if idx `Set.member` Mol.keysSet m then
+      let
+        actuals = Mol.lookup idx m
+      in
+        if errs == actuals then return ()
+        else expectationFailure $
+          printf "Errors differ:\nExpected %s\n Actual %s"
+            (show errs) (show actuals)
+    else expectationFailure $
+      printf "No error on %s. Errors: %s" (show idx) (show m)
+  Right _ -> expectationFailure $ printf "Did not error with (%s)" (show idx)
+
 errors
   :: (Show x1, MonadIO m)
   => DataErrorIndex -> Either (Mol DataErrorIndex x1) x2 -> m ()
@@ -827,6 +844,12 @@ errors idx = liftIO . \case
   Left m -> unless (idx `Set.member` Mol.keysSet m) $ expectationFailure $
     printf "No error on %s. Errors: %s" (show idx) (show m)
   Right _ -> expectationFailure $ printf "Did not error with (%s)" (show idx)
+
+
+withErrorsOn
+  :: (Eq errs, Show errs, MonadIO m)
+  => [errs] -> Path -> Either (Mol DataErrorIndex errs) x2 -> m ()
+withErrorsOn e p = withErrors (PathError p) e
 
 errorsOn
   :: (Show x1, MonadIO m) => Path -> Either (Mol DataErrorIndex x1) x2 -> m ()
