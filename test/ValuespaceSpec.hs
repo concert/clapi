@@ -645,6 +645,14 @@ spec =
                 }
               withErrorsOn [ReadOnlySeqOps] Root res'
 
+          it "prohibits data changes on non-existant array paths" $ go $ do
+            -- Clients can't create array elements without posting!
+            basicArraySetup
+            res <- processTrcud' $ (trcudEmpty ns)
+              { trcudData = AL.singleton [pathq|/newPath|] $ ConstChange Nothing
+                  [someWv WtWord32 42]
+              }
+            withErrorsOn [CEAccessError NodeNotFound] [pathq|/newPath|] res
 
         it "validates constant data changes" $ go $ do
           basicStructSetup
