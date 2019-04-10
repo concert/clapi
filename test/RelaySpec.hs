@@ -13,6 +13,7 @@ module RelaySpec where
 import Test.Hspec
 
 import Prelude hiding (pred)
+import Control.Lens ((&), at, set)
 import Control.Monad (unless, forM_, (>=>), forever)
 import Control.Monad.Trans (lift)
 import Data.Either (isRight)
@@ -34,7 +35,7 @@ import Clapi.TH
 import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Relay (relay, RelayState(..))
+import Clapi.Relay (relay, RelayState(..), defaulting)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit)
 import Clapi.Types.Definitions
@@ -700,6 +701,11 @@ postDefine name def trpd = trpd
 ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
 ownerSet path values trpd = trpd
   { trpdData = AL.insert path (ConstChange Nothing values) $ trpdData trpd }
+
+ownerCop :: Path -> DataName -> SequenceOp DataName -> TrpDigest -> TrpDigest
+ownerCop p dn cop trpd = trpd
+  { trpdContOps = trpdContOps trpd &
+      set (at p . defaulting mempty . at dn) (Just (Nothing, cop)) }
 
 subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud
