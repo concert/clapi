@@ -364,6 +364,47 @@ spec = do
         sub_owner_preamble
         sendFwd $ ClientData "sub" $ SomeTrDigest $ trcudEmpty fooNs
 
+    it "can handle subscriptions to nested empty arrays" $ testRelay mempty $
+      let
+        oaDef = arrayDef' "outerArray" [n|innerArray|] Editable
+        iaDef = arrayDef' "innerArray" [n|inty|] Editable
+      in do
+        sendFwd $ ClientConnect "Owner" "owner"
+        sendFwd $ ClientData "owner" $ SomeTrDigest $
+          define [n|outerArray|] oaDef $
+          define [n|innerArray|] iaDef $
+          define [n|inty|] intDef $
+          trpdEmpty [n|outerArray|]
+        expect [emptyRootDig "owner", nsExists [n|outerArray|] "owner"]
+
+        sendFwd $ ClientConnect "Subscriber" "sub"
+        expect [nsExists [n|outerArray|] "sub"]
+        subscribe [n|outerArray|] (Root :: Path) "sub"
+        expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty [n|outerArray|])
+          { frcudDefs = Map.singleton [n|outerArray|] $ OpDefine oaDef
+          , frcudTyAssigns = Map.singleton Root ([n|outerArray|], Editable)
+          -- FIXME: This probably should not be sent if there are no children:
+          , frcudContOps = Map.singleton Root mempty
+          }]
+
+        sendFwd $ ClientData "owner" $ SomeTrDigest $
+          ownerCop Root [n|child|] (SoAfter Nothing) $
+          trpdEmpty [n|outerArray|]
+        expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty [n|outerArray|])
+          { frcudContOps = Map.singleton Root $
+              AL.singleton [n|child|] (Nothing, SoAfter Nothing)
+          }]
+
+        subscribe [n|outerArray|] ([pathq|/child|] :: Path) "sub"
+        expect [ ServerData "sub" $ SomeFrDigest $ (frcudEmpty [n|outerArray|])
+          { frcudDefs = Map.singleton [n|innerArray|] $ OpDefine iaDef
+          , frcudTyAssigns = Map.singleton [pathq|/child|]
+              ([n|innerArray|], Editable)
+          -- FIXME: This probably should not be sent if there are no children:
+          , frcudContOps = Map.singleton [pathq|/child|] mempty
+          }]
+
+
     it "validates subscriber mutations and forwards valid" $
       testRelay mempty $ do
         sub_owner_preamble

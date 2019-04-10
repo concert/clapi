@@ -226,10 +226,16 @@ updateContainer
 updateContainer p cOps = pathError p $ do
   SomeDefinition def <- pathDef p
   case def of
-    ArrayDef {} -> do
+    ArrayDef {arrDefChildTy = cty} -> do
       orderedCops <- liftExcept $ dependencyOrder' snd cOps
-      eitherModifying vsTree
-        $ first (wrap . ErrorString) . Tree.applyReorderingsAt p orderedCops
+      -- Look up the type inside this array to determine what to default any new
+      -- child trees to:
+      SomeDefinition cdef <- lookupDef cty
+      let tdef = case cdef of
+            TupleDef {} -> RtEmpty
+            _ -> RtContainer mempty
+      eitherModifying vsTree $ first (wrap . ErrorString)
+        . Tree.applyReorderingsAt p tdef orderedCops
       return orderedCops
     -- FIXME: Potentially better error value here?
     _ -> throw SeqOpsOnNonArray
@@ -381,8 +387,8 @@ handleImpl p = \case
       StructDef { strDefChildTys = tyInfo } -> do
         modifying vsTree $ Tree.initContainerAt p
         pathError p $ eitherModifying vsTree $ fmap (first wrap) .
-          Tree.applyReorderingsAt @(Either ErrorString) p $
-          fullOrderOps' (Nothing,) $ AL.keys tyInfo
+          Tree.applyReorderingsAt @(Either ErrorString) p RtEmpty $
+            fullOrderOps' (Nothing,) $ AL.keys tyInfo
       ArrayDef {} -> modifying vsTree $ Tree.initContainerAt p
 
 

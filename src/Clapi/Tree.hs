@@ -52,22 +52,24 @@ childNames = fmap fst . unAssocList . children
 
 applyReorderings
   :: MonadFail m
-  => DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)
-  -> RoseTree a
+  => RoseTree a  -- The tree to use as data for new children
+  -> DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)
+  -> RoseTree a  -- The container that we're modifying
   -> m (RoseTree a)
-applyReorderings contOps (RtContainer kids) =
+applyReorderings def contOps (RtContainer kids) =
   let
     attMap = fst <$> AL.toMap (unDependencyOrdered contOps)
     childMap = Map.foldlWithKey'
-        (\acc k att -> Map.alter (Just . maybe (att, RtEmpty) id) k acc)
+        (\acc k att -> Map.alter (Just . maybe (att, def) id) k acc)
         (AL.toMap kids)
         attMap
     reattribute s (oldMa, rt) = (Map.findWithDefault oldMa s attMap, rt)
   in
     RtContainer . AL.fmapWithKey reattribute . AL.pickFromMap childMap
     <$> (updateUniqList snd contOps $ AL.keys kids)
-applyReorderings contOps RtEmpty = applyReorderings contOps (RtContainer mempty)
-applyReorderings _ _ = fail "Not a container"
+applyReorderings contOps def RtEmpty =
+  applyReorderings contOps def (RtContainer mempty)
+applyReorderings _ _ _ = fail "Not a container"
 
 constSet :: Maybe Attributee -> a -> RoseTree a -> RoseTree a
 constSet att a _ = RtConstData att a
@@ -182,10 +184,12 @@ removeTpAt att p tpid = adjustF Nothing (remove tpid) p
 
 applyReorderingsAt
   :: MonadFail m
-  => Path -> DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)
-  -> RoseTree a
+  => Path
+  -> RoseTree a  -- The tree to use as data for new children
+  -> DependencyOrdered DataName (Maybe Attributee, SequenceOp DataName)
+  -> RoseTree a  -- The root of the tree
   -> m (RoseTree a)
-applyReorderingsAt p cOps = adjustF Nothing (applyReorderings cOps) p
+applyReorderingsAt p def cOps = adjustF Nothing (applyReorderings def cOps) p
 
 childNamesAt :: Path -> RoseTree a -> Maybe [DataName]
 childNamesAt p = fmap childNames . lookup p
