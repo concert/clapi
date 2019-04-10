@@ -13,6 +13,7 @@ module RelaySpec where
 import Test.Hspec
 
 import Prelude hiding (pred)
+import Control.Lens ((&), at, set)
 import Control.Monad (unless, forM_, (>=>), forever)
 import Control.Monad.Trans (lift)
 import Data.Either (isRight)
@@ -34,7 +35,7 @@ import Clapi.TH
 import Clapi.Protocol
   (waitThen, waitThenRevOnly, sendFwd, sendRev, runEffect, (<<->), Protocol)
 import Clapi.PerClientProto (ClientEvent(..), ServerEvent(..))
-import Clapi.Relay (relay, RelayState(..))
+import Clapi.Relay (relay, RelayState(..), defaulting)
 import qualified Clapi.Types.AssocList as AL
 import Clapi.Types.Base (InterpolationLimit)
 import Clapi.Types.Definitions
@@ -362,6 +363,98 @@ spec = do
       testRelay mempty $ do
         sub_owner_preamble
         sendFwd $ ClientData "sub" $ SomeTrDigest $ trcudEmpty fooNs
+
+    describe "Empty arrays" $ do
+      it "can handle subscriptions to nested empty arrays" $ testRelay mempty $
+        let
+          oaDef = arrayDef' "outerArray" [n|innerArray|] Editable
+          iaDef = arrayDef' "innerArray" [n|inty|] Editable
+        in do
+          sendFwd $ ClientConnect "Owner" "owner"
+          sendFwd $ ClientData "owner" $ SomeTrDigest $
+            define [n|outerArray|] oaDef $
+            define [n|innerArray|] iaDef $
+            define [n|inty|] intDef $
+            trpdEmpty [n|outerArray|]
+          expect [emptyRootDig "owner", nsExists [n|outerArray|] "owner"]
+
+          sendFwd $ ClientConnect "Subscriber" "sub"
+          expect [nsExists [n|outerArray|] "sub"]
+          subscribe [n|outerArray|] (Root :: Path) "sub"
+          expect [ ServerData "sub" $ SomeFrDigest $
+            (frcudEmpty [n|outerArray|])
+            { frcudDefs = Map.singleton [n|outerArray|] $ OpDefine oaDef
+            , frcudTyAssigns = Map.singleton Root ([n|outerArray|], Editable)
+            -- FIXME: This probably should not be sent if there are no children:
+            , frcudContOps = Map.singleton Root mempty
+            }]
+
+          sendFwd $ ClientData "owner" $ SomeTrDigest $
+            ownerCop Root [n|child|] (SoAfter Nothing) $
+            trpdEmpty [n|outerArray|]
+          expect [ ServerData "sub" $ SomeFrDigest $
+            (frcudEmpty [n|outerArray|])
+            { frcudContOps = Map.singleton Root $
+                AL.singleton [n|child|] (Nothing, SoAfter Nothing)
+            }]
+
+          subscribe [n|outerArray|] ([pathq|/child|] :: Path) "sub"
+          expect [ ServerData "sub" $ SomeFrDigest $
+            (frcudEmpty [n|outerArray|])
+            { frcudDefs = Map.singleton [n|innerArray|] $ OpDefine iaDef
+            , frcudTyAssigns = Map.singleton [pathq|/child|]
+                ([n|innerArray|], Editable)
+            -- FIXME: This probably should not be sent if there are no children:
+            , frcudContOps = Map.singleton [pathq|/child|] mempty
+            }]
+
+      it "handles subs to empty arrays under structs" $ testRelay mempty $
+        let
+          osDef = structDef' "outerStruct" [([n|child|], [n|innerArray|])]
+          iaDef = arrayDef' "innerArray" [n|inty|] Editable
+        in do
+          -- Define tree:
+          sendFwd $ ClientConnect "Owner" "owner"
+          sendFwd $ ClientData "owner" $ SomeTrDigest $
+            define [n|outerStruct|] osDef $
+            define [n|innerArray|] iaDef $
+            define [n|inty|] intDef $
+            trpdEmpty [n|outerStruct|]
+          expect [ emptyRootDig "owner", nsExists [n|outerStruct|] "owner" ]
+
+          -- Subscribe to root-level container:
+          sendFwd $ ClientConnect "Subscriber" "sub"
+          expect [nsExists [n|outerStruct|] "sub"]
+          subscribe [n|outerStruct|] (Root :: Path) "sub"
+          expect [ ServerData "sub" $ SomeFrDigest $
+            (frcudEmpty [n|outerStruct|])
+            { frcudDefs = Map.singleton [n|outerStruct|] $ OpDefine osDef
+            , frcudTyAssigns = Map.singleton Root ([n|outerStruct|], Editable)
+            , frcudContOps = Map.singleton Root $ AL.singleton [n|child|]
+                (Nothing, SoAfter Nothing)
+            }]
+
+          -- Subscribe to child we've been informed about:
+          subscribe [n|outerStruct|] ([pathq|/child|] :: Path) "sub"
+          expect [ ServerData "sub" $ SomeFrDigest $
+            (frcudEmpty [n|outerStruct|])
+            { frcudDefs = Map.singleton [n|innerArray|] $ OpDefine iaDef
+            , frcudTyAssigns = Map.singleton [pathq|/child|]
+                ([n|innerArray|], Editable)
+            -- FIXME: This probably should not be sent if there are no children:
+            , frcudContOps = Map.singleton [pathq|/child|] mempty
+            }]
+
+          -- Check we get informed about sub-children:
+          sendFwd $ ClientData "owner" $ SomeTrDigest $
+            ownerCop [pathq|/child|] [n|subChild|] (SoAfter Nothing) $
+            trpdEmpty [n|outerStruct|]
+          expect [ ServerData "sub" $ SomeFrDigest $
+            (frcudEmpty [n|outerStruct|])
+            { frcudContOps = Map.singleton [pathq|/child|] $ AL.singleton
+                [n|subChild|] (Nothing, SoAfter Nothing)
+            }]
+
 
     it "validates subscriber mutations and forwards valid" $
       testRelay mempty $ do
@@ -700,6 +793,11 @@ postDefine name def trpd = trpd
 ownerSet :: Path -> [SomeWireValue] -> TrpDigest -> TrpDigest
 ownerSet path values trpd = trpd
   { trpdData = AL.insert path (ConstChange Nothing values) $ trpdData trpd }
+
+ownerCop :: Path -> DataName -> SequenceOp DataName -> TrpDigest -> TrpDigest
+ownerCop p dn cop trpd = trpd
+  { trpdContOps = trpdContOps trpd &
+      set (at p . defaulting mempty . at dn) (Just (Nothing, cop)) }
 
 subSet :: Path -> [SomeWireValue] -> TrcUpdateDigest -> TrcUpdateDigest
 subSet path values trcud = trcud

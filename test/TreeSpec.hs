@@ -87,5 +87,5 @@ spec = do
     it "should preserve child contents" $ do
       orderedOps <- liftExcept $ dependencyOrder' snd
         $ Map.singleton s3 (Nothing, SoAfter Nothing)
-      Tree.applyReorderings orderedOps t4
+      Tree.applyReorderings RtEmpty orderedOps t4
         `shouldBe` (Right t4 :: Either String (RoseTree Char))

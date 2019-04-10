@@ -341,9 +341,13 @@ subscribe
   => i -> Namespace -> a -> m (Maybe (SubData a))
 subscribe i ns a =
   use (rsVsMap . at ns) >>= \case
-    Nothing -> sendUnsubscribe i ns a >> return Nothing
+    Nothing ->
+      -- No such namespace, go away!
+      sendUnsubscribe i ns a >> return Nothing
     Just (_ownerI, vs) -> case evalState (runExceptT $ vsGet a) vs of
-      Left _ -> sendUnsubscribe i ns a >> return Nothing
+      Left _ ->
+        -- No such entity, go away!
+        sendUnsubscribe i ns a >> return Nothing
       Right sd -> do
         Error.modifying (rsRegs . at i . defaulting mempty . crLens)
           $ \mos -> if Mos.contains ns a mos
