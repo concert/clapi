@@ -318,6 +318,22 @@ spec =
             GlobalError [ PEAccessError $ DefNotFound [n|w32|]]
             res'
 
+      it "catches non-existant ndoe type in array definition" $ go $ do
+        res <- processTrpd $ (trpdEmpty ns)
+          { trpdDefs = Map.singleton rootDn $ OpDefine $ arrayDef
+              "naughty array" Nothing [n|nope|] ReadOnly
+          }
+        withErrors GlobalError [PEAccessError $ DefNotFound [n|nope|]] res
+
+      it "catches non-existant post type in array definition" $ go $ do
+        res <- processTrpd $ (trpdEmpty ns)
+          { trpdDefs = Map.fromList
+              [ (rootDn, OpDefine $ arrayDef "naughty array" (Just [n|nope|])
+                  [n|w32Dn|] ReadOnly)
+              , ([n|w32Dn|], OpDefine w32Tup)
+              ]
+          }
+        withErrors GlobalError [PEAccessError $ PostDefNotFound [n|nope|]] res
 
       it "errors on struct with missing child" $ go $
         let
