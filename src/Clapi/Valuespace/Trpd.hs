@@ -57,7 +57,7 @@ import Clapi.Valuespace.Errors
   , StructuralError(..), ValidationError(..), ProviderDependencyError)
 import Clapi.Valuespace.ErrWrap (Errs, Wraps(..), throw, liftExcept)
 import Clapi.Valuespace.Prim
-  ( VsM', lookupDef, pathDef, pathNode
+  ( VsM', lookupDef, lookupPostDef, pathDef, pathNode
   , pathError, pathErrors, tpErrors, castVsMError)
 import qualified Clapi.Valuespace.Xrefs as Xrefs
 
@@ -94,6 +94,7 @@ processTrpd_ trpd =
 
     -- Let's update the rest of the primary state:
     modifying vsPostDefs $ Map.union pTyDefs . flip Map.withoutKeys pTyUndefs
+    guardInvalidArrayDefs (tyNewDefs <> (snd <$> tyRedefs))
     _ <- collect $ AL.fmapWithKey updatePathData $ trpdData trpd
     -- FIXME: The container updates might need to happen later, if changing the
     -- types has a material effect on what the types of the tree nodes are:
@@ -192,9 +193,24 @@ partitionDefChanges = flip execState mempty . sequence . Map.mapWithKey f
       Redef oldDef newDef -> modifying _2 $ Map.insert dn (oldDef, newDef)
       Undef -> modifying _3 $ Set.insert dn
 
+guardInvalidArrayDefs
+  :: forall e m. (Errs '[AccessError] e, Monad m)
+  => Map DefName SomeDefinition -> VsM' e m ()
+guardInvalidArrayDefs = mapM_ (uncurry go) . Map.toList
+  where
+    go :: DefName -> SomeDefinition -> VsM' e m ()
+    go dn (SomeDefinition def) = case def of
+      ArrayDef {arrDefPostTy = Just pd} -> void $
+        castVsMError GlobalError $ lookupPostDef pd
+      _ -> return ()
 
--- | Protects against the case where a struct definition refers to itself
---   _without_ an intermediary array, which would result in an infinite tree.
+
+-- | Protects against the case where a struct definition (transitively) refers
+--   to itself _without_ an intermediary array, which would result in an
+--   infinite tree.
+--   Trawling the tree to determine this also reveals references to non-existant
+--   definitions, albeit without then rechecking previously checked definitions
+--   against the smaller set of legal definitions.
 guardRecursiveStructs
   :: (Errs '[AccessError, ProviderError] e, Monad m) => DefName -> VsM' e m ()
 guardRecursiveStructs = go mempty []
