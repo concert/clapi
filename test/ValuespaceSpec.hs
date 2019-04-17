@@ -318,7 +318,7 @@ spec =
             GlobalError [ PEAccessError $ DefNotFound [n|w32|]]
             res'
 
-      it "catches non-existant ndoe type in array definition" $ go $ do
+      it "catches non-existant node type in array definition" $ go $ do
         res <- processTrpd $ (trpdEmpty ns)
           { trpdDefs = Map.singleton rootDn $ OpDefine $ arrayDef
               "naughty array" Nothing [n|nope|] ReadOnly
