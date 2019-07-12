@@ -23,7 +23,7 @@ import Clapi.Types.Digests
   , DefOp(OpDefine), DataChange(..), DataDigest, ContOps)
 import Clapi.Types.SequenceOps (SequenceOp(..))
 import Clapi.Types.Name (Name, DataName, Namespace, castName, unName)
-import Clapi.Types.Path (pattern Root, pattern (:/))
+import Clapi.Types.Path (pattern Root, pattern (:/), pattern (:</))
 import qualified Clapi.Types.Path as Path
 import Clapi.Types.Tree (unbounded, ttString, ttFloat, ttRef)
 import Clapi.Types.Wire (WireType(..), SomeWireValue(..), someWireable, someWv)
@@ -203,10 +203,10 @@ relayApiProto selfAddr =
             alterTime (ConstChange att [SomeWireValue (WireValue WtFloat t)]) =
               ConstChange att $ pure $ someWireable $ subtract theirTime t
             alterTime _ = error "Weird data back out of VS"
-            fiddleDataChanges p dc
-              | p `Path.isChildOf` [pathq|/clients|] = alterTime dc
-              | p == [pathq|/self|] = toSetRefOp theirName
-              | otherwise = dc
+            fiddleDataChanges path dc = case path of
+              Root :/ [n|self|] -> toSetRefOp theirName
+              [n|clients|] :</ _p -> alterTime dc
+              _ -> dc
           in
             AL.fmapWithKey fiddleDataChanges dd
         -- This function trusts that the valuespace has completely validated the
