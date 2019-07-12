@@ -2,6 +2,7 @@
     DataKinds
   , DeriveLift
   , KindSignatures
+  , TemplateHaskellQuotes
 #-}
 
 module Clapi.Types.Name
@@ -9,6 +10,8 @@ module Clapi.Types.Name
   , Name, mkName, unName, nameP, castName
   , DataName, DefName, PostDefName, Namespace, PostArgName, Placeholder
   , TupMemberName
+
+  , nameQExp, nameQPat
   ) where
 
 import Control.Monad.Fail (MonadFail)
@@ -18,7 +21,8 @@ import Data.Char (isDigit, isLetter)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Instances.TH.Lift ()
-import Language.Haskell.TH.Lift (Lift)
+import Language.Haskell.TH (Exp(..), Lit(..), Pat(..), Q, appE, varE)
+import Language.Haskell.TH.Lift (Lift(..))
 
 
 
@@ -32,6 +36,18 @@ data NameRole
   | ForTupMember
 
 newtype Name (nr :: NameRole) = Name {unName :: Text} deriving (Eq, Ord, Lift)
+
+textQExp :: Text -> Q Exp
+textQExp = fmap (appE (varE 'Text.pack)) lift . Text.unpack
+
+textQPat :: Text -> Q Pat
+textQPat t = return $ ViewP (VarE 'Text.unpack) (LitP $ StringL $ Text.unpack t)
+
+nameQExp :: Name a -> Q Exp
+nameQExp (Name n) = AppE (ConE 'Name) <$> textQExp n
+
+nameQPat :: Name a -> Q Pat
+nameQPat (Name n) = ConP 'Name . pure <$> textQPat n
 
 type DataName = Name 'ForData
 type DefName = Name 'ForTyDef
