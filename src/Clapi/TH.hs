@@ -15,25 +15,28 @@ import Clapi.Types.Name (mkName, nameP)
 import Clapi.Types.Path (fromText)
 
 n :: QuasiQuoter
-n = QuasiQuoter {
-    quoteExp = mkName . pack >=> lift,
-    quotePat = fail "Not supported",
-    quoteDec = fail "Not supported",
-    quoteType = fail "Not supported"}
+n = QuasiQuoter
+  { quoteExp = mkName . pack >=> lift
+  , quotePat = fail "Not supported"
+  , quoteDec = fail "Not supported"
+  , quoteType = fail "Not supported"
+  }
 
 pathq :: QuasiQuoter
-pathq = QuasiQuoter {
-    quoteExp = fromText nameP . pack >=> lift,
-    quotePat = fail "Not supported",
-    quoteDec = fail "Not supported",
-    quoteType = fail "Not supported"}
+pathq = QuasiQuoter
+  { quoteExp = fromText nameP . pack >=> lift
+  , quotePat = fail "Not supported"
+  , quoteDec = fail "Not supported"
+  , quoteType = fail "Not supported"
+  }
 
 btq :: QuasiQuoter
-btq = QuasiQuoter {
-    quoteExp = fromStr >=> lift,
-    quotePat = fail "Not supported",
-    quoteDec = fail "Not supported",
-    quoteType = fail "Not supported"}
+btq = QuasiQuoter
+    { quoteExp = fromStr >=> lift
+    , quotePat = fail "Not supported"
+    , quoteDec = fail "Not supported"
+    , quoteType = fail "Not supported"
+    }
   where
     fromStr [c] = mkTag $ fromIntegral $ ord c
     fromStr _ = fail "Not one char"
