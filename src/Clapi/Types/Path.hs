@@ -53,6 +53,7 @@ splitHead :: Path' a -> Maybe (a, Path' a)
 splitHead (Path' []) = Nothing
 splitHead (Path' (name:names)) = Just (name, Path' names)
 
+infixr 5 :</
 pattern (:</) :: a -> Path' a -> Path' a
 pattern a :</ path <- (splitHead -> Just (a, path)) where
     a :</ path = Path' $ a : unPath path
