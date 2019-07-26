@@ -1,10 +1,12 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    GADTs
+    DefaultSignatures
+  , GADTs
   , MultiParamTypeClasses
   , RankNTypes
   , StandaloneDeriving
   , TemplateHaskell
+  , TypeFamilies
   , TypeOperators
 #-}
 
@@ -24,6 +26,7 @@ module Clapi.Types.Wire
 import Prelude hiding (fail)
 
 import Control.Monad.Fail (MonadFail(..))
+import Data.Bifunctor (bimap)
 import Data.Constraint (Dict(..))
 import Data.Int
 import Data.Proxy
@@ -197,3 +200,49 @@ instance TypeEnumOf SomeWireType WireTypeName where
 
 instance TypeEnumOf (WireValue a) WireTypeName where
   typeEnumOf (WireValue wt _) = typeEnumOf wt
+
+
+class Wireable2 a where
+  type WT a
+  wireTypeFor2_ :: proxy a -> WireType (WT a)
+  toWt :: a -> WT a
+  fromWt :: WT a -> a
+
+  -- Defaults:
+  type WT a = a
+
+  default toWt :: (a ~ WT a) => a -> WT a
+  toWt = id
+  default fromWt :: (a ~ WT a) => WT a -> a
+  fromWt = id
+
+instance Wireable2 Time where
+  wireTypeFor2_ _ = WtTime
+
+instance Wireable2 a => Wireable2 [a] where
+  type WT [a] = [WT a]
+  wireTypeFor2_ _ = WtList $ wireTypeFor2_ $ Proxy @a
+  toWt = fmap toWt
+  fromWt = fmap fromWt
+
+instance (Wireable2 a, Wireable2 b) => Wireable2 (a, b) where
+  type WT (a, b) = (WT a, WT b)
+  wireTypeFor2_ _ = WtPair (wireTypeFor2_ $ Proxy @a) (wireTypeFor2_ $ Proxy @b)
+  toWt = bimap toWt toWt
+  fromWt = bimap fromWt fromWt
+
+wireTypeFor2 :: forall a. Wireable2 a => a -> WireType (WT a)
+wireTypeFor2 _ = wireTypeFor2_ $ Proxy @a
+
+fromWireable2 :: Wireable2 a => a -> WireValue (WT a)
+fromWireable2 a = WireValue (wireTypeFor2 a) $ toWt a
+
+someWireable2 :: Wireable2 a => a -> SomeWireValue
+someWireable2 = SomeWireValue . fromWireable2
+
+castWireValue2 :: forall m a. (MonadFail m, Wireable2 a) => SomeWireValue -> m a
+castWireValue2 (SomeWireValue (WireValue wt x)) =
+  let targetWt = wireTypeFor2_ $ Proxy @a in
+    case testEquality wt targetWt of
+      Just Refl -> return $ fromWt x
+      Nothing -> fail $ printf "Can't cast %s to %s" (show wt) (show targetWt)
