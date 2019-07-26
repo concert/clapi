@@ -218,10 +218,30 @@ class Wireable2 a where
 
 instance Wireable2 Time where
   wireTypeFor2_ _ = WtTime
+instance Wireable2 Word32 where
+  wireTypeFor2_ _ = WtWord32
+instance Wireable2 Word64 where
+  wireTypeFor2_ _ = WtWord64
+instance Wireable2 Int32 where
+  wireTypeFor2_ _ = WtInt32
+instance Wireable2 Int64 where
+  wireTypeFor2_ _ = WtInt64
+instance Wireable2 Float where
+  wireTypeFor2_ _ = WtFloat
+instance Wireable2 Double where
+  wireTypeFor2_ _ = WtDouble
+instance Wireable2 Text where
+  wireTypeFor2_ _ = WtString
 
 instance Wireable2 a => Wireable2 [a] where
   type WT [a] = [WT a]
   wireTypeFor2_ _ = WtList $ wireTypeFor2_ $ Proxy @a
+  toWt = fmap toWt
+  fromWt = fmap fromWt
+
+instance Wireable2 a => Wireable2 (Maybe a) where
+  type WT (Maybe a) = Maybe (WT a)
+  wireTypeFor2_ _ = WtMaybe $ wireTypeFor2_ $ Proxy @a
   toWt = fmap toWt
   fromWt = fmap fromWt
 
