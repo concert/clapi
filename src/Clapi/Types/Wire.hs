@@ -1,10 +1,12 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE
-    GADTs
+    DefaultSignatures
+  , GADTs
   , MultiParamTypeClasses
   , RankNTypes
   , StandaloneDeriving
   , TemplateHaskell
+  , TypeFamilies
   , TypeOperators
 #-}
 
@@ -24,6 +26,7 @@ module Clapi.Types.Wire
 import Prelude hiding (fail)
 
 import Control.Monad.Fail (MonadFail(..))
+import Data.Bifunctor (bimap)
 import Data.Constraint (Dict(..))
 import Data.Int
 import Data.Proxy
@@ -124,7 +127,18 @@ someWv wt a = SomeWireValue $ WireValue wt a
 
 
 class Wireable a where
-  wireTypeFor_ :: proxy a -> WireType a
+  type WT a
+  wireTypeFor_ :: proxy a -> WireType (WT a)
+  toWt :: a -> WT a
+  fromWt :: WT a -> a
+
+  -- Defaults:
+  type WT a = a
+
+  default toWt :: (a ~ WT a) => a -> WT a
+  toWt = id
+  default fromWt :: (a ~ WT a) => WT a -> a
+  fromWt = id
 
 instance Wireable Time where
   wireTypeFor_ _ = WtTime
@@ -142,18 +156,30 @@ instance Wireable Double where
   wireTypeFor_ _ = WtDouble
 instance Wireable Text where
   wireTypeFor_ _ = WtString
+
 instance Wireable a => Wireable [a] where
+  type WT [a] = [WT a]
   wireTypeFor_ _ = WtList $ wireTypeFor_ $ Proxy @a
+  toWt = fmap toWt
+  fromWt = fmap fromWt
+
 instance Wireable a => Wireable (Maybe a) where
+  type WT (Maybe a) = Maybe (WT a)
   wireTypeFor_ _ = WtMaybe $ wireTypeFor_ $ Proxy @a
+  toWt = fmap toWt
+  fromWt = fmap fromWt
+
 instance (Wireable a, Wireable b) => Wireable (a, b) where
+  type WT (a, b) = (WT a, WT b)
   wireTypeFor_ _ = WtPair (wireTypeFor_ $ Proxy @a) (wireTypeFor_ $ Proxy @b)
+  toWt = bimap toWt toWt
+  fromWt = bimap fromWt fromWt
 
-wireTypeFor :: Wireable a => a -> WireType a
-wireTypeFor _ = wireTypeFor_ Proxy
+wireTypeFor :: forall a. Wireable a => a -> WireType (WT a)
+wireTypeFor _ = wireTypeFor_ $ Proxy @a
 
-fromWireable :: Wireable a => a -> WireValue a
-fromWireable a = WireValue (wireTypeFor a) a
+fromWireable :: Wireable a => a -> WireValue (WT a)
+fromWireable a = WireValue (wireTypeFor a) $ toWt a
 
 -- | Like `someWv`, but if `a` is unambiguous we can automatically pick the
 --   correct type witness
@@ -164,8 +190,9 @@ castWireValue :: forall m a. (MonadFail m, Wireable a) => SomeWireValue -> m a
 castWireValue (SomeWireValue (WireValue wt x)) =
   let targetWt = wireTypeFor_ $ Proxy @a in
     case testEquality wt targetWt of
-      Just Refl -> return x
+      Just Refl -> return $ fromWt x
       Nothing -> fail $ printf "Can't cast %s to %s" (show wt) (show targetWt)
+
 
 data WireTypeName
   = WtnTime
